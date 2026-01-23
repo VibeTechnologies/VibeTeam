@@ -32,6 +32,10 @@ dependencies = [
     "click>=8.1.0",
     "aiohttp>=3.9.0",
     "tenacity>=8.2.0",
+    # Gmail integration
+    "google-auth>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-api-python-client>=2.0.0",
 ]
 
 [project.optional-dependencies]
