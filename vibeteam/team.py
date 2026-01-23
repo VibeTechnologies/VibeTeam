@@ -12,8 +12,8 @@ from rich.console import Console
 from vibeteam.roles import (
     Marketer,
     ProductManager,
-    ReliabilityEngineer,
     ReleaseEngineer,
+    ReliabilityEngineer,
     SoftwareEngineer,
     SupportEngineer,
 )
@@ -22,7 +22,7 @@ from vibeteam.roles import (
 class VibeTeam(Team):
     """
     VibeTeam - Autonomous AI team for SaaS development.
-    
+
     Based on MetaGPT Team pattern with specialized roles:
     - ProductManager: Requirements, roadmap, user stories
     - SoftwareEngineer: Implementation, testing, reviews
@@ -30,7 +30,7 @@ class VibeTeam(Team):
     - SupportEngineer: User issues, documentation
     - ReliabilityEngineer: Production health, incidents
     - ReleaseEngineer: Deployments, versioning
-    
+
     The team operates autonomously with:
     - Message-based communication between roles
     - Shared memory and context
@@ -49,16 +49,16 @@ class VibeTeam(Team):
     ) -> None:
         """
         Initialize VibeTeam with specified roles.
-        
+
         Args:
             context: MetaGPT context for shared state
             investment: Budget for LLM calls
-            include_roles: List of role names to include. 
+            include_roles: List of role names to include.
                           If None, includes all roles.
                           Options: ["pm", "swe", "marketer", "support", "sre", "release"]
         """
         super().__init__(context=context, investment=investment, **kwargs)
-        
+
         # Role registry
         role_map = {
             "pm": ProductManager,
@@ -68,11 +68,11 @@ class VibeTeam(Team):
             "sre": ReliabilityEngineer,
             "release": ReleaseEngineer,
         }
-        
+
         # Determine which roles to include
         if include_roles is None:
             include_roles = list(role_map.keys())
-        
+
         # Initialize roles
         roles = []
         for role_key in include_roles:
@@ -80,18 +80,18 @@ class VibeTeam(Team):
                 role_class = role_map[role_key]
                 roles.append(role_class())
                 self.console.print(f"[green]Added role: {role_class.__name__}[/green]")
-        
+
         self.hire(roles)
         self.console.print(f"[bold blue]VibeTeam initialized with {len(roles)} roles[/bold blue]")
 
     async def run_project(self, requirement: str, n_round: int = 5) -> str:
         """
         Run the team on a project requirement.
-        
+
         Args:
             requirement: High-level project requirement
             n_round: Number of communication rounds
-            
+
         Returns:
             Final project output
         """

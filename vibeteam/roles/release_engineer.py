@@ -5,7 +5,6 @@ Release Engineer Role - Manages deployments, versioning, releases.
 from typing import Any
 
 from metagpt.actions import Action
-from metagpt.schema import Message
 from pydantic import Field
 
 from vibeteam.roles.base import VibeRole
@@ -150,7 +149,7 @@ Write release notes:
 class ReleaseEngineer(VibeRole):
     """
     Release Engineer role - manages the release lifecycle.
-    
+
     Responsibilities:
     - Plan releases
     - Write changelogs
@@ -169,10 +168,12 @@ class ReleaseEngineer(VibeRole):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.set_actions([
-            PlanRelease,
-            WriteChangelog,
-            ValidateRelease,
-            CreateReleaseNotes,
-        ])
+        self.set_actions(
+            [
+                PlanRelease,
+                WriteChangelog,
+                ValidateRelease,
+                CreateReleaseNotes,
+            ]
+        )
         self._watch([])

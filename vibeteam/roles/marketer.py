@@ -9,11 +9,9 @@ Based on opencode marketer agent pattern with MetaGPT integration.
 from typing import Any
 
 from metagpt.actions import Action
-from metagpt.schema import Message
 from pydantic import Field
 
 from vibeteam.roles.base import VibeRole
-
 
 # The Marketing Protocol - embedded in all marketing actions
 MARKETING_PROTOCOL = """
@@ -179,9 +177,7 @@ Write the post:
 
     async def run(self, topic: str, context: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=MARKETING_PROTOCOL,
-            topic=topic,
-            context=context
+            protocol=MARKETING_PROTOCOL, topic=topic, context=context
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -231,9 +227,7 @@ Write the post:
 
     async def run(self, topic: str, context: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=MARKETING_PROTOCOL,
-            topic=topic,
-            context=context
+            protocol=MARKETING_PROTOCOL, topic=topic, context=context
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -271,9 +265,7 @@ Write the announcement:
 
     async def run(self, feature: str, details: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=MARKETING_PROTOCOL,
-            feature=feature,
-            details=details
+            protocol=MARKETING_PROTOCOL, feature=feature, details=details
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -326,9 +318,7 @@ Write the post:
 
     async def run(self, project: str, details: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=MARKETING_PROTOCOL,
-            project=project,
-            details=details
+            protocol=MARKETING_PROTOCOL, project=project, details=details
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -400,9 +390,7 @@ Write both X.com and LinkedIn versions:
 
     async def run(self, changes: str, war_story: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=MARKETING_PROTOCOL,
-            changes=changes,
-            war_story=war_story
+            protocol=MARKETING_PROTOCOL, changes=changes, war_story=war_story
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -411,13 +399,13 @@ Write both X.com and LinkedIn versions:
 class Marketer(VibeRole):
     """
     Marketer role - creates engaging content for various platforms.
-    
+
     Follows the Marketing Protocol with:
     - Platform-specific guidelines (Twitter, LinkedIn, HN, Reddit)
     - War Stories Library for engaging content
     - Proven post formulas
     - Story-first approach
-    
+
     Philosophy:
     > "Stories are remembered 22x more than facts alone."
     > "Lead with the failure, end with the lesson."
@@ -436,11 +424,13 @@ class Marketer(VibeRole):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.set_actions([
-            WriteTwitterPost,
-            WriteLinkedInPost,
-            WriteProductAnnouncement,
-            WriteHackerNewsPost,
-            WriteWeeklyAnnouncement,
-        ])
+        self.set_actions(
+            [
+                WriteTwitterPost,
+                WriteLinkedInPost,
+                WriteProductAnnouncement,
+                WriteHackerNewsPost,
+                WriteWeeklyAnnouncement,
+            ]
+        )
         self._watch([])  # Marketer can work independently
