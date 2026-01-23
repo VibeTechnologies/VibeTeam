@@ -1,31 +1,9 @@
 ---
-# Sentry Triage CronJob
-# Runs every 12 hours to analyze Sentry issues and create GitHub issues for valid bugs
-#
-# Deploy: kubectl apply -f k8s/sentry-triage.yaml
-# Check: kubectl -n vibe get cronjobs
-# Logs: kubectl -n vibe logs -l app=sentry-triage --tail=100
-# Manual run: kubectl -n vibe create job --from=cronjob/sentry-triage sentry-triage-manual
-
-apiVersion: v1
-kind: Secret
-metadata:
-  name: sentry-triage-secrets
-  namespace: vibe
-type: Opaque
-stringData:
-  # Get from: https://vibetechnologies.sentry.io/settings/auth-tokens/
-  SENTRY_AUTH_TOKEN: "REPLACE_WITH_ACTUAL_TOKEN"
-  # GitHub token with repo scope for issue creation
-  # Get from: https://github.com/settings/tokens
-  GITHUB_TOKEN: "REPLACE_WITH_ACTUAL_TOKEN"
-
----
+# Sentry Triage CronJob - ConfigMap with Python script
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: sentry-triage-scripts
-  namespace: vibe
 data:
   triage_sentry.py: |
     #!/usr/bin/env python3
@@ -202,13 +180,14 @@ data:
         SentryTriager().run(hours=12)
 
 ---
+# Sentry Triage CronJob
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: sentry-triage
-  namespace: vibe
   labels:
     app: sentry-triage
+    team: vibeteam
 spec:
   # Run every 12 hours at 00:00 and 12:00 UTC
   schedule: "0 */12 * * *"
@@ -238,12 +217,12 @@ spec:
                 - name: SENTRY_AUTH_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: sentry-triage-secrets
+                      name: vibeteam-secrets
                       key: SENTRY_AUTH_TOKEN
                 - name: GITHUB_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: sentry-triage-secrets
+                      name: vibeteam-secrets
                       key: GITHUB_TOKEN
               volumeMounts:
                 - name: scripts

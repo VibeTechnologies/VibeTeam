@@ -1,0 +1,28 @@
+# Prod overlay - Deploy VibeTeam agents to vibe namespace
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vibe
+
+resources:
+  - ../../base
+
+# Secrets from environment files
+secretGenerator:
+  # Sentry + GitHub tokens for issue triage
+  - name: vibeteam-secrets
+    envs:
+      - .env.secrets
+    options:
+      disableNameSuffixHash: true
+  
+  # Gmail OAuth credentials (JSON files)
+  - name: gmail-oauth-secrets
+    files:
+      - gmail-credentials.json
+      - gmail-token.json
+    options:
+      disableNameSuffixHash: true
+
+generatorOptions:
+  disableNameSuffixHash: true

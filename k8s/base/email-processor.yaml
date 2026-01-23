@@ -1,52 +1,9 @@
 ---
-# Email Processor CronJob
-# Runs every 15 minutes to process docs portal support escalations
-#
-# Deploy: kubectl apply -f k8s/email-processor.yaml
-# Check: kubectl -n vibe get cronjobs
-# Logs: kubectl -n vibe logs -l app=email-processor --tail=100
-# Manual run: kubectl -n vibe create job --from=cronjob/email-processor email-processor-manual
-
-apiVersion: v1
-kind: Secret
-metadata:
-  name: email-processor-secrets
-  namespace: vibe
-type: Opaque
-stringData:
-  # Gmail OAuth credentials (from GCP Console)
-  # Project: vibebrowser-481803
-  # OAuth Client: "Vibe Browser Desktop"
-  gmail-credentials.json: |
-    {
-      "installed": {
-        "client_id": "REPLACE_WITH_CLIENT_ID.apps.googleusercontent.com",
-        "client_secret": "REPLACE_WITH_CLIENT_SECRET",
-        "project_id": "vibebrowser-481803",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "redirect_uris": ["http://localhost"]
-      }
-    }
-  # Gmail OAuth token (obtained after running --authenticate locally)
-  # Contains: access_token, refresh_token, token_uri, client_id, client_secret, expiry
-  gmail-token.json: |
-    {
-      "token": "REPLACE_WITH_ACCESS_TOKEN",
-      "refresh_token": "REPLACE_WITH_REFRESH_TOKEN",
-      "token_uri": "https://oauth2.googleapis.com/token",
-      "client_id": "REPLACE_WITH_CLIENT_ID.apps.googleusercontent.com",
-      "client_secret": "REPLACE_WITH_CLIENT_SECRET",
-      "expiry": "2025-01-23T00:00:00.000000Z"
-    }
-
----
+# Email Processor CronJob - ConfigMaps with Python scripts
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: email-processor-scripts
-  namespace: vibe
 data:
   gmail.py: |
     """Gmail connector for k8s - minimal version"""
@@ -296,13 +253,14 @@ data:
         asyncio.run(main())
 
 ---
+# Email Processor CronJob
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: email-processor
-  namespace: vibe
   labels:
     app: email-processor
+    team: vibeteam
 spec:
   # Run every 15 minutes
   schedule: "*/15 * * * *"
@@ -331,7 +289,7 @@ spec:
               volumeMounts:
                 - name: scripts
                   mountPath: /scripts
-                - name: secrets
+                - name: gmail-secrets
                   mountPath: /secrets
                   readOnly: true
               resources:
@@ -346,6 +304,6 @@ spec:
               configMap:
                 name: email-processor-scripts
                 defaultMode: 0755
-            - name: secrets
+            - name: gmail-secrets
               secret:
-                secretName: email-processor-secrets
+                secretName: gmail-oauth-secrets
