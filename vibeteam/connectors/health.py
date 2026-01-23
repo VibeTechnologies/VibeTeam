@@ -8,12 +8,10 @@ Monitors:
 """
 
 import logging
-import os
-import ssl
 import socket
+import ssl
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 from urllib.parse import urlparse
 
 import requests
@@ -27,9 +25,9 @@ class HealthCheckResult:
 
     url: str
     status: str  # healthy, degraded, down
-    status_code: Optional[int]
+    status_code: int | None
     latency_ms: float
-    error: Optional[str]
+    error: str | None
     timestamp: str
 
 
@@ -88,7 +86,7 @@ class HealthConnector:
     LATENCY_CRITICAL_MS = 5000  # 5 seconds
     SSL_EXPIRY_WARNING_DAYS = 14
 
-    def __init__(self, endpoints: Optional[list[dict]] = None):
+    def __init__(self, endpoints: list[dict] | None = None):
         self.endpoints = endpoints or DEFAULT_ENDPOINTS
 
     def check_endpoint(self, url: str, timeout: int = 10) -> HealthCheckResult:
@@ -144,16 +142,18 @@ class HealthConnector:
                 timestamp=timestamp,
             )
 
-    def check_ssl_expiry(self, hostname: str) -> Optional[int]:
+    def check_ssl_expiry(self, hostname: str) -> int | None:
         """Check SSL certificate expiry in days."""
         try:
             context = ssl.create_default_context()
-            with socket.create_connection((hostname, 443), timeout=10) as sock:
-                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                    cert = ssock.getpeercert()
-                    expiry = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
-                    days_left = (expiry - datetime.utcnow()).days
-                    return days_left
+            with (
+                socket.create_connection((hostname, 443), timeout=10) as sock,
+                context.wrap_socket(sock, server_hostname=hostname) as ssock,
+            ):
+                cert = ssock.getpeercert()
+                expiry = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
+                days_left = (expiry - datetime.utcnow()).days
+                return days_left
         except Exception as e:
             logger.warning(f"SSL check failed for {hostname}: {e}")
             return None
@@ -201,36 +201,42 @@ class HealthConnector:
 
             # Down alert
             if check.status == "down":
-                alerts.append({
-                    "type": "service_down",
-                    "severity": "critical" if endpoint.get("critical") else "warning",
-                    "service": endpoint.get("name", check.url),
-                    "message": f"{endpoint.get('name', check.url)} is DOWN: {check.error or 'No response'}",
-                    "url": check.url,
-                    "timestamp": check.timestamp,
-                })
+                alerts.append(
+                    {
+                        "type": "service_down",
+                        "severity": "critical" if endpoint.get("critical") else "warning",
+                        "service": endpoint.get("name", check.url),
+                        "message": f"{endpoint.get('name', check.url)} is DOWN: {check.error or 'No response'}",
+                        "url": check.url,
+                        "timestamp": check.timestamp,
+                    }
+                )
 
             # High latency alert
             elif check.latency_ms > self.LATENCY_CRITICAL_MS:
-                alerts.append({
-                    "type": "high_latency",
-                    "severity": "critical",
-                    "service": endpoint.get("name", check.url),
-                    "message": f"{endpoint.get('name', check.url)} high latency: {check.latency_ms:.0f}ms",
-                    "url": check.url,
-                    "latency_ms": check.latency_ms,
-                    "timestamp": check.timestamp,
-                })
+                alerts.append(
+                    {
+                        "type": "high_latency",
+                        "severity": "critical",
+                        "service": endpoint.get("name", check.url),
+                        "message": f"{endpoint.get('name', check.url)} high latency: {check.latency_ms:.0f}ms",
+                        "url": check.url,
+                        "latency_ms": check.latency_ms,
+                        "timestamp": check.timestamp,
+                    }
+                )
             elif check.latency_ms > self.LATENCY_WARNING_MS:
-                alerts.append({
-                    "type": "high_latency",
-                    "severity": "warning",
-                    "service": endpoint.get("name", check.url),
-                    "message": f"{endpoint.get('name', check.url)} elevated latency: {check.latency_ms:.0f}ms",
-                    "url": check.url,
-                    "latency_ms": check.latency_ms,
-                    "timestamp": check.timestamp,
-                })
+                alerts.append(
+                    {
+                        "type": "high_latency",
+                        "severity": "warning",
+                        "service": endpoint.get("name", check.url),
+                        "message": f"{endpoint.get('name', check.url)} elevated latency: {check.latency_ms:.0f}ms",
+                        "url": check.url,
+                        "latency_ms": check.latency_ms,
+                        "timestamp": check.timestamp,
+                    }
+                )
 
         # Check SSL expiry for critical endpoints
         for endpoint in self.endpoints:
@@ -238,15 +244,17 @@ class HealthConnector:
                 hostname = urlparse(endpoint["url"]).netloc
                 days_left = self.check_ssl_expiry(hostname)
                 if days_left is not None and days_left < self.SSL_EXPIRY_WARNING_DAYS:
-                    alerts.append({
-                        "type": "ssl_expiry",
-                        "severity": "critical" if days_left < 7 else "warning",
-                        "service": endpoint.get("name", hostname),
-                        "message": f"SSL certificate expires in {days_left} days",
-                        "hostname": hostname,
-                        "days_left": days_left,
-                        "timestamp": datetime.utcnow().isoformat() + "Z",
-                    })
+                    alerts.append(
+                        {
+                            "type": "ssl_expiry",
+                            "severity": "critical" if days_left < 7 else "warning",
+                            "service": endpoint.get("name", hostname),
+                            "message": f"SSL certificate expires in {days_left} days",
+                            "hostname": hostname,
+                            "days_left": days_left,
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                        }
+                    )
 
         return alerts
 

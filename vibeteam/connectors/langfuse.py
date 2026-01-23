@@ -12,7 +12,6 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
 
 import requests
 
@@ -65,9 +64,9 @@ class LangfuseConnector:
 
     def __init__(
         self,
-        public_key: Optional[str] = None,
-        secret_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        public_key: str | None = None,
+        secret_key: str | None = None,
+        base_url: str | None = None,
     ):
         self.public_key = public_key or os.environ.get("LANGFUSE_PUBLIC_KEY")
         self.secret_key = secret_key or os.environ.get("LANGFUSE_SECRET_KEY")
@@ -105,7 +104,7 @@ class LangfuseConnector:
         self,
         hours: int = 1,
         limit: int = 100,
-        name: Optional[str] = None,
+        name: str | None = None,
     ) -> list[dict]:
         """Fetch recent traces from Langfuse."""
         params = {
