@@ -111,7 +111,7 @@ class ProductManager(VibeRole):
     - Communicate with stakeholders
     """
 
-    name: str = Field(default="Alice")
+    name: str = Field(default="Curie")
     profile: str = Field(default="Product Manager")
     goal: str = Field(
         default="Define clear product requirements and roadmap that deliver user value"

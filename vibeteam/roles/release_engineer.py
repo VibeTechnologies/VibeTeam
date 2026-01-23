@@ -517,7 +517,7 @@ class ReleaseEngineer(VibeRole):
     > "Quantify impact - events, users, severity."
     """
 
-    name: str = Field(default="Frank")
+    name: str = Field(default="Einstein")
     profile: str = Field(default="Release Engineer")
     goal: str = Field(
         default="Monitor production, triage issues, create fixes with proper issue tracking"

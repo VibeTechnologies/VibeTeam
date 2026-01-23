@@ -612,7 +612,7 @@ class SupportEngineer(VibeRole):
     Email: support@vibebrowser.app
     """
 
-    name: str = Field(default="Diana")
+    name: str = Field(default="Nightingale")
     profile: str = Field(default="Support Engineer")
     goal: str = Field(
         default="Provide helpful, secure support responses and escalate appropriately"

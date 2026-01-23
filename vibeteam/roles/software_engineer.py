@@ -393,7 +393,7 @@ class SoftwareEngineer(VibeRole):
     > "Bad programmers worry about the code. Good programmers worry about data structures."
     """
 
-    name: str = Field(default="Torvalds")
+    name: str = Field(default="Turing")
     profile: str = Field(default="Software Engineer")
     goal: str = Field(
         default="Write high-quality, maintainable code through a rigorous 17-step workflow"
