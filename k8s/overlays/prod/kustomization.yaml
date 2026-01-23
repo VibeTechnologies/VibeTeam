@@ -1,8 +1,8 @@
-# Prod overlay - Deploy VibeTeam agents to vibe namespace
+# Prod overlay - Deploy VibeTeam agents to vibeteam namespace
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: vibe
+namespace: vibeteam
 
 resources:
   - ../../base
