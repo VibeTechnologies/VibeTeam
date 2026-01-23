@@ -12,7 +12,7 @@ from pydantic import Field
 class VibeRole(Role):
     """
     Base class for all VibeTeam roles.
-    
+
     Extends MetaGPT Role with:
     - GitHub Copilot subscription compatibility (uses litellm)
     - Standardized action patterns
@@ -23,7 +23,7 @@ class VibeRole(Role):
     profile: str = Field(default="Team Member")
     goal: str = Field(default="Contribute to team success")
     constraints: str = Field(default="Follow team protocols and best practices")
-    
+
     # Model configuration - compatible with GitHub Copilot subscription
     model: str = Field(default="openai:gpt-5-mini")
     temperature: float = Field(default=0.3)

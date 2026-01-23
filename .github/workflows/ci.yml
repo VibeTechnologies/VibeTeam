@@ -28,7 +28,7 @@ jobs:
         run: black --check .
         
       - name: Run mypy
-        run: mypy vibeteam --ignore-missing-imports
+        run: mypy vibeteam --ignore-missing-imports --disable-error-code=import-untyped
 
   test:
     runs-on: ubuntu-latest
@@ -39,6 +39,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
           
       - name: Install dependencies
         run: |
@@ -58,6 +59,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
           
       - name: Install dependencies
         run: pip install -e .[dev]

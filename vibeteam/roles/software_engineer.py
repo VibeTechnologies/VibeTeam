@@ -5,14 +5,14 @@ Embeds the Torvalds Protocol - a strict 17-step workflow for feature development
 Based on opencode torvalds agent with MetaGPT integration.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from metagpt.actions import Action
-from metagpt.schema import Message
 from pydantic import Field
 
 from vibeteam.roles.base import VibeRole
-
 
 # The Torvalds Protocol - embedded in all SWE actions
 TORVALDS_PROTOCOL = """
@@ -104,11 +104,7 @@ Now write the implementation:
 """
 
     async def run(self, task: str, context: str = "") -> str:
-        prompt = self.PROMPT_TEMPLATE.format(
-            protocol=TORVALDS_PROTOCOL,
-            task=task,
-            context=context
-        )
+        prompt = self.PROMPT_TEMPLATE.format(protocol=TORVALDS_PROTOCOL, task=task, context=context)
         rsp = await self._aask(prompt)
         return rsp
 
@@ -152,10 +148,7 @@ Now write the tests:
 """
 
     async def run(self, code: str) -> str:
-        prompt = self.PROMPT_TEMPLATE.format(
-            protocol=TORVALDS_PROTOCOL,
-            code=code
-        )
+        prompt = self.PROMPT_TEMPLATE.format(protocol=TORVALDS_PROTOCOL, code=code)
         rsp = await self._aask(prompt)
         return rsp
 
@@ -233,10 +226,7 @@ Now review the code:
 """
 
     async def run(self, code: str) -> str:
-        prompt = self.PROMPT_TEMPLATE.format(
-            protocol=TORVALDS_PROTOCOL,
-            code=code
-        )
+        prompt = self.PROMPT_TEMPLATE.format(protocol=TORVALDS_PROTOCOL, code=code)
         rsp = await self._aask(prompt)
         return rsp
 
@@ -318,9 +308,7 @@ Now analyze and fix:
 
     async def run(self, bug_report: str, code: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=TORVALDS_PROTOCOL,
-            bug_report=bug_report,
-            code=code
+            protocol=TORVALDS_PROTOCOL, bug_report=bug_report, code=code
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -385,10 +373,7 @@ Now create the PR description:
 """
 
     async def run(self, changes: str) -> str:
-        prompt = self.PROMPT_TEMPLATE.format(
-            protocol=TORVALDS_PROTOCOL,
-            changes=changes
-        )
+        prompt = self.PROMPT_TEMPLATE.format(protocol=TORVALDS_PROTOCOL, changes=changes)
         rsp = await self._aask(prompt)
         return rsp
 
@@ -396,12 +381,12 @@ Now create the PR description:
 class SoftwareEngineer(VibeRole):
     """
     Software Engineer role - implements features with the Torvalds Protocol.
-    
+
     Follows a strict 17-step workflow:
-    Think -> Issue -> Branch -> Implement -> Commit -> Push -> PR -> 
-    Review -> Reflect -> PR-CI -> Approval -> Merge -> Master-CI -> 
+    Think -> Issue -> Branch -> Implement -> Commit -> Push -> PR ->
+    Review -> Reflect -> PR-CI -> Approval -> Merge -> Master-CI ->
     Deploy -> Health -> Close -> Report
-    
+
     Philosophy:
     > "Talk is cheap. Show me the code." - Linus Torvalds
     > "Given enough eyeballs, all bugs are shallow."
@@ -421,8 +406,7 @@ class SoftwareEngineer(VibeRole):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.set_actions([WriteCode, WriteTests, ReviewCode, FixBug, CreatePR])
+        # Deferred import to avoid circular dependency
+        from vibeteam.roles.product_manager import WritePRD
+
         self._watch([WritePRD])  # Watch for PRDs from PM
-
-
-# Import WritePRD for watching
-from vibeteam.roles.product_manager import WritePRD

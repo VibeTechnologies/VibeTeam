@@ -1,0 +1,54 @@
+name: Deploy to k3s
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'k8s/**'
+      - 'scripts/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+          
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          
+      - name: Verify cluster access
+        run: kubectl cluster-info
+        
+      - name: Create secrets
+        run: |
+          # Create/update vibeteam-secrets
+          kubectl -n vibe delete secret vibeteam-secrets --ignore-not-found
+          kubectl -n vibe create secret generic vibeteam-secrets \
+            --from-literal=SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" \
+            --from-literal=GITHUB_TOKEN="${{ secrets.PAT_TOKEN }}"
+            
+      - name: Deploy CronJobs
+        run: |
+          kubectl apply -f k8s/base/sentry-triage.yaml -n vibe
+          kubectl apply -f k8s/base/email-processor.yaml -n vibe
+          
+      - name: Verify deployment
+        run: |
+          echo "=== CronJobs ==="
+          kubectl get cronjobs -n vibe
+          echo ""
+          echo "=== Secrets ==="
+          kubectl get secrets -n vibe | grep -E "(gmail|vibeteam)"
+          echo ""
+          echo "=== Recent Jobs ==="
+          kubectl get jobs -n vibe --sort-by=.metadata.creationTimestamp | tail -5

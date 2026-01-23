@@ -1,0 +1,8 @@
+# MetaGPT configuration for CI/tests
+# This provides minimal config so metagpt can initialize
+
+llm:
+  api_type: "openai"
+  model: "gpt-5-mini"
+  base_url: "https://api.openai.com/v1"
+  api_key: "${OPENAI_API_KEY:dummy-key-for-tests}"
