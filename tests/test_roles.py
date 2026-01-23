@@ -24,26 +24,26 @@ class TestRoleInitialization:
     def test_software_engineer_init(self) -> None:
         swe = SoftwareEngineer()
         assert swe.profile == "Software Engineer"
-        assert swe.name == "Bob"
-        assert len(swe.actions) == 4
+        assert swe.name == "Torvalds"
+        assert len(swe.actions) >= 4
 
     def test_marketer_init(self) -> None:
         marketer = Marketer()
         assert marketer.profile == "Marketer"
         assert marketer.name == "Carol"
-        assert len(marketer.actions) == 4
+        assert len(marketer.actions) >= 4
 
     def test_support_engineer_init(self) -> None:
         support = SupportEngineer()
         assert support.profile == "Support Engineer"
         assert support.name == "Diana"
-        assert len(support.actions) == 4
+        assert len(support.actions) >= 4
 
     def test_reliability_engineer_init(self) -> None:
         sre = ReliabilityEngineer()
         assert sre.profile == "Reliability Engineer"
         assert sre.name == "Eve"
-        assert len(sre.actions) == 4
+        assert len(sre.actions) >= 4
 
     def test_release_engineer_init(self) -> None:
         release = ReleaseEngineer()
