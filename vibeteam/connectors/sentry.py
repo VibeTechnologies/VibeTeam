@@ -19,6 +19,7 @@ API Docs: https://docs.sentry.io/api/
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 import requests
 
@@ -134,14 +135,14 @@ class SentryConnector:
             "Content-Type": "application/json",
         }
 
-    def _get(self, endpoint: str, params: dict | None = None) -> dict:
+    def _get(self, endpoint: str, params: dict | None = None) -> Any:
         """Make GET request to Sentry API."""
         url = f"{SENTRY_API_BASE}{endpoint}"
         response = requests.get(url, headers=self._headers(), params=params)
         response.raise_for_status()
         return response.json()
 
-    def _put(self, endpoint: str, data: dict) -> dict:
+    def _put(self, endpoint: str, data: dict) -> Any:
         """Make PUT request to Sentry API."""
         url = f"{SENTRY_API_BASE}{endpoint}"
         response = requests.put(url, headers=self._headers(), json=data)
@@ -280,7 +281,7 @@ class SentryConnector:
             ignore_count: Ignore until N more occurrences
         """
         endpoint = f"/issues/{issue_id}/"
-        data = {"status": "ignored"}
+        data: dict[str, Any] = {"status": "ignored"}
 
         if ignore_duration:
             data["statusDetails"] = {"ignoreDuration": ignore_duration}

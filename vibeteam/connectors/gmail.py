@@ -14,6 +14,7 @@ import base64
 from dataclasses import dataclass
 from email.mime.text import MIMEText
 from pathlib import Path
+from typing import Any
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -93,8 +94,8 @@ class GmailConnector:
         """
         self.credentials_path = credentials_path or DEFAULT_CREDENTIALS_PATH
         self.token_path = token_path or DEFAULT_TOKEN_PATH
-        self.creds: Credentials | None = None
-        self.service = None
+        self.creds: Any = None
+        self.service: Any = None
 
     def authenticate(self, headless: bool = False) -> bool:
         """
