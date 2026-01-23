@@ -5,3 +5,4 @@ kind: Kustomization
 resources:
   - sentry-triage.yaml
   - email-processor.yaml
+  - release-engineer.yaml
