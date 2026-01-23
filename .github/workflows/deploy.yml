@@ -9,6 +9,9 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
+env:
+  NAMESPACE: vibeteam
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -29,26 +32,27 @@ jobs:
       - name: Verify cluster access
         run: kubectl cluster-info
         
+      - name: Create namespace
+        run: kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+        
       - name: Create secrets
         run: |
           # Create/update vibeteam-secrets
-          kubectl -n vibe delete secret vibeteam-secrets --ignore-not-found
-          kubectl -n vibe create secret generic vibeteam-secrets \
+          kubectl -n $NAMESPACE delete secret vibeteam-secrets --ignore-not-found
+          kubectl -n $NAMESPACE create secret generic vibeteam-secrets \
             --from-literal=SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" \
             --from-literal=GITHUB_TOKEN="${{ secrets.PAT_TOKEN }}"
             
-      - name: Deploy CronJobs
-        run: |
-          kubectl apply -f k8s/base/sentry-triage.yaml -n vibe
-          kubectl apply -f k8s/base/email-processor.yaml -n vibe
+      - name: Deploy with kustomize
+        run: kubectl apply -k k8s/overlays/prod/
           
       - name: Verify deployment
         run: |
           echo "=== CronJobs ==="
-          kubectl get cronjobs -n vibe
+          kubectl get cronjobs -n $NAMESPACE
           echo ""
           echo "=== Secrets ==="
-          kubectl get secrets -n vibe | grep -E "(gmail|vibeteam)"
+          kubectl get secrets -n $NAMESPACE | grep -E "(gmail|vibeteam)"
           echo ""
           echo "=== Recent Jobs ==="
-          kubectl get jobs -n vibe --sort-by=.metadata.creationTimestamp | tail -5
+          kubectl get jobs -n $NAMESPACE --sort-by=.metadata.creationTimestamp | tail -5
