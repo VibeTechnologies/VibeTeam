@@ -21,6 +21,11 @@ data:
     from typing import Optional
     
     import requests
+    import sentry_sdk
+    
+    # Initialize Sentry for VibeTeam monitoring
+    SENTRY_DSN = os.environ.get("VIBETEAM_SENTRY_DSN", "https://94ea47941d3f92fea1a886094ab9708d@o4510132673511424.ingest.us.sentry.io/4510761220308992")
+    sentry_sdk.init(dsn=SENTRY_DSN, environment="production", traces_sample_rate=0.1)
     
     logging.basicConfig(
         level=logging.INFO,
@@ -213,7 +218,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  pip install --quiet requests &&
+                  pip install --quiet requests sentry-sdk &&
                   python /scripts/triage_sentry.py
               env:
                 - name: SENTRY_AUTH_TOKEN
