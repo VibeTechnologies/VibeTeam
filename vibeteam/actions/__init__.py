@@ -35,9 +35,14 @@ from vibeteam.roles.software_engineer import (
     WriteTests,
 )
 from vibeteam.roles.support_engineer import (
+    AnalyzeCustomerEmail,
     AnalyzeUserIssue,
     CreateFAQEntry,
+    FlagForEscalation,
+    SearchKnowledgeBase,
+    ValidateResponseSecurity,
     WriteDocumentation,
+    WriteEmailResponse,
     WriteUserResponse,
 )
 
@@ -58,7 +63,12 @@ __all__ = [
     "WriteProductAnnouncement",
     "WriteHackerNewsPost",
     "WriteWeeklyAnnouncement",
-    # Support Engineer
+    # Support Engineer (Support Protocol with Security Guardrails)
+    "AnalyzeCustomerEmail",
+    "WriteEmailResponse",
+    "FlagForEscalation",
+    "SearchKnowledgeBase",
+    "ValidateResponseSecurity",
     "AnalyzeUserIssue",
     "WriteUserResponse",
     "WriteDocumentation",
