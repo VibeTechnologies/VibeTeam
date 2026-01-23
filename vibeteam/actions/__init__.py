@@ -1,5 +1,8 @@
 """
 VibeTeam Actions - Reusable actions for roles.
+
+Each action embeds the full protocol for its domain, enabling
+autonomous execution with minimal supervision.
 """
 
 from vibeteam.roles.marketer import (
@@ -7,12 +10,15 @@ from vibeteam.roles.marketer import (
     WriteLinkedInPost,
     WriteProductAnnouncement,
     WriteTwitterPost,
+    WriteWeeklyAnnouncement,
 )
 from vibeteam.roles.product_manager import PrioritizeBacklog, WritePRD, WriteUserStories
 from vibeteam.roles.reliability_engineer import (
     AnalyzeIncident,
+    CheckReleaseReadiness,
     CheckSystemHealth,
     CreateRunbook,
+    VerifyDeployment,
     WritePostmortem,
 )
 from vibeteam.roles.release_engineer import (
@@ -21,7 +27,13 @@ from vibeteam.roles.release_engineer import (
     ValidateRelease,
     WriteChangelog,
 )
-from vibeteam.roles.software_engineer import FixBug, ReviewCode, WriteCode, WriteTests
+from vibeteam.roles.software_engineer import (
+    CreatePR,
+    FixBug,
+    ReviewCode,
+    WriteCode,
+    WriteTests,
+)
 from vibeteam.roles.support_engineer import (
     AnalyzeUserIssue,
     CreateFAQEntry,
@@ -34,26 +46,30 @@ __all__ = [
     "WritePRD",
     "WriteUserStories",
     "PrioritizeBacklog",
-    # Software Engineer
+    # Software Engineer (Torvalds Protocol)
     "WriteCode",
     "WriteTests",
     "ReviewCode",
     "FixBug",
-    # Marketer
+    "CreatePR",
+    # Marketer (Marketing Protocol)
     "WriteTwitterPost",
     "WriteLinkedInPost",
     "WriteProductAnnouncement",
     "WriteHackerNewsPost",
+    "WriteWeeklyAnnouncement",
     # Support Engineer
     "AnalyzeUserIssue",
     "WriteUserResponse",
     "WriteDocumentation",
     "CreateFAQEntry",
-    # Reliability Engineer
+    # Reliability Engineer (Prod-Eng Protocol)
     "CheckSystemHealth",
+    "VerifyDeployment",
     "AnalyzeIncident",
     "WritePostmortem",
     "CreateRunbook",
+    "CheckReleaseReadiness",
     # Release Engineer
     "PlanRelease",
     "WriteChangelog",
