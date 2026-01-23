@@ -3,6 +3,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - sentry-triage.yaml
-  - email-processor.yaml
   - release-engineer.yaml
+  - support-engineer.yaml
