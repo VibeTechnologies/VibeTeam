@@ -43,8 +43,11 @@ jobs:
             --from-literal=SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" \
             --from-literal=GITHUB_TOKEN="${{ secrets.PAT_TOKEN }}"
             
-      - name: Deploy with kustomize
-        run: kubectl apply -k k8s/overlays/prod/
+      - name: Deploy CronJobs
+        run: |
+          # Apply base manifests with namespace override
+          kubectl apply -f k8s/base/sentry-triage.yaml -n $NAMESPACE
+          kubectl apply -f k8s/base/email-processor.yaml -n $NAMESPACE
           
       - name: Verify deployment
         run: |
@@ -52,7 +55,7 @@ jobs:
           kubectl get cronjobs -n $NAMESPACE
           echo ""
           echo "=== Secrets ==="
-          kubectl get secrets -n $NAMESPACE | grep -E "(gmail|vibeteam)"
+          kubectl get secrets -n $NAMESPACE | grep -E "(gmail|vibeteam)" || echo "No matching secrets"
           echo ""
           echo "=== Recent Jobs ==="
-          kubectl get jobs -n $NAMESPACE --sort-by=.metadata.creationTimestamp | tail -5
+          kubectl get jobs -n $NAMESPACE --sort-by=.metadata.creationTimestamp | tail -5 || echo "No jobs yet"
