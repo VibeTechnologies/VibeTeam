@@ -36,6 +36,8 @@ dependencies = [
     # Pin to avoid resolution loop
     "importlib-metadata>=6.8.0,<7.0",
     "opentelemetry-api>=1.29.0,<1.34",
+    # Pin httpx to avoid proxies arg issue with openai
+    "httpx>=0.23.0,<0.28.0",
     # Gmail integration
     "google-auth>=2.0.0",
     "google-auth-oauthlib>=1.0.0",
