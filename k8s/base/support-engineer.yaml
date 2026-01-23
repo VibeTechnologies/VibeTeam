@@ -50,13 +50,26 @@ data:
             self.service = None
             self.creds = None
         
-        def authenticate(self, headless: bool = True) -> None:
+        def authenticate(self, headless: bool = True, writable_token_path: Optional[Path] = None) -> None:
+            """Authenticate with Gmail API.
+            
+            Args:
+                headless: If True, don't attempt interactive auth
+                writable_token_path: Optional writable path to save refreshed token
+            """
             if self.token_path.exists():
                 self.creds = Credentials.from_authorized_user_file(str(self.token_path), SCOPES)
             if self.creds and self.creds.expired and self.creds.refresh_token:
                 self.creds.refresh(Request())
-                with open(self.token_path, "w") as f:
-                    f.write(self.creds.to_json())
+                # Save refreshed token to writable path if provided
+                save_path = writable_token_path or self.token_path
+                try:
+                    with open(save_path, "w") as f:
+                        f.write(self.creds.to_json())
+                except OSError as e:
+                    # Log but don't fail - token refresh still worked
+                    import logging
+                    logging.warning(f"Could not save refreshed token: {e}")
             if not self.creds or not self.creds.valid:
                 raise RuntimeError("No valid credentials. Run --authenticate locally first.")
             self.service = build("gmail", "v1", credentials=self.creds)
@@ -247,17 +260,44 @@ data:
                 logger.info(f"Sent response to {customer_email}")
     
     async def main():
+        # Copy token to writable location if needed
+        writable_token = Path("/data/gmail-token.json")
+        readonly_token = Path("/secrets/gmail-token.json")
+        
+        # Use existing writable token if available, otherwise copy from secret
+        if not writable_token.exists() and readonly_token.exists():
+            import shutil
+            writable_token.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(readonly_token, writable_token)
+            logger.info(f"Copied token to writable location: {writable_token}")
+        
         gmail = GmailConnector(
             credentials_path=Path("/secrets/gmail-credentials.json"),
-            token_path=Path("/secrets/gmail-token.json"),
+            token_path=writable_token if writable_token.exists() else readonly_token,
         )
-        gmail.authenticate(headless=True)
+        gmail.authenticate(headless=True, writable_token_path=writable_token)
         processor = EmailProcessor(gmail=gmail, dry_run=False)
         await processor.process_emails(max_emails=20)
     
     if __name__ == "__main__":
         asyncio.run(main())
 
+---
+# Persistent volume claim for Gmail token storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gmail-token-storage
+  labels:
+    app: support-engineer
+    team: vibeteam
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Mi
 ---
 # Support Engineer CronJob
 apiVersion: batch/v1
@@ -298,6 +338,8 @@ spec:
                 - name: gmail-secrets
                   mountPath: /secrets
                   readOnly: true
+                - name: token-storage
+                  mountPath: /data
               resources:
                 requests:
                   memory: "128Mi"
@@ -313,3 +355,6 @@ spec:
             - name: gmail-secrets
               secret:
                 secretName: gmail-oauth-secrets
+            - name: token-storage
+              persistentVolumeClaim:
+                claimName: gmail-token-storage
