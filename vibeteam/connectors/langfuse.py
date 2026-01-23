@@ -185,7 +185,7 @@ class LangfuseConnector:
         - Error rate spikes
         - Token budget usage
         """
-        anomalies = []
+        anomalies: list[LangfuseAnomaly] = []
         traces = self.get_traces(hours=hours, limit=500)
 
         if not traces:

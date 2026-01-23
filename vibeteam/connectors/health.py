@@ -12,11 +12,20 @@ import socket
 import ssl
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypedDict
 from urllib.parse import urlparse
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+class EndpointConfig(TypedDict):
+    """Configuration for a health check endpoint."""
+
+    name: str
+    url: str
+    critical: bool
 
 
 @dataclass
@@ -41,7 +50,7 @@ class ServiceHealth:
 
 
 # Default endpoints to monitor
-DEFAULT_ENDPOINTS = [
+DEFAULT_ENDPOINTS: list[EndpointConfig] = [
     {
         "name": "API Prod",
         "url": "https://api.vibebrowser.app/health",
@@ -86,8 +95,8 @@ class HealthConnector:
     LATENCY_CRITICAL_MS = 5000  # 5 seconds
     SSL_EXPIRY_WARNING_DAYS = 14
 
-    def __init__(self, endpoints: list[dict] | None = None):
-        self.endpoints = endpoints or DEFAULT_ENDPOINTS
+    def __init__(self, endpoints: list[EndpointConfig] | None = None):
+        self.endpoints: list[EndpointConfig] = endpoints or DEFAULT_ENDPOINTS
 
     def check_endpoint(self, url: str, timeout: int = 10) -> HealthCheckResult:
         """Check a single endpoint."""
@@ -151,7 +160,12 @@ class HealthConnector:
                 context.wrap_socket(sock, server_hostname=hostname) as ssock,
             ):
                 cert = ssock.getpeercert()
-                expiry = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
+                if cert is None:
+                    return None
+                not_after = cert.get("notAfter")
+                if not isinstance(not_after, str):
+                    return None
+                expiry = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
                 days_left = (expiry - datetime.utcnow()).days
                 return days_left
         except Exception as e:
