@@ -1,0 +1,677 @@
+---
+# Release Engineer CronJob - Production Monitoring Agent
+# 
+# Monitors:
+# - Sentry: Error triage, classification, GitHub issue creation
+# - Langfuse: LLM anomaly detection (latency, error rate, token usage)
+# - Health: Service availability monitoring
+#
+# Schedule: Every 30 minutes
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: release-engineer-scripts
+data:
+  monitor.py: |
+    #!/usr/bin/env python3
+    """Release Engineer Monitor - Production monitoring and auto-issue creation."""
+    
+    import json
+    import logging
+    import os
+    import subprocess
+    import sys
+    from dataclasses import dataclass
+    from datetime import datetime, timedelta
+    from pathlib import Path
+    from typing import Optional
+    from urllib.parse import urlparse
+    import re
+    import socket
+    import ssl
+    
+    import requests
+    import sentry_sdk
+    
+    # Initialize Sentry for VibeTeam monitoring
+    SENTRY_DSN = os.environ.get(
+        "VIBETEAM_SENTRY_DSN",
+        "https://94ea47941d3f92fea1a886094ab9708d@o4510132673511424.ingest.us.sentry.io/4510761220308992"
+    )
+    sentry_sdk.init(dsn=SENTRY_DSN, environment="production", traces_sample_rate=0.1)
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+    logger = logging.getLogger(__name__)
+    
+    # Configuration
+    SENTRY_API_BASE = "https://sentry.io/api/0"
+    SENTRY_ORG = "vibetechnologies"
+    SENTRY_PROJECTS = ["vibebrowserextension", "vibe-api-gateway", "vibeteam"]
+    GITHUB_REPO = "VibeTechnologies/VibeWebAgent"
+    
+    # Health check endpoints
+    HEALTH_ENDPOINTS = [
+        {"name": "API Prod", "url": "https://api.vibebrowser.app/health", "critical": True},
+        {"name": "API Dev", "url": "https://api-dev.vibebrowser.app/health", "critical": False},
+        {"name": "Portal", "url": "https://portal.vibebrowser.app", "critical": True},
+        {"name": "Docs", "url": "https://docs.vibebrowser.app", "critical": False},
+        {"name": "Langfuse", "url": "https://langfuse.vibebrowser.app/api/public/health", "critical": False},
+    ]
+    
+    # Classification patterns
+    NOISE_PATTERNS = [
+        r"Failed to fetch", r"NetworkError", r"net::ERR_", r"ECONNREFUSED",
+        r"ResizeObserver loop", r"Script error\.", r"AbortError",
+        r"chrome-extension://(?!ajfjlohdpfgngdjfafhhcnpmijbbdgln)",
+    ]
+    
+    VALID_BUG_PATTERNS = [
+        r"TypeError:", r"ReferenceError:", r"Cannot read propert",
+        r"is not a function", r"undefined is not", r"Unhandled Promise",
+    ]
+    
+    # Thresholds
+    LATENCY_WARNING_MS = 5000
+    LATENCY_CRITICAL_MS = 15000
+    ERROR_RATE_WARNING = 0.05
+    ERROR_RATE_CRITICAL = 0.15
+    TOKEN_BUDGET_DAILY = 1_000_000
+    
+    
+    @dataclass
+    class SentryIssue:
+        id: str
+        short_id: str
+        title: str
+        culprit: str
+        level: str
+        count: int
+        user_count: int
+        project: str
+        permalink: str
+        first_seen: str
+    
+    
+    class ReleaseEngineerMonitor:
+        """Unified monitoring agent for production services."""
+    
+        def __init__(self):
+            self.sentry_token = os.environ.get("SENTRY_AUTH_TOKEN")
+            self.gh_token = os.environ.get("GITHUB_TOKEN")
+            self.langfuse_public = os.environ.get("LANGFUSE_PUBLIC_KEY")
+            self.langfuse_secret = os.environ.get("LANGFUSE_SECRET_KEY")
+            self.langfuse_url = os.environ.get("LANGFUSE_BASE_URL", "https://langfuse.vibebrowser.app")
+            
+            self.state_file = Path("/tmp/release-engineer-state.json")
+            self.state = self._load_state()
+    
+        def _load_state(self) -> dict:
+            if self.state_file.exists():
+                with open(self.state_file) as f:
+                    return json.load(f)
+            return {"processed_sentry": [], "processed_langfuse": [], "last_run": None}
+    
+        def _save_state(self):
+            self.state["last_run"] = datetime.utcnow().isoformat()
+            with open(self.state_file, "w") as f:
+                json.dump(self.state, f)
+    
+        def _sentry_headers(self) -> dict:
+            return {"Authorization": f"Bearer {self.sentry_token}"}
+    
+        # === SENTRY MONITORING ===
+    
+        def fetch_sentry_issues(self, hours: int = 1) -> list[SentryIssue]:
+            if not self.sentry_token:
+                logger.warning("SENTRY_AUTH_TOKEN not set, skipping Sentry monitoring")
+                return []
+    
+            issues = []
+            period = "24h" if hours <= 24 else "14d"
+    
+            for proj in SENTRY_PROJECTS:
+                url = f"{SENTRY_API_BASE}/projects/{SENTRY_ORG}/{proj}/issues/"
+                params = {"query": "is:unresolved", "statsPeriod": period, "limit": 25}
+                try:
+                    resp = requests.get(url, headers=self._sentry_headers(), params=params, timeout=30)
+                    resp.raise_for_status()
+                    for i in resp.json():
+                        issues.append(SentryIssue(
+                            id=i["id"], short_id=i.get("shortId", ""),
+                            title=i.get("title", ""), culprit=i.get("culprit", ""),
+                            level=i.get("level", "error"), count=int(i.get("count", 0)),
+                            user_count=int(i.get("userCount", 0)), project=proj,
+                            permalink=i.get("permalink", ""), first_seen=i.get("firstSeen", ""),
+                        ))
+                except Exception as e:
+                    logger.error(f"Error fetching Sentry issues for {proj}: {e}")
+    
+            return sorted(issues, key=lambda x: x.count, reverse=True)
+    
+        def classify_sentry_issue(self, issue: SentryIssue) -> tuple[bool, str]:
+            """Classify issue as valid bug or noise."""
+            for p in NOISE_PATTERNS:
+                if re.search(p, issue.title, re.I) or re.search(p, issue.culprit, re.I):
+                    return False, f"Noise: matches pattern {p}"
+    
+            for p in VALID_BUG_PATTERNS:
+                if re.search(p, issue.title, re.I):
+                    return True, f"Bug: matches pattern {p}"
+    
+            if issue.count > 50 or issue.user_count > 10:
+                return True, f"Bug: high impact ({issue.count} events, {issue.user_count} users)"
+    
+            return False, "Noise: low impact, no bug patterns"
+    
+        def process_sentry(self) -> dict:
+            """Process Sentry issues and create GitHub issues for valid bugs."""
+            logger.info("=== SENTRY MONITORING ===")
+            issues = self.fetch_sentry_issues(hours=1)
+            logger.info(f"Found {len(issues)} unresolved Sentry issues")
+    
+            stats = {"valid": 0, "noise": 0, "skipped": 0, "issues_created": []}
+    
+            for issue in issues:
+                if issue.id in self.state["processed_sentry"]:
+                    stats["skipped"] += 1
+                    continue
+    
+                is_valid, reason = self.classify_sentry_issue(issue)
+                logger.info(f"[{issue.short_id}] {issue.title[:50]}... -> {'VALID' if is_valid else 'NOISE'}")
+    
+                if is_valid:
+                    gh_url = self._create_github_issue_for_sentry(issue, reason)
+                    if gh_url:
+                        stats["issues_created"].append(gh_url)
+                    stats["valid"] += 1
+                else:
+                    self._resolve_sentry_issue(issue.id, reason)
+                    stats["noise"] += 1
+    
+                self.state["processed_sentry"].append(issue.id)
+                # Keep only last 1000 processed IDs
+                self.state["processed_sentry"] = self.state["processed_sentry"][-1000:]
+    
+            logger.info(f"Sentry stats: {stats}")
+            return stats
+    
+        def _create_github_issue_for_sentry(self, issue: SentryIssue, reason: str) -> Optional[str]:
+            if not self.gh_token:
+                logger.warning("GITHUB_TOKEN not set, skipping issue creation")
+                return None
+    
+            project_label = "extension" if "extension" in issue.project else "api"
+            title = f"[Sentry/{project_label}] {issue.title[:70]}"
+            body = f"""## Sentry Issue
+    
+    **Link:** {issue.permalink}
+    **Project:** {issue.project}
+    **Occurrences:** {issue.count} | **Users:** {issue.user_count}
+    **First seen:** {issue.first_seen}
+    
+    ## Error
+    
+    ```
+    {issue.title}
+    ```
+    
+    **Culprit:** `{issue.culprit}`
+    
+    ## Classification
+    
+    {reason}
+    
+    ---
+    *Auto-created by Release Engineer Agent*
+    """
+            cmd = [
+                "gh", "issue", "create",
+                "--repo", GITHUB_REPO,
+                "--title", title,
+                "--body", body,
+                "--label", "bug,sentry"
+            ]
+    
+            result = subprocess.run(
+                cmd, capture_output=True, text=True,
+                env={**os.environ, "GH_TOKEN": self.gh_token}
+            )
+    
+            if result.returncode == 0:
+                url = result.stdout.strip()
+                logger.info(f"Created GitHub issue: {url}")
+                self._add_sentry_comment(issue.id, f"GitHub issue: {url}")
+                return url
+            else:
+                logger.error(f"Failed to create issue: {result.stderr}")
+                return None
+    
+        def _add_sentry_comment(self, issue_id: str, text: str):
+            url = f"{SENTRY_API_BASE}/issues/{issue_id}/comments/"
+            try:
+                requests.post(url, headers=self._sentry_headers(), json={"text": text}, timeout=10)
+            except Exception as e:
+                logger.warning(f"Failed to add Sentry comment: {e}")
+    
+        def _resolve_sentry_issue(self, issue_id: str, reason: str):
+            self._add_sentry_comment(issue_id, f"Auto-resolved: {reason}")
+            url = f"{SENTRY_API_BASE}/issues/{issue_id}/"
+            try:
+                requests.put(url, headers=self._sentry_headers(), json={"status": "ignored"}, timeout=10)
+            except Exception as e:
+                logger.warning(f"Failed to resolve Sentry issue: {e}")
+    
+        # === LANGFUSE MONITORING ===
+    
+        def fetch_langfuse_traces(self, hours: int = 1) -> list[dict]:
+            if not self.langfuse_public or not self.langfuse_secret:
+                logger.warning("Langfuse credentials not set, skipping Langfuse monitoring")
+                return []
+    
+            url = f"{self.langfuse_url}/api/public/traces"
+            from_time = datetime.utcnow() - timedelta(hours=hours)
+            params = {
+                "limit": 500,
+                "orderBy": "timestamp.desc",
+                "fromTimestamp": from_time.isoformat() + "Z",
+            }
+    
+            try:
+                resp = requests.get(
+                    url, auth=(self.langfuse_public, self.langfuse_secret),
+                    params=params, timeout=30
+                )
+                resp.raise_for_status()
+                return resp.json().get("data", [])
+            except Exception as e:
+                logger.error(f"Error fetching Langfuse traces: {e}")
+                return []
+    
+        def process_langfuse(self) -> dict:
+            """Analyze Langfuse traces for anomalies."""
+            logger.info("=== LANGFUSE MONITORING ===")
+            traces = self.fetch_langfuse_traces(hours=1)
+            logger.info(f"Found {len(traces)} traces in last hour")
+    
+            if not traces:
+                return {"status": "no_data", "anomalies": []}
+    
+            # Collect metrics
+            total_tokens = 0
+            total_latency = 0
+            error_count = 0
+            high_latency_traces = []
+    
+            for trace in traces:
+                usage = trace.get("usage", {}) or {}
+                total_tokens += usage.get("totalTokens", 0) or 0
+    
+                latency = trace.get("latency", 0) or 0
+                total_latency += latency
+    
+                if latency > LATENCY_WARNING_MS:
+                    high_latency_traces.append({
+                        "id": trace.get("id"),
+                        "name": trace.get("name"),
+                        "latency": latency,
+                    })
+    
+                if trace.get("level") == "ERROR" or trace.get("statusMessage"):
+                    error_count += 1
+    
+            avg_latency = total_latency / len(traces) if traces else 0
+            error_rate = error_count / len(traces) if traces else 0
+            projected_daily_tokens = total_tokens * 24
+    
+            anomalies = []
+    
+            # Check high latency
+            if high_latency_traces:
+                anomalies.append({
+                    "type": "latency",
+                    "severity": "critical" if any(t["latency"] > LATENCY_CRITICAL_MS for t in high_latency_traces) else "warning",
+                    "message": f"{len(high_latency_traces)} traces with high latency (avg {avg_latency:.0f}ms)",
+                    "traces": high_latency_traces[:5],
+                })
+    
+            # Check error rate
+            if error_rate > ERROR_RATE_WARNING:
+                anomalies.append({
+                    "type": "error_rate",
+                    "severity": "critical" if error_rate > ERROR_RATE_CRITICAL else "warning",
+                    "message": f"Error rate {error_rate:.1%} ({error_count}/{len(traces)})",
+                })
+    
+            # Check token budget
+            budget_usage = projected_daily_tokens / TOKEN_BUDGET_DAILY
+            if budget_usage > 0.8:
+                anomalies.append({
+                    "type": "token_usage",
+                    "severity": "critical" if budget_usage > 0.95 else "warning",
+                    "message": f"Projected daily: {projected_daily_tokens:,} tokens ({budget_usage:.0%} of budget)",
+                })
+    
+            stats = {
+                "traces": len(traces),
+                "tokens": total_tokens,
+                "avg_latency_ms": round(avg_latency, 2),
+                "error_rate": round(error_rate, 4),
+                "anomalies": anomalies,
+            }
+    
+            logger.info(f"Langfuse stats: traces={len(traces)}, tokens={total_tokens}, errors={error_count}")
+    
+            # Create issue for critical anomalies
+            critical_anomalies = [a for a in anomalies if a["severity"] == "critical"]
+            if critical_anomalies:
+                self._create_github_issue_for_langfuse(critical_anomalies, stats)
+    
+            return stats
+    
+        def _create_github_issue_for_langfuse(self, anomalies: list[dict], stats: dict):
+            if not self.gh_token:
+                return
+    
+            anomaly_key = json.dumps(sorted([a["type"] for a in anomalies]))
+            if anomaly_key in self.state.get("processed_langfuse", []):
+                logger.info("Langfuse anomaly already reported, skipping")
+                return
+    
+            title = f"[Langfuse] LLM Anomaly Detected: {', '.join(a['type'] for a in anomalies)}"
+            body = f"""## Langfuse Anomaly Alert
+    
+    **Timestamp:** {datetime.utcnow().isoformat()}Z
+    **URL:** {self.langfuse_url}
+    
+    ## Anomalies Detected
+    
+    | Type | Severity | Details |
+    |------|----------|---------|
+    {"".join(f"| {a['type']} | {a['severity']} | {a['message']} |\n" for a in anomalies)}
+    
+    ## Statistics (Last Hour)
+    
+    - Traces: {stats['traces']}
+    - Tokens: {stats['tokens']:,}
+    - Avg Latency: {stats['avg_latency_ms']}ms
+    - Error Rate: {stats['error_rate']:.2%}
+    
+    ## Action Required
+    
+    Investigate high latency traces and error patterns.
+    
+    ---
+    *Auto-created by Release Engineer Agent*
+    """
+            cmd = [
+                "gh", "issue", "create",
+                "--repo", GITHUB_REPO,
+                "--title", title,
+                "--body", body,
+                "--label", "monitoring,langfuse"
+            ]
+    
+            result = subprocess.run(
+                cmd, capture_output=True, text=True,
+                env={**os.environ, "GH_TOKEN": self.gh_token}
+            )
+    
+            if result.returncode == 0:
+                logger.info(f"Created Langfuse issue: {result.stdout.strip()}")
+                self.state.setdefault("processed_langfuse", []).append(anomaly_key)
+    
+        # === HEALTH MONITORING ===
+    
+        def check_endpoint(self, url: str, timeout: int = 10) -> dict:
+            try:
+                start = datetime.utcnow()
+                resp = requests.get(url, timeout=timeout, allow_redirects=True)
+                latency = (datetime.utcnow() - start).total_seconds() * 1000
+    
+                return {
+                    "url": url,
+                    "status": "healthy" if resp.status_code == 200 else "degraded",
+                    "status_code": resp.status_code,
+                    "latency_ms": round(latency, 2),
+                    "error": None,
+                }
+            except requests.exceptions.Timeout:
+                return {"url": url, "status": "down", "status_code": None, "latency_ms": timeout * 1000, "error": "Timeout"}
+            except Exception as e:
+                return {"url": url, "status": "down", "status_code": None, "latency_ms": 0, "error": str(e)[:100]}
+    
+        def check_ssl_expiry(self, hostname: str) -> Optional[int]:
+            try:
+                context = ssl.create_default_context()
+                with socket.create_connection((hostname, 443), timeout=10) as sock:
+                    with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                        cert = ssock.getpeercert()
+                        expiry = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
+                        return (expiry - datetime.utcnow()).days
+            except Exception:
+                return None
+    
+        def process_health(self) -> dict:
+            """Check service health and report issues."""
+            logger.info("=== HEALTH MONITORING ===")
+            results = []
+            alerts = []
+    
+            for endpoint in HEALTH_ENDPOINTS:
+                result = self.check_endpoint(endpoint["url"])
+                result["name"] = endpoint["name"]
+                result["critical"] = endpoint.get("critical", False)
+                results.append(result)
+    
+                if result["status"] == "down":
+                    alerts.append({
+                        "type": "service_down",
+                        "severity": "critical" if endpoint.get("critical") else "warning",
+                        "service": endpoint["name"],
+                        "message": f"{endpoint['name']} is DOWN: {result.get('error', 'No response')}",
+                    })
+                elif result["latency_ms"] > 5000:
+                    alerts.append({
+                        "type": "high_latency",
+                        "severity": "warning",
+                        "service": endpoint["name"],
+                        "message": f"{endpoint['name']} high latency: {result['latency_ms']:.0f}ms",
+                    })
+    
+                logger.info(f"  {endpoint['name']}: {result['status']} ({result.get('latency_ms', 0):.0f}ms)")
+    
+            # Check SSL for critical endpoints
+            for endpoint in HEALTH_ENDPOINTS:
+                if endpoint.get("critical"):
+                    hostname = urlparse(endpoint["url"]).netloc
+                    days_left = self.check_ssl_expiry(hostname)
+                    if days_left is not None and days_left < 14:
+                        alerts.append({
+                            "type": "ssl_expiry",
+                            "severity": "critical" if days_left < 7 else "warning",
+                            "service": endpoint["name"],
+                            "message": f"SSL cert expires in {days_left} days",
+                        })
+    
+            # Determine overall status
+            critical_down = any(r["status"] == "down" and r.get("critical") for r in results)
+            any_down = any(r["status"] == "down" for r in results)
+    
+            overall = "down" if critical_down else ("degraded" if any_down else "healthy")
+            logger.info(f"Overall health: {overall}")
+    
+            # Create issue for critical alerts
+            critical_alerts = [a for a in alerts if a["severity"] == "critical"]
+            if critical_alerts:
+                self._create_github_issue_for_health(critical_alerts, results)
+    
+            return {
+                "overall": overall,
+                "services": results,
+                "alerts": alerts,
+            }
+    
+        def _create_github_issue_for_health(self, alerts: list[dict], results: list[dict]):
+            if not self.gh_token:
+                return
+    
+            # Dedupe by checking recent issues
+            alert_key = json.dumps(sorted([a["service"] for a in alerts]))
+            if alert_key in self.state.get("processed_health", []):
+                logger.info("Health alert already reported, skipping")
+                return
+    
+            title = f"[Health] Critical: {', '.join(a['service'] for a in alerts[:3])}"
+            body = f"""## Health Alert
+    
+    **Timestamp:** {datetime.utcnow().isoformat()}Z
+    
+    ## Critical Alerts
+    
+    | Service | Type | Message |
+    |---------|------|---------|
+    {"".join(f"| {a['service']} | {a['type']} | {a['message']} |\n" for a in alerts)}
+    
+    ## All Services
+    
+    | Service | Status | Latency | Error |
+    |---------|--------|---------|-------|
+    {"".join(f"| {r['name']} | {r['status']} | {r.get('latency_ms', 0):.0f}ms | {r.get('error', '-')} |\n" for r in results)}
+    
+    ---
+    *Auto-created by Release Engineer Agent*
+    """
+            cmd = [
+                "gh", "issue", "create",
+                "--repo", GITHUB_REPO,
+                "--title", title,
+                "--body", body,
+                "--label", "monitoring,health"
+            ]
+    
+            result = subprocess.run(
+                cmd, capture_output=True, text=True,
+                env={**os.environ, "GH_TOKEN": self.gh_token}
+            )
+    
+            if result.returncode == 0:
+                logger.info(f"Created health issue: {result.stdout.strip()}")
+                self.state.setdefault("processed_health", []).append(alert_key)
+    
+        # === MAIN ===
+    
+        def run(self):
+            """Run all monitoring checks."""
+            logger.info("=" * 60)
+            logger.info("Release Engineer Monitor - Starting")
+            logger.info("=" * 60)
+    
+            try:
+                # Run all monitors
+                sentry_stats = self.process_sentry()
+                langfuse_stats = self.process_langfuse()
+                health_stats = self.process_health()
+    
+                # Summary
+                logger.info("=" * 60)
+                logger.info("SUMMARY")
+                logger.info(f"  Sentry: {sentry_stats.get('valid', 0)} bugs, {sentry_stats.get('noise', 0)} noise")
+                logger.info(f"  Langfuse: {langfuse_stats.get('traces', 0)} traces, {len(langfuse_stats.get('anomalies', []))} anomalies")
+                logger.info(f"  Health: {health_stats.get('overall', 'unknown')}")
+                logger.info("=" * 60)
+    
+                self._save_state()
+                return True
+    
+            except Exception as e:
+                logger.exception(f"Monitor failed: {e}")
+                sentry_sdk.capture_exception(e)
+                return False
+    
+    
+    if __name__ == "__main__":
+        success = ReleaseEngineerMonitor().run()
+        sys.exit(0 if success else 1)
+
+---
+# Release Engineer CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: release-engineer
+  labels:
+    app: release-engineer
+    team: vibeteam
+spec:
+  # Run every 30 minutes
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300  # 5 min timeout
+      template:
+        metadata:
+          labels:
+            app: release-engineer
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: monitor
+              image: python:3.12-slim
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apt-get update && apt-get install -y --no-install-recommends git curl &&
+                  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg &&
+                  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null &&
+                  apt-get update && apt-get install -y gh &&
+                  pip install --quiet requests sentry-sdk &&
+                  python /scripts/monitor.py
+              env:
+                - name: SENTRY_AUTH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: SENTRY_AUTH_TOKEN
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: GITHUB_TOKEN
+                - name: LANGFUSE_PUBLIC_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: LANGFUSE_PUBLIC_KEY
+                - name: LANGFUSE_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: LANGFUSE_SECRET_KEY
+                - name: LANGFUSE_BASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: LANGFUSE_BASE_URL
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+          volumes:
+            - name: scripts
+              configMap:
+                name: release-engineer-scripts
+                defaultMode: 0755
