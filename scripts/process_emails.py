@@ -34,10 +34,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add connectors directory to path (avoid metagpt dependency in main package)
+_connectors_path = Path(__file__).parent.parent / "vibeteam" / "connectors"
+sys.path.insert(0, str(_connectors_path))
 
-from vibeteam.connectors.gmail import GmailConnector, Email
+from gmail import GmailConnector, Email
 
 # Configure logging
 logging.basicConfig(
