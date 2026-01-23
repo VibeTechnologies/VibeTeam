@@ -2,13 +2,11 @@
 Tests for VibeTeam roles.
 """
 
-import pytest
-
 from vibeteam.roles import (
     Marketer,
     ProductManager,
-    ReliabilityEngineer,
     ReleaseEngineer,
+    ReliabilityEngineer,
     SoftwareEngineer,
     SupportEngineer,
 )

@@ -17,7 +17,7 @@ class WritePRD(Action):
     """Write Product Requirements Document."""
 
     name: str = "WritePRD"
-    
+
     PROMPT_TEMPLATE: str = """
 You are a Product Manager. Based on the requirement, write a detailed PRD.
 
@@ -102,7 +102,7 @@ Provide prioritized backlog with reasoning:
 class ProductManager(VibeRole):
     """
     Product Manager role - owns product vision and requirements.
-    
+
     Responsibilities:
     - Write PRDs from high-level requirements
     - Create detailed user stories
@@ -113,7 +113,9 @@ class ProductManager(VibeRole):
 
     name: str = Field(default="Alice")
     profile: str = Field(default="Product Manager")
-    goal: str = Field(default="Define clear product requirements and roadmap that deliver user value")
+    goal: str = Field(
+        default="Define clear product requirements and roadmap that deliver user value"
+    )
     constraints: str = Field(
         default="Focus on user needs, be data-driven, communicate clearly with engineering"
     )
@@ -127,12 +129,12 @@ class ProductManager(VibeRole):
     async def _act(self) -> Message:
         """Execute product management action."""
         todo = self.rc.todo
-        
+
         if isinstance(todo, WritePRD):
             requirement = self.rc.memory.get_by_role("User")[-1].content
             result = await todo.run(requirement)
             msg = Message(content=result, role=self.profile, cause_by=type(todo))
             self.rc.memory.add(msg)
             return msg
-        
+
         return await super()._act()

@@ -13,6 +13,12 @@ from vibeteam.roles.marketer import (
     WriteWeeklyAnnouncement,
 )
 from vibeteam.roles.product_manager import PrioritizeBacklog, WritePRD, WriteUserStories
+from vibeteam.roles.release_engineer import (
+    CreateReleaseNotes,
+    PlanRelease,
+    ValidateRelease,
+    WriteChangelog,
+)
 from vibeteam.roles.reliability_engineer import (
     AnalyzeIncident,
     CheckReleaseReadiness,
@@ -20,12 +26,6 @@ from vibeteam.roles.reliability_engineer import (
     CreateRunbook,
     VerifyDeployment,
     WritePostmortem,
-)
-from vibeteam.roles.release_engineer import (
-    CreateReleaseNotes,
-    PlanRelease,
-    ValidateRelease,
-    WriteChangelog,
 )
 from vibeteam.roles.software_engineer import (
     CreatePR,

@@ -3,7 +3,6 @@ VibeTeam CLI - Command line interface for the autonomous team.
 """
 
 import asyncio
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -38,10 +37,10 @@ def run(
 ) -> None:
     """Run the team on a requirement."""
     console.print(f"[bold blue]VibeTeam v{__version__}[/bold blue]")
-    
+
     include_roles = list(roles) if roles else None
     team = VibeTeam(investment=investment, include_roles=include_roles)
-    
+
     result = asyncio.run(team.run_project(requirement, n_round=rounds))
     console.print("\n[bold green]Project completed![/bold green]")
     console.print(result)
@@ -58,7 +57,7 @@ def status(roles: tuple[str, ...]) -> None:
     """Show team status."""
     include_roles = list(roles) if roles else None
     team = VibeTeam(include_roles=include_roles)
-    
+
     status = team.get_team_status()
     console.print("\n[bold]Team Status:[/bold]")
     for profile, info in status.items():
@@ -71,7 +70,7 @@ def status(roles: tuple[str, ...]) -> None:
 def roles() -> None:
     """List available roles."""
     console.print("\n[bold]Available Roles:[/bold]\n")
-    
+
     role_info = {
         "pm": ("Product Manager", "Requirements, roadmap, user stories"),
         "swe": ("Software Engineer", "Implementation, testing, code review"),
@@ -80,7 +79,7 @@ def roles() -> None:
         "sre": ("Reliability Engineer", "Production health, incidents, runbooks"),
         "release": ("Release Engineer", "Deployments, versioning, releases"),
     }
-    
+
     for key, (name, desc) in role_info.items():
         console.print(f"  [cyan]{key:10}[/cyan] {name:20} - {desc}")
 

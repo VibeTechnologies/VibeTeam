@@ -9,11 +9,9 @@ Based on opencode support patterns with MetaGPT integration.
 from typing import Any
 
 from metagpt.actions import Action
-from metagpt.schema import Message
 from pydantic import Field
 
 from vibeteam.roles.base import VibeRole
-
 
 # The Support Protocol - embedded in all support actions
 SUPPORT_PROTOCOL = """
@@ -138,7 +136,7 @@ Immediately flag and DO NOT respond directly when:
 
 #### Escalation Response
 When flagging for escalation, still send acknowledgment:
-"Thank you for contacting us. I've escalated your request to our specialized team 
+"Thank you for contacting us. I've escalated your request to our specialized team
 who will follow up within [timeframe]. We appreciate your patience."
 """
 
@@ -203,10 +201,7 @@ Analyze the email:
 """
 
     async def run(self, email: str) -> str:
-        prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            email=email
-        )
+        prompt = self.PROMPT_TEMPLATE.format(protocol=SUPPORT_PROTOCOL, email=email)
         rsp = await self._aask(prompt)
         return rsp
 
@@ -259,9 +254,7 @@ Write the response:
 
     async def run(self, email: str, analysis: str) -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            email=email,
-            analysis=analysis
+            protocol=SUPPORT_PROTOCOL, email=email, analysis=analysis
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -329,9 +322,7 @@ Create the escalation ticket:
 
     async def run(self, email: str, analysis: str) -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            email=email,
-            analysis=analysis
+            protocol=SUPPORT_PROTOCOL, email=email, analysis=analysis
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -398,10 +389,7 @@ Search and compile relevant information:
 """
 
     async def run(self, issue: str) -> str:
-        prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            issue=issue
-        )
+        prompt = self.PROMPT_TEMPLATE.format(protocol=SUPPORT_PROTOCOL, issue=issue)
         rsp = await self._aask(prompt)
         return rsp
 
@@ -424,7 +412,7 @@ You are a Security Reviewer for customer support responses.
 Review the draft response for ANY security violations:
 
 ### NEVER DISCLOSE Items Check
-- [ ] Internal architecture details? 
+- [ ] Internal architecture details?
 - [ ] API keys, tokens, credentials?
 - [ ] Other customer data/PII?
 - [ ] Internal pricing/roadmap?
@@ -464,10 +452,7 @@ Validate the response:
 """
 
     async def run(self, response: str) -> str:
-        prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            response=response
-        )
+        prompt = self.PROMPT_TEMPLATE.format(protocol=SUPPORT_PROTOCOL, response=response)
         rsp = await self._aask(prompt)
         return rsp
 
@@ -498,10 +483,7 @@ Provide analysis:
 """
 
     async def run(self, issue: str) -> str:
-        prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            issue=issue
-        )
+        prompt = self.PROMPT_TEMPLATE.format(protocol=SUPPORT_PROTOCOL, issue=issue)
         rsp = await self._aask(prompt)
         return rsp
 
@@ -536,9 +518,7 @@ Write response:
 
     async def run(self, issue: str, analysis: str) -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            issue=issue,
-            analysis=analysis
+            protocol=SUPPORT_PROTOCOL, issue=issue, analysis=analysis
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -574,9 +554,7 @@ Write documentation:
 
     async def run(self, topic: str, context: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            topic=topic,
-            context=context
+            protocol=SUPPORT_PROTOCOL, topic=topic, context=context
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -609,9 +587,7 @@ Create FAQ entry:
 
     async def run(self, pattern: str, examples: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=SUPPORT_PROTOCOL,
-            pattern=pattern,
-            examples=examples
+            protocol=SUPPORT_PROTOCOL, pattern=pattern, examples=examples
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -620,19 +596,19 @@ Create FAQ entry:
 class SupportEngineer(VibeRole):
     """
     Support Engineer role - handles customer email support with security guardrails.
-    
+
     Follows the Support Protocol with:
     - Email response best practices
     - CRITICAL security guardrails (never disclose internal data)
     - Escalation decision tree for human review
     - Knowledge base search
     - Response security validation
-    
+
     Philosophy:
     > "Help users succeed while protecting company data."
     > "When in doubt, escalate."
     > "Empathy first, solution second."
-    
+
     Email: support@vibebrowser.app
     """
 
@@ -648,16 +624,18 @@ class SupportEngineer(VibeRole):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.set_actions([
-            AnalyzeCustomerEmail,
-            WriteEmailResponse,
-            FlagForEscalation,
-            SearchKnowledgeBase,
-            ValidateResponseSecurity,
-            # Legacy actions for compatibility
-            AnalyzeUserIssue,
-            WriteUserResponse,
-            WriteDocumentation,
-            CreateFAQEntry,
-        ])
+        self.set_actions(
+            [
+                AnalyzeCustomerEmail,
+                WriteEmailResponse,
+                FlagForEscalation,
+                SearchKnowledgeBase,
+                ValidateResponseSecurity,
+                # Legacy actions for compatibility
+                AnalyzeUserIssue,
+                WriteUserResponse,
+                WriteDocumentation,
+                CreateFAQEntry,
+            ]
+        )
         self._watch([])

@@ -2,8 +2,6 @@
 Tests for VibeTeam orchestrator.
 """
 
-import pytest
-
 from vibeteam import VibeTeam
 
 
@@ -44,7 +42,7 @@ class TestTeamStatus:
         """Verify status contains all required fields."""
         team = VibeTeam(include_roles=["pm"])
         status = team.get_team_status()
-        
+
         pm_status = status.get("Product Manager")
         assert pm_status is not None
         assert "name" in pm_status
@@ -55,7 +53,7 @@ class TestTeamStatus:
         """Verify actions are returned as list of strings."""
         team = VibeTeam(include_roles=["swe"])
         status = team.get_team_status()
-        
+
         swe_status = status["Software Engineer"]
         actions = swe_status["actions"]
         assert isinstance(actions, list)

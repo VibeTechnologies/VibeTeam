@@ -9,11 +9,9 @@ Based on opencode prod-eng agent pattern with MetaGPT integration.
 from typing import Any
 
 from metagpt.actions import Action
-from metagpt.schema import Message
 from pydantic import Field
 
 from vibeteam.roles.base import VibeRole
-
 
 # The Production Engineering Protocol - embedded in all SRE actions
 PROD_ENG_PROTOCOL = """
@@ -190,9 +188,7 @@ Provide health report:
 
     async def run(self, health_data: str, endpoints: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=PROD_ENG_PROTOCOL,
-            health_data=health_data,
-            endpoints=endpoints
+            protocol=PROD_ENG_PROTOCOL, health_data=health_data, endpoints=endpoints
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -268,7 +264,7 @@ Verify the deployment:
         prompt = self.PROMPT_TEMPLATE.format(
             protocol=PROD_ENG_PROTOCOL,
             deployment_info=deployment_info,
-            workflow_status=workflow_status
+            workflow_status=workflow_status,
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -354,9 +350,7 @@ Analyze the incident:
 
     async def run(self, incident: str, logs: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=PROD_ENG_PROTOCOL,
-            incident=incident,
-            logs=logs
+            protocol=PROD_ENG_PROTOCOL, incident=incident, logs=logs
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -446,9 +440,7 @@ Write the postmortem:
 
     async def run(self, summary: str, findings: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=PROD_ENG_PROTOCOL,
-            summary=summary,
-            findings=findings
+            protocol=PROD_ENG_PROTOCOL, summary=summary, findings=findings
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -555,9 +547,7 @@ Create the runbook:
 
     async def run(self, scenario: str, context: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=PROD_ENG_PROTOCOL,
-            scenario=scenario,
-            context=context
+            protocol=PROD_ENG_PROTOCOL, scenario=scenario, context=context
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -631,9 +621,7 @@ Check release readiness:
 
     async def run(self, system_state: str, changes: str = "") -> str:
         prompt = self.PROMPT_TEMPLATE.format(
-            protocol=PROD_ENG_PROTOCOL,
-            system_state=system_state,
-            changes=changes
+            protocol=PROD_ENG_PROTOCOL, system_state=system_state, changes=changes
         )
         rsp = await self._aask(prompt)
         return rsp
@@ -642,7 +630,7 @@ Check release readiness:
 class ReliabilityEngineer(VibeRole):
     """
     Reliability Engineer role - keeps production healthy.
-    
+
     Follows the Production Engineering Protocol with:
     - Health check commands and endpoints
     - GitHub Actions verification
@@ -650,7 +638,7 @@ class ReliabilityEngineer(VibeRole):
     - Sentry error monitoring
     - Release readiness criteria
     - Incident analysis framework
-    
+
     Philosophy:
     > "Report facts, not assumptions."
     > "Quantify issues - '3 errors' not 'some errors'."
@@ -667,12 +655,14 @@ class ReliabilityEngineer(VibeRole):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.set_actions([
-            CheckSystemHealth,
-            VerifyDeployment,
-            AnalyzeIncident,
-            WritePostmortem,
-            CreateRunbook,
-            CheckReleaseReadiness,
-        ])
+        self.set_actions(
+            [
+                CheckSystemHealth,
+                VerifyDeployment,
+                AnalyzeIncident,
+                WritePostmortem,
+                CreateRunbook,
+                CheckReleaseReadiness,
+            ]
+        )
         self._watch([])
