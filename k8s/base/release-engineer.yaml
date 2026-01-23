@@ -52,10 +52,10 @@ data:
     SENTRY_PROJECTS = ["vibebrowserextension", "vibe-api-gateway", "vibeteam"]
     GITHUB_REPO = "VibeTechnologies/VibeWebAgent"
     
-    # Health check endpoints
+    # Health check endpoints - use /test for LiteLLM as /health requires auth
     HEALTH_ENDPOINTS = [
-        {"name": "API Prod", "url": "https://api.vibebrowser.app/health", "critical": True},
-        {"name": "API Dev", "url": "https://api-dev.vibebrowser.app/health", "critical": False},
+        {"name": "API Prod", "url": "https://api.vibebrowser.app/test", "critical": True},
+        {"name": "API Dev", "url": "https://api-dev.vibebrowser.app/test", "critical": False},
         {"name": "Portal", "url": "https://portal.vibebrowser.app", "critical": True},
         {"name": "Docs", "url": "https://docs.vibebrowser.app", "critical": False},
         {"name": "Langfuse", "url": "https://langfuse.vibebrowser.app/api/public/health", "critical": False},
