@@ -27,6 +27,7 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import sys
 import time
 from dataclasses import asdict
@@ -38,7 +39,7 @@ from typing import Optional
 _connectors_path = Path(__file__).parent.parent / "vibeteam" / "connectors"
 sys.path.insert(0, str(_connectors_path))
 
-from gmail import GmailConnector, Email
+from gmail import GmailConnector, Email  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
@@ -49,13 +50,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Pattern for docs portal escalation emails
+# Format: [Docs Support #TICKET-ID] New request from user@email.com
+DOCS_SUPPORT_PATTERN = r"^\[Docs Support #[A-Z0-9-]+\]"
+
+
 class EmailProcessor:
     """
     Process support emails using SupportEngineer role.
     
+    Only processes emails that match the docs portal escalation format:
+    Subject: [Docs Support #TICKET-ID] New request from user@email.com
+    
+    These are customer escalations from the chat widget at docs.vibebrowser.app.
+    Other emails (npm notifications, security alerts, etc.) are ignored.
+    
     Flow:
     1. Fetch unread emails
-    2. For each email:
+    2. Filter to only docs portal escalations
+    3. For each email:
        a. Analyze with AnalyzeCustomerEmail
        b. If escalation needed: FlagForEscalation, send acknowledgment
        c. If can respond: WriteEmailResponse, ValidateResponseSecurity
@@ -79,12 +92,16 @@ class EmailProcessor:
             "processed": 0,
             "responded": 0,
             "escalated": 0,
+            "skipped": 0,
             "errors": 0,
         }
     
     async def process_emails(self, max_emails: int = 10) -> dict:
         """
         Process unread emails from inbox.
+        
+        Only processes emails matching the docs portal escalation format:
+        [Docs Support #TICKET-ID] New request from user@email.com
         
         Args:
             max_emails: Maximum number of emails to process
@@ -107,6 +124,12 @@ class EmailProcessor:
         logger.info(f"Found {len(emails)} unread emails.")
         
         for email in emails:
+            # Filter: only process docs portal escalations
+            if not self._is_docs_portal_escalation(email):
+                logger.debug(f"Skipping non-support email: {email.subject}")
+                self.stats["skipped"] += 1
+                continue
+            
             try:
                 await self._process_single_email(email)
                 self.stats["processed"] += 1
@@ -117,12 +140,56 @@ class EmailProcessor:
         logger.info(f"Processing complete. Stats: {self.stats}")
         return self.stats
     
+    def _is_docs_portal_escalation(self, email: Email) -> bool:
+        """
+        Check if email is a docs portal escalation.
+        
+        Format: [Docs Support #TICKET-ID] New request from user@email.com
+        Sent from: noreply@vibebrowser.app (Azure Communication Services)
+        Reply-To: customer's email
+        """
+        return bool(re.match(DOCS_SUPPORT_PATTERN, email.subject))
+    
+    def _extract_ticket_info(self, email: Email) -> dict:
+        """
+        Extract ticket ID and customer email from docs portal escalation.
+        
+        Subject format: [Docs Support #TICKET-ID] New request from user@email.com
+        Reply-To header contains customer email.
+        """
+        ticket_id = None
+        customer_email = None
+        
+        # Extract ticket ID from subject
+        match = re.search(r"\[Docs Support #([A-Z0-9-]+)\]", email.subject)
+        if match:
+            ticket_id = match.group(1)
+        
+        # Extract customer email from subject
+        email_match = re.search(r"from\s+([^\s@]+@[^\s@]+\.[^\s@]+)", email.subject)
+        if email_match:
+            customer_email = email_match.group(1)
+        
+        return {
+            "ticket_id": ticket_id,
+            "customer_email": customer_email,
+        }
+    
     async def _process_single_email(self, email: Email) -> None:
-        """Process a single email."""
-        logger.info(f"Processing: {email.subject} (from: {email.sender_email})")
+        """Process a single docs portal escalation email."""
+        # Extract ticket info
+        ticket_info = self._extract_ticket_info(email)
+        ticket_id = ticket_info.get("ticket_id", "UNKNOWN")
+        customer_email = ticket_info.get("customer_email") or email.sender_email
+        
+        logger.info(f"Processing ticket #{ticket_id} from {customer_email}")
         
         # Step 1: Analyze email
         analysis = await self._analyze_email(email)
+        
+        # Add ticket info to analysis for handlers
+        analysis["ticket_id"] = ticket_id
+        analysis["customer_email"] = customer_email
         
         # Step 2: Check if escalation needed
         needs_escalation = self._check_escalation(analysis)
@@ -207,16 +274,19 @@ class EmailProcessor:
         return analysis.get("needs_escalation", False)
     
     async def _handle_escalation(self, email: Email, analysis: dict) -> None:
-        """Handle email that needs escalation."""
-        logger.warning(f"ESCALATING: {email.subject}")
-        logger.warning(f"Triggers: {analysis.get('escalation_triggers', [])}")
+        """Handle email that needs human escalation to support team."""
+        ticket_id = analysis.get("ticket_id", "UNKNOWN")
+        customer_email = analysis.get("customer_email", email.sender_email)
         
-        # Create escalation ticket
+        logger.warning(f"ESCALATING ticket #{ticket_id}: {analysis.get('escalation_triggers', [])}")
+        
+        # Create escalation ticket for internal tracking
         ticket = {
             "timestamp": datetime.now().isoformat(),
+            "ticket_id": ticket_id,
             "email_id": email.id,
             "thread_id": email.thread_id,
-            "from": email.sender_email,
+            "customer_email": customer_email,
             "subject": email.subject,
             "triggers": analysis.get("escalation_triggers", []),
             "sentiment": analysis.get("sentiment"),
@@ -224,16 +294,16 @@ class EmailProcessor:
         }
         
         # Save escalation ticket
-        ticket_path = self.escalation_dir / f"{email.id}.json"
+        ticket_path = self.escalation_dir / f"{ticket_id}.json"
         with open(ticket_path, "w") as f:
             json.dump(ticket, f, indent=2)
         logger.info(f"Escalation ticket saved: {ticket_path}")
         
-        # Send acknowledgment
+        # Send acknowledgment to customer
         if not self.dry_run:
-            ack_body = f"""Hi{f' {email.sender_name}' if email.sender_name else ''},
+            ack_body = f"""Hi,
 
-Thank you for contacting VibeBrowser support.
+Thank you for contacting VibeBrowser support (Ticket #{ticket_id}).
 
 I've escalated your request to our specialized team who will follow up within 24-48 hours. We appreciate your patience.
 
@@ -245,30 +315,33 @@ support@vibebrowser.app
 """
             self.gmail.send_reply(
                 thread_id=email.thread_id,
-                to=email.sender_email,
+                to=customer_email,
                 subject=f"Re: {email.subject}",
                 body=ack_body,
             )
-            logger.info("Sent escalation acknowledgment.")
+            logger.info(f"Sent escalation acknowledgment to {customer_email}")
         else:
-            logger.info("[DRY RUN] Would send escalation acknowledgment.")
+            logger.info(f"[DRY RUN] Would send escalation acknowledgment to {customer_email}")
     
     async def _handle_response(self, email: Email, analysis: dict) -> None:
-        """Generate and send response for non-escalation email."""
+        """Generate and send response to customer for non-escalation email."""
+        ticket_id = analysis.get("ticket_id", "UNKNOWN")
+        customer_email = analysis.get("customer_email", email.sender_email)
+        
         # TODO: Use actual SupportEngineer.WriteEmailResponse action
         # For now, generate a template response
         
-        response_body = f"""Hi{f' {email.sender_name}' if email.sender_name else ''},
+        response_body = f"""Hi,
 
-Thank you for reaching out to VibeBrowser support.
+Thank you for reaching out to VibeBrowser support (Ticket #{ticket_id}).
 
-I understand you're asking about: {email.subject}
+I understand you have a question. Here are some resources that may help:
 
-Here are some resources that may help:
 - Documentation: https://docs.vibebrowser.app
 - Portal: https://portal.vibebrowser.app
+- Troubleshooting: https://docs.vibebrowser.app/troubleshooting
 
-If you need further assistance, please let me know and I'll be happy to help.
+If you need further assistance, please reply to this email and I'll be happy to help.
 
 Best regards,
 VibeBrowser Support
@@ -282,17 +355,17 @@ support@vibebrowser.app
             logger.error(f"Response validation failed: {validation['issues']}")
             return
         
-        # Send response
+        # Send response to customer
         if not self.dry_run:
             self.gmail.send_reply(
                 thread_id=email.thread_id,
-                to=email.sender_email,
+                to=customer_email,
                 subject=f"Re: {email.subject}",
                 body=response_body,
             )
-            logger.info("Sent response.")
+            logger.info(f"Sent response to {customer_email}")
         else:
-            logger.info("[DRY RUN] Would send response:")
+            logger.info(f"[DRY RUN] Would send response to {customer_email}:")
             logger.info(response_body[:200] + "...")
     
     def _validate_response(self, response: str) -> dict:
