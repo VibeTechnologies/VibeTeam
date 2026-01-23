@@ -49,7 +49,7 @@ class TestRoleInitialization:
         release = ReleaseEngineer()
         assert release.profile == "Release Engineer"
         assert release.name == "Frank"
-        assert len(release.actions) == 4
+        assert len(release.actions) == 7  # Monitoring + triage + fix + changelog + validate
 
 
 class TestRoleConfiguration:
