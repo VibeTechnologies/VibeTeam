@@ -1,9 +1,9 @@
 ---
-# Email Processor CronJob - ConfigMaps with Python scripts
+# Support Engineer CronJob - ConfigMaps with Python scripts
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: email-processor-scripts
+  name: support-engineer-scripts
 data:
   gmail.py: |
     """Gmail connector for k8s - minimal version"""
@@ -259,13 +259,13 @@ data:
         asyncio.run(main())
 
 ---
-# Email Processor CronJob
+# Support Engineer CronJob
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: email-processor
+  name: support-engineer
   labels:
-    app: email-processor
+    app: support-engineer
     team: vibeteam
 spec:
   # Run every 15 minutes
@@ -280,7 +280,7 @@ spec:
       template:
         metadata:
           labels:
-            app: email-processor
+            app: support-engineer
         spec:
           restartPolicy: OnFailure
           containers:
@@ -308,7 +308,7 @@ spec:
           volumes:
             - name: scripts
               configMap:
-                name: email-processor-scripts
+                name: support-engineer-scripts
                 defaultMode: 0755
             - name: gmail-secrets
               secret:
