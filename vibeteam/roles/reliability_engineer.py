@@ -645,7 +645,7 @@ class ReliabilityEngineer(VibeRole):
     > "Always provide actionable recommendations."
     """
 
-    name: str = Field(default="Eve")
+    name: str = Field(default="Hawking")
     profile: str = Field(default="Reliability Engineer")
     goal: str = Field(default="Maintain 99.9% uptime and minimize incident impact")
     constraints: str = Field(

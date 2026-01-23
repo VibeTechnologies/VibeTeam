@@ -412,7 +412,7 @@ class Marketer(VibeRole):
     > "Specific numbers create credibility."
     """
 
-    name: str = Field(default="Carol")
+    name: str = Field(default="Feynman")
     profile: str = Field(default="Marketer")
     goal: str = Field(
         default="Create engaging, story-driven content that resonates with developers"
