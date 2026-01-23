@@ -81,11 +81,13 @@ data:
         def _headers(self) -> dict:
             return {"Authorization": f"Bearer {self.auth_token}"}
         
-        def fetch_issues(self, hours: int = 12) -> list[SentryIssue]:
+        def fetch_issues(self, hours: int = 24) -> list[SentryIssue]:
             issues = []
             for proj in PROJECTS:
                 url = f"{SENTRY_API_BASE}/projects/{SENTRY_ORG}/{proj}/issues/"
-                params = {"query": "is:unresolved", "statsPeriod": f"{hours}h", "limit": 25}
+                # Sentry only supports 24h or 14d for statsPeriod
+                period = "24h" if hours <= 24 else "14d"
+                params = {"query": "is:unresolved", "statsPeriod": period, "limit": 25}
                 try:
                     resp = requests.get(url, headers=self._headers(), params=params)
                     resp.raise_for_status()
@@ -93,8 +95,8 @@ data:
                         issues.append(SentryIssue(
                             id=i["id"], short_id=i.get("shortId", ""),
                             title=i.get("title", ""), culprit=i.get("culprit", ""),
-                            level=i.get("level", "error"), count=i.get("count", 0),
-                            user_count=i.get("userCount", 0), project=proj,
+                            level=i.get("level", "error"), count=int(i.get("count", 0)),
+                            user_count=int(i.get("userCount", 0)), project=proj,
                             permalink=i.get("permalink", ""), first_seen=i.get("firstSeen", ""),
                         ))
                 except Exception as e:
@@ -151,7 +153,7 @@ data:
             url = f"{SENTRY_API_BASE}/issues/{issue_id}/"
             requests.put(url, headers=self._headers(), json={"status": "ignored"})
         
-        def run(self, hours: int = 12):
+        def run(self, hours: int = 24):
             logger.info(f"Fetching issues from last {hours}h...")
             issues = self.fetch_issues(hours)
             logger.info(f"Found {len(issues)} unresolved issues")
@@ -177,7 +179,7 @@ data:
             logger.info(f"Done: {stats}")
     
     if __name__ == "__main__":
-        SentryTriager().run(hours=12)
+        SentryTriager().run(hours=24)
 
 ---
 # Sentry Triage CronJob
@@ -189,8 +191,8 @@ metadata:
     app: sentry-triage
     team: vibeteam
 spec:
-  # Run every 12 hours at 00:00 and 12:00 UTC
-  schedule: "0 */12 * * *"
+  # Run daily at 08:00 UTC
+  schedule: "0 8 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
