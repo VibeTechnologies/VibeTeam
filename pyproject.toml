@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vibeteam"
+version = "2.0.0"
+description = "MetaGPT-based autonomous AI team for SaaS development"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "VibeTechnologies", email = "team@vibetech.co"},
+]
+keywords = ["ai", "metagpt", "multi-agent", "autonomous", "saas", "development"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Code Generators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "metagpt>=0.8.0",
+    "litellm>=1.35.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "click>=8.1.0",
+    "aiohttp>=3.9.0",
+    "tenacity>=8.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "black>=24.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+vibeteam = "vibeteam.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/VibeTechnologies/VibeTeam"
+Repository = "https://github.com/VibeTechnologies/VibeTeam.git"
+"Bug Tracker" = "https://github.com/VibeTechnologies/VibeTeam/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vibeteam*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "-v"]
+markers = [
+    "e2e: end-to-end tests",
+    "integration: integration tests",
+]
