@@ -14,8 +14,11 @@ from vibeteam.roles.marketer import (
 )
 from vibeteam.roles.product_manager import PrioritizeBacklog, WritePRD, WriteUserStories
 from vibeteam.roles.release_engineer import (
-    CreateReleaseNotes,
-    PlanRelease,
+    CreateFixPR,
+    MonitorHealth,
+    MonitorLangfuse,
+    MonitorSentry,
+    TriageSentryIssue,
     ValidateRelease,
     WriteChangelog,
 )
@@ -81,8 +84,11 @@ __all__ = [
     "CreateRunbook",
     "CheckReleaseReadiness",
     # Release Engineer
-    "PlanRelease",
+    "MonitorSentry",
+    "MonitorLangfuse",
+    "MonitorHealth",
+    "TriageSentryIssue",
+    "CreateFixPR",
     "WriteChangelog",
     "ValidateRelease",
-    "CreateReleaseNotes",
 ]
