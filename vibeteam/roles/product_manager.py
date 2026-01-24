@@ -4,6 +4,8 @@ Product Manager Role - Defines requirements, roadmap, and user stories.
 Inspired by opencode agents pattern with MetaGPT integration.
 """
 
+import json
+import os
 from typing import Any
 
 from metagpt.actions import Action
@@ -99,6 +101,100 @@ Provide prioritized backlog with reasoning:
         return rsp
 
 
+class ProcessFeatureRequest(Action):
+    """
+    Analyze customer feature request and update tracking issue.
+
+    This action:
+    1. Analyzes the request using LLM
+    2. Scores priority (P0-P3)
+    3. Extracts key details
+    4. Updates the Customer Requests GitHub issue table
+    5. Returns analysis summary
+    """
+
+    name: str = "ProcessFeatureRequest"
+
+    PROMPT_TEMPLATE: str = """
+You are a Product Manager for VibeBrowser, an AI-powered browser automation extension.
+
+Analyze this customer feature request:
+
+## Request
+{request}
+
+## Source
+{source}
+
+## VibeBrowser Context
+VibeBrowser is a Chrome extension that:
+- Uses AI to understand natural language commands
+- Automates browser tasks (clicking, typing, navigation)
+- Integrates with external tools via MCP (Model Context Protocol)
+- Supports voice input for hands-free operation
+
+## Your Task
+Analyze this request and provide:
+
+1. **Priority** (choose one):
+   - P0: Critical - blocks major use cases, many users affected
+   - P1: High - significant user value, clear demand
+   - P2: Medium - nice to have, moderate user value
+   - P3: Low - future consideration, limited demand
+
+2. **Short Summary** (max 50 chars): Brief description for the tracking table
+
+3. **Analysis** (2-3 sentences): Why this priority? What's the user need? Implementation complexity?
+
+4. **Status**: Always "Analyzing" for new requests
+
+Respond in this exact JSON format:
+```json
+{{
+    "priority": "P1",
+    "summary": "Notion.so integration for note sync",
+    "analysis": "High value integration. Notion is popular among power users. Moderate complexity via API.",
+    "status": "Analyzing"
+}}
+```
+"""
+
+    async def run(self, request: str, source: str = "docs-chat") -> dict:
+        """
+        Process a feature request.
+
+        Args:
+            request: The feature request text
+            source: Where it came from (docs-chat, email, etc.)
+
+        Returns:
+            Dict with priority, summary, analysis, status
+        """
+        prompt = self.PROMPT_TEMPLATE.format(request=request, source=source)
+        rsp = await self._aask(prompt)
+
+        # Parse JSON from response
+        try:
+            # Extract JSON from markdown code block if present
+            if "```json" in rsp:
+                json_str = rsp.split("```json")[1].split("```")[0].strip()
+            elif "```" in rsp:
+                json_str = rsp.split("```")[1].split("```")[0].strip()
+            else:
+                json_str = rsp.strip()
+
+            result = json.loads(json_str)
+            return result
+        except (json.JSONDecodeError, IndexError):
+            # Fallback if parsing fails
+            return {
+                "priority": "P2",
+                "summary": request[:50],
+                "analysis": rsp[:200],
+                "status": "Analyzing",
+            }
+
+
 class ProductManager(VibeRole):
     """
     Product Manager role - owns product vision and requirements.
@@ -107,6 +203,7 @@ class ProductManager(VibeRole):
     - Write PRDs from high-level requirements
     - Create detailed user stories
     - Prioritize backlog
+    - Process customer feature requests
     - Define success metrics
     - Communicate with stakeholders
     """
@@ -123,7 +220,9 @@ class ProductManager(VibeRole):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.set_actions([WritePRD, WriteUserStories, PrioritizeBacklog])
+        self.set_actions(
+            [WritePRD, WriteUserStories, PrioritizeBacklog, ProcessFeatureRequest]
+        )
         self._watch([])  # PM typically initiates work
 
     async def _act(self) -> Message:
@@ -138,3 +237,44 @@ class ProductManager(VibeRole):
             return msg
 
         return await super()._act()
+
+    async def process_feature_request(
+        self,
+        request: str,
+        source: str = "docs-chat",
+        update_github: bool = True,
+    ) -> dict:
+        """
+        Process a customer feature request.
+
+        Args:
+            request: The feature request text
+            source: Where it came from (docs-chat, email, support, etc.)
+            update_github: Whether to update the GitHub tracking issue
+
+        Returns:
+            Dict with analysis results
+        """
+        # Run the analysis action
+        action = ProcessFeatureRequest()
+        result = await action.run(request, source)
+
+        # Update GitHub issue if enabled
+        if update_github and os.environ.get("GITHUB_TOKEN"):
+            try:
+                from vibeteam.connectors.github import GitHubConnector
+
+                gh = GitHubConnector()
+                gh.add_customer_request(
+                    request=result.get("summary", request[:50]),
+                    source=source,
+                    priority=result.get("priority", "P2"),
+                    status=result.get("status", "Analyzing"),
+                    analysis=result.get("analysis", "")[:100],  # Truncate for table
+                )
+                result["github_updated"] = True
+            except Exception as e:
+                result["github_updated"] = False
+                result["github_error"] = str(e)
+
+        return result
