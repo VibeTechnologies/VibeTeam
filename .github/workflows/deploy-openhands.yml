@@ -97,6 +97,14 @@ jobs:
         run: |
           kubectl create namespace openhands-ops --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create image pull secret
+        run: |
+          kubectl -n openhands-ops delete secret ghcr-login --ignore-not-found
+          kubectl -n openhands-ops create secret docker-registry ghcr-login \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.PAT_TOKEN }}
+
       - name: Create secrets
         run: |
           kubectl -n openhands-ops delete secret vibeteam-secrets --ignore-not-found

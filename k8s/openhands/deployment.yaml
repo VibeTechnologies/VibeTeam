@@ -19,6 +19,8 @@ spec:
         app: vibeteam-agents
     spec:
       serviceAccountName: vibeteam-agents
+      imagePullSecrets:
+        - name: ghcr-login
       containers:
         # Main application - FastAPI webhook server
         - name: webhook-server
