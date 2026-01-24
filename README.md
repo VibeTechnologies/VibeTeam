@@ -55,7 +55,7 @@ vibeteam roles
 
 ## Configuration
 
-VibeTeam uses Azure OpenAI gpt-5.2 for high-quality agent reasoning.
+VibeTeam uses Azure OpenAI gpt-5-2 for high-quality agent reasoning.
 
 ### Environment Variables
 
