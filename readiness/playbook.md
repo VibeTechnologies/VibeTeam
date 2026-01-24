@@ -20,13 +20,22 @@ cd ~/workspace/vibebrowser/VibeTeam
 source .env
 ```
 
-Verify you have these environment variables (check if set, don't print values):
-- `AZURE_API_KEY`
-- `AZURE_API_BASE`
-- `GITHUB_TOKEN`
-- `SENTRY_AUTH_TOKEN` (optional)
-- `LANGFUSE_PUBLIC_KEY` (optional)
-- `LANGFUSE_SECRET_KEY` (optional)
+Check environment variables (prints SET or NOT SET):
+```bash
+for var in AZURE_API_KEY AZURE_API_BASE GITHUB_TOKEN SENTRY_AUTH_TOKEN LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY; do
+  echo "$var: $([ -n "${!var}" ] && echo 'SET' || echo 'NOT SET')"
+done
+```
+
+Required:
+- `AZURE_API_KEY` - Azure OpenAI API key
+- `AZURE_API_BASE` - Azure OpenAI endpoint
+- `GITHUB_TOKEN` - GitHub personal access token
+
+Optional:
+- `SENTRY_AUTH_TOKEN` - Sentry API token (skip Sentry checks if not set)
+- `LANGFUSE_PUBLIC_KEY` - Langfuse public key (skip Langfuse checks if not set)
+- `LANGFUSE_SECRET_KEY` - Langfuse secret key
 
 ---
 
@@ -76,9 +85,10 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}s" https://langfuse.vibebrows
 curl -s -X POST "${AZURE_API_BASE}openai/deployments/gpt-5-2/chat/completions?api-version=2024-08-01-preview" \
   -H "Content-Type: application/json" \
   -H "api-key: ${AZURE_API_KEY}" \
-  -d '{"messages":[{"role":"user","content":"Say hello in 5 words"}],"max_tokens":50}' \
+  -d '{"messages":[{"role":"user","content":"Say hello in 5 words"}],"max_completion_tokens":50}' \
   | jq -r '.choices[0].message.content // .error.message'
 ```
+**Note:** Use `max_completion_tokens` (not `max_tokens`) for gpt-5 models.
 **Expected:** A coherent 5-word response
 **Timeout:** Allow up to 120 seconds for response
 **Critical:** Yes - core functionality
@@ -126,18 +136,20 @@ kubectl get events -n vibe --sort-by='.lastTimestamp' | tail -20
 
 ## 4. Error Monitoring (Sentry)
 
+**Skip if SENTRY_AUTH_TOKEN is not set.**
+
 ### 4.1 Fetch Unresolved Issues
 ```bash
 curl -s "https://sentry.io/api/0/projects/vibetechnologies/vibebrowserextension/issues/?query=is:unresolved&statsPeriod=24h" \
   -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
-  | jq '[.[] | {title: .title, count: .count, level: .level}] | sort_by(-.count) | .[:5]'
+  | jq 'if type == "array" then [.[] | {title: .title, count: .count, level: .level}] | sort_by(-.count) | .[:5] else {error: .detail} end'
 ```
 
 ### 4.2 Check vibe-api-gateway
 ```bash
 curl -s "https://sentry.io/api/0/projects/vibetechnologies/vibe-api-gateway/issues/?query=is:unresolved&statsPeriod=24h" \
   -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
-  | jq '[.[] | {title: .title, count: .count, level: .level}] | sort_by(-.count) | .[:5]'
+  | jq 'if type == "array" then [.[] | {title: .title, count: .count, level: .level}] | sort_by(-.count) | .[:5] else {error: .detail} end'
 ```
 
 **Evaluate:**
@@ -151,11 +163,13 @@ curl -s "https://sentry.io/api/0/projects/vibetechnologies/vibe-api-gateway/issu
 
 ## 5. LLM Observability (Langfuse)
 
+**Skip if LANGFUSE_PUBLIC_KEY or LANGFUSE_SECRET_KEY is not set.**
+
 ### 5.1 Check Recent Traces
 ```bash
 curl -s "https://langfuse.vibebrowser.app/api/public/traces?limit=10" \
   -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" \
-  | jq '.data | map({name: .name, latency: .latency, level: .level}) | .[:5]'
+  | jq 'if .data then (.data | map({name: .name, latency: .latency, level: .level}) | .[:5]) else {error: .message} end'
 ```
 
 **Evaluate:**
