@@ -1,0 +1,27 @@
+# Traefik IngressRoute for agents.vibebrowser.app
+# Uses the existing Traefik installation on the K3s cluster
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: vibeteam-agents
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`agents.vibebrowser.app`)
+      kind: Rule
+      services:
+        - name: vibeteam-agents
+          port: 80
+  tls:
+    certResolver: letsencrypt
+---
+# Middleware for rate limiting
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: ratelimit
+spec:
+  rateLimit:
+    average: 100
+    burst: 50

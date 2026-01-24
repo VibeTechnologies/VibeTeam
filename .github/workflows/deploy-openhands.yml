@@ -1,0 +1,148 @@
+name: Deploy OpenHands Agents
+
+on:
+  push:
+    branches: [openhands-migration, master]
+    paths:
+      - 'vibeteam/**'
+      - 'k8s/openhands/**'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - '.github/workflows/deploy-openhands.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: vibetechnologies/vibeteam
+
+jobs:
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to K3s
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Verify cluster access
+        run: kubectl cluster-info
+
+      - name: Create namespace
+        run: |
+          kubectl create namespace openhands-ops --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create secrets
+        run: |
+          kubectl -n openhands-ops delete secret vibeteam-secrets --ignore-not-found
+          kubectl -n openhands-ops create secret generic vibeteam-secrets \
+            --from-literal=LLM_API_KEY="${{ secrets.LLM_API_KEY }}" \
+            --from-literal=LLM_MODEL="${{ secrets.LLM_MODEL || 'azure/gpt-5-2' }}" \
+            --from-literal=LLM_BASE_URL="${{ secrets.LLM_BASE_URL }}" \
+            --from-literal=GITHUB_TOKEN="${{ secrets.PAT_TOKEN }}" \
+            --from-literal=SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" \
+            --from-literal=LANGFUSE_PUBLIC_KEY="${{ secrets.LANGFUSE_PUBLIC_KEY }}" \
+            --from-literal=LANGFUSE_SECRET_KEY="${{ secrets.LANGFUSE_SECRET_KEY }}"
+
+      - name: Update image tag
+        run: |
+          cd k8s/openhands
+          # Update the image tag in kustomization.yaml
+          sed -i "s/newTag: .*/newTag: ${{ needs.build.outputs.image_tag }}/" kustomization.yaml
+
+      - name: Deploy with Kustomize
+        run: |
+          kubectl apply -k k8s/openhands
+
+      - name: Wait for rollout
+        run: |
+          kubectl -n openhands-ops rollout status deployment/vibeteam-agents --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          echo "=== Deployment Status ==="
+          kubectl -n openhands-ops get deployment vibeteam-agents
+          echo ""
+          echo "=== Pods ==="
+          kubectl -n openhands-ops get pods -l app=vibeteam-agents
+          echo ""
+          echo "=== Service ==="
+          kubectl -n openhands-ops get service vibeteam-agents
+          echo ""
+          echo "=== IngressRoute ==="
+          kubectl -n openhands-ops get ingressroute vibeteam-agents || echo "IngressRoute not yet created"
+
+      - name: Test health endpoint
+        run: |
+          # Get the pod name
+          POD=$(kubectl -n openhands-ops get pods -l app=vibeteam-agents -o jsonpath='{.items[0].metadata.name}')
+          # Port forward and test (with timeout)
+          kubectl -n openhands-ops port-forward $POD 8000:8000 &
+          sleep 5
+          curl -sf http://localhost:8000/health || echo "Health check failed"
+          kill %1 2>/dev/null || true

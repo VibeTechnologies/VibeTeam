@@ -1,0 +1,13 @@
+# Service for the webhook server
+apiVersion: v1
+kind: Service
+metadata:
+  name: vibeteam-agents
+spec:
+  selector:
+    app: vibeteam-agents
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

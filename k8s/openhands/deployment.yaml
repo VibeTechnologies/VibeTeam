@@ -1,0 +1,143 @@
+# VibeTeam OpenHands Agent Deployment
+# 
+# This deploys the FastAPI webhook server with a Docker-in-Docker sidecar
+# for running OpenHands agents in isolated containers.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vibeteam-agents
+  labels:
+    app: vibeteam-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vibeteam-agents
+  template:
+    metadata:
+      labels:
+        app: vibeteam-agents
+    spec:
+      serviceAccountName: vibeteam-agents
+      containers:
+        # Main application - FastAPI webhook server
+        - name: webhook-server
+          image: vibeteam
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            # LLM Configuration
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LLM_API_KEY
+            - name: LLM_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LLM_MODEL
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LLM_BASE_URL
+            # GitHub
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: GITHUB_TOKEN
+            - name: GITHUB_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: GITHUB_WEBHOOK_SECRET
+                  optional: true
+            # Sentry
+            - name: SENTRY_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SENTRY_AUTH_TOKEN
+            - name: SENTRY_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SENTRY_WEBHOOK_SECRET
+                  optional: true
+            # Langfuse
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LANGFUSE_PUBLIC_KEY
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LANGFUSE_SECRET_KEY
+            - name: LANGFUSE_BASE_URL
+              value: "https://langfuse.vibebrowser.app"
+            # Docker host (DinD sidecar)
+            - name: DOCKER_HOST
+              value: "tcp://localhost:2375"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+
+        # Docker-in-Docker sidecar for OpenHands agents
+        - name: dind
+          image: docker:24-dind
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""  # Disable TLS for localhost
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "4Gi"
+              cpu: "2"
+          volumeMounts:
+            - name: dind-storage
+              mountPath: /var/lib/docker
+            - name: workspace
+              mountPath: /workspace
+
+      volumes:
+        - name: dind-storage
+          emptyDir: {}
+        - name: workspace
+          emptyDir:
+            sizeLimit: 10Gi
+
+---
+# Service Account for the agents
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vibeteam-agents

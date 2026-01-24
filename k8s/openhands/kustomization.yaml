@@ -1,0 +1,22 @@
+# Kustomization for OpenHands-based VibeTeam agents
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: openhands-ops
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - secrets.yaml
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/name: vibeteam
+  app.kubernetes.io/component: openhands-agents
+
+images:
+  - name: vibeteam
+    newName: ghcr.io/vibetechnologies/vibeteam
+    newTag: latest

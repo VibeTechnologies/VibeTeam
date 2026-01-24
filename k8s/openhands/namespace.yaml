@@ -1,0 +1,8 @@
+# Namespace for OpenHands-based VibeTeam agents
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openhands-ops
+  labels:
+    app.kubernetes.io/name: vibeteam
+    app.kubernetes.io/component: openhands-agents
