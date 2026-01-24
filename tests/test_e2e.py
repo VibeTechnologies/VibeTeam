@@ -45,12 +45,12 @@ class TestGitHubCopilotCompatibility:
     """Tests for GitHub Copilot subscription compatibility."""
 
     def test_model_configuration(self) -> None:
-        """Verify models use Azure OpenAI gpt-5.2."""
+        """Verify models use Azure OpenAI gpt-5-2."""
         from vibeteam.roles.base import VibeRole
 
         role = VibeRole()
-        # Should use azure/gpt-5.2 for high-quality agent reasoning
-        assert role.model == "azure/gpt-5.2"
+        # Should use azure/gpt-5-2 for high-quality agent reasoning
+        assert role.model == "azure/gpt-5-2"
 
     def test_all_roles_use_compatible_models(self) -> None:
         """Verify all roles use compatible models."""
@@ -71,6 +71,6 @@ class TestGitHubCopilotCompatibility:
         ]
 
         for role in roles:
-            # All should inherit from VibeRole which sets azure/gpt-5.2
+            # All should inherit from VibeRole which sets azure/gpt-5-2
             assert hasattr(role, "model")
-            assert role.model == "azure/gpt-5.2"
+            assert role.model == "azure/gpt-5-2"

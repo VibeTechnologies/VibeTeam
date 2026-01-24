@@ -24,8 +24,8 @@ class VibeRole(Role):
     goal: str = Field(default="Contribute to team success")
     constraints: str = Field(default="Follow team protocols and best practices")
 
-    # Model configuration - uses Azure OpenAI gpt-5.2 for high-quality agent reasoning
-    model: str = Field(default="azure/gpt-5.2")
+    # Model configuration - uses Azure OpenAI gpt-5-2 for high-quality agent reasoning
+    model: str = Field(default="azure/gpt-5-2")
     temperature: float = Field(default=0.3)
 
     def __init__(self, **kwargs: Any) -> None:
