@@ -17,13 +17,11 @@ Usage:
     uvicorn vibeteam.webhooks.server:app --host 0.0.0.0 --port 8000
 """
 
-import asyncio
 import hashlib
 import hmac
 import json
 import os
 from datetime import datetime
-from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel

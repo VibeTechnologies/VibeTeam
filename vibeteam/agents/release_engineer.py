@@ -15,11 +15,10 @@ It integrates with:
 Critical Rule: Every PR MUST reference a GitHub issue.
 """
 
-import os
 from dataclasses import dataclass
 from typing import Any
 
-from vibeteam.agents.openhands_base import OpenHandsAgent, DockerOpenHandsAgent
+from vibeteam.agents.openhands_base import OpenHandsAgent
 from vibeteam.connectors.github import GitHubConnector
 from vibeteam.connectors.sentry import SentryConnector, SentryIssue
 

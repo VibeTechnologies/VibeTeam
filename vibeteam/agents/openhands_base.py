@@ -14,9 +14,8 @@ Usage:
 
 import os
 import platform
-from typing import Any, Callable
-
-from pydantic import SecretStr
+from collections.abc import Callable
+from typing import Any
 
 from openhands.sdk import (
     LLM,
@@ -30,6 +29,7 @@ from openhands.sdk import (
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.task_tracker import TaskTrackerTool
 from openhands.tools.terminal import TerminalTool
+from pydantic import SecretStr
 
 logger = get_logger(__name__)
 
