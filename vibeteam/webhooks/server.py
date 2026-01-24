@@ -136,14 +136,13 @@ async def sentry_webhook(
 
     # Verify signature if secret is configured
     sentry_secret = os.getenv("SENTRY_WEBHOOK_SECRET")
-    if sentry_secret and sentry_hook_signature:
-        if not verify_sentry_signature(body, sentry_hook_signature, sentry_secret):
-            raise HTTPException(status_code=401, detail="Invalid signature")
+    if sentry_secret and sentry_hook_signature and not verify_sentry_signature(body, sentry_hook_signature, sentry_secret):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
     try:
         payload = json.loads(body)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except json.JSONDecodeError as err:
+        raise HTTPException(status_code=400, detail="Invalid JSON") from err
 
     action = payload.get("action", "unknown")
     data = payload.get("data", {})
@@ -254,14 +253,13 @@ async def github_webhook(
 
     # Verify signature if secret is configured
     github_secret = os.getenv("GITHUB_WEBHOOK_SECRET")
-    if github_secret and x_hub_signature_256:
-        if not verify_github_signature(body, x_hub_signature_256, github_secret):
-            raise HTTPException(status_code=401, detail="Invalid signature")
+    if github_secret and x_hub_signature_256 and not verify_github_signature(body, x_hub_signature_256, github_secret):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
     try:
         payload = json.loads(body)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except json.JSONDecodeError as err:
+        raise HTTPException(status_code=400, detail="Invalid JSON") from err
 
     event = x_github_event or "unknown"
     action = payload.get("action", "unknown")
@@ -285,26 +283,25 @@ async def github_webhook(
                     "message": "Auto-fix triggered",
                 }
 
-    elif event == "pull_request":
-        if action in ["opened", "synchronize"]:
-            pr_number = payload.get("pull_request", {}).get("number")
-            # Check if 'auto-review' label exists
-            labels = [
-                lbl.get("name", "")
-                for lbl in payload.get("pull_request", {}).get("labels", [])
-            ]
-            if "auto-review" in labels:
-                background_tasks.add_task(
-                    review_pr_background,
-                    pr_number=pr_number,
-                )
-                return {
-                    "status": "accepted",
-                    "event": event,
-                    "action": action,
-                    "pr_number": pr_number,
-                    "message": "Auto-review triggered",
-                }
+    elif event == "pull_request" and action in ["opened", "synchronize"]:
+        pr_number = payload.get("pull_request", {}).get("number")
+        # Check if 'auto-review' label exists
+        labels = [
+            lbl.get("name", "")
+            for lbl in payload.get("pull_request", {}).get("labels", [])
+        ]
+        if "auto-review" in labels:
+            background_tasks.add_task(
+                review_pr_background,
+                pr_number=pr_number,
+            )
+            return {
+                "status": "accepted",
+                "event": event,
+                "action": action,
+                "pr_number": pr_number,
+                "message": "Auto-review triggered",
+            }
 
     return {
         "status": "accepted",

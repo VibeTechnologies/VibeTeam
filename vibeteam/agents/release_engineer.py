@@ -15,6 +15,7 @@ It integrates with:
 Critical Rule: Every PR MUST reference a GitHub issue.
 """
 
+import contextlib
 from dataclasses import dataclass
 from typing import Any
 
@@ -326,10 +327,8 @@ GITHUB_BODY: <if creating issue, use markdown>
 
         # Resolve noise issues
         if classification == "NOISE":
-            try:
+            with contextlib.suppress(Exception):
                 self.sentry.resolve_issue(issue.id, resolution="ignored")
-            except Exception:
-                pass
 
         return TriageResult(
             issue_id=issue.id,
