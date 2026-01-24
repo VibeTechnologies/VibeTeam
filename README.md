@@ -55,13 +55,23 @@ vibeteam roles
 
 ## Configuration
 
-Set your API key:
+VibeTeam uses Azure OpenAI gpt-5.2 for high-quality agent reasoning.
+
+### Environment Variables
 
 ```bash
-export OPENAI_API_KEY="your-key"
+# Azure OpenAI (required)
+export AZURE_API_KEY="your-azure-api-key"
+export AZURE_API_BASE="https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/"
+export AZURE_API_VERSION="2024-06-01"
+
+# Langfuse observability (optional)
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export LANGFUSE_HOST="https://langfuse.vibebrowser.app"
 ```
 
-Compatible with GitHub Copilot subscription (uses `openai:gpt-5-mini`).
+Or copy `.env.example` to `.env` and fill in values.
 
 ## Architecture
 
