@@ -90,4 +90,5 @@ addopts = ["-ra", "--strict-markers", "-v"]
 markers = [
     "e2e: end-to-end tests",
     "integration: integration tests",
+    "unit: unit tests",
 ]

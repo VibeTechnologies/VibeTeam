@@ -6,10 +6,12 @@ Consolidates monitoring responsibilities:
 - Langfuse LLM anomaly detection
 - Service health monitoring
 - Automatic GitHub issue + PR creation
+- Pull request review and code analysis
 
 Critical Rule: Every PR MUST reference a GitHub issue.
 """
 
+import os
 from typing import Any
 
 from metagpt.actions import Action
@@ -502,6 +504,96 @@ Provide validation report with READY or NOT READY verdict:
         return rsp
 
 
+class ReviewPR(Action):
+    """Review a pull request for code quality, bugs, and best practices."""
+
+    name: str = "ReviewPR"
+
+    PROMPT_TEMPLATE: str = """
+You are a Release Engineer reviewing a pull request.
+
+{protocol}
+
+## Pull Request
+
+**Title:** {pr_title}
+**Author:** {pr_author}
+**Branch:** {head_ref} -> {base_ref}
+**Files Changed:** {changed_files}
+
+## PR Description
+
+{pr_body}
+
+## Diff
+
+{diff}
+
+## Task
+
+Perform a thorough code review:
+
+1. **Correctness**: Does the code do what it claims?
+2. **Bugs**: Any potential bugs, edge cases, or null pointer issues?
+3. **Security**: Any security concerns (injection, XSS, secrets)?
+4. **Performance**: Any performance issues or unnecessary operations?
+5. **Style**: Does it follow project conventions?
+6. **Tests**: Are changes adequately tested?
+7. **Issue Reference**: Does PR reference a GitHub issue?
+
+## Output Format
+
+```markdown
+## PR Review: {pr_title}
+
+### Summary
+{one sentence verdict: APPROVE, REQUEST_CHANGES, or COMMENT}
+
+### Strengths
+- {what's good about this PR}
+
+### Issues Found
+
+| Severity | File | Line | Issue |
+|----------|------|------|-------|
+| {high/medium/low} | {file} | {line} | {description} |
+
+### Suggestions
+
+{code suggestions if any}
+
+### Verdict
+
+**{APPROVE/REQUEST_CHANGES/COMMENT}**: {reason}
+```
+
+Review the PR:
+"""
+
+    async def run(
+        self,
+        pr_title: str,
+        pr_body: str,
+        pr_author: str,
+        head_ref: str,
+        base_ref: str,
+        changed_files: int,
+        diff: str,
+    ) -> str:
+        prompt = self.PROMPT_TEMPLATE.format(
+            protocol=RELEASE_ENGINEER_PROTOCOL,
+            pr_title=pr_title,
+            pr_body=pr_body,
+            pr_author=pr_author,
+            head_ref=head_ref,
+            base_ref=base_ref,
+            changed_files=changed_files,
+            diff=diff[:10000],  # Truncate large diffs
+        )
+        rsp = await self._aask(prompt)
+        return rsp
+
+
 class ReleaseEngineer(VibeRole):
     """
     Release Engineer role - Production monitoring and automated fixes.
@@ -510,6 +602,7 @@ class ReleaseEngineer(VibeRole):
     - Sentry: Error triage, classification, issue creation
     - Langfuse: LLM anomaly detection
     - Health: Service availability monitoring
+    - GitHub: PR creation, review, and merging
 
     Philosophy:
     > "Every PR MUST reference a GitHub issue."
@@ -538,6 +631,203 @@ class ReleaseEngineer(VibeRole):
                 CreateFixPR,
                 WriteChangelog,
                 ValidateRelease,
+                ReviewPR,
             ]
         )
         self._watch([])
+
+    # =====================
+    # GitHub Helper Methods
+    # =====================
+
+    def _get_github_connector(self):
+        """Get GitHub connector instance."""
+        if not os.environ.get("GITHUB_TOKEN"):
+            raise ValueError("GITHUB_TOKEN environment variable required")
+        from vibeteam.connectors.github import GitHubConnector
+
+        return GitHubConnector()
+
+    async def create_github_issue(
+        self,
+        title: str,
+        body: str,
+        labels: list[str] | None = None,
+    ) -> dict:
+        """
+        Create a GitHub issue.
+
+        Args:
+            title: Issue title
+            body: Issue body (markdown)
+            labels: Optional labels
+
+        Returns:
+            Created issue data with 'number' and 'html_url'
+        """
+        gh = self._get_github_connector()
+        endpoint = f"/repos/{gh.owner}/{gh.repo}/issues"
+        data: dict[str, Any] = {"title": title, "body": body}
+        if labels:
+            data["labels"] = labels
+        return gh._post(endpoint, data)
+
+    async def create_pr(
+        self,
+        title: str,
+        body: str,
+        head: str,
+        base: str = "master",
+        draft: bool = False,
+    ) -> dict:
+        """
+        Create a pull request.
+
+        Args:
+            title: PR title (should include "Fixes #123")
+            body: PR description (should include "Fixes #123")
+            head: Source branch
+            base: Target branch
+            draft: Create as draft PR
+
+        Returns:
+            Created PR data
+        """
+        gh = self._get_github_connector()
+        pr = gh.create_pr(title=title, body=body, head=head, base=base, draft=draft)
+        return {
+            "number": pr.number,
+            "html_url": pr.html_url,
+            "title": pr.title,
+        }
+
+    async def review_pr(
+        self,
+        pr_number: int,
+        auto_submit: bool = False,
+    ) -> dict:
+        """
+        Review a pull request.
+
+        Args:
+            pr_number: PR number to review
+            auto_submit: Whether to submit the review to GitHub
+
+        Returns:
+            Review analysis and optionally submission result
+        """
+        gh = self._get_github_connector()
+
+        # Get PR details
+        pr = gh.get_pr(pr_number)
+        diff = gh.get_pr_diff(pr_number)
+
+        # Run review action
+        action = ReviewPR()
+        review_text = await action.run(
+            pr_title=pr.title,
+            pr_body=pr.body,
+            pr_author=pr.user,
+            head_ref=pr.head_ref,
+            base_ref=pr.base_ref,
+            changed_files=pr.changed_files,
+            diff=diff,
+        )
+
+        result = {
+            "pr_number": pr_number,
+            "review": review_text,
+            "submitted": False,
+        }
+
+        # Submit review if requested
+        if auto_submit:
+            # Parse verdict from review
+            verdict = "COMMENT"
+            if "**APPROVE**" in review_text or "APPROVE:" in review_text:
+                verdict = "APPROVE"
+            elif "**REQUEST_CHANGES**" in review_text or "REQUEST_CHANGES:" in review_text:
+                verdict = "REQUEST_CHANGES"
+
+            gh.create_review(
+                pr_number=pr_number,
+                body=review_text,
+                event=verdict,
+            )
+            result["submitted"] = True
+            result["verdict"] = verdict
+
+        return result
+
+    async def find_bugs_in_pr(self, pr_number: int) -> list[dict]:
+        """
+        Analyze a PR for potential bugs.
+
+        Args:
+            pr_number: PR number to analyze
+
+        Returns:
+            List of potential bugs found
+        """
+        gh = self._get_github_connector()
+
+        # Get PR diff
+        diff = gh.get_pr_diff(pr_number)
+        files = gh.get_pr_files(pr_number)
+
+        # Run review focused on bugs
+        action = ReviewPR()
+        pr = gh.get_pr(pr_number)
+
+        review = await action.run(
+            pr_title=pr.title,
+            pr_body=pr.body,
+            pr_author=pr.user,
+            head_ref=pr.head_ref,
+            base_ref=pr.base_ref,
+            changed_files=pr.changed_files,
+            diff=diff,
+        )
+
+        # Parse bugs from review (simple extraction)
+        bugs = []
+        if "Issues Found" in review:
+            lines = review.split("\n")
+            in_table = False
+            for line in lines:
+                if "| Severity |" in line:
+                    in_table = True
+                    continue
+                if in_table and line.startswith("|") and "---" not in line:
+                    parts = [p.strip() for p in line.split("|")[1:-1]]
+                    if len(parts) >= 4 and parts[0]:
+                        bugs.append(
+                            {
+                                "severity": parts[0],
+                                "file": parts[1],
+                                "line": parts[2],
+                                "issue": parts[3],
+                            }
+                        )
+                elif in_table and not line.startswith("|"):
+                    break
+
+        return bugs
+
+    async def merge_pr(
+        self,
+        pr_number: int,
+        merge_method: str = "squash",
+    ) -> dict:
+        """
+        Merge a pull request.
+
+        Args:
+            pr_number: PR number to merge
+            merge_method: "merge", "squash", or "rebase"
+
+        Returns:
+            Merge result
+        """
+        gh = self._get_github_connector()
+        return gh.merge_pr(pr_number, merge_method=merge_method)
