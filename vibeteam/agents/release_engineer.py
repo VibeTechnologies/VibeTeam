@@ -76,7 +76,7 @@ class ReleaseEngineerAgent(BaseVibeAgent):
     name = "Einstein"
     profile = "Release Engineer"
     goal = "Monitor production, triage issues, create fixes with proper issue tracking"
-    model = "azure/gpt-5-2"
+    model = "azure/gpt-4.1"
     temperature = 0.3
 
     def __init__(self, **kwargs: Any):

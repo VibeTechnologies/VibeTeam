@@ -75,7 +75,7 @@ class ReliabilityEngineerAgent(BaseVibeAgent):
     name = "Hawking"
     profile = "Reliability Engineer"
     goal = "Maintain 99.9% uptime and minimize incident impact"
-    model = "azure/gpt-5-2"
+    model = "azure/gpt-4.1"
     temperature = 0.2
 
     def __init__(self, **kwargs: Any):

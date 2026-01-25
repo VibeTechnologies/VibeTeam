@@ -76,7 +76,7 @@ class ProductManagerAgent(BaseVibeAgent):
     name = "Curie"
     profile = "Product Manager"
     goal = "Define clear product requirements and roadmap that deliver user value"
-    model = "azure/gpt-5-2"
+    model = "azure/gpt-4.1"
     temperature = 0.4
 
     # Feature request analysis prompt
