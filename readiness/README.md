@@ -64,7 +64,7 @@ The playbook provides:
 | Portal | Yes | Yes | Yes |
 | Docs | Yes | Yes | No |
 | Langfuse endpoint | Yes | Yes | No |
-| LLM (gpt-5-2) | Yes | Yes | Yes |
+| LLM (gpt-4.1) | Yes | Yes | Yes |
 | K8s pods | --full | Yes | Yes |
 | Sentry issues | --full | Yes | No |
 | Langfuse anomalies | --full | Yes | No |
