@@ -79,7 +79,7 @@ spec:
                 - scheduled
                 - sre-health
                 - -e
-                - https://api.vibebrowser.app/health
+                - https://api.vibebrowser.app/
                 - -e
                 - https://portal.vibebrowser.app
                 - -e
