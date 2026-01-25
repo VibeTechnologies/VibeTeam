@@ -291,9 +291,7 @@ actionable outputs.{tool_descriptions}"""
             else:
                 # No tool calls - final response
                 final_content = assistant_message.content or ""
-                self.conversation.append(
-                    Message(role="assistant", content=final_content)
-                )
+                self.conversation.append(Message(role="assistant", content=final_content))
                 return final_content
 
         # Max iterations reached
@@ -306,7 +304,4 @@ actionable outputs.{tool_descriptions}"""
 
     def get_conversation_history(self) -> list[dict]:
         """Get the full conversation history."""
-        return [
-            {"role": m.role, "content": m.content, "name": m.name}
-            for m in self.conversation
-        ]
+        return [{"role": m.role, "content": m.content, "name": m.name} for m in self.conversation]

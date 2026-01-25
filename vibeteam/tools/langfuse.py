@@ -104,9 +104,7 @@ class LangfuseTool(BaseTool):
             elif action == "detect_anomalies":
                 hours = kwargs.get("hours", 1)
                 budget = kwargs.get("daily_token_budget", 1_000_000)
-                anomalies = self.connector.detect_anomalies(
-                    hours=hours, daily_token_budget=budget
-                )
+                anomalies = self.connector.detect_anomalies(hours=hours, daily_token_budget=budget)
                 output = json.dumps([asdict(a) for a in anomalies], indent=2)
                 return ToolResult(
                     success=True,

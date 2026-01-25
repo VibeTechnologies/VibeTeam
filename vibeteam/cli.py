@@ -105,7 +105,9 @@ def agents() -> None:
 
 
 @main.command()
-@click.argument("agent_key", type=click.Choice(["pm", "swe", "marketer", "support", "sre", "release"]))
+@click.argument(
+    "agent_key", type=click.Choice(["pm", "swe", "marketer", "support", "sre", "release"])
+)
 @click.option(
     "--model",
     "-m",
@@ -183,19 +185,27 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
 
         # Feature request patterns
         feature_patterns = [
-            "can you add", "would be nice if", "feature request", "i wish",
-            "please add", "need a way to", "any plans to", "does vibe support",
+            "can you add",
+            "would be nice if",
+            "feature request",
+            "i wish",
+            "please add",
+            "need a way to",
+            "any plans to",
+            "does vibe support",
         ]
 
         feature_requests = []
         for trace in traces:
             input_text = str(trace.get("input", "")).lower()
             if any(p in input_text for p in feature_patterns):
-                feature_requests.append({
-                    "id": trace.get("id"),
-                    "text": input_text[:200],
-                    "timestamp": trace.get("timestamp"),
-                })
+                feature_requests.append(
+                    {
+                        "id": trace.get("id"),
+                        "text": input_text[:200],
+                        "timestamp": trace.get("timestamp"),
+                    }
+                )
 
         console.print(f"Found {len(feature_requests)} potential feature requests")
 
@@ -226,7 +236,9 @@ def support_emails(max_emails: int, dry_run: bool) -> None:
 
         from vibeteam.connectors.gmail import GmailConnector
 
-        creds_path = Path(os.environ.get("GMAIL_CREDENTIALS_PATH", "/secrets/gmail-credentials.json"))
+        creds_path = Path(
+            os.environ.get("GMAIL_CREDENTIALS_PATH", "/secrets/gmail-credentials.json")
+        )
         token_path = Path(os.environ.get("GMAIL_TOKEN_PATH", "/secrets/gmail-token.json"))
 
         if not creds_path.exists():
@@ -311,9 +323,20 @@ def release_check() -> None:
     # Check for merged PRs since last release
     try:
         result = subprocess.run(
-            ["gh", "pr", "list", "--state", "merged", "--limit", "10", "--json", "number,title,mergedAt"],
-            capture_output=True, text=True,
-            env={**os.environ, "GH_TOKEN": gh_token}
+            [
+                "gh",
+                "pr",
+                "list",
+                "--state",
+                "merged",
+                "--limit",
+                "10",
+                "--json",
+                "number,title,mergedAt",
+            ],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "GH_TOKEN": gh_token},
         )
         if result.returncode == 0:
             prs = json.loads(result.stdout)

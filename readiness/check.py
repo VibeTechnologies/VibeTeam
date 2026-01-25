@@ -56,7 +56,9 @@ class ReadinessReport:
     status: str = "GREEN"  # GREEN, YELLOW, RED
     checks: list[CheckResult] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    )
 
     def add_check(self, check: CheckResult) -> None:
         """Add a check result and update overall status."""
