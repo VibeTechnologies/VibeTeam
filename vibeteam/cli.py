@@ -178,7 +178,9 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
     }
 
     try:
-        resp = requests.get(url, auth=(langfuse_public, langfuse_secret), params=params, timeout=30)
+        resp = requests.get(
+            url, auth=(langfuse_public, langfuse_secret), params=params, timeout=30  # type: ignore[arg-type]
+        )
         resp.raise_for_status()
         traces = resp.json().get("data", [])
         console.print(f"Found {len(traces)} conversations")

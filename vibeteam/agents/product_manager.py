@@ -125,8 +125,10 @@ Respond in this exact JSON format:
 """
 
     def __init__(self, **kwargs: Any):
+        from vibeteam.agents.base import BaseTool
+
         # Initialize with GitHub tool
-        tools = []
+        tools: list[BaseTool] = []
         if os.environ.get("GITHUB_TOKEN"):
             try:
                 tools.append(GitHubTool())
@@ -191,6 +193,7 @@ Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None
         response = await self.run(prompt)
 
         # Parse JSON from response
+        result: dict[str, Any] = {}
         try:
             if "```json" in response:
                 json_str = response.split("```json")[1].split("```")[0].strip()

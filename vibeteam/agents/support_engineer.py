@@ -94,7 +94,9 @@ class SupportEngineerAgent(BaseVibeAgent):
     def __init__(self, **kwargs: Any):
         import os
 
-        tools = []
+        from vibeteam.agents.base import BaseTool
+
+        tools: list[BaseTool] = []
 
         # Gmail tool for email operations
         try:

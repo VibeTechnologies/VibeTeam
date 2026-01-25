@@ -81,7 +81,9 @@ class ReliabilityEngineerAgent(BaseVibeAgent):
     def __init__(self, **kwargs: Any):
         import os
 
-        tools = []
+        from vibeteam.agents.base import BaseTool
+
+        tools: list[BaseTool] = []
 
         # Health check tool
         tools.append(HealthCheckTool())
