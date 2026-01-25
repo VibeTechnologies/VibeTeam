@@ -5,7 +5,19 @@ Each agent is a specialized worker with specific tools and capabilities.
 """
 
 from vibeteam.agents.base import BaseVibeAgent
+from vibeteam.agents.product_manager import ProductManagerAgent
+from vibeteam.agents.software_engineer import SoftwareEngineerAgent
+from vibeteam.agents.marketer import MarketerAgent
+from vibeteam.agents.support_engineer import SupportEngineerAgent
+from vibeteam.agents.reliability_engineer import ReliabilityEngineerAgent
+from vibeteam.agents.release_engineer import ReleaseEngineerAgent
 
 __all__ = [
     "BaseVibeAgent",
+    "ProductManagerAgent",
+    "SoftwareEngineerAgent",
+    "MarketerAgent",
+    "SupportEngineerAgent",
+    "ReliabilityEngineerAgent",
+    "ReleaseEngineerAgent",
 ]
