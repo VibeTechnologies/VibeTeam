@@ -129,10 +129,10 @@ class GmailTool(BaseTool):
                         error="thread_id, to, subject, and body required",
                     )
                 msg_id = self.connector.send_reply(
-                    thread_id=thread_id,
-                    to=to,
-                    subject=subject,
-                    body=body,
+                    thread_id=str(thread_id),
+                    to=str(to),
+                    subject=str(subject),
+                    body=str(body),
                 )
                 return ToolResult(
                     success=True,
@@ -150,7 +150,7 @@ class GmailTool(BaseTool):
                         output="",
                         error="to, subject, and body required",
                     )
-                msg_id = self.connector.send_email(to=to, subject=subject, body=body)
+                msg_id = self.connector.send_email(to=str(to), subject=str(subject), body=str(body))
                 return ToolResult(
                     success=True,
                     output=f"Email sent, message ID: {msg_id}",

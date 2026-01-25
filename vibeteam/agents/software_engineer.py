@@ -87,7 +87,9 @@ class SoftwareEngineerAgent(BaseVibeAgent):
     def __init__(self, **kwargs: Any):
         import os
 
-        tools = []
+        from vibeteam.agents.base import BaseTool
+
+        tools: list[BaseTool] = []
         if os.environ.get("GITHUB_TOKEN"):
             try:
                 tools.append(GitHubTool())

@@ -80,7 +80,9 @@ class ReleaseEngineerAgent(BaseVibeAgent):
     temperature = 0.3
 
     def __init__(self, **kwargs: Any):
-        tools = []
+        from vibeteam.agents.base import BaseTool
+
+        tools: list[BaseTool] = []
 
         # Add available tools based on environment
         if os.environ.get("GITHUB_TOKEN"):
