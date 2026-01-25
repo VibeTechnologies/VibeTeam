@@ -1,287 +1,5 @@
----
-# Support Engineer CronJob - ConfigMaps with Python scripts
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: support-engineer-scripts
-data:
-  gmail.py: |
-    """Gmail connector for k8s - minimal version"""
-    import base64
-    import json
-    import os
-    from dataclasses import dataclass
-    from email.mime.text import MIMEText
-    from pathlib import Path
-    from typing import Optional
-    
-    import sentry_sdk
-    
-    # Initialize Sentry for VibeTeam monitoring
-    SENTRY_DSN = os.environ.get("VIBETEAM_SENTRY_DSN", "https://94ea47941d3f92fea1a886094ab9708d@o4510132673511424.ingest.us.sentry.io/4510761220308992")
-    sentry_sdk.init(dsn=SENTRY_DSN, environment="production", traces_sample_rate=0.1)
-    
-    from google.auth.transport.requests import Request
-    from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
-    
-    SCOPES = [
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/gmail.send",
-        "https://www.googleapis.com/auth/gmail.modify",
-    ]
-    
-    @dataclass
-    class Email:
-        id: str
-        thread_id: str
-        subject: str
-        sender_name: str
-        sender_email: str
-        body: str
-        snippet: str
-        timestamp: str
-        labels: list
-    
-    class GmailConnector:
-        def __init__(self, credentials_path: Path, token_path: Path):
-            self.credentials_path = credentials_path
-            self.token_path = token_path
-            self.service = None
-            self.creds = None
-        
-        def authenticate(self, headless: bool = True, writable_token_path: Optional[Path] = None) -> None:
-            """Authenticate with Gmail API.
-            
-            Args:
-                headless: If True, don't attempt interactive auth
-                writable_token_path: Optional writable path to save refreshed token
-            """
-            if self.token_path.exists():
-                self.creds = Credentials.from_authorized_user_file(str(self.token_path), SCOPES)
-            if self.creds and self.creds.expired and self.creds.refresh_token:
-                self.creds.refresh(Request())
-                # Save refreshed token to writable path if provided
-                save_path = writable_token_path or self.token_path
-                try:
-                    with open(save_path, "w") as f:
-                        f.write(self.creds.to_json())
-                except OSError as e:
-                    # Log but don't fail - token refresh still worked
-                    import logging
-                    logging.warning(f"Could not save refreshed token: {e}")
-            if not self.creds or not self.creds.valid:
-                raise RuntimeError("No valid credentials. Run --authenticate locally first.")
-            self.service = build("gmail", "v1", credentials=self.creds)
-        
-        def fetch_unread_emails(self, max_results: int = 10) -> list[Email]:
-            results = self.service.users().messages().list(
-                userId="me", q="is:unread", maxResults=max_results
-            ).execute()
-            messages = results.get("messages", [])
-            emails = []
-            for msg in messages:
-                full = self.service.users().messages().get(userId="me", id=msg["id"]).execute()
-                headers = {h["name"]: h["value"] for h in full["payload"]["headers"]}
-                sender = headers.get("From", "")
-                name, email_addr = sender.rsplit("<", 1) if "<" in sender else ("", sender)
-                body = self._extract_body(full["payload"])
-                emails.append(Email(
-                    id=msg["id"], thread_id=full.get("threadId", ""),
-                    subject=headers.get("Subject", ""), sender_name=name.strip(),
-                    sender_email=email_addr.rstrip(">"), body=body,
-                    snippet=full.get("snippet", ""), timestamp=headers.get("Date", ""),
-                    labels=full.get("labelIds", []),
-                ))
-            return emails
-        
-        def _extract_body(self, payload: dict) -> str:
-            if "body" in payload and payload["body"].get("data"):
-                return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
-            if "parts" in payload:
-                for part in payload["parts"]:
-                    if part.get("mimeType") == "text/plain":
-                        data = part.get("body", {}).get("data", "")
-                        if data:
-                            return base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
-            return ""
-        
-        def mark_as_read(self, message_id: str) -> None:
-            self.service.users().messages().modify(
-                userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
-            ).execute()
-        
-        def send_reply(self, thread_id: str, to: str, subject: str, body: str) -> dict:
-            message = MIMEText(body)
-            message["to"] = to
-            message["subject"] = subject
-            raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-            return self.service.users().messages().send(
-                userId="me", body={"raw": raw, "threadId": thread_id}
-            ).execute()
-
-  process_emails.py: |
-    #!/usr/bin/env python3
-    """Email processor for k8s CronJob - minimal version"""
-    
-    import asyncio
-    import json
-    import logging
-    import re
-    import sys
-    from datetime import datetime
-    from pathlib import Path
-    
-    sys.path.insert(0, "/scripts")
-    from gmail import GmailConnector, Email
-    
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    logger = logging.getLogger(__name__)
-    
-    DOCS_SUPPORT_PATTERN = r"^\[Docs Support #[A-Z0-9-]+\]"
-    ESCALATION_TRIGGERS = {
-        "BILLING": ["refund", "charge", "billing", "payment"],
-        "SECURITY": ["security", "vulnerability", "breach", "hack"],
-        "LEGAL": ["lawyer", "legal", "sue", "gdpr", "subpoena"],
-        "ANGRY": ["angry", "furious", "terrible", "worst", "lawsuit"],
-        "PARTNERSHIP": ["partnership", "enterprise", "sales"],
-        "PRESS": ["journalist", "press", "interview", "media"],
-    }
-    
-    class EmailProcessor:
-        def __init__(self, gmail: GmailConnector, dry_run: bool = False):
-            self.gmail = gmail
-            self.dry_run = dry_run
-            self.escalation_dir = Path("/tmp/escalations")
-            self.escalation_dir.mkdir(exist_ok=True)
-            self.stats = {"processed": 0, "responded": 0, "escalated": 0, "skipped": 0}
-        
-        async def process_emails(self, max_emails: int = 10) -> dict:
-            logger.info(f"Fetching up to {max_emails} unread emails...")
-            try:
-                emails = self.gmail.fetch_unread_emails(max_results=max_emails)
-            except Exception as e:
-                logger.error(f"Failed to fetch emails: {e}")
-                return self.stats
-            
-            logger.info(f"Found {len(emails)} unread emails")
-            for email in emails:
-                if not re.match(DOCS_SUPPORT_PATTERN, email.subject):
-                    logger.debug(f"Skipping: {email.subject}")
-                    self.stats["skipped"] += 1
-                    continue
-                await self._process_email(email)
-                self.stats["processed"] += 1
-            
-            logger.info(f"Done: {self.stats}")
-            return self.stats
-        
-        async def _process_email(self, email: Email) -> None:
-            # Extract ticket info
-            match = re.search(r"\[Docs Support #([A-Z0-9-]+)\]", email.subject)
-            ticket_id = match.group(1) if match else "UNKNOWN"
-            email_match = re.search(r"from\s+([^\s@]+@[^\s@]+\.[^\s@]+)", email.subject)
-            customer_email = email_match.group(1) if email_match else email.sender_email
-            
-            logger.info(f"Processing #{ticket_id} from {customer_email}")
-            
-            # Check escalation triggers
-            body_lower = email.body.lower()
-            triggers = []
-            for trigger_type, keywords in ESCALATION_TRIGGERS.items():
-                if any(kw in body_lower for kw in keywords):
-                    triggers.append(trigger_type)
-            
-            if triggers:
-                await self._escalate(email, ticket_id, customer_email, triggers)
-                self.stats["escalated"] += 1
-            else:
-                await self._respond(email, ticket_id, customer_email)
-                self.stats["responded"] += 1
-            
-            if not self.dry_run:
-                self.gmail.mark_as_read(email.id)
-        
-        async def _escalate(self, email: Email, ticket_id: str, customer_email: str, triggers: list) -> None:
-            logger.warning(f"ESCALATING #{ticket_id}: {triggers}")
-            
-            ticket = {
-                "timestamp": datetime.now().isoformat(),
-                "ticket_id": ticket_id,
-                "email_id": email.id,
-                "customer_email": customer_email,
-                "subject": email.subject,
-                "triggers": triggers,
-                "body_preview": email.snippet,
-            }
-            with open(self.escalation_dir / f"{ticket_id}.json", "w") as f:
-                json.dump(ticket, f, indent=2)
-            
-            if not self.dry_run:
-                self.gmail.send_reply(
-                    thread_id=email.thread_id,
-                    to=customer_email,
-                    subject=f"Re: {email.subject}",
-                    body=f"""Hi,
-
-    Thank you for contacting VibeBrowser support (Ticket #{ticket_id}).
-
-    I've escalated your request to our specialized team who will follow up within 24-48 hours.
-
-    Best regards,
-    VibeBrowser Support
-    support@vibebrowser.app
-    """,
-                )
-        
-        async def _respond(self, email: Email, ticket_id: str, customer_email: str) -> None:
-            response = f"""Hi,
-
-    Thank you for reaching out to VibeBrowser support (Ticket #{ticket_id}).
-
-    Here are some resources that may help:
-    - Documentation: https://docs.vibebrowser.app
-    - Portal: https://portal.vibebrowser.app
-    - Troubleshooting: https://docs.vibebrowser.app/troubleshooting
-
-    If you need further assistance, please reply to this email.
-
-    Best regards,
-    VibeBrowser Support
-    support@vibebrowser.app
-    """
-            if not self.dry_run:
-                self.gmail.send_reply(
-                    thread_id=email.thread_id,
-                    to=customer_email,
-                    subject=f"Re: {email.subject}",
-                    body=response,
-                )
-                logger.info(f"Sent response to {customer_email}")
-    
-    async def main():
-        # Copy token to writable location if needed
-        writable_token = Path("/data/gmail-token.json")
-        readonly_token = Path("/secrets/gmail-token.json")
-        
-        # Use existing writable token if available, otherwise copy from secret
-        if not writable_token.exists() and readonly_token.exists():
-            import shutil
-            writable_token.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(readonly_token, writable_token)
-            logger.info(f"Copied token to writable location: {writable_token}")
-        
-        gmail = GmailConnector(
-            credentials_path=Path("/secrets/gmail-credentials.json"),
-            token_path=writable_token if writable_token.exists() else readonly_token,
-        )
-        gmail.authenticate(headless=True, writable_token_path=writable_token)
-        processor = EmailProcessor(gmail=gmail, dry_run=False)
-        await processor.process_emails(max_emails=20)
-    
-    if __name__ == "__main__":
-        asyncio.run(main())
-
+# Support Engineer CronJob
+# Processes support emails from Gmail
 ---
 # Persistent volume claim for Gmail token storage
 apiVersion: v1
@@ -299,7 +17,6 @@ spec:
     requests:
       storage: 1Mi
 ---
-# Support Engineer CronJob
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -316,7 +33,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
-      activeDeadlineSeconds: 300  # 5 min timeout
+      activeDeadlineSeconds: 300
       template:
         metadata:
           labels:
@@ -325,16 +42,19 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: processor
-              image: python:3.12-slim
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  pip install --quiet google-auth google-auth-oauthlib google-api-python-client sentry-sdk &&
-                  python /scripts/process_emails.py
+              image: ghcr.io/vibetechnologies/vibeteam:latest
+              command: ["vibeteam", "scheduled", "support-emails", "--max-emails", "20"]
+              env:
+                - name: GMAIL_CREDENTIALS_PATH
+                  value: "/secrets/gmail-credentials.json"
+                - name: GMAIL_TOKEN_PATH
+                  value: "/data/gmail-token.json"
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: GITHUB_TOKEN
               volumeMounts:
-                - name: scripts
-                  mountPath: /scripts
                 - name: gmail-secrets
                   mountPath: /secrets
                   readOnly: true
@@ -347,11 +67,27 @@ spec:
                 limits:
                   memory: "256Mi"
                   cpu: "200m"
+          initContainers:
+            # Copy token to writable location if not exists
+            - name: init-token
+              image: busybox:1.36
+              command:
+                - sh
+                - -c
+                - |
+                  if [ ! -f /data/gmail-token.json ] && [ -f /secrets/gmail-token.json ]; then
+                    cp /secrets/gmail-token.json /data/gmail-token.json
+                    echo "Copied token to writable location"
+                  else
+                    echo "Token already exists or not available"
+                  fi
+              volumeMounts:
+                - name: gmail-secrets
+                  mountPath: /secrets
+                  readOnly: true
+                - name: token-storage
+                  mountPath: /data
           volumes:
-            - name: scripts
-              configMap:
-                name: support-engineer-scripts
-                defaultMode: 0755
             - name: gmail-secrets
               secret:
                 secretName: gmail-oauth-secrets
