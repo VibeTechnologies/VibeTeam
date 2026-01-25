@@ -416,14 +416,18 @@ def release_check() -> None:
 @scheduled.command(name="swe-issues")
 @click.option("--label", default="auto-fix", help="GitHub label to filter issues")
 @click.option("--repo", default="VibeTechnologies/VibeWebAgent", help="GitHub repo")
-@click.option("--dry-run", is_flag=True, help="Don't post comments")
-def swe_issues(label: str, repo: str, dry_run: bool) -> None:
-    """Software Engineer: Analyze and suggest fixes for labeled issues."""
+@click.option("--dry-run", is_flag=True, help="Don't create PRs, just analyze")
+@click.option("--workdir", default="/tmp/swe-workspace", help="Working directory for git operations")
+def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
+    """Software Engineer: Analyze issues and create PRs with fixes."""
+    import shutil
     import subprocess
+    import tempfile
+    from pathlib import Path
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    console.print("[bold]Software Engineer - Issue Analysis[/bold]")
+    console.print("[bold]Software Engineer - Issue Fix & PR Creation[/bold]")
     console.print(f"Checking issues with label: {label}")
 
     gh_token = os.environ.get("GITHUB_TOKEN")
@@ -431,39 +435,48 @@ def swe_issues(label: str, repo: str, dry_run: bool) -> None:
         console.print("[red]GITHUB_TOKEN required[/red]")
         sys.exit(1)
 
-    try:
-        # Fetch open issues with the specified label
+    def run_cmd(cmd: list[str], cwd: str | None = None) -> tuple[bool, str, str]:
+        """Run command and return (success, stdout, stderr)."""
         result = subprocess.run(
-            [
-                "gh",
-                "issue",
-                "list",
-                "--repo",
-                repo,
-                "--state",
-                "open",
-                "--label",
-                label,
-                "--limit",
-                "5",
-                "--json",
-                "number,title,body,labels",
-            ],
+            cmd,
             capture_output=True,
             text=True,
-            env={**os.environ, "GH_TOKEN": gh_token},
+            cwd=cwd,
+            env={**os.environ, "GH_TOKEN": gh_token, "GIT_TERMINAL_PROMPT": "0"},
         )
+        return result.returncode == 0, result.stdout, result.stderr
 
-        if result.returncode != 0:
-            console.print(f"[red]Failed to fetch issues: {result.stderr}[/red]")
+    try:
+        # Fetch open issues with the specified label
+        success, stdout, stderr = run_cmd([
+            "gh", "issue", "list",
+            "--repo", repo,
+            "--state", "open",
+            "--label", label,
+            "--limit", "3",
+            "--json", "number,title,body,labels",
+        ])
+
+        if not success:
+            console.print(f"[red]Failed to fetch issues: {stderr}[/red]")
             sys.exit(1)
 
-        issues = json.loads(result.stdout)
+        issues = json.loads(stdout)
         console.print(f"Found {len(issues)} issues with label '{label}'")
 
         if not issues:
             console.print("[green]No issues to process[/green]")
             return
+
+        # Check for existing PRs to avoid duplicates
+        success, pr_stdout, _ = run_cmd([
+            "gh", "pr", "list",
+            "--repo", repo,
+            "--state", "open",
+            "--json", "title,headRefName",
+        ])
+        existing_prs = json.loads(pr_stdout) if success else []
+        existing_branches = {pr.get("headRefName", "") for pr in existing_prs}
 
         # Initialize SWE agent
         from vibeteam.agents.software_engineer import SoftwareEngineerAgent
@@ -471,83 +484,173 @@ def swe_issues(label: str, repo: str, dry_run: bool) -> None:
         swe_agent = SoftwareEngineerAgent()
 
         for issue in issues:
-            console.print(f"\n[cyan]Analyzing issue #{issue['number']}: {issue['title'][:50]}[/cyan]")
+            issue_num = issue["number"]
+            issue_title = issue["title"]
+            branch_name = f"swe-agent/issue-{issue_num}"
 
-            # Check if we already commented
-            comments_result = subprocess.run(
-                [
-                    "gh",
-                    "issue",
-                    "view",
-                    str(issue["number"]),
-                    "--repo",
-                    repo,
-                    "--json",
-                    "comments",
-                ],
-                capture_output=True,
-                text=True,
-                env={**os.environ, "GH_TOKEN": gh_token},
-            )
+            console.print(f"\n[cyan]Processing issue #{issue_num}: {issue_title[:50]}[/cyan]")
 
-            if comments_result.returncode == 0:
-                comments_data = json.loads(comments_result.stdout)
-                comments = comments_data.get("comments", [])
-                swe_commented = any(
-                    "[SWE-Agent Analysis]" in c.get("body", "") for c in comments
-                )
-                if swe_commented:
-                    console.print("  [dim]Already analyzed, skipping[/dim]")
-                    continue
+            # Skip if PR already exists
+            if branch_name in existing_branches:
+                console.print("  [dim]PR already exists, skipping[/dim]")
+                continue
 
             # Analyze issue with SWE agent
-            issue_content = f"""## Issue #{issue['number']}: {issue['title']}
+            issue_content = f"""## Issue #{issue_num}: {issue_title}
 
 {issue.get('body', 'No description provided.')}
+
+## Repository
+{repo}
+
+## Instructions
+1. Analyze this issue and identify the root cause
+2. Determine which files need to be modified
+3. Provide the exact code changes needed (file path, old code, new code)
+4. Format your response as a series of file edits:
+
+```edit
+FILE: path/to/file.py
+OLD:
+<<<
+existing code to replace
+>>>
+NEW:
+<<<
+new code
+>>>
+```
+
+Be precise and provide complete, working code changes.
 """
+            console.print("  Analyzing issue...")
             analysis = asyncio.run(swe_agent.fix_bug(issue_content))
             console.print(f"  Analysis complete ({len(analysis)} chars)")
 
             if dry_run:
-                console.print("  [dim]Dry run - not posting comment[/dim]")
-                console.print(f"  [dim]Preview: {analysis[:200]}...[/dim]")
+                console.print("  [dim]Dry run - not creating PR[/dim]")
+                console.print(f"  [dim]Analysis preview: {analysis[:300]}...[/dim]")
                 continue
 
-            # Post comment with analysis
-            comment_body = f"""## [SWE-Agent Analysis]
+            # Clone repo to workspace
+            repo_dir = Path(workdir) / f"issue-{issue_num}"
+            if repo_dir.exists():
+                shutil.rmtree(repo_dir)
+            repo_dir.parent.mkdir(parents=True, exist_ok=True)
 
-{analysis}
+            console.print("  Cloning repository...")
+            clone_url = f"https://x-access-token:{gh_token}@github.com/{repo}.git"
+            success, _, stderr = run_cmd(["git", "clone", "--depth", "1", clone_url, str(repo_dir)])
+            if not success:
+                console.print(f"  [red]Clone failed: {stderr}[/red]")
+                continue
+
+            # Create branch
+            success, _, stderr = run_cmd(["git", "checkout", "-b", branch_name], cwd=str(repo_dir))
+            if not success:
+                console.print(f"  [red]Branch creation failed: {stderr}[/red]")
+                continue
+
+            # Parse and apply edits from analysis
+            edits_applied = 0
+            import re
+
+            # Parse edit blocks from analysis
+            edit_pattern = r"```edit\nFILE:\s*(.+?)\nOLD:\n<<<\n(.*?)\n>>>\nNEW:\n<<<\n(.*?)\n>>>\n```"
+            edits = re.findall(edit_pattern, analysis, re.DOTALL)
+
+            for file_path, old_code, new_code in edits:
+                file_path = file_path.strip()
+                target_file = repo_dir / file_path
+
+                if not target_file.exists():
+                    console.print(f"  [yellow]File not found: {file_path}[/yellow]")
+                    continue
+
+                content = target_file.read_text()
+                if old_code.strip() in content:
+                    new_content = content.replace(old_code.strip(), new_code.strip(), 1)
+                    target_file.write_text(new_content)
+                    edits_applied += 1
+                    console.print(f"  [green]Applied edit to {file_path}[/green]")
+                else:
+                    console.print(f"  [yellow]Could not find match in {file_path}[/yellow]")
+
+            if edits_applied == 0:
+                console.print("  [yellow]No edits applied, skipping PR creation[/yellow]")
+                # Post analysis as comment instead
+                comment_body = f"""## [SWE-Agent Analysis]
+
+The agent analyzed this issue but could not automatically apply fixes.
+
+### Analysis
+{analysis[:2000]}
 
 ---
-*This analysis was generated by VibeTeam SWE-Agent. A human engineer should review and implement the suggested fix.*
+*Manual intervention required. Generated by VibeTeam SWE-Agent.*
 """
-            comment_result = subprocess.run(
-                [
-                    "gh",
-                    "issue",
-                    "comment",
-                    str(issue["number"]),
-                    "--repo",
-                    repo,
-                    "--body",
-                    comment_body,
-                ],
-                capture_output=True,
-                text=True,
-                env={**os.environ, "GH_TOKEN": gh_token},
-            )
+                run_cmd([
+                    "gh", "issue", "comment", str(issue_num),
+                    "--repo", repo,
+                    "--body", comment_body,
+                ])
+                continue
 
-            if comment_result.returncode == 0:
-                console.print("  [green]Posted analysis comment[/green]")
+            # Commit changes
+            run_cmd(["git", "config", "user.email", "swe-agent@vibebrowser.app"], cwd=str(repo_dir))
+            run_cmd(["git", "config", "user.name", "VibeTeam SWE-Agent"], cwd=str(repo_dir))
+            run_cmd(["git", "add", "-A"], cwd=str(repo_dir))
+
+            commit_msg = f"fix: {issue_title[:50]}\n\nFixes #{issue_num}\n\nGenerated by VibeTeam SWE-Agent"
+            success, _, stderr = run_cmd(["git", "commit", "-m", commit_msg], cwd=str(repo_dir))
+            if not success:
+                console.print(f"  [red]Commit failed: {stderr}[/red]")
+                continue
+
+            # Push branch
+            console.print("  Pushing branch...")
+            success, _, stderr = run_cmd(["git", "push", "-u", "origin", branch_name], cwd=str(repo_dir))
+            if not success:
+                console.print(f"  [red]Push failed: {stderr}[/red]")
+                continue
+
+            # Create PR
+            pr_body = f"""## Summary
+Automated fix for #{issue_num}
+
+## Changes
+{edits_applied} file(s) modified based on SWE-Agent analysis.
+
+## Analysis
+{analysis[:1500]}
+
+---
+*This PR was automatically generated by VibeTeam SWE-Agent. Please review carefully before merging.*
+"""
+            console.print("  Creating PR...")
+            success, pr_out, stderr = run_cmd([
+                "gh", "pr", "create",
+                "--repo", repo,
+                "--head", branch_name,
+                "--title", f"fix: {issue_title[:60]} (#{issue_num})",
+                "--body", pr_body,
+            ])
+
+            if success:
+                console.print(f"  [green]PR created: {pr_out.strip()}[/green]")
             else:
-                console.print(f"  [red]Failed to post comment: {comment_result.stderr}[/red]")
+                console.print(f"  [red]PR creation failed: {stderr}[/red]")
 
+            # Cleanup
+            shutil.rmtree(repo_dir, ignore_errors=True)
             swe_agent.reset()
 
         console.print(f"\n[green]Processed {len(issues)} issues[/green]")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
