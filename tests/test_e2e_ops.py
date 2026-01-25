@@ -298,6 +298,10 @@ Fix the typo in the test file.
         print(f"Created test issue: {issue_url}")
 
         try:
+            # Wait for GitHub API to propagate the issue
+            import time
+            time.sleep(3)
+            
             # 2. Run SWE agent in dry-run mode
             result = subprocess.run(
                 [
