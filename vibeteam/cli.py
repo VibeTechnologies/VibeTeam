@@ -385,6 +385,8 @@ def release_check() -> None:
                 "gh",
                 "pr",
                 "list",
+                "--repo",
+                "VibeTechnologies/VibeWebAgent",
                 "--state",
                 "merged",
                 "--limit",
