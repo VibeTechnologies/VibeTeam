@@ -32,6 +32,9 @@ dependencies = [
     "click>=8.1.0",
     "tenacity>=8.2.0",
     "requests>=2.28.0",
+    # GitHub App authentication
+    "PyJWT>=2.8.0",
+    "cryptography>=41.0.0",
     # Gmail integration
     "google-auth>=2.0.0",
     "google-auth-oauthlib>=1.0.0",

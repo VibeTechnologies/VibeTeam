@@ -7,3 +7,6 @@ resources:
   - support-engineer.yaml
   - release-engineer.yaml  # Also contains reliability-engineer
   - software-engineer.yaml
+  # Note: github-app-secret.yaml is a template.
+  # Create the actual secret manually or via sealed-secrets.
+  # Do not include in resources as it contains placeholder values.

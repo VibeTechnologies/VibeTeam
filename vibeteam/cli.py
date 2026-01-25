@@ -20,6 +20,33 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
+def get_github_token() -> str | None:
+    """Get GitHub token - prefer App token, fallback to PAT.
+
+    For GitHub App authentication, set these environment variables:
+    - GITHUB_APP_ID: The App ID
+    - GITHUB_APP_PRIVATE_KEY: The private key in PEM format
+    - GITHUB_APP_INSTALLATION_ID: The installation ID for the org/repo
+
+    Falls back to GITHUB_TOKEN (PAT) if App credentials not available.
+    """
+    app_id = os.environ.get("GITHUB_APP_ID")
+    private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY")
+    installation_id = os.environ.get("GITHUB_APP_INSTALLATION_ID")
+
+    if app_id and private_key and installation_id:
+        try:
+            from vibeteam.utils.github_app import get_installation_token
+
+            logger.info("Using GitHub App authentication")
+            return get_installation_token(app_id, private_key, installation_id)
+        except Exception as e:
+            logger.warning(f"GitHub App token generation failed: {e}, falling back to PAT")
+
+    # Fallback to PAT
+    return os.environ.get("GITHUB_TOKEN")
+
+
 @click.group()
 @click.version_option(version=__version__)
 def main() -> None:
@@ -158,7 +185,6 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
     langfuse_public = os.environ.get("LANGFUSE_PUBLIC_KEY")
     langfuse_secret = os.environ.get("LANGFUSE_SECRET_KEY")
     langfuse_url = os.environ.get("LANGFUSE_BASE_URL", "https://langfuse.vibebrowser.app")
-    gh_token = os.environ.get("GITHUB_TOKEN")
 
     if not langfuse_public or not langfuse_secret:
         console.print("[red]LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY required[/red]")
@@ -211,6 +237,7 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
 
         console.print(f"Found {len(feature_requests)} potential feature requests")
 
+        gh_token = get_github_token()
         if feature_requests and gh_token and not dry_run:
             # Update GitHub tracking issue
             console.print("[dim]Updating GitHub tracking issue...[/dim]")
@@ -373,9 +400,9 @@ def release_check() -> None:
 
     console.print("[bold]Release Engineer - Release Check[/bold]")
 
-    gh_token = os.environ.get("GITHUB_TOKEN")
+    gh_token = get_github_token()
     if not gh_token:
-        console.print("[red]GITHUB_TOKEN required[/red]")
+        console.print("[red]GitHub token required (GITHUB_TOKEN or App credentials)[/red]")
         sys.exit(1)
 
     # Check for merged PRs since last release
@@ -430,9 +457,9 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
     console.print("[bold]Software Engineer - Issue Fix & PR Creation[/bold]")
     console.print(f"Checking issues with label: {label}")
 
-    gh_token = os.environ.get("GITHUB_TOKEN")
+    gh_token = get_github_token()
     if not gh_token:
-        console.print("[red]GITHUB_TOKEN required[/red]")
+        console.print("[red]GitHub token required (GITHUB_TOKEN or App credentials)[/red]")
         sys.exit(1)
 
     def run_cmd(cmd: list[str], cwd: str | None = None) -> tuple[bool, str, str]:

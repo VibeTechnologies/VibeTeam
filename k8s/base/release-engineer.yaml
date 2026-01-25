@@ -1,5 +1,9 @@
 # Release Engineer CronJob
 # Checks for pending releases and manages changelog
+#
+# GitHub Authentication:
+# Uses GitHub App credentials for better security and audit trail.
+# Falls back to GITHUB_TOKEN (PAT) if App credentials not available.
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -31,11 +35,32 @@ spec:
               image: ghcr.io/vibetechnologies/vibeteam:latest
               command: ["vibeteam", "scheduled", "release-check"]
               env:
+                # GitHub App authentication (preferred)
+                - name: GITHUB_APP_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-app
+                      key: app-id
+                      optional: true
+                - name: GITHUB_APP_INSTALLATION_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-app
+                      key: installation-id
+                      optional: true
+                - name: GITHUB_APP_PRIVATE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-app
+                      key: private-key
+                      optional: true
+                # Fallback: PAT authentication
                 - name: GITHUB_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: vibeteam-secrets
                       key: GITHUB_TOKEN
+                      optional: true
               resources:
                 requests:
                   memory: "128Mi"

@@ -1,5 +1,9 @@
 # Software Engineer CronJob
 # Analyzes GitHub issues labeled for auto-fix and suggests solutions
+#
+# GitHub Authentication:
+# Uses GitHub App credentials for better security and audit trail.
+# Falls back to GITHUB_TOKEN (PAT) if App credentials not available.
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -38,11 +42,32 @@ spec:
                 - --repo
                 - VibeTechnologies/VibeWebAgent
               env:
+                # GitHub App authentication (preferred)
+                - name: GITHUB_APP_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-app
+                      key: app-id
+                      optional: true
+                - name: GITHUB_APP_INSTALLATION_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-app
+                      key: installation-id
+                      optional: true
+                - name: GITHUB_APP_PRIVATE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: github-app
+                      key: private-key
+                      optional: true
+                # Fallback: PAT authentication
                 - name: GITHUB_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: vibeteam-secrets
                       key: GITHUB_TOKEN
+                      optional: true
                 - name: AZURE_API_KEY
                   valueFrom:
                     secretKeyRef:
