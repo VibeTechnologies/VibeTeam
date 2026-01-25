@@ -88,6 +88,13 @@ jobs:
 
       - name: Create secrets
         run: |
+          # Create/update ghcr-pull-secret for pulling images
+          kubectl -n $NAMESPACE delete secret ghcr-pull-secret --ignore-not-found
+          kubectl -n $NAMESPACE create secret docker-registry ghcr-pull-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.PAT_TOKEN }}
+
           # Create/update vibeteam-secrets
           kubectl -n $NAMESPACE delete secret vibeteam-secrets --ignore-not-found
           kubectl -n $NAMESPACE create secret generic vibeteam-secrets \
