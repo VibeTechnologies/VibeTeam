@@ -108,9 +108,7 @@ class SentryTool(BaseTool):
                 issue_id = kwargs.get("issue_id")
                 text = kwargs.get("text")
                 if not issue_id or not text:
-                    return ToolResult(
-                        success=False, output="", error="issue_id and text required"
-                    )
+                    return ToolResult(success=False, output="", error="issue_id and text required")
                 self.connector.add_comment(issue_id, text)
                 return ToolResult(success=True, output=f"Comment added to issue {issue_id}")
 

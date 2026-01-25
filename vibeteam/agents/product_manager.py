@@ -50,11 +50,13 @@ class ProcessFeatureRequestTool(BaseTool):
         # The actual LLM call happens through the agent
         return ToolResult(
             success=True,
-            output=json.dumps({
-                "request": request,
-                "source": source,
-                "instruction": "Analyze this feature request and provide priority (P0-P3), summary, and analysis.",
-            }),
+            output=json.dumps(
+                {
+                    "request": request,
+                    "source": source,
+                    "instruction": "Analyze this feature request and provide priority (P0-P3), summary, and analysis.",
+                }
+            ),
         )
 
 

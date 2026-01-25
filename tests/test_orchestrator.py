@@ -1,6 +1,5 @@
 """Tests for VibeTeam orchestrator."""
 
-
 from vibeteam import AgentType, TaskResult, VibeTeam
 from vibeteam.orchestrator import AGENT_REGISTRY, ROUTING_KEYWORDS
 

@@ -199,9 +199,7 @@ class GitHubTool(BaseTool):
                 body = kwargs.get("body")
                 event = kwargs.get("event", "COMMENT")
                 if not pr_number or not body:
-                    return ToolResult(
-                        success=False, output="", error="pr_number and body required"
-                    )
+                    return ToolResult(success=False, output="", error="pr_number and body required")
                 self.connector.create_review(pr_number, body, event)
                 return ToolResult(success=True, output=f"Review added to PR #{pr_number}")
 

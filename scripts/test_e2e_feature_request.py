@@ -17,7 +17,7 @@ import sys
 import importlib.util
 
 # Check env vars
-required_vars = ['AZURE_API_KEY', 'AZURE_API_BASE', 'GITHUB_TOKEN']
+required_vars = ["AZURE_API_KEY", "AZURE_API_BASE", "GITHUB_TOKEN"]
 missing = [v for v in required_vars if not os.environ.get(v)]
 if missing:
     print(f"ERROR: Missing environment variables: {', '.join(missing)}")
@@ -29,6 +29,7 @@ import litellm
 # Test data
 REQUEST = "I want to integrate with Slack to receive browser automation notifications"
 SOURCE = "docs-chat"
+
 
 def main():
     print("=== E2E Test: PM Processing Feature Request ===")
@@ -125,9 +126,7 @@ Respond in this exact JSON format:
     print("Step 3: Updating GitHub Customer Requests issue...")
 
     # Load GitHub connector without importing full package
-    github_spec = importlib.util.spec_from_file_location(
-        "github", "vibeteam/connectors/github.py"
-    )
+    github_spec = importlib.util.spec_from_file_location("github", "vibeteam/connectors/github.py")
     github = importlib.util.module_from_spec(github_spec)
     github_spec.loader.exec_module(github)
 
