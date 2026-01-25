@@ -42,6 +42,8 @@ spec:
           restartPolicy: OnFailure
           imagePullSecrets:
             - name: ghcr-pull-secret
+          securityContext:
+            fsGroup: 1000
           containers:
             - name: processor
               image: ghcr.io/vibetechnologies/vibeteam:latest
@@ -79,9 +81,13 @@ spec:
                 - |
                   if [ ! -f /data/gmail-token.json ] && [ -f /secrets/gmail-token.json ]; then
                     cp /secrets/gmail-token.json /data/gmail-token.json
+                    chmod 666 /data/gmail-token.json
                     echo "Copied token to writable location"
+                  elif [ -f /data/gmail-token.json ]; then
+                    chmod 666 /data/gmail-token.json
+                    echo "Token already exists, ensured permissions"
                   else
-                    echo "Token already exists or not available"
+                    echo "Token not available"
                   fi
               volumeMounts:
                 - name: gmail-secrets
