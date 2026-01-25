@@ -6,6 +6,7 @@ Replaces the MetaGPT-based VibeRole with a lightweight, tool-oriented design.
 
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -34,6 +35,7 @@ class Message:
     content: str
     name: str | None = None  # Tool name if role is "tool"
     tool_calls: list[dict] | None = None
+    tool_call_id: str | None = None  # Required for tool role messages
 
 
 class BaseTool(ABC):
@@ -156,6 +158,8 @@ actionable outputs.{tool_descriptions}"""
                 m["name"] = msg.name
             if msg.tool_calls:
                 m["tool_calls"] = msg.tool_calls
+            if msg.tool_call_id:
+                m["tool_call_id"] = msg.tool_call_id
             messages.append(m)
         return messages
 
@@ -171,6 +175,20 @@ actionable outputs.{tool_descriptions}"""
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
+
+        # Add Azure-specific configuration
+        if self.model.startswith("azure/"):
+            # LiteLLM Azure config - check both possible env var names
+            api_base = os.environ.get("AZURE_API_BASE") or os.environ.get("AZURE_OPENAI_ENDPOINT")
+            api_key = os.environ.get("AZURE_API_KEY") or os.environ.get("AZURE_OPENAI_API_KEY")
+            api_version = os.environ.get("AZURE_API_VERSION", "2024-08-01-preview")
+            
+            if api_base:
+                kwargs["api_base"] = api_base
+            if api_key:
+                kwargs["api_key"] = api_key
+            if api_version:
+                kwargs["api_version"] = api_version
 
         # Add tools if available
         tools = self._get_tool_schemas()
@@ -205,6 +223,7 @@ actionable outputs.{tool_descriptions}"""
         """Process tool calls from the LLM response."""
         results = []
         for call in tool_calls:
+            tool_call_id = call.get("id", "")
             func = call.get("function", {})
             name = func.get("name", "")
             try:
@@ -222,6 +241,7 @@ actionable outputs.{tool_descriptions}"""
                     role="tool",
                     content=content,
                     name=name,
+                    tool_call_id=tool_call_id,
                 )
             )
 
@@ -277,6 +297,7 @@ actionable outputs.{tool_descriptions}"""
                 tool_results = await self._process_tool_calls(
                     [
                         {
+                            "id": tc.id,
                             "function": {
                                 "name": tc.function.name,
                                 "arguments": tc.function.arguments,
