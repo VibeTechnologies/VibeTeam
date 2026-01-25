@@ -9,16 +9,20 @@ This package provides a multi-agent system with specialized roles:
 - ReliabilityEngineer: Monitors production, handles incidents
 - ReleaseEngineer: Manages deployments, versioning, releases
 
-Migration Status:
-- v2.x: MetaGPT-based (legacy, being deprecated)
-- v3.x: OpenHands SDK-based (new architecture)
+Usage:
+    from vibeteam import VibeTeam, AgentType
+
+    team = VibeTeam()
+    result = await team.run("Implement GitHub issue #123")
+
+    # Or use specific agent:
+    result = await team.run("Create release notes", agent_type=AgentType.RELEASE)
 """
 
 import logging
 import os
 
 __version__ = "3.0.0"
-__all__ = ["__version__"]
 
 logger = logging.getLogger(__name__)
 
@@ -62,34 +66,33 @@ def _init_langfuse() -> bool:
 # Initialize Langfuse on import
 _langfuse_enabled = _init_langfuse()
 
+# Primary exports - OpenHands-based (v3.x)
+from vibeteam.orchestrator import AgentType, VibeTeam, TaskResult
 
-# Lazy imports to support migration period
-# MetaGPT-based imports (legacy) - only work if metagpt is installed
-def _get_vibe_team_legacy():
-    """Get legacy MetaGPT-based VibeTeam (deprecated)."""
-    try:
-        from vibeteam.team import VibeTeam
-        return VibeTeam
-    except ImportError:
-        raise ImportError(
-            "MetaGPT is not installed. Use the new OpenHands-based API:\n"
-            "  from vibeteam.agents import BaseVibeAgent"
-        )
+# Agent exports for direct usage
+from vibeteam.agents import (
+    BaseVibeAgent,
+    ProductManagerAgent,
+    SoftwareEngineerAgent,
+    MarketerAgent,
+    SupportEngineerAgent,
+    ReliabilityEngineerAgent,
+    ReleaseEngineerAgent,
+)
 
-
-# OpenHands-based imports (new)
-def _get_base_vibe_agent():
-    """Get new OpenHands-based BaseVibeAgent."""
-    from vibeteam.agents.base import BaseVibeAgent
-    return BaseVibeAgent
-
-
-# For backwards compatibility, try to import VibeTeam
-# This will fail gracefully if metagpt is not installed
-try:
-    from vibeteam.team import VibeTeam
-    __all__.append("VibeTeam")
-except ImportError:
-    # MetaGPT not installed - only new API available
-    VibeTeam = None
-    logger.info("MetaGPT not installed. Using OpenHands-based agents only.")
+__all__ = [
+    # Core
+    "__version__",
+    # Orchestrator
+    "VibeTeam",
+    "AgentType",
+    "TaskResult",
+    # Agents
+    "BaseVibeAgent",
+    "ProductManagerAgent",
+    "SoftwareEngineerAgent",
+    "MarketerAgent",
+    "SupportEngineerAgent",
+    "ReliabilityEngineerAgent",
+    "ReleaseEngineerAgent",
+]
