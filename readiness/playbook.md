@@ -210,6 +210,88 @@ curl -s -X POST "https://docs.vibebrowser.app/api/chat" \
 
 ---
 
+## 8. VibeTeam Agent Outcomes
+
+**This section verifies actual agent behavior, not just infrastructure.**
+
+### 8.1 Check CronJob Status
+```bash
+kubectl get cronjobs -n vibeteam
+```
+**Expected:** All 4 CronJobs present and not suspended:
+- `reliability-engineer` (*/5 * * * *)
+- `product-manager` (0 */2 * * *)
+- `support-engineer` (*/15 * * * *)
+- `release-engineer` (0 9 * * *)
+
+### 8.2 Run Agent Verification Jobs
+```bash
+kubectl create job --from=cronjob/reliability-engineer test-sre -n vibeteam
+kubectl create job --from=cronjob/product-manager test-pm -n vibeteam
+kubectl create job --from=cronjob/support-engineer test-support -n vibeteam
+kubectl create job --from=cronjob/release-engineer test-release -n vibeteam
+# Wait 90 seconds for completion
+sleep 90
+kubectl get jobs -n vibeteam | grep "^test-"
+```
+**Expected:** All jobs show `Complete 1/1`
+
+### 8.3 Verify Agent Logs
+```bash
+# Reliability Engineer - should show endpoint health
+kubectl logs -n vibeteam $(kubectl get pods -n vibeteam -l job-name=test-sre -o jsonpath='{.items[0].metadata.name}')
+```
+**Expected:** "All X endpoints healthy"
+
+```bash
+# Product Manager - should connect to Langfuse
+kubectl logs -n vibeteam $(kubectl get pods -n vibeteam -l job-name=test-pm -o jsonpath='{.items[0].metadata.name}')
+```
+**Expected:** "Found X conversations" (0 is OK if no recent activity)
+
+```bash
+# Support Engineer - should connect to Gmail
+kubectl logs -n vibeteam $(kubectl get pods -n vibeteam -l job-name=test-support -o jsonpath='{.items[0].metadata.name}')
+```
+**Expected:** "Found X unread emails" (processes emails with `[Docs Support]` prefix)
+
+```bash
+# Release Engineer - should list merged PRs
+kubectl logs -n vibeteam $(kubectl get pods -n vibeteam -l job-name=test-release -o jsonpath='{.items[0].metadata.name}')
+```
+**Expected:** "Found X recently merged PRs"
+
+### 8.4 Clean Up Test Jobs
+```bash
+kubectl delete jobs test-sre test-pm test-support test-release -n vibeteam
+```
+
+### 8.5 Check Historical Outcomes
+
+**GitHub Issues Created by Agents:**
+```bash
+gh issue list -R VibeTechnologies/VibeWebAgent --search "author:vibetechnologies" --limit 5
+```
+
+**Gmail Sent Responses:**
+Check for emails sent with `[Docs Support]` responses in Gmail sent folder.
+
+**Langfuse Traces:**
+```bash
+curl -s "https://langfuse.vibebrowser.app/api/public/traces?limit=5&name=support-chat" \
+  -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" \
+  | jq '.data | map({timestamp: .timestamp, name: .name})'
+```
+
+**Evaluate:**
+- Are agents completing without errors?
+- Are outcomes being produced (issues, emails, traces)?
+- Any permission or authentication errors in logs?
+
+**Critical:** Yes - agents must produce verifiable outcomes
+
+---
+
 ## Final Assessment
 
 Based on all checks, determine the overall status:
@@ -221,6 +303,8 @@ All conditions met:
 - [ ] Kubernetes pods running without CrashLoopBackOff
 - [ ] GitHub API accessible
 - [ ] No high-frequency Sentry issues
+- [ ] All 4 VibeTeam agents complete successfully
+- [ ] Agent logs show expected outcomes (no auth errors)
 
 ### YELLOW - Degraded
 One or more non-critical issues:
@@ -229,6 +313,8 @@ One or more non-critical issues:
 - [ ] Some pod restarts (but stable now)
 - [ ] Sentry has low-frequency issues
 - [ ] Langfuse shows warnings
+- [ ] Some agents find 0 items to process (OK if no activity)
+- [ ] Agent job takes longer than expected but completes
 
 ### RED - Not Ready
 Any critical failure:
@@ -237,6 +323,8 @@ Any critical failure:
 - [ ] Pods in CrashLoopBackOff
 - [ ] GitHub API inaccessible
 - [ ] Multiple high-frequency Sentry errors
+- [ ] Agent jobs failing (ImagePullBackOff, OOMKilled, auth errors)
+- [ ] Langfuse or Gmail credentials invalid (401 errors in logs)
 
 ---
 
@@ -265,6 +353,7 @@ Any critical failure:
 | Sentry | OK/WARN/FAIL | [details] |
 | GitHub | OK/WARN/FAIL | [details] |
 | Docs Chat | OK/WARN/FAIL | [details] |
+| VibeTeam Agents | OK/WARN/FAIL | [details] |
 
 ## Issues Found
 - [List any issues]
