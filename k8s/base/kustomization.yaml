@@ -5,3 +5,4 @@ kind: Kustomization
 resources:
   - release-engineer.yaml
   - support-engineer.yaml
+  - product-manager.yaml
