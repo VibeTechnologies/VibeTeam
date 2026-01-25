@@ -41,13 +41,28 @@ jobs:
           kubectl -n $NAMESPACE delete secret vibeteam-secrets --ignore-not-found
           kubectl -n $NAMESPACE create secret generic vibeteam-secrets \
             --from-literal=SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" \
-            --from-literal=GITHUB_TOKEN="${{ secrets.PAT_TOKEN }}"
+            --from-literal=GITHUB_TOKEN="${{ secrets.PAT_TOKEN }}" \
+            --from-literal=LANGFUSE_PUBLIC_KEY="${{ secrets.LANGFUSE_PUBLIC_KEY }}" \
+            --from-literal=LANGFUSE_SECRET_KEY="${{ secrets.LANGFUSE_SECRET_KEY }}" \
+            --from-literal=LANGFUSE_BASE_URL="https://langfuse.vibebrowser.app"
+          
+          # Create/update gmail-oauth-secrets (if secrets exist)
+          if [ -n "${{ secrets.GMAIL_CREDENTIALS_JSON }}" ]; then
+            kubectl -n $NAMESPACE delete secret gmail-oauth-secrets --ignore-not-found
+            echo '${{ secrets.GMAIL_CREDENTIALS_JSON }}' > /tmp/gmail-credentials.json
+            echo '${{ secrets.GMAIL_TOKEN_JSON }}' > /tmp/gmail-token.json
+            kubectl -n $NAMESPACE create secret generic gmail-oauth-secrets \
+              --from-file=gmail-credentials.json=/tmp/gmail-credentials.json \
+              --from-file=gmail-token.json=/tmp/gmail-token.json
+            rm -f /tmp/gmail-credentials.json /tmp/gmail-token.json
+          fi
             
       - name: Deploy CronJobs
         run: |
-          # Apply base manifests with namespace override
-          kubectl apply -f k8s/base/sentry-triage.yaml -n $NAMESPACE
-          kubectl apply -f k8s/base/email-processor.yaml -n $NAMESPACE
+          # Apply all agent manifests
+          kubectl apply -f k8s/base/release-engineer.yaml -n $NAMESPACE
+          kubectl apply -f k8s/base/support-engineer.yaml -n $NAMESPACE
+          kubectl apply -f k8s/base/product-manager.yaml -n $NAMESPACE
           
       - name: Verify deployment
         run: |
@@ -56,6 +71,9 @@ jobs:
           echo ""
           echo "=== Secrets ==="
           kubectl get secrets -n $NAMESPACE | grep -E "(gmail|vibeteam)" || echo "No matching secrets"
+          echo ""
+          echo "=== ConfigMaps ==="
+          kubectl get configmaps -n $NAMESPACE | grep -E "scripts" || echo "No script configmaps"
           echo ""
           echo "=== Recent Jobs ==="
           kubectl get jobs -n $NAMESPACE --sort-by=.metadata.creationTimestamp | tail -5 || echo "No jobs yet"
