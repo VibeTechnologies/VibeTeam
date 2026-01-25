@@ -120,7 +120,7 @@ jobs:
 
       - name: Deploy CronJobs
         run: |
-          kubectl apply -f k8s/base/ -n $NAMESPACE
+          kubectl apply -k k8s/base/ -n $NAMESPACE
 
       - name: Verify deployment
         run: |
