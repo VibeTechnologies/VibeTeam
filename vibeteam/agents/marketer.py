@@ -92,7 +92,7 @@ class MarketerAgent(BaseVibeAgent):
     name = "Feynman"
     profile = "Marketer"
     goal = "Create engaging, story-driven content that resonates with developers"
-    model = "azure/gpt-5-2"
+    model = "azure/gpt-4.1"
     temperature = 0.7  # Higher temp for creativity
 
     def __init__(self, **kwargs: Any):

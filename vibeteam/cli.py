@@ -38,7 +38,7 @@ def main() -> None:
 @click.option(
     "--model",
     "-m",
-    default="azure/gpt-5-2",
+    default="azure/gpt-4.1",
     help="LLM model to use (LiteLLM format)",
 )
 def run(task: str, agent: str | None, model: str) -> None:
@@ -65,7 +65,7 @@ def run(task: str, agent: str | None, model: str) -> None:
 @click.option(
     "--model",
     "-m",
-    default="azure/gpt-5-2",
+    default="azure/gpt-4.1",
     help="LLM model to use",
 )
 def status(model: str) -> None:
@@ -111,7 +111,7 @@ def agents() -> None:
 @click.option(
     "--model",
     "-m",
-    default="azure/gpt-5-2",
+    default="azure/gpt-4.1",
     help="LLM model to use",
 )
 def info(agent_key: str, model: str) -> None:
@@ -236,6 +236,7 @@ def support_emails(max_emails: int, dry_run: bool) -> None:
     try:
         from pathlib import Path
 
+        from vibeteam.agents.support_engineer import SupportEngineerAgent
         from vibeteam.connectors.gmail import GmailConnector
 
         creds_path = Path(
@@ -253,18 +254,73 @@ def support_emails(max_emails: int, dry_run: bool) -> None:
         emails = gmail.fetch_unread_emails(max_results=max_emails)
         console.print(f"Found {len(emails)} unread emails")
 
+        # Initialize support agent
+        support_agent = SupportEngineerAgent()
+
         processed = 0
         for email in emails:
-            if "[Docs Support" in email.subject:
-                console.print(f"  Processing: {email.subject[:50]}...")
+            # Filter for support emails
+            if "[Docs Support" not in email.subject:
+                continue
+
+            console.print(f"  Processing: {email.subject[:50]}...")
+
+            # Format email for agent
+            email_content = f"""From: {email.sender}
+Subject: {email.subject}
+Date: {email.date}
+
+{email.body}"""
+
+            # Analyze email
+            analysis = asyncio.run(support_agent.analyze_email(email_content))
+            console.print(f"    Analysis: {analysis[:100]}...")
+
+            # Check if escalation needed
+            if "ESCALATE: Yes" in analysis or "escalat" in analysis.lower():
+                console.print("    [yellow]Flagged for escalation[/yellow]")
+                escalation = asyncio.run(support_agent.flag_for_escalation(email_content, analysis))
+                console.print("    Escalation ticket created")
+                # Mark as read but don't respond
                 if not dry_run:
                     gmail.mark_as_read(email.id)
                 processed += 1
+                continue
+
+            # Generate response
+            response_text = asyncio.run(support_agent.write_response(email_content, analysis))
+
+            # Validate response security
+            validation = asyncio.run(support_agent.validate_response_security(response_text))
+            if "VALIDATION: FAIL" in validation:
+                console.print("    [red]Response failed security validation[/red]")
+                continue
+
+            # Send response
+            if not dry_run:
+                # Extract just the response body (skip metadata)
+                response_body = response_text
+                if "---" in response_text:
+                    response_body = response_text.split("---")[-1].strip()
+
+                gmail.send_reply(
+                    thread_id=email.thread_id,
+                    to=email.sender_email,
+                    subject=f"Re: {email.subject}",
+                    body=response_body,
+                )
+                gmail.mark_as_read(email.id)
+                console.print("    [green]Response sent[/green]")
+            else:
+                console.print("    [dim]Dry run - response not sent[/dim]")
+
+            processed += 1
+            support_agent.reset()  # Clear conversation for next email
 
         console.print(f"[green]Processed {processed} support emails[/green]")
 
-    except ImportError:
-        console.print("[yellow]Gmail connector not available[/yellow]")
+    except ImportError as e:
+        console.print(f"[yellow]Import error: {e}[/yellow]")
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)

@@ -72,7 +72,7 @@ class BaseVibeAgent:
     goal: str = "Contribute to team success"
 
     # Model configuration
-    model: str = "azure/gpt-5-2"
+    model: str = "azure/gpt-4.1"
     temperature: float = 0.3
     max_tokens: int = 4096
 
@@ -92,7 +92,7 @@ class BaseVibeAgent:
             name: Agent name
             profile: Agent profile/role description
             goal: Agent's primary goal
-            model: LiteLLM model string (e.g., "azure/gpt-5-2")
+            model: LiteLLM model string (e.g., "azure/gpt-4.1")
             temperature: LLM temperature
             tools: List of tools available to this agent
         """
