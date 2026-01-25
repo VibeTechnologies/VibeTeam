@@ -162,7 +162,7 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
         console.print("[red]LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY required[/red]")
         sys.exit(1)
 
-    console.print(f"[bold]Product Manager - Langfuse Analysis[/bold]")
+    console.print("[bold]Product Manager - Langfuse Analysis[/bold]")
     console.print(f"Analyzing last {hours} hours of conversations...")
 
     # Fetch conversations
@@ -218,12 +218,13 @@ def support_emails(max_emails: int, dry_run: bool) -> None:
     """Support Engineer: Process support emails from Gmail."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    console.print(f"[bold]Support Engineer - Email Processing[/bold]")
+    console.print("[bold]Support Engineer - Email Processing[/bold]")
     console.print(f"Processing up to {max_emails} emails...")
 
     try:
-        from vibeteam.connectors.gmail import GmailConnector
         from pathlib import Path
+
+        from vibeteam.connectors.gmail import GmailConnector
 
         creds_path = Path(os.environ.get("GMAIL_CREDENTIALS_PATH", "/secrets/gmail-credentials.json"))
         token_path = Path(os.environ.get("GMAIL_TOKEN_PATH", "/secrets/gmail-token.json"))
@@ -263,7 +264,7 @@ def sre_health(endpoints: tuple) -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    console.print(f"[bold]Reliability Engineer - Health Checks[/bold]")
+    console.print("[bold]Reliability Engineer - Health Checks[/bold]")
 
     default_endpoints = [
         "https://api.vibebrowser.app/health",
@@ -300,7 +301,7 @@ def release_check() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    console.print(f"[bold]Release Engineer - Release Check[/bold]")
+    console.print("[bold]Release Engineer - Release Check[/bold]")
 
     gh_token = os.environ.get("GITHUB_TOKEN")
     if not gh_token:

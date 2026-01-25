@@ -67,18 +67,17 @@ def _init_langfuse() -> bool:
 _langfuse_enabled = _init_langfuse()
 
 # Primary exports - OpenHands-based (v3.x)
-from vibeteam.orchestrator import AgentType, VibeTeam, TaskResult
-
 # Agent exports for direct usage
 from vibeteam.agents import (
     BaseVibeAgent,
-    ProductManagerAgent,
-    SoftwareEngineerAgent,
     MarketerAgent,
-    SupportEngineerAgent,
-    ReliabilityEngineerAgent,
+    ProductManagerAgent,
     ReleaseEngineerAgent,
+    ReliabilityEngineerAgent,
+    SoftwareEngineerAgent,
+    SupportEngineerAgent,
 )
+from vibeteam.orchestrator import AgentType, TaskResult, VibeTeam
 
 __all__ = [
     # Core

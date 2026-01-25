@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vibeteam"
 version = "3.0.0"
-description = "OpenHands-based autonomous AI team for SaaS development"
+description = "LiteLLM-based autonomous AI team for SaaS development"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "VibeTechnologies", email = "team@vibetech.co"},
 ]
-keywords = ["ai", "openhands", "multi-agent", "autonomous", "saas", "development"]
+keywords = ["ai", "litellm", "multi-agent", "autonomous", "saas", "development"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -25,9 +25,6 @@ classifiers = [
 ]
 
 dependencies = [
-    # OpenHands SDK - replacing MetaGPT
-    "openhands-sdk>=1.2.0",
-    "openhands-tools>=1.2.0",
     # LLM and API
     "litellm>=1.35.0",
     "pydantic>=2.0.0,<3.0",
@@ -52,10 +49,6 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
-workspace = [
-    # Optional: for Docker sandboxed workspaces
-    "openhands-workspace>=1.2.0",
-]
 
 [project.scripts]
 vibeteam = "vibeteam.cli:main"
@@ -76,8 +69,11 @@ target-version = ["py310", "py311", "py312"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
-ignore = ["E501"]
+exclude = ["readiness/", "scripts/"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "C4"]
+ignore = ["E501", "E402", "F841"]
 
 [tool.mypy]
 python_version = "3.10"

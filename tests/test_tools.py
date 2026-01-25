@@ -4,13 +4,14 @@ Tests for VibeTeam OpenHands tools.
 These tests verify the tool wrappers work correctly with mocked connectors.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from vibeteam.tools.github import GitHubTool
-from vibeteam.tools.sentry import SentryTool
-from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.health import HealthCheckTool
+from vibeteam.tools.langfuse import LangfuseTool
+from vibeteam.tools.sentry import SentryTool
 
 
 class TestGitHubTool:

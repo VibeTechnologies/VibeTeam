@@ -9,7 +9,7 @@ from dataclasses import asdict
 from typing import Any
 
 from vibeteam.agents.base import BaseTool, ToolResult
-from vibeteam.connectors.health import HealthConnector, EndpointConfig
+from vibeteam.connectors.health import EndpointConfig, HealthConnector
 
 
 class HealthCheckTool(BaseTool):

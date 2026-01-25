@@ -16,9 +16,9 @@ from typing import Any
 
 from vibeteam.agents.base import BaseVibeAgent
 from vibeteam.tools.github import GitHubTool
-from vibeteam.tools.sentry import SentryTool
-from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.health import HealthCheckTool
+from vibeteam.tools.langfuse import LangfuseTool
+from vibeteam.tools.sentry import SentryTool
 
 # Release Engineer Protocol
 RELEASE_ENGINEER_PROTOCOL = """

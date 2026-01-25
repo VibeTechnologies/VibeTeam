@@ -1,8 +1,7 @@
 """Tests for VibeTeam orchestrator."""
 
-import pytest
 
-from vibeteam import VibeTeam, AgentType, TaskResult
+from vibeteam import AgentType, TaskResult, VibeTeam
 from vibeteam.orchestrator import AGENT_REGISTRY, ROUTING_KEYWORDS
 
 

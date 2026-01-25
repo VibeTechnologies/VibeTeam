@@ -10,8 +10,8 @@ from typing import Any
 
 from vibeteam.agents.base import BaseVibeAgent
 from vibeteam.tools.health import HealthCheckTool
-from vibeteam.tools.sentry import SentryTool
 from vibeteam.tools.langfuse import LangfuseTool
+from vibeteam.tools.sentry import SentryTool
 
 # The Production Engineering Protocol
 PROD_ENG_PROTOCOL = """

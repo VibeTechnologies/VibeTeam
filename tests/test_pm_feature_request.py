@@ -82,7 +82,7 @@ class TestPMFeatureRequest:
         assert "github_updated" in result
         if result.get("github_updated"):
             print("\nGitHub Customer Requests issue updated!")
-            print(f"Check: https://github.com/VibeTechnologies/VibeWebAgent/issues/322")
+            print("Check: https://github.com/VibeTechnologies/VibeWebAgent/issues/322")
         else:
             print(f"\nGitHub update failed: {result.get('github_error', 'Unknown error')}")
 
