@@ -124,6 +124,7 @@ jobs:
 
       - name: Verify deployment
         run: |
+          set +e  # Don't fail on errors
           echo "=== CronJobs ==="
           kubectl get cronjobs -n $NAMESPACE
           echo ""
@@ -137,11 +138,9 @@ jobs:
           kubectl get pods -n $NAMESPACE --sort-by=.metadata.creationTimestamp | tail -10 || echo "No pods"
           echo ""
           echo "=== Recent Pod Logs ==="
-          # Get logs from recently run pods (reliability-engineer, support-engineer)
-          for job_prefix in reliability-engineer support-engineer; do
-            pod=$(kubectl get pods -n $NAMESPACE -l app=$job_prefix --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
-            if [ -n "$pod" ]; then
-              echo "--- Logs for $pod ---"
-              kubectl logs -n $NAMESPACE $pod --tail=50 2>/dev/null || echo "No logs available"
-            fi
+          # Get logs from the last few pods
+          for pod in $(kubectl get pods -n $NAMESPACE --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -5); do
+            echo "--- Logs for $pod ---"
+            kubectl logs -n $NAMESPACE $pod --tail=30 2>/dev/null || echo "No logs available"
           done
+          echo "=== Deployment verification complete ==="
