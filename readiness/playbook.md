@@ -82,13 +82,13 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}s" https://langfuse.vibebrows
 
 ### 2.1 Test Azure OpenAI
 ```bash
-curl -s -X POST "${AZURE_API_BASE}openai/deployments/gpt-5-2/chat/completions?api-version=2024-08-01-preview" \
+curl -s -X POST "${AZURE_API_BASE}openai/deployments/gpt-4.1/chat/completions?api-version=2024-08-01-preview" \
   -H "Content-Type: application/json" \
   -H "api-key: ${AZURE_API_KEY}" \
-  -d '{"messages":[{"role":"user","content":"Say hello in 5 words"}],"max_completion_tokens":50}' \
+  -d '{"messages":[{"role":"user","content":"Say hello in 5 words"}],"max_tokens":50}' \
   | jq -r '.choices[0].message.content // .error.message'
 ```
-**Note:** Use `max_completion_tokens` (not `max_tokens`) for gpt-5 models.
+**Note:** Using gpt-4.1 model deployed on Azure OpenAI.
 **Expected:** A coherent 5-word response
 **Timeout:** Allow up to 120 seconds for response
 **Critical:** Yes - core functionality
