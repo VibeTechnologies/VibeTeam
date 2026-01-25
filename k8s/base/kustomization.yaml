@@ -6,3 +6,4 @@ resources:
   - product-manager.yaml
   - support-engineer.yaml
   - release-engineer.yaml  # Also contains reliability-engineer
+  - software-engineer.yaml
