@@ -1,5 +1,5 @@
 """
-VibeTeam - MetaGPT-based autonomous AI team for SaaS development.
+VibeTeam - Autonomous AI team for SaaS development.
 
 This package provides a multi-agent system with specialized roles:
 - ProductManager: Defines requirements, roadmap, user stories
@@ -8,15 +8,17 @@ This package provides a multi-agent system with specialized roles:
 - SupportEngineer: Handles user issues, documentation, FAQ
 - ReliabilityEngineer: Monitors production, handles incidents
 - ReleaseEngineer: Manages deployments, versioning, releases
+
+Migration Status:
+- v2.x: MetaGPT-based (legacy, being deprecated)
+- v3.x: OpenHands SDK-based (new architecture)
 """
 
 import logging
 import os
 
-from vibeteam.team import VibeTeam
-
-__version__ = "2.0.0"
-__all__ = ["VibeTeam", "__version__"]
+__version__ = "3.0.0"
+__all__ = ["__version__"]
 
 logger = logging.getLogger(__name__)
 
@@ -59,3 +61,35 @@ def _init_langfuse() -> bool:
 
 # Initialize Langfuse on import
 _langfuse_enabled = _init_langfuse()
+
+
+# Lazy imports to support migration period
+# MetaGPT-based imports (legacy) - only work if metagpt is installed
+def _get_vibe_team_legacy():
+    """Get legacy MetaGPT-based VibeTeam (deprecated)."""
+    try:
+        from vibeteam.team import VibeTeam
+        return VibeTeam
+    except ImportError:
+        raise ImportError(
+            "MetaGPT is not installed. Use the new OpenHands-based API:\n"
+            "  from vibeteam.agents import BaseVibeAgent"
+        )
+
+
+# OpenHands-based imports (new)
+def _get_base_vibe_agent():
+    """Get new OpenHands-based BaseVibeAgent."""
+    from vibeteam.agents.base import BaseVibeAgent
+    return BaseVibeAgent
+
+
+# For backwards compatibility, try to import VibeTeam
+# This will fail gracefully if metagpt is not installed
+try:
+    from vibeteam.team import VibeTeam
+    __all__.append("VibeTeam")
+except ImportError:
+    # MetaGPT not installed - only new API available
+    VibeTeam = None
+    logger.info("MetaGPT not installed. Using OpenHands-based agents only.")
