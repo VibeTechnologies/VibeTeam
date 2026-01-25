@@ -13,7 +13,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   NAMESPACE: vibeteam
 
 jobs:
@@ -26,6 +25,10 @@ jobs:
       image_tag: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set image name lowercase
+        id: image_name
+        run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -62,6 +65,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set image name lowercase
+        run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
@@ -109,7 +115,7 @@ jobs:
           # Get the SHA tag
           SHA_TAG="${{ github.sha }}"
           SHORT_SHA="${SHA_TAG:0:7}"
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHORT_SHA}"
+          IMAGE="${{ env.REGISTRY }}/${IMAGE_NAME}:${SHORT_SHA}"
           
           # Update all k8s manifests with new image
           for file in k8s/base/*.yaml; do
