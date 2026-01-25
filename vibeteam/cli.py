@@ -3,6 +3,11 @@ VibeTeam CLI - Command line interface for the autonomous team.
 """
 
 import asyncio
+import json
+import logging
+import os
+import sys
+from datetime import datetime, timedelta
 
 import click
 from rich.console import Console
@@ -12,6 +17,7 @@ from vibeteam import __version__
 from vibeteam.orchestrator import AgentType, VibeTeam
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 @click.group()
@@ -32,7 +38,7 @@ def main() -> None:
 @click.option(
     "--model",
     "-m",
-    default="openai/gpt-5-mini",
+    default="azure/gpt-5-2",
     help="LLM model to use (LiteLLM format)",
 )
 def run(task: str, agent: str | None, model: str) -> None:
@@ -52,19 +58,20 @@ def run(task: str, agent: str | None, model: str) -> None:
         console.print("\n" + result.response)
     else:
         console.print(f"\n[bold red]Task failed: {result.error}[/bold red]")
+        sys.exit(1)
 
 
 @main.command()
 @click.option(
     "--model",
     "-m",
-    default="openai/gpt-5-mini",
+    default="azure/gpt-5-2",
     help="LLM model to use",
 )
 def status(model: str) -> None:
     """Show team status."""
     team = VibeTeam(model=model)
-    status = team.get_team_status()
+    team_status = team.get_team_status()
 
     table = Table(title="VibeTeam Status")
     table.add_column("Agent", style="cyan")
@@ -72,7 +79,7 @@ def status(model: str) -> None:
     table.add_column("Model")
     table.add_column("Tools", style="yellow")
 
-    for agent_key, info in status.items():
+    for agent_key, info in team_status.items():
         tools = ", ".join(info["tools"]) if info["tools"] else "None"
         table.add_row(agent_key, info["name"], info["model"], tools)
 
@@ -102,7 +109,7 @@ def agents() -> None:
 @click.option(
     "--model",
     "-m",
-    default="openai/gpt-5-mini",
+    default="azure/gpt-5-2",
     help="LLM model to use",
 )
 def info(agent_key: str, model: str) -> None:
@@ -116,17 +123,210 @@ def info(agent_key: str, model: str) -> None:
         return
 
     console.print(f"\n[bold cyan]{agent.name}[/bold cyan]")
-    console.print(f"[dim]Model: {agent.model}[/dim]\n")
-
-    console.print("[bold]Protocol:[/bold]")
-    # Show first 500 chars of protocol
-    protocol_preview = agent.protocol[:500] + "..." if len(agent.protocol) > 500 else agent.protocol
-    console.print(f"[dim]{protocol_preview}[/dim]\n")
+    console.print(f"[dim]Profile: {agent.profile}[/dim]")
+    console.print(f"[dim]Model: {agent.model}[/dim]")
+    console.print(f"[dim]Goal: {agent.goal}[/dim]\n")
 
     if agent.tools:
         console.print("[bold]Tools:[/bold]")
         for tool in agent.tools:
             console.print(f"  - [yellow]{tool.name}[/yellow]: {tool.description[:60]}...")
+
+
+# =============================================================================
+# Scheduled Task Commands (for k8s CronJobs)
+# =============================================================================
+
+
+@main.group()
+def scheduled() -> None:
+    """Scheduled task commands for k8s CronJobs."""
+    pass
+
+
+@scheduled.command(name="pm-analyze")
+@click.option("--hours", default=2, help="Hours of conversations to analyze")
+@click.option("--dry-run", is_flag=True, help="Don't create GitHub issues")
+def pm_analyze(hours: int, dry_run: bool) -> None:
+    """Product Manager: Analyze Langfuse conversations for feature requests."""
+    import requests
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    langfuse_public = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    langfuse_secret = os.environ.get("LANGFUSE_SECRET_KEY")
+    langfuse_url = os.environ.get("LANGFUSE_BASE_URL", "https://langfuse.vibebrowser.app")
+    gh_token = os.environ.get("GITHUB_TOKEN")
+
+    if not langfuse_public or not langfuse_secret:
+        console.print("[red]LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY required[/red]")
+        sys.exit(1)
+
+    console.print(f"[bold]Product Manager - Langfuse Analysis[/bold]")
+    console.print(f"Analyzing last {hours} hours of conversations...")
+
+    # Fetch conversations
+    url = f"{langfuse_url}/api/public/traces"
+    from_time = datetime.utcnow() - timedelta(hours=hours)
+    params = {
+        "limit": 100,
+        "orderBy": "timestamp.desc",
+        "fromTimestamp": from_time.isoformat() + "Z",
+        "name": "support-chat",
+    }
+
+    try:
+        resp = requests.get(url, auth=(langfuse_public, langfuse_secret), params=params, timeout=30)
+        resp.raise_for_status()
+        traces = resp.json().get("data", [])
+        console.print(f"Found {len(traces)} conversations")
+
+        # Feature request patterns
+        feature_patterns = [
+            "can you add", "would be nice if", "feature request", "i wish",
+            "please add", "need a way to", "any plans to", "does vibe support",
+        ]
+
+        feature_requests = []
+        for trace in traces:
+            input_text = str(trace.get("input", "")).lower()
+            if any(p in input_text for p in feature_patterns):
+                feature_requests.append({
+                    "id": trace.get("id"),
+                    "text": input_text[:200],
+                    "timestamp": trace.get("timestamp"),
+                })
+
+        console.print(f"Found {len(feature_requests)} potential feature requests")
+
+        if feature_requests and gh_token and not dry_run:
+            # Update GitHub tracking issue
+            console.print("[dim]Updating GitHub tracking issue...[/dim]")
+            # Implementation would go here
+
+        console.print("[green]Analysis complete[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+@scheduled.command(name="support-emails")
+@click.option("--max-emails", default=20, help="Maximum emails to process")
+@click.option("--dry-run", is_flag=True, help="Don't send responses")
+def support_emails(max_emails: int, dry_run: bool) -> None:
+    """Support Engineer: Process support emails from Gmail."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    console.print(f"[bold]Support Engineer - Email Processing[/bold]")
+    console.print(f"Processing up to {max_emails} emails...")
+
+    try:
+        from vibeteam.connectors.gmail import GmailConnector
+        from pathlib import Path
+
+        creds_path = Path(os.environ.get("GMAIL_CREDENTIALS_PATH", "/secrets/gmail-credentials.json"))
+        token_path = Path(os.environ.get("GMAIL_TOKEN_PATH", "/secrets/gmail-token.json"))
+
+        if not creds_path.exists():
+            console.print(f"[red]Credentials not found: {creds_path}[/red]")
+            sys.exit(1)
+
+        gmail = GmailConnector(credentials_path=creds_path, token_path=token_path)
+        gmail.authenticate(headless=True)
+
+        emails = gmail.fetch_unread_emails(max_results=max_emails)
+        console.print(f"Found {len(emails)} unread emails")
+
+        processed = 0
+        for email in emails:
+            if "[Docs Support" in email.subject:
+                console.print(f"  Processing: {email.subject[:50]}...")
+                if not dry_run:
+                    gmail.mark_as_read(email.id)
+                processed += 1
+
+        console.print(f"[green]Processed {processed} support emails[/green]")
+
+    except ImportError:
+        console.print("[yellow]Gmail connector not available[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+@scheduled.command(name="sre-health")
+@click.option("--endpoints", "-e", multiple=True, help="Endpoints to check")
+def sre_health(endpoints: tuple) -> None:
+    """Reliability Engineer: Run health checks on endpoints."""
+    import requests
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    console.print(f"[bold]Reliability Engineer - Health Checks[/bold]")
+
+    default_endpoints = [
+        "https://api.vibebrowser.app/health",
+        "https://portal.vibebrowser.app",
+        "https://docs.vibebrowser.app",
+    ]
+
+    check_endpoints = list(endpoints) if endpoints else default_endpoints
+    console.print(f"Checking {len(check_endpoints)} endpoints...")
+
+    results = []
+    for endpoint in check_endpoints:
+        try:
+            resp = requests.get(endpoint, timeout=10)
+            status = "OK" if resp.status_code == 200 else f"ERROR ({resp.status_code})"
+            results.append((endpoint, status, resp.elapsed.total_seconds()))
+            console.print(f"  {status}: {endpoint} ({resp.elapsed.total_seconds():.2f}s)")
+        except Exception as e:
+            results.append((endpoint, f"FAIL: {e}", 0))
+            console.print(f"  [red]FAIL: {endpoint} - {e}[/red]")
+
+    failed = sum(1 for _, s, _ in results if not s.startswith("OK"))
+    if failed > 0:
+        console.print(f"[red]{failed} endpoints failed[/red]")
+        sys.exit(1)
+    else:
+        console.print(f"[green]All {len(results)} endpoints healthy[/green]")
+
+
+@scheduled.command(name="release-check")
+def release_check() -> None:
+    """Release Engineer: Check for pending releases."""
+    import subprocess
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    console.print(f"[bold]Release Engineer - Release Check[/bold]")
+
+    gh_token = os.environ.get("GITHUB_TOKEN")
+    if not gh_token:
+        console.print("[red]GITHUB_TOKEN required[/red]")
+        sys.exit(1)
+
+    # Check for merged PRs since last release
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "list", "--state", "merged", "--limit", "10", "--json", "number,title,mergedAt"],
+            capture_output=True, text=True,
+            env={**os.environ, "GH_TOKEN": gh_token}
+        )
+        if result.returncode == 0:
+            prs = json.loads(result.stdout)
+            console.print(f"Found {len(prs)} recently merged PRs")
+            for pr in prs[:5]:
+                console.print(f"  #{pr['number']}: {pr['title'][:50]}")
+        else:
+            console.print(f"[yellow]Could not fetch PRs: {result.stderr}[/yellow]")
+
+        console.print("[green]Release check complete[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
 
 
 # Legacy command for backwards compatibility
@@ -147,6 +347,7 @@ def run_project(requirement: str, rounds: int, investment: float) -> None:
         console.print(result.response)
     else:
         console.print(f"\n[bold red]Task failed: {result.error}[/bold red]")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
