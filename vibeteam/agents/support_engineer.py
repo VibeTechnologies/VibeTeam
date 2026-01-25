@@ -9,8 +9,8 @@ OpenHands-based replacement for the MetaGPT SupportEngineer role.
 from typing import Any
 
 from vibeteam.agents.base import BaseVibeAgent
-from vibeteam.tools.gmail import GmailTool
 from vibeteam.tools.github import GitHubTool
+from vibeteam.tools.gmail import GmailTool
 
 # The Support Protocol
 SUPPORT_PROTOCOL = """

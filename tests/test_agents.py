@@ -4,10 +4,11 @@ Tests for VibeTeam OpenHands agents and tools.
 These tests verify the new OpenHands-based agent architecture.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from vibeteam.agents.base import BaseVibeAgent, BaseTool, ToolResult, Message
+import pytest
+
+from vibeteam.agents.base import BaseTool, BaseVibeAgent, Message, ToolResult
 
 
 class MockTool(BaseTool):

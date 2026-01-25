@@ -8,7 +8,7 @@ import json
 import os
 from typing import Any
 
-from vibeteam.agents.base import BaseVibeAgent, BaseTool, ToolResult
+from vibeteam.agents.base import BaseTool, BaseVibeAgent, ToolResult
 from vibeteam.tools.github import GitHubTool
 
 
