@@ -1,0 +1,96 @@
+# OpenHands Server Deployment
+# Provides Web UI and API for AI-powered code assistance
+# Uses Local Runtime (no Docker-in-Docker required)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhands
+  labels:
+    app: openhands
+    team: vibeteam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openhands
+  template:
+    metadata:
+      labels:
+        app: openhands
+        team: vibeteam
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: openhands
+          image: ghcr.io/all-hands-ai/openhands:0.40
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            # Runtime configuration
+            - name: RUNTIME
+              value: "local"
+            - name: WORKSPACE_BASE
+              value: "/opt/workspace"
+            # LLM configuration (Azure OpenAI)
+            - name: LLM_MODEL
+              value: "azure/gpt-4.1"
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_KEY
+            - name: LLM_BASE_URL
+              value: "https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/"
+            - name: LLM_API_VERSION
+              value: "2024-08-01-preview"
+            # GitHub integration
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: GITHUB_TOKEN
+                  optional: true
+            # Sandbox settings
+            - name: SANDBOX_TIMEOUT
+              value: "300"
+            - name: MAX_ITERATIONS
+              value: "100"
+          volumeMounts:
+            - name: workspace
+              mountPath: /opt/workspace
+            - name: config
+              mountPath: /app/config.toml
+              subPath: config.toml
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: config
+          configMap:
+            name: openhands-config

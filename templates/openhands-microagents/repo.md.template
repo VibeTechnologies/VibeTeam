@@ -1,0 +1,62 @@
+# Repository Microagent Template
+# Copy this to .openhands/microagents/repo.md in target repositories
+# and customize for each project.
+
+---
+name: repo
+agent: CodeActAgent
+triggers:
+  - keyword: ""  # Empty = always active for this repo
+---
+
+# Repository Instructions
+
+You are working on **{REPO_NAME}**, part of the VibeTechnologies organization.
+
+## Project Overview
+
+{BRIEF_DESCRIPTION}
+
+## Tech Stack
+
+- **Language**: {LANGUAGE}
+- **Framework**: {FRAMEWORK}
+- **Package Manager**: {PACKAGE_MANAGER}
+- **Test Framework**: {TEST_FRAMEWORK}
+
+## Development Commands
+
+```bash
+# Install dependencies
+{INSTALL_CMD}
+
+# Run tests
+{TEST_CMD}
+
+# Run linting
+{LINT_CMD}
+
+# Build project
+{BUILD_CMD}
+```
+
+## Code Style Guidelines
+
+- Follow existing code patterns in the repository
+- Run linting before committing
+- Write tests for new features
+- Keep commits atomic and well-described
+
+## Important Files
+
+- `{CONFIG_FILE}` - Main configuration
+- `{MAIN_ENTRY}` - Application entry point
+- `{TEST_DIR}/` - Test files location
+
+## Common Patterns
+
+{COMMON_PATTERNS}
+
+## Debugging Tips
+
+{DEBUGGING_TIPS}

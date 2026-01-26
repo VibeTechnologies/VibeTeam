@@ -2,38 +2,115 @@
 
 LiteLLM-based autonomous AI team for VibeBrowser SaaS operations.
 
-## Overview
+## Agent Overview
 
-VibeTeam provides specialized agents that run as Kubernetes CronJobs:
+VibeTeam provides **two types of AI agents**:
 
-| Agent | Schedule | Responsibility |
-|-------|----------|----------------|
-| **Reliability Engineer** | Every 5 min | Health checks, endpoint monitoring |
-| **Support Engineer** | Every 15 min | Process customer support emails |
-| **Product Manager** | Every 2 hours | Analyze Langfuse for feature requests |
-| **Software Engineer** | Every 4 hours | Analyze GitHub issues, suggest fixes |
-| **Release Engineer** | Daily 9 AM | Track merged PRs, release readiness |
+### 1. Interactive Agents (On-Demand)
 
-## Installation
+Invoke these agents via Slack, GitHub, or Web UI for immediate assistance:
+
+| Channel | How to Invoke | Use Case |
+|---------|---------------|----------|
+| **Slack** | `@vibeteam <request>` | Ask questions, request code changes, get help |
+| **GitHub** | Add `fix-me` label OR comment `@openhands-agent` | Auto-fix issues, implement features |
+| **Web UI** | Visit [team.vibebrowser.app](https://team.vibebrowser.app) | Interactive chat with full IDE capabilities |
+
+### 2. Autonomous Agents (Scheduled)
+
+These specialized agents run automatically as Kubernetes CronJobs:
+
+| Agent | Name | Schedule | Responsibility |
+|-------|------|----------|----------------|
+| **Reliability Engineer** | Hawking | Every 5 min | Health checks, endpoint monitoring, incident analysis |
+| **Support Engineer** | Nightingale | Every 15 min | Process customer support emails, draft responses |
+| **Product Manager** | Curie | Every 2 hours | Analyze Langfuse for feature requests, write PRDs |
+| **Software Engineer** | Turing | Every 4 hours | Analyze GitHub issues, implement fixes |
+| **Release Engineer** | Einstein | Daily 9 AM | Track merged PRs, validate releases, monitor Sentry |
+| **Marketer** | Feynman | On-demand | Create announcements, social posts, content |
+
+---
+
+## Using Interactive Agents
+
+### Slack (@vibeteam)
+
+Mention `@vibeteam` in any channel where the bot is installed:
+
+```
+@vibeteam Can you help me fix the login timeout issue in VibeWebAgent?
+
+@vibeteam Implement a dark mode toggle for the extension popup
+
+@vibeteam Review the latest PR in vibe-mcp and suggest improvements
+```
+
+The agent will:
+1. Acknowledge your request
+2. Work on the task (may take a few minutes for complex tasks)
+3. Reply with results, code snippets, or a link to a created PR
+
+### GitHub (@openhands-agent)
+
+**Method 1: Label-based (Recommended)**
+
+1. Open or create an issue describing the bug/feature
+2. Add the `fix-me` label
+3. OpenHands will automatically:
+   - Analyze the issue
+   - Create a branch with the fix
+   - Open a PR for review
+   - Comment on the issue with progress
+
+**Method 2: Comment-based**
+
+Comment `@openhands-agent` on any issue to trigger the agent:
+
+```
+@openhands-agent Please implement this feature
+
+@openhands-agent Can you investigate why this test is failing?
+```
+
+### Supported Repositories
+
+Interactive agents are available in:
+- `VibeTechnologies/VibeWebAgent` - Chrome extension
+- `VibeTechnologies/vibe-mcp` - MCP servers
+- `VibeTechnologies/VibeBrowserAppPage` - Landing page
+- `VibeTechnologies/VibeTeam` - This repository
+
+See [OpenHands Integration Guide](docs/openhands-integration.md) for setup details.
+
+---
+
+## Using Autonomous Agents
+
+### Installation
 
 ```bash
 pip install -e .
 ```
 
-## CLI Usage
+### CLI Usage
 
 ```bash
 # Run a task with auto-routing
 vibeteam run "Check API health"
 
-# Run with specific agent
+# Run with specific agent (pm, swe, sre, support, release, marketer)
 vibeteam run "Analyze user feedback" --agent pm
+vibeteam run "Fix the login bug in auth.ts" --agent swe
+vibeteam run "Check production health" --agent sre
 
 # Show team status
 vibeteam status
 
 # List available agents
 vibeteam agents
+
+# Get detailed info about an agent
+vibeteam info pm
 
 # Scheduled commands (used by k8s CronJobs)
 vibeteam scheduled sre-health
@@ -158,10 +235,63 @@ black --check .
 mypy vibeteam
 ```
 
+## Connecting to Your GitHub Org/Repo
+
+VibeTeam can work with any GitHub organization and repository.
+
+### Using CLI
+
+```bash
+# Run SWE agent on your repo
+vibeteam scheduled swe-issues --repo YourOrg/YourRepo --label auto-fix
+
+# Run release check on your repo
+vibeteam run "Check for pending releases in YourOrg/YourRepo" --agent release
+```
+
+### Using GitHub App (Recommended)
+
+1. Create a GitHub App for your org at `https://github.com/organizations/YOUR_ORG/settings/apps/new`
+2. Configure permissions: Contents, Issues, Pull Requests (read/write), Metadata (read)
+3. Install the app on your repositories
+4. Store credentials as secrets
+
+See [GitHub App Authentication](docs/github-app-auth.md) for full setup guide.
+
+### Using Personal Access Token
+
+```bash
+# Set token with repo access
+export GITHUB_TOKEN="ghp_your_token_here"
+
+# Run agents
+vibeteam scheduled swe-issues --repo YourOrg/YourRepo
+```
+
+### Kubernetes Configuration
+
+Update the CronJob manifests to target your repo:
+
+```yaml
+# k8s/base/software-engineer.yaml
+command:
+  - vibeteam
+  - scheduled
+  - swe-issues
+  - --repo
+  - YourOrg/YourRepo  # Change this
+  - --label
+  - auto-fix
+```
+
 ## Documentation
 
+- [OpenHands Integration Guide](docs/openhands-integration.md) - Slack, GitHub, and Web UI setup
+- [Slack App Setup Guide](docs/slack-app-setup.md) - Create and configure the Slack bot
+- [GitHub App Authentication](docs/github-app-auth.md) - Secure bot identity
 - [Support Engineer](docs/support-engineer.md) - Email processing flow
 - [Readiness Playbook](readiness/playbook.md) - Production verification
+- [Design: OpenHands Migration](docs/design-openhands-migration.md) - Architecture decisions
 
 ## License
 

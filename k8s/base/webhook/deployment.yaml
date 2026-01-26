@@ -19,9 +19,11 @@ spec:
         app: vibeteam-webhook
         team: vibeteam
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: webhook
-          image: ghcr.io/vibetechnologies/vibeteam:latest
+          image: ghcr.io/vibetechnologies/vibeteam:82f7cd5
           command: ["python", "-m", "vibeteam.webhook.server"]
           ports:
             - name: http

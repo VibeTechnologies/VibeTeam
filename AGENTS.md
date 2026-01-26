@@ -2,6 +2,38 @@
 
 Instructions for AI agents working on the VibeTeam repository.
 
+## Available Agents
+
+VibeTeam has two types of agents:
+
+### Interactive Agents (On-Demand)
+
+| Channel | How to Invoke | Use Case |
+|---------|---------------|----------|
+| **Slack** | `@vibeteam <request>` | Quick questions, code changes |
+| **GitHub** | `fix-me` label or `@openhands-agent` | Auto-fix issues |
+| **Web UI** | [team.vibebrowser.app](https://team.vibebrowser.app) | Interactive IDE |
+
+### Autonomous Agents (Scheduled)
+
+| Agent | Codename | CLI Key | Schedule | Purpose |
+|-------|----------|---------|----------|---------|
+| Product Manager | Curie | `pm` | Every 2h | Feature requests, PRDs, roadmap |
+| Software Engineer | Turing | `swe` | Every 4h | Code fixes, implementations |
+| Support Engineer | Nightingale | `support` | Every 15min | Email support, responses |
+| Reliability Engineer | Hawking | `sre` | Every 5min | Health checks, incidents |
+| Release Engineer | Einstein | `release` | Daily 9AM | Release validation, Sentry |
+| Marketer | Feynman | `marketer` | On-demand | Content, announcements |
+
+**CLI usage:**
+```bash
+vibeteam run "your task" --agent <key>   # e.g., --agent pm, --agent swe
+vibeteam agents                           # List all agents
+vibeteam info <key>                       # Agent details
+```
+
+See [docs/openhands-integration.md](docs/openhands-integration.md) for interactive agent usage guide.
+
 ## Readiness Check
 
 Before running VibeTeam agents or after infrastructure changes, verify system readiness.
@@ -40,14 +72,17 @@ The playbook allows for intelligent judgment on ambiguous cases.
 VibeTeam/
   vibeteam/           # Main package
     connectors/       # External service integrations
-    roles/            # Agent roles (ProductManager, ReleaseEngineer, etc.)
+    agents/           # Agent implementations (ProductManager, SoftwareEngineer, etc.)
     team.py           # Team orchestration
+  k8s/                # Kubernetes manifests
+    base/openhands/   # OpenHands server deployment
+  templates/          # GitHub workflow & microagent templates
   readiness/          # System readiness checks
     check.py          # Automated script
     playbook.md       # GenAI evaluation playbook
   scripts/            # Utility scripts
   tests/              # Test files
-  config/             # Configuration files
+  docs/               # Documentation
 ```
 
 ## Key Connectors

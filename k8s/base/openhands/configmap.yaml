@@ -1,0 +1,38 @@
+# OpenHands ConfigMap
+# Configuration for the OpenHands server
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openhands-config
+  labels:
+    app: openhands
+    team: vibeteam
+data:
+  config.toml: |
+    [core]
+    runtime = "local"
+    workspace_base = "/opt/workspace"
+    max_iterations = 100
+    
+    [llm]
+    model = "azure/gpt-4.1"
+    api_version = "2024-08-01-preview"
+    temperature = 0.0
+    max_tokens = 4096
+    
+    [sandbox]
+    timeout = 300
+    enable_auto_lint = true
+    
+    [security]
+    # Disable confirmation dialogs for automated use
+    confirmation_mode = "disabled"
+    
+    [agent]
+    # Default agent for coding tasks
+    default_agent = "CodeActAgent"
+    
+    # Memory settings
+    enable_memory = true
+    memory_max_threads = 3

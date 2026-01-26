@@ -1,0 +1,74 @@
+# OpenHands Issue Resolver Workflow
+# Copy this file to .github/workflows/openhands-resolver.yml in target repos
+#
+# Triggers:
+# - When an issue is labeled with 'fix-me'
+# - When someone comments '@openhands-agent' on an issue
+#
+# Required secrets:
+# - LLM_API_KEY: Azure OpenAI API key
+# - LLM_BASE_URL: Azure OpenAI endpoint (optional, can be in env)
+#
+# For more info: https://docs.all-hands.dev/modules/usage/how-to/github-action
+
+name: OpenHands Issue Resolver
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  resolve-issue:
+    # Run when 'fix-me' label is added OR @openhands-agent is mentioned
+    if: |
+      (github.event_name == 'issues' && github.event.label.name == 'fix-me') ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@openhands-agent'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run OpenHands Resolver
+        uses: all-hands-ai/openhands-resolver@main
+        with:
+          # Issue to resolve
+          issue_number: ${{ github.event.issue.number }}
+          
+          # LLM Configuration (Azure OpenAI)
+          llm_model: "azure/gpt-4.1"
+          llm_api_key: ${{ secrets.LLM_API_KEY }}
+          llm_base_url: "https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/"
+          
+          # Agent settings
+          max_iterations: 50
+          
+          # Automatically create PR with the fix
+          auto_pr: true
+          
+          # Comment on issue with progress
+          comment_on_issue: true
+
+      - name: Add completion label
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['openhands-resolved']
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'fix-me'
+            }).catch(() => {});

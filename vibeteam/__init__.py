@@ -42,17 +42,22 @@ def _init_langfuse() -> bool:
         return False
 
     # Set base URL if not already set
-    if not os.environ.get("LANGFUSE_HOST") and not os.environ.get("LANGFUSE_BASE_URL"):
+    # LiteLLM uses LANGFUSE_HOST, but we also support LANGFUSE_BASE_URL
+    host = os.environ.get("LANGFUSE_HOST") or os.environ.get("LANGFUSE_BASE_URL")
+    if host:
+        os.environ["LANGFUSE_HOST"] = host
+    else:
         os.environ["LANGFUSE_HOST"] = "https://langfuse.vibebrowser.app"
 
     try:
         import litellm
 
-        # Enable Langfuse OTEL integration for automatic tracing
-        if "langfuse_otel" not in (litellm.callbacks or []):
+        # Enable Langfuse integration for automatic tracing
+        # Use 'langfuse' callback (non-OTEL) which works without proxy server
+        if "langfuse" not in (litellm.callbacks or []):
             litellm.callbacks = litellm.callbacks or []
-            litellm.callbacks.append("langfuse_otel")
-            logger.info("Langfuse OTEL integration enabled for LLM observability")
+            litellm.callbacks.append("langfuse")
+            logger.info("Langfuse integration enabled for LLM observability")
 
         return True
     except ImportError:

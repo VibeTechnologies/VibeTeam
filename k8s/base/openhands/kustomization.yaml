@@ -1,0 +1,14 @@
+# OpenHands Kustomization
+# Bundles all OpenHands resources
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - configmap.yaml
+
+labels:
+  - pairs:
+      component: openhands

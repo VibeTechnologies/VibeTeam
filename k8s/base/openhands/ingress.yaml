@@ -1,29 +1,30 @@
-# VibeTeam Webhook Ingress
-# Exposes webhook endpoints for GitHub and Slack
+# OpenHands Ingress
+# Exposes OpenHands Web UI at team.vibebrowser.app
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: vibeteam-webhook
+  name: openhands
   labels:
-    app: vibeteam-webhook
+    app: openhands
     team: vibeteam
   annotations:
     kubernetes.io/ingress.class: traefik
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: default-redirect-https@kubernetescrd
 spec:
   tls:
     - hosts:
-        - webhook.team.vibebrowser.app
-      secretName: vibeteam-webhook-tls
+        - team.vibebrowser.app
+      secretName: openhands-tls
   rules:
-    - host: webhook.team.vibebrowser.app
+    - host: team.vibebrowser.app
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: vibeteam-webhook
+                name: openhands
                 port:
-                  number: 8080
+                  number: 3000

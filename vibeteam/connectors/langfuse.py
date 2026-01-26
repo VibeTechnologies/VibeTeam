@@ -109,22 +109,21 @@ class LangfuseConnector:
         """Fetch recent traces from Langfuse."""
         params = {
             "limit": limit,
-            "orderBy": "timestamp.desc",
         }
 
         if name:
             params["name"] = name
 
-        # Filter by time
+        # Filter by time - use ISO format without microseconds
         from_time = datetime.utcnow() - timedelta(hours=hours)
-        params["fromTimestamp"] = from_time.isoformat() + "Z"
+        params["fromTimestamp"] = from_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         data = self._request("GET", "/traces", params=params)
         return data.get("data", [])
 
     def get_stats(self, hours: int = 1) -> LangfuseStats:
         """Get aggregated statistics for the specified period."""
-        traces = self.get_traces(hours=hours, limit=500)
+        traces = self.get_traces(hours=hours, limit=100)  # API max is 100
 
         if not traces:
             return LangfuseStats(
@@ -186,7 +185,7 @@ class LangfuseConnector:
         - Token budget usage
         """
         anomalies: list[LangfuseAnomaly] = []
-        traces = self.get_traces(hours=hours, limit=500)
+        traces = self.get_traces(hours=hours, limit=100)  # API max is 100
 
         if not traces:
             logger.info("No traces found in the specified period")
