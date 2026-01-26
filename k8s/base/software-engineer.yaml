@@ -74,9 +74,15 @@ spec:
                       name: vibeteam-secrets
                       key: AZURE_API_KEY
                 - name: AZURE_API_BASE
-                  value: "https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/"
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: AZURE_API_BASE
                 - name: AZURE_API_VERSION
-                  value: "2024-06-01"
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: AZURE_API_VERSION
                 - name: LANGFUSE_PUBLIC_KEY
                   valueFrom:
                     secretKeyRef:

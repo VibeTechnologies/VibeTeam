@@ -44,9 +44,15 @@ spec:
                   name: vibeteam-secrets
                   key: AZURE_API_KEY
             - name: LLM_BASE_URL
-              value: "https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/"
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_BASE
             - name: LLM_API_VERSION
-              value: "2024-08-01-preview"
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_VERSION
             # GitHub integration
             - name: GITHUB_TOKEN
               valueFrom:
