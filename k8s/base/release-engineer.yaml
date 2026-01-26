@@ -4,6 +4,89 @@
 # GitHub Authentication:
 # Uses GitHub App credentials for better security and audit trail.
 # Falls back to GITHUB_TOKEN (PAT) if App credentials not available.
+#
+# Kubernetes Access:
+# Uses ServiceAccount with read-only cluster access for validation.
+---
+# ServiceAccount for VibeTeam agents
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vibeteam-agent
+  labels:
+    team: vibeteam
+---
+# ClusterRole with read-only access for cluster validation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vibeteam-agent-reader
+  labels:
+    team: vibeteam
+rules:
+  # Core resources - read only
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - endpoints
+      - configmaps
+      - secrets
+      - namespaces
+      - nodes
+      - events
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+  # Apps resources - read only
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+  # Batch resources - read only
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  # Networking resources - read only
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch"]
+  # Autoscaling resources - read only
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+  # Cert-manager resources - read only
+  - apiGroups: ["cert-manager.io"]
+    resources:
+      - certificates
+      - certificaterequests
+      - issuers
+      - clusterissuers
+    verbs: ["get", "list", "watch"]
+---
+# ClusterRoleBinding to grant access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vibeteam-agent-reader
+  labels:
+    team: vibeteam
+subjects:
+  - kind: ServiceAccount
+    name: vibeteam-agent
+    namespace: vibeteam
+roleRef:
+  kind: ClusterRole
+  name: vibeteam-agent-reader
+  apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -27,6 +110,7 @@ spec:
           labels:
             app: release-engineer
         spec:
+          serviceAccountName: vibeteam-agent
           restartPolicy: OnFailure
           imagePullSecrets:
             - name: ghcr-pull-secret
@@ -93,6 +177,7 @@ spec:
           labels:
             app: reliability-engineer
         spec:
+          serviceAccountName: vibeteam-agent
           restartPolicy: OnFailure
           imagePullSecrets:
             - name: ghcr-pull-secret

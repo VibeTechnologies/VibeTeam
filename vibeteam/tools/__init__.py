@@ -8,6 +8,7 @@ Each tool wraps an existing connector and exposes it as an OpenHands-compatible 
 from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.gmail import GmailTool
 from vibeteam.tools.health import HealthCheckTool
+from vibeteam.tools.kubernetes import KubernetesTool
 from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.sentry import SentryTool
 
@@ -15,6 +16,7 @@ __all__ = [
     "GitHubTool",
     "GmailTool",
     "HealthCheckTool",
+    "KubernetesTool",
     "LangfuseTool",
     "SentryTool",
 ]

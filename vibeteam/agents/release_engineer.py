@@ -17,6 +17,7 @@ from typing import Any
 from vibeteam.agents.base import BaseVibeAgent
 from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.health import HealthCheckTool
+from vibeteam.tools.kubernetes import KubernetesTool
 from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.sentry import SentryTool
 
@@ -106,6 +107,12 @@ class ReleaseEngineerAgent(BaseVibeAgent):
         # Health check tool doesn't need env vars
         tools.append(HealthCheckTool())
 
+        # Kubernetes tool - uses in-cluster auth or kubeconfig
+        try:
+            tools.append(KubernetesTool())
+        except Exception:
+            pass
+
         super().__init__(
             name=kwargs.get("name", self.name),
             profile=self.profile,
@@ -123,7 +130,7 @@ Goal: {self.goal}
 
 {RELEASE_ENGINEER_PROTOCOL}
 
-Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None'}
+Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """
 
     async def monitor_sentry(self, hours: int = 24) -> str:

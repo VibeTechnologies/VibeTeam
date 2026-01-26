@@ -502,5 +502,179 @@ class TestSlackIntegrationReadiness:
         assert "Invalid signature" in response.json().get("detail", "")
 
 
+class TestLiveWebhookIntegration:
+    """
+    Live integration tests that call the actual deployed webhook.
+
+    These tests simulate real Slack events with proper signatures.
+    Run with: WEBHOOK_URL=https://webhook.team.vibebrowser.app SLACK_SIGNING_SECRET=xxx pytest tests/test_webhook.py -v -k live
+    """
+
+    @pytest.fixture
+    def webhook_url(self):
+        """Get webhook URL from environment."""
+        url = os.environ.get("WEBHOOK_URL")
+        if not url:
+            pytest.skip("WEBHOOK_URL required for live tests")
+        return url
+
+    @pytest.fixture
+    def signing_secret(self):
+        """Get signing secret from environment."""
+        return os.environ.get("SLACK_SIGNING_SECRET", "")
+
+    def _make_signed_request(self, url: str, payload: dict, signing_secret: str):
+        """Make a properly signed Slack request."""
+        import httpx
+
+        timestamp = str(int(time.time()))
+        payload_str = json.dumps(payload)
+        signature = generate_slack_signature(payload_str, timestamp, signing_secret)
+
+        return httpx.post(
+            url,
+            content=payload_str,
+            headers={
+                "Content-Type": "application/json",
+                "X-Slack-Request-Timestamp": timestamp,
+                "X-Slack-Signature": signature,
+            },
+            timeout=30,
+        )
+
+    def test_live_health_check(self, webhook_url):
+        """Test that the live webhook health endpoint responds."""
+        import httpx
+
+        response = httpx.get(f"{webhook_url}/health", timeout=10)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["service"] == "vibeteam-webhook"
+        print(f"✓ Health check passed: {data}")
+
+    def test_live_url_verification(self, webhook_url):
+        """Test URL verification challenge on live webhook."""
+        import httpx
+
+        challenge = f"test_challenge_{int(time.time())}"
+        payload = {"type": "url_verification", "challenge": challenge}
+
+        response = httpx.post(
+            f"{webhook_url}/slack/events",
+            json=payload,
+            timeout=10,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["challenge"] == challenge
+        print(f"✓ URL verification passed: challenge echoed correctly")
+
+    @pytest.mark.skipif(
+        not os.environ.get("SLACK_SIGNING_SECRET"),
+        reason="SLACK_SIGNING_SECRET required for signed request tests",
+    )
+    def test_live_signed_event_accepted(self, webhook_url, signing_secret):
+        """Test that a properly signed event is accepted by live webhook."""
+        payload = {
+            "type": "event_callback",
+            "event": {
+                "type": "app_mention",
+                "user": "U_TEST_USER",
+                "channel": "C_TEST_CHANNEL",
+                "text": "<@U0AAYE8HV6Z> integration test - please ignore",
+                "ts": str(time.time()),
+            },
+        }
+
+        response = self._make_signed_request(f"{webhook_url}/slack/events", payload, signing_secret)
+
+        # Should accept the event (200) - agent processing happens async
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert data["event"] == "app_mention"
+        print(f"✓ Signed event accepted: {data}")
+
+    @pytest.mark.skipif(
+        not os.environ.get("SLACK_SIGNING_SECRET"),
+        reason="SLACK_SIGNING_SECRET required for signed request tests",
+    )
+    def test_live_bot_message_ignored(self, webhook_url, signing_secret):
+        """Test that bot messages are properly ignored on live webhook."""
+        payload = {
+            "type": "event_callback",
+            "event": {
+                "type": "app_mention",
+                "bot_id": "B_TEST_BOT",
+                "user": "U_TEST_USER",
+                "channel": "C_TEST_CHANNEL",
+                "text": "bot message should be ignored",
+                "ts": str(time.time()),
+            },
+        }
+
+        response = self._make_signed_request(f"{webhook_url}/slack/events", payload, signing_secret)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"
+        assert data["reason"] == "bot_message"
+        print(f"✓ Bot message correctly ignored: {data}")
+
+    def test_live_invalid_signature_rejected(self, webhook_url):
+        """Test that invalid signatures are rejected on live webhook."""
+        import httpx
+
+        payload = {
+            "type": "event_callback",
+            "event": {"type": "app_mention", "text": "test"},
+        }
+
+        response = httpx.post(
+            f"{webhook_url}/slack/events",
+            json=payload,
+            headers={
+                "X-Slack-Request-Timestamp": str(int(time.time())),
+                "X-Slack-Signature": "v0=invalid_signature_here",
+            },
+            timeout=10,
+        )
+
+        assert response.status_code == 401
+        assert "Invalid signature" in response.json().get("detail", "")
+        print(f"✓ Invalid signature correctly rejected")
+
+
+def run_live_webhook_tests():
+    """
+    Convenience function to run live webhook tests.
+
+    Usage:
+        python -c "from tests.test_webhook import run_live_webhook_tests; run_live_webhook_tests()"
+
+    Or with environment variables:
+        WEBHOOK_URL=https://webhook.team.vibebrowser.app \\
+        SLACK_SIGNING_SECRET=your_secret \\
+        python -m pytest tests/test_webhook.py -v -k live
+    """
+    import subprocess
+    import sys
+
+    # Default webhook URL
+    webhook_url = os.environ.get("WEBHOOK_URL", "https://webhook.team.vibebrowser.app")
+
+    print(f"Running live webhook tests against: {webhook_url}")
+    print("=" * 60)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", __file__, "-v", "-k", "live", "--tb=short"],
+        env={**os.environ, "WEBHOOK_URL": webhook_url},
+    )
+    return result.returncode
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

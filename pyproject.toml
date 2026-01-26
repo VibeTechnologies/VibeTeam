@@ -46,6 +46,8 @@ dependencies = [
     # Observability
     "sentry-sdk>=1.0.0",
     "langfuse>=2.0.0",  # LLM observability
+    # Kubernetes
+    "kubernetes>=28.0.0",
 ]
 
 [project.optional-dependencies]

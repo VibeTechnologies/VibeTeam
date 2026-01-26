@@ -10,6 +10,7 @@ from typing import Any
 
 from vibeteam.agents.base import BaseVibeAgent
 from vibeteam.tools.health import HealthCheckTool
+from vibeteam.tools.kubernetes import KubernetesTool
 from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.sentry import SentryTool
 
@@ -102,6 +103,12 @@ class ReliabilityEngineerAgent(BaseVibeAgent):
             except Exception:
                 pass
 
+        # Kubernetes tool - uses in-cluster auth or kubeconfig
+        try:
+            tools.append(KubernetesTool())
+        except Exception:
+            pass
+
         super().__init__(
             name=kwargs.get("name", self.name),
             profile=self.profile,
@@ -119,7 +126,7 @@ Goal: {self.goal}
 
 {PROD_ENG_PROTOCOL}
 
-Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None'}
+Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """
 
     async def check_system_health(self) -> str:

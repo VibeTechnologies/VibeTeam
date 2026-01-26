@@ -48,8 +48,11 @@ class TestReliabilityEngineer:
         """Test health check against a known endpoint."""
         result = subprocess.run(
             [
-                "vibeteam", "scheduled", "sre-health",
-                "-e", "https://www.google.com",
+                "vibeteam",
+                "scheduled",
+                "sre-health",
+                "-e",
+                "https://www.google.com",
             ],
             capture_output=True,
             text=True,
@@ -62,15 +65,20 @@ class TestReliabilityEngineer:
         """Test health check detects failing endpoint."""
         result = subprocess.run(
             [
-                "vibeteam", "scheduled", "sre-health",
-                "-e", "https://localhost:59999",  # Non-existent endpoint
+                "vibeteam",
+                "scheduled",
+                "sre-health",
+                "-e",
+                "https://localhost:59999",  # Non-existent endpoint
             ],
             capture_output=True,
             text=True,
             timeout=30,
         )
         # Should exit with error code when endpoint fails
-        assert result.returncode != 0 or "FAIL" in result.stdout or "failed" in result.stdout.lower()
+        assert (
+            result.returncode != 0 or "FAIL" in result.stdout or "failed" in result.stdout.lower()
+        )
 
 
 class TestProductManager:
@@ -125,7 +133,11 @@ class TestSupportEngineer:
             timeout=30,
         )
         # Either succeeds or fails with credentials error (not crash)
-        assert "email" in result.stdout.lower() or "credentials" in result.stderr.lower() or result.returncode in [0, 1]
+        assert (
+            "email" in result.stdout.lower()
+            or "credentials" in result.stderr.lower()
+            or result.returncode in [0, 1]
+        )
 
 
 class TestSoftwareEngineer:
@@ -148,9 +160,13 @@ class TestSoftwareEngineer:
         """Test SWE agent with non-existent label."""
         result = subprocess.run(
             [
-                "vibeteam", "scheduled", "swe-issues",
-                "--label", "nonexistent-label-xyz123",
-                "--repo", self.TEST_REPO,
+                "vibeteam",
+                "scheduled",
+                "swe-issues",
+                "--label",
+                "nonexistent-label-xyz123",
+                "--repo",
+                self.TEST_REPO,
             ],
             capture_output=True,
             text=True,
@@ -159,13 +175,21 @@ class TestSoftwareEngineer:
         assert result.returncode == 0
         assert "Found 0 issues" in result.stdout or "No issues" in result.stdout
 
+    @pytest.mark.skipif(
+        not os.environ.get("AZURE_API_KEY") or not os.environ.get("AZURE_API_BASE"),
+        reason="AZURE_API_KEY and AZURE_API_BASE required for LLM tests",
+    )
     def test_swe_issues_dry_run(self) -> None:
         """Test SWE agent in dry-run mode."""
         result = subprocess.run(
             [
-                "vibeteam", "scheduled", "swe-issues",
-                "--label", "bug",  # Common label that might exist
-                "--repo", self.TEST_REPO,
+                "vibeteam",
+                "scheduled",
+                "swe-issues",
+                "--label",
+                "bug",  # Common label that might exist
+                "--repo",
+                self.TEST_REPO,
                 "--dry-run",
             ],
             capture_output=True,
@@ -197,7 +221,11 @@ class TestReleaseEngineer:
             timeout=30,
         )
         assert result.returncode == 0
-        assert "PR" in result.stdout or "merged" in result.stdout.lower() or "complete" in result.stdout.lower()
+        assert (
+            "PR" in result.stdout
+            or "merged" in result.stdout.lower()
+            or "complete" in result.stdout.lower()
+        )
 
 
 class TestCLICommands:
@@ -238,7 +266,7 @@ class TestCLICommands:
 class TestE2EWorkflow:
     """
     Full end-to-end workflow test.
-    
+
     This test creates a real issue, runs the SWE agent, and verifies the result.
     Only runs when E2E_FULL_TEST=1 is set.
     """
@@ -280,18 +308,24 @@ Fix the typo in the test file.
 """
         result = subprocess.run(
             [
-                "gh", "issue", "create",
-                "--repo", self.TEST_REPO,
-                "--title", "[TEST] SWE Agent E2E Test",
-                "--body", issue_body,
-                "--label", "test-swe-agent",
+                "gh",
+                "issue",
+                "create",
+                "--repo",
+                self.TEST_REPO,
+                "--title",
+                "[TEST] SWE Agent E2E Test",
+                "--body",
+                issue_body,
+                "--label",
+                "test-swe-agent",
             ],
             capture_output=True,
             text=True,
             env=env,
         )
         assert result.returncode == 0, f"Failed to create issue: {result.stderr}"
-        
+
         # Extract issue number from URL
         issue_url = result.stdout.strip()
         issue_number = issue_url.split("/")[-1]
@@ -300,14 +334,19 @@ Fix the typo in the test file.
         try:
             # Wait for GitHub API to propagate the issue
             import time
+
             time.sleep(3)
-            
+
             # 2. Run SWE agent in dry-run mode
             result = subprocess.run(
                 [
-                    "vibeteam", "scheduled", "swe-issues",
-                    "--label", "test-swe-agent",
-                    "--repo", self.TEST_REPO,
+                    "vibeteam",
+                    "scheduled",
+                    "swe-issues",
+                    "--label",
+                    "test-swe-agent",
+                    "--repo",
+                    self.TEST_REPO,
                     "--dry-run",
                 ],
                 capture_output=True,
@@ -317,7 +356,7 @@ Fix the typo in the test file.
             )
             print(f"SWE agent output: {result.stdout}")
             print(f"SWE agent stderr: {result.stderr}")
-            
+
             assert result.returncode == 0, f"SWE agent failed: {result.stderr}"
             assert f"#{issue_number}" in result.stdout or "Processing issue" in result.stdout
 
@@ -325,9 +364,14 @@ Fix the typo in the test file.
             # 3. Cleanup - close the test issue
             subprocess.run(
                 [
-                    "gh", "issue", "close", issue_number,
-                    "--repo", self.TEST_REPO,
-                    "--comment", "Automated test complete. Closing.",
+                    "gh",
+                    "issue",
+                    "close",
+                    issue_number,
+                    "--repo",
+                    self.TEST_REPO,
+                    "--comment",
+                    "Automated test complete. Closing.",
                 ],
                 capture_output=True,
                 env=env,
@@ -385,7 +429,9 @@ class TestKubernetesManifests:
                     assert "schedule" in doc.get("spec", {}), f"Missing schedule in {manifest.name}"
                     job_spec = doc["spec"]["jobTemplate"]["spec"]["template"]["spec"]
                     assert "containers" in job_spec, f"Missing containers in {manifest.name}"
-                    assert "imagePullSecrets" in job_spec, f"Missing imagePullSecrets in {manifest.name}"
+                    assert "imagePullSecrets" in job_spec, (
+                        f"Missing imagePullSecrets in {manifest.name}"
+                    )
 
 
 if __name__ == "__main__":
