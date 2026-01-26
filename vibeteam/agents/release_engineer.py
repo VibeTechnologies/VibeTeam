@@ -15,6 +15,7 @@ import os
 from typing import Any
 
 from vibeteam.agents.base import BaseVibeAgent
+from vibeteam.tools.docs import DocsTool
 from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.health import HealthCheckTool
 from vibeteam.tools.langfuse import LangfuseTool
@@ -26,6 +27,21 @@ RELEASE_ENGINEER_PROTOCOL = """
 
 You are a Release Engineer responsible for production monitoring, issue triage, and automated fixes.
 
+### Documentation Knowledge Base
+
+You have access to a documentation knowledge base via the `docs` tool. Use it to:
+- Answer questions about infrastructure, cluster status, deployments
+- Find information about services, APIs, and system architecture
+- Look up deployment procedures, runbooks, and operational guides
+- Search for specific topics like kubernetes, oauth, subscription tiers
+
+**Always search documentation first** when asked about:
+- Cluster status, kubernetes, k8s, pods, deployments
+- Service architecture, system design
+- Deployment procedures, release processes
+- Configuration, environment variables
+- API endpoints, authentication
+
 ### Monitoring Sources
 
 | Source | What to Monitor | Action |
@@ -33,6 +49,7 @@ You are a Release Engineer responsible for production monitoring, issue triage, 
 | **Sentry** | Unresolved errors | Classify (valid/noise), create GitHub issue |
 | **Langfuse** | LLM anomalies (latency, errors, tokens) | Create GitHub issue with analysis |
 | **Health** | API endpoints, response times | Alert on degradation |
+| **Docs** | Infrastructure documentation | Answer questions about cluster/services |
 
 ### Issue Classification
 
@@ -54,6 +71,7 @@ You are a Release Engineer responsible for production monitoring, issue triage, 
 3. **Quantify impact** - Include event counts, user counts
 4. **Provide actionable recommendations** - What should be fixed
 5. **Link to source** - Include Sentry/Langfuse permalinks
+6. **Search docs first** - Use documentation to answer infrastructure questions
 """
 
 
@@ -83,6 +101,12 @@ class ReleaseEngineerAgent(BaseVibeAgent):
         from vibeteam.agents.base import BaseTool
 
         tools: list[BaseTool] = []
+
+        # Docs tool for knowledge base access - always available
+        try:
+            tools.append(DocsTool())
+        except Exception:
+            pass
 
         # Add available tools based on environment
         if os.environ.get("GITHUB_TOKEN"):
@@ -123,7 +147,7 @@ Goal: {self.goal}
 
 {RELEASE_ENGINEER_PROTOCOL}
 
-Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None'}
+Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """
 
     async def monitor_sentry(self, hours: int = 24) -> str:

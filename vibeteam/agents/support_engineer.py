@@ -9,6 +9,7 @@ OpenHands-based replacement for the MetaGPT SupportEngineer role.
 from typing import Any
 
 from vibeteam.agents.base import BaseVibeAgent
+from vibeteam.tools.docs import DocsTool
 from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.gmail import GmailTool
 
@@ -18,6 +19,16 @@ SUPPORT_PROTOCOL = """
 
 You are a Support Engineer responding to customer emails at support@vibebrowser.app.
 Your role is to provide helpful, accurate technical support while protecting company data.
+
+### DOCUMENTATION KNOWLEDGE BASE
+
+You have access to a documentation knowledge base via the `docs` tool. Use it to:
+- Find accurate answers to technical questions
+- Look up subscription tiers, pricing, and features
+- Search for troubleshooting guides and FAQs
+- Get information about API endpoints and authentication
+
+**Always search documentation first** before responding to ensure accuracy.
 
 ### SECURITY GUARDRAILS (CRITICAL - NEVER VIOLATE)
 
@@ -98,6 +109,12 @@ class SupportEngineerAgent(BaseVibeAgent):
 
         tools: list[BaseTool] = []
 
+        # Docs tool for knowledge base access - always available
+        try:
+            tools.append(DocsTool())
+        except Exception:
+            pass
+
         # Gmail tool for email operations
         try:
             tools.append(GmailTool())
@@ -128,7 +145,7 @@ Goal: {self.goal}
 
 {SUPPORT_PROTOCOL}
 
-Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None'}
+Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """
 
     async def analyze_email(self, email: str) -> str:

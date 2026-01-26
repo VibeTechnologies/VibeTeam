@@ -4,10 +4,13 @@ Tests for VibeTeam OpenHands tools.
 These tests verify the tool wrappers work correctly with mocked connectors.
 """
 
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from vibeteam.tools.docs import DocsTool
 from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.health import HealthCheckTool
 from vibeteam.tools.langfuse import LangfuseTool
@@ -195,3 +198,193 @@ class TestHealthCheckTool:
 
         assert result.success is False
         assert "url required" in result.error
+
+
+class TestDocsTool:
+    """Test DocsTool functionality."""
+
+    @pytest.fixture
+    def temp_docs_dir(self) -> Path:
+        """Create a temporary directory with test documentation files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_dir = Path(tmpdir)
+
+            # Create test markdown files
+            (docs_dir / "deployment.md").write_text(
+                """# Deployment Guide
+
+## Kubernetes Cluster
+
+We use k3s for our kubernetes cluster.
+
+### Pods
+- api-server: Main API server
+- worker: Background job processor
+
+### Services
+- api.vibebrowser.app: Public API endpoint
+- portal.vibebrowser.app: User portal
+"""
+            )
+
+            (docs_dir / "auth.md").write_text(
+                """# Authentication
+
+## OAuth Integration
+
+We use Google OAuth for authentication.
+
+### Setup
+1. Create OAuth credentials
+2. Configure redirect URIs
+3. Set environment variables
+"""
+            )
+
+            (docs_dir / "subscription.md").write_text(
+                """# Subscription Tiers
+
+| Tier | Price | Features |
+|------|-------|----------|
+| Free | $0 | Basic features |
+| Pro | $25/mo | All features |
+| Max | $99/mo | Priority support |
+"""
+            )
+
+            yield docs_dir
+
+    def test_schema_structure(self, temp_docs_dir: Path) -> None:
+        """Test tool schema is correctly structured."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        schema = tool.get_schema()
+
+        assert schema["type"] == "function"
+        assert schema["function"]["name"] == "docs"
+        assert "action" in schema["function"]["parameters"]["properties"]
+
+    def test_schema_actions(self, temp_docs_dir: Path) -> None:
+        """Test all expected actions are in schema."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        schema = tool.get_schema()
+        actions = schema["function"]["parameters"]["properties"]["action"]["enum"]
+
+        expected_actions = [
+            "search",
+            "get_file",
+            "list_files",
+            "get_summary",
+            "search_topic",
+        ]
+        for action in expected_actions:
+            assert action in actions
+
+    @pytest.mark.asyncio
+    async def test_search(self, temp_docs_dir: Path) -> None:
+        """Test search action finds relevant documentation."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="search", query="kubernetes cluster")
+
+        assert result.success is True
+        assert "deployment.md" in result.output
+        assert "k3s" in result.output
+
+    @pytest.mark.asyncio
+    async def test_search_no_results(self, temp_docs_dir: Path) -> None:
+        """Test search returns appropriate message when no results."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="search", query="nonexistent_xyz_123")
+
+        assert result.success is True
+        assert "No documentation found" in result.output
+
+    @pytest.mark.asyncio
+    async def test_get_file(self, temp_docs_dir: Path) -> None:
+        """Test get_file action retrieves file content."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="get_file", path="auth.md")
+
+        assert result.success is True
+        assert "OAuth Integration" in result.output
+        assert "Google OAuth" in result.output
+
+    @pytest.mark.asyncio
+    async def test_get_file_not_found(self, temp_docs_dir: Path) -> None:
+        """Test get_file returns error for missing file."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="get_file", path="nonexistent.md")
+
+        assert result.success is False
+        assert "not found" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_list_files(self, temp_docs_dir: Path) -> None:
+        """Test list_files action lists available documentation."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="list_files")
+
+        assert result.success is True
+        assert "deployment.md" in result.output
+        assert "auth.md" in result.output
+        assert "subscription.md" in result.output
+
+    @pytest.mark.asyncio
+    async def test_list_files_with_pattern(self, temp_docs_dir: Path) -> None:
+        """Test list_files with pattern filter."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="list_files", pattern="*deploy*")
+
+        assert result.success is True
+        assert "deployment.md" in result.output
+        assert "auth.md" not in result.output
+
+    @pytest.mark.asyncio
+    async def test_get_summary(self, temp_docs_dir: Path) -> None:
+        """Test get_summary action returns knowledge base summary."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="get_summary")
+
+        assert result.success is True
+        assert "Total files:" in result.output
+        assert "3" in result.output  # 3 test files
+
+    @pytest.mark.asyncio
+    async def test_search_topic(self, temp_docs_dir: Path) -> None:
+        """Test search_topic action with topic expansion."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="search_topic", topic="auth")
+
+        assert result.success is True
+        assert "auth.md" in result.output
+
+    @pytest.mark.asyncio
+    async def test_search_missing_query(self, temp_docs_dir: Path) -> None:
+        """Test search returns error when query is missing."""
+        from vibeteam.connectors.docs import DocsSource
+
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        result = await tool.execute(action="search")
+
+        assert result.success is False
+        assert result.error is not None
+        assert "query required" in result.error

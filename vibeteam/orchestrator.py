@@ -104,6 +104,17 @@ ROUTING_KEYWORDS: dict[AgentType, list[str]] = {
         "changelog",
         "tag",
         "publish",
+        "cluster",
+        "kubernetes",
+        "k8s",
+        "k3s",
+        "pod",
+        "infrastructure",
+        "service status",
+        "what is",
+        "how does",
+        "architecture",
+        "system design",
     ],
 }
 
