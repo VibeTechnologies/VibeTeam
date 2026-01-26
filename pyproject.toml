@@ -35,12 +35,17 @@ dependencies = [
     # GitHub App authentication
     "PyJWT>=2.8.0",
     "cryptography>=41.0.0",
+    # Webhook server
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "httpx>=0.26.0",
     # Gmail integration
     "google-auth>=2.0.0",
     "google-auth-oauthlib>=1.0.0",
     "google-api-python-client>=2.0.0",
     # Observability
     "sentry-sdk>=1.0.0",
+    "langfuse>=2.0.0",  # LLM observability
 ]
 
 [project.optional-dependencies]
