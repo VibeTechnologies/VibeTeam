@@ -1,31 +1,26 @@
 # VibeTeam Readiness
 
-Two approaches to verify system readiness before running VibeTeam agents.
+Use the OpenCode skill or the playbook to verify system readiness.
 
-## Approach 1: Automated Script
+## OpenCode Skill (Recommended)
 
-Fast, programmatic checks with exit codes for CI/cron.
+The readiness checks are available as an OpenCode skill that AI agents can invoke:
 
-```bash
-cd ~/workspace/vibebrowser/VibeTeam
-source .env
-python readiness/check.py           # Standard checks
-python readiness/check.py --quick   # Endpoints only (5-min cron)
-python readiness/check.py --full    # Everything
-python readiness/check.py --json    # Machine-readable output
+```
+/skill vibeteam-readiness
 ```
 
-**Exit codes:**
-- 0 = GREEN (all systems go)
-- 1 = YELLOW (degraded)
-- 2 = RED (not ready)
+This provides intelligent evaluation with:
+- All infrastructure health checks
+- Integration verification (Slack, GitHub, Gmail, Sentry, Langfuse)
+- Kubernetes agent status
+- GREEN/YELLOW/RED assessment with reasoning
 
-## Approach 2: GenAI Playbook
+## Manual Playbook
 
-Intelligent evaluation by an AI agent following a checklist.
+For detailed investigation or when you need to run checks manually:
 
 ```bash
-# AI agent reads and executes:
 cat readiness/playbook.md
 ```
 
@@ -36,64 +31,59 @@ The playbook provides:
 - Judgment guidelines for ambiguous cases
 - Report template
 
-## When to Use Each
+## Quick Manual Checks
 
-| Scenario | Use |
-|----------|-----|
-| CI/CD pipeline | Script (`--json`) |
-| Cron monitoring | Script (`--quick`) |
-| Pre-release verification | Script (`--full`) |
-| Incident investigation | Playbook (AI interprets context) |
-| First-time setup validation | Playbook (detailed reasoning) |
-| Explaining issues to humans | Playbook (produces readable report) |
+```bash
+# Load environment
+cd ~/workspace/vibebrowser/VibeTeam
+set -a && source .env && set +a
+
+# Check infrastructure endpoints
+curl -s -o /dev/null -w "%{http_code}" https://api.vibebrowser.app/health
+curl -s -o /dev/null -w "%{http_code}" https://portal.vibebrowser.app
+
+# Check Slack auth
+curl -s -X POST "https://slack.com/api/auth.test" \
+  -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" | jq '.ok'
+
+# Check GitHub
+gh api /rate_limit --jq '.rate.remaining'
+
+# Check LLM
+curl -s -X POST "${AZURE_API_BASE}openai/deployments/gpt-4.1-mini/chat/completions?api-version=2024-08-01-preview" \
+  -H "api-key: ${AZURE_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Say OK"}],"max_tokens":10}' | jq -r '.choices[0].message.content'
+```
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `check.py` | Automated Python script |
-| `playbook.md` | GenAI evaluation playbook |
+| `playbook.md` | Detailed GenAI evaluation playbook |
 | `README.md` | This file |
 
-## What Gets Checked
+## OpenCode Skill Location
 
-| Check | Script | Playbook | Critical |
-|-------|--------|----------|----------|
-| API Prod | Yes | Yes | Yes |
-| API Dev | Yes | Yes | No |
-| Portal | Yes | Yes | Yes |
-| Docs | Yes | Yes | No |
-| Langfuse endpoint | Yes | Yes | No |
-| LLM (gpt-4.1) | Yes | Yes | Yes |
-| K8s pods | --full | Yes | Yes |
-| Sentry issues | --full | Yes | No |
-| Langfuse anomalies | --full | Yes | No |
-| GitHub API | Yes | Yes | Yes |
-| Docs Chat | --full | Yes | No |
+The skill is defined at:
+```
+.opencode/skills/vibeteam-readiness/SKILL.md
+```
 
 ## Environment Variables
 
 Required:
 ```bash
-AZURE_API_KEY=
-AZURE_API_BASE=https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/
-AZURE_API_VERSION=2024-08-01-preview
+AZURE_API_KEY=           # or AZURE_OPENAI_API_KEY
+AZURE_API_BASE=          # or AZURE_OPENAI_ENDPOINT
 GITHUB_TOKEN=
+SLACK_BOT_TOKEN=
 ```
 
-Optional (for full checks):
+Optional:
 ```bash
 SENTRY_AUTH_TOKEN=
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
-```
-
-## Cron Setup
-
-```bash
-# Every 5 minutes - quick health check
-*/5 * * * * cd /path/to/VibeTeam && source .env && python readiness/check.py --quick
-
-# Hourly - full check with alert on failure
-0 * * * * cd /path/to/VibeTeam && source .env && python readiness/check.py --full || notify-send "VibeTeam Degraded"
+SLACK_SIGNING_SECRET=
 ```

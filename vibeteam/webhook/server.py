@@ -363,8 +363,14 @@ async def handle_slack_events(
 ) -> dict[str, Any]:
     """Handle incoming Slack events."""
     payload_bytes = await request.body()
+    payload = json.loads(payload_bytes)
 
-    # Verify signature
+    # Handle URL verification challenge first (Slack requires immediate response)
+    if payload.get("type") == "url_verification":
+        logger.info("Responding to Slack URL verification challenge")
+        return {"challenge": payload.get("challenge")}
+
+    # Verify signature for all other events
     if not verify_slack_signature(
         payload_bytes,
         x_slack_request_timestamp or "",
@@ -373,13 +379,6 @@ async def handle_slack_events(
     ):
         logger.warning("Invalid Slack signature")
         raise HTTPException(status_code=401, detail="Invalid signature")
-
-    payload = json.loads(payload_bytes)
-
-    # Handle URL verification challenge
-    if payload.get("type") == "url_verification":
-        logger.info("Responding to Slack URL verification challenge")
-        return {"challenge": payload.get("challenge")}
 
     # Handle events
     event = payload.get("event", {})

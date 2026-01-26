@@ -284,6 +284,90 @@ command:
   - auto-fix
 ```
 
+## Slack App Installation
+
+To enable the `@vibeteam` Slack bot, you need to install the Slack app, configure OAuth tokens, and set up Event Subscriptions.
+
+### 1. Install the App to Your Workspace
+
+Visit the install page for your Slack app:
+```
+https://api.slack.com/apps/A0AAZGWEAVA/install-on-team
+```
+
+Click **"Install to Workspace"** and authorize the app.
+
+### 2. Get the Bot User OAuth Token
+
+After installation, go to the OAuth & Permissions page:
+```
+https://api.slack.com/apps/A0AAZGWEAVA/oauth
+```
+
+Copy the **Bot User OAuth Token** (starts with `xoxb-...`) from the "OAuth Tokens for Your Workspace" section.
+
+### 3. Configure Event Subscriptions
+
+Go to the Event Subscriptions page:
+```
+https://api.slack.com/apps/A0AAZGWEAVA/event-subscriptions
+```
+
+1. **Enable Events**: Toggle "Enable Events" to ON
+
+2. **Set Request URL**:
+   ```
+   https://webhook.team.vibebrowser.app/slack/events
+   ```
+   Slack will send a challenge request - the webhook server handles this automatically.
+
+3. **Subscribe to Bot Events**: Click "Add Bot User Event" and add:
+   - `app_mention` - Triggers when someone mentions @vibeteam
+   - `message.im` - Triggers when someone DMs the bot
+
+4. Click **"Save Changes"**
+
+5. **Reinstall the App** (required after adding new event scopes):
+   - Go to: https://api.slack.com/apps/A0AAZGWEAVA/install-on-team
+   - Click "Reinstall to Workspace"
+
+### 4. Configure Secrets
+
+Update `.secrets/slack.json` with the token:
+```json
+{
+  "SLACK_BOT_TOKEN": "xoxb-your-token-here",
+  "SLACK_SIGNING_SECRET": "your-signing-secret",
+  "SLACK_APP_ID": "A0AAZGWEAVA"
+}
+```
+
+For Kubernetes deployment, add to the vibeteam-secrets:
+```bash
+kubectl create secret generic vibeteam-secrets \
+  --from-literal=SLACK_BOT_TOKEN=xoxb-your-token \
+  --from-literal=SLACK_SIGNING_SECRET=your-signing-secret \
+  ... \
+  -n vibeteam
+```
+
+### 5. Verify the Integration
+
+Test that everything is working:
+
+```bash
+# Check webhook is responding
+curl -s https://webhook.team.vibebrowser.app/health
+
+# Check webhook logs for incoming events
+kubectl logs -n vibeteam -l app=vibeteam-webhook -f
+
+# Then mention @vibeteam in Slack and watch for:
+# "Received Slack event: app_mention"
+```
+
+See [Slack App Setup Guide](docs/slack-app-setup.md) for detailed configuration.
+
 ## Documentation
 
 - [OpenHands Integration Guide](docs/openhands-integration.md) - Slack, GitHub, and Web UI setup

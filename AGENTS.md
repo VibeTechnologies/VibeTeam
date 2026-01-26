@@ -38,24 +38,17 @@ See [docs/openhands-integration.md](docs/openhands-integration.md) for interacti
 
 Before running VibeTeam agents or after infrastructure changes, verify system readiness.
 
-### Option 1: Run Script (Fast)
+### Option 1: OpenCode Skill (Recommended)
 
-```bash
-cd ~/workspace/vibebrowser/VibeTeam
-source .env
-python readiness/check.py
+Use the built-in skill for intelligent evaluation:
+
+```
+/skill vibeteam-readiness
 ```
 
-| Flag | Use Case |
-|------|----------|
-| (none) | Standard checks: endpoints, LLM, GitHub |
-| `--quick` | Endpoints only (for cron) |
-| `--full` | Everything including k8s, Sentry, Langfuse |
-| `--json` | Machine-readable output |
+This runs all checks and produces a GREEN/YELLOW/RED assessment.
 
-Exit codes: 0=GREEN, 1=YELLOW, 2=RED
-
-### Option 2: Follow Playbook (Thorough)
+### Option 2: Follow Playbook (Manual)
 
 For detailed investigation or incident analysis:
 
@@ -71,15 +64,16 @@ The playbook allows for intelligent judgment on ambiguous cases.
 ```
 VibeTeam/
   vibeteam/           # Main package
-    connectors/       # External service integrations
+    connectors/       # External service integrations (GitHub, Slack, Gmail, etc.)
     agents/           # Agent implementations (ProductManager, SoftwareEngineer, etc.)
     team.py           # Team orchestration
   k8s/                # Kubernetes manifests
     base/openhands/   # OpenHands server deployment
   templates/          # GitHub workflow & microagent templates
   readiness/          # System readiness checks
-    check.py          # Automated script
     playbook.md       # GenAI evaluation playbook
+  .opencode/skills/   # OpenCode skills
+    vibeteam-readiness/  # Readiness check skill
   scripts/            # Utility scripts
   tests/              # Test files
   docs/               # Documentation
@@ -90,10 +84,11 @@ VibeTeam/
 | Connector | Purpose |
 |-----------|---------|
 | `GitHubConnector` | Issues, PRs, code review |
+| `SlackConnector` | Slack API validation |
+| `GmailConnector` | Email processing |
 | `SentryConnector` | Error tracking |
 | `LangfuseConnector` | LLM observability |
 | `HealthConnector` | Endpoint monitoring |
-| `GmailConnector` | Email processing |
 
 ## Environment Variables
 

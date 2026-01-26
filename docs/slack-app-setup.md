@@ -1,214 +1,289 @@
 # Slack App Setup Guide
 
-This guide walks through creating and configuring the Slack App for VibeTeam's `@vibeteam` bot.
+This guide explains how to create and configure the Slack app for VibeTeam's `@vibeteam` bot.
+
+## Overview
+
+The `@vibeteam` Slack bot allows team members to interact with AI agents directly from Slack. When mentioned, the bot:
+
+1. Receives the message via Slack Events API
+2. Processes the request using OpenHands/VibeTeam agents
+3. Responds in the same channel/thread
+
+---
 
 ## Prerequisites
 
 - Slack workspace admin access
-- VibeTeam webhook server deployed at `webhook.team.vibebrowser.app`
-- Access to GitHub repository secrets
+- VibeTeam deployed to Kubernetes (for webhook endpoint)
+- Azure OpenAI credentials configured
 
 ---
 
 ## Step 1: Create Slack App
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps)
-2. Click **Create New App**
-3. Select **From scratch**
-4. Configure:
-   - **App Name**: `VibeTeam`
-   - **Workspace**: Select your workspace
-5. Click **Create App**
+2. Click **"Create New App"**
+3. Choose **"From scratch"**
+4. Enter app details:
+   - **App Name:** `VibeTeam`
+   - **Workspace:** Select your workspace
+5. Click **"Create App"**
 
 ---
 
-## Step 2: Configure OAuth & Permissions
+## Step 2: Configure Bot User
 
-Navigate to **OAuth & Permissions** in the sidebar.
-
-### Bot Token Scopes
-
-Add the following scopes under **Scopes > Bot Token Scopes**:
-
-| Scope | Purpose |
-|-------|---------|
-| `app_mentions:read` | Receive @vibeteam mentions |
-| `chat:write` | Send messages as the bot |
-| `im:history` | Read direct message history |
-| `im:read` | View basic DM info |
-| `im:write` | Start DM conversations |
-| `users:read` | Get user info for context |
-
-### Install to Workspace
-
-1. Scroll to **OAuth Tokens for Your Workspace**
-2. Click **Install to Workspace**
-3. Review permissions and click **Allow**
-4. Copy the **Bot User OAuth Token** (`xoxb-...`)
-
-Save this token - you'll need it for `SLACK_BOT_TOKEN`.
+1. In the left sidebar, click **"OAuth & Permissions"**
+2. Scroll to **"Scopes"** section
+3. Under **"Bot Token Scopes"**, add these scopes:
+   - `app_mentions:read` - Read messages that mention the bot
+   - `chat:write` - Send messages
+   - `channels:history` - Read channel messages (for context)
+   - `groups:history` - Read private channel messages
+   - `im:history` - Read DM history
+   - `im:read` - Read DM metadata
+   - `im:write` - Send DMs
+   - `users:read` - Get user info
 
 ---
 
-## Step 3: Configure Event Subscriptions
+## Step 3: Enable Event Subscriptions
 
-Navigate to **Event Subscriptions** in the sidebar.
+1. In the left sidebar, click **"Event Subscriptions"**
+2. Toggle **"Enable Events"** to ON
+3. Enter your **Request URL:**
+   ```
+   https://webhook.team.vibebrowser.app/slack/events
+   ```
+   (Slack will verify this endpoint immediately)
+4. Under **"Subscribe to bot events"**, add:
+   - `app_mention` - When someone @mentions the bot
+   - `message.im` - Direct messages to the bot
+5. Click **"Save Changes"**
 
-### Enable Events
+---
 
-1. Toggle **Enable Events** to **On**
-2. Set **Request URL**: `https://webhook.team.vibebrowser.app/slack/events`
-3. Wait for Slack to verify the URL (should show "Verified")
+## Step 4: Install App to Workspace
 
-### Subscribe to Bot Events
+1. In the left sidebar, click **"Install App"**
+2. Click **"Install to Workspace"**
+3. Review permissions and click **"Allow"**
+4. After installation, copy the **"Bot User OAuth Token"**
+   - Format: `xoxb-xxxxxxxxxxxx-xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx`
 
-Add the following events under **Subscribe to bot events**:
+---
+
+## Step 5: Get Signing Secret
+
+1. In the left sidebar, click **"Basic Information"**
+2. Scroll to **"App Credentials"**
+3. Copy the **"Signing Secret"**
+   - This is used to verify requests come from Slack
+
+---
+
+## Step 6: Configure Secrets
+
+### Local Development
+
+Create `.secrets/slack.json`:
+
+```json
+{
+  "SLACK_BOT_TOKEN": "xoxb-your-token-here",
+  "SLACK_SIGNING_SECRET": "your-signing-secret",
+  "SLACK_APP_ID": "A0XXXXXXXXX",
+  "SLACK_WORKSPACE_ID": "T0XXXXXXXXX",
+  "CLIENT_ID": "1234567890.1234567890",
+  "CLIENT_SECRET": "your-client-secret",
+  "VERIFICATION_TOKEN": "your-verification-token"
+}
+```
+
+Add to `.env`:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-your-token-here
+SLACK_SIGNING_SECRET=your-signing-secret
+```
+
+### Kubernetes Deployment
+
+Create the secret:
+
+```bash
+kubectl create secret generic slack-bot-secrets \
+  --from-literal=SLACK_BOT_TOKEN=xoxb-your-token-here \
+  --from-literal=SLACK_SIGNING_SECRET=your-signing-secret \
+  -n vibeteam
+```
+
+Or from the JSON file:
+
+```bash
+kubectl create secret generic slack-bot-secrets \
+  --from-file=slack.json=.secrets/slack.json \
+  -n vibeteam
+```
+
+### GitHub Actions
+
+Add these secrets to your repository:
+
+1. Go to **Settings > Secrets and variables > Actions**
+2. Add:
+   - `SLACK_BOT_TOKEN` - The `xoxb-...` token
+   - `SLACK_SIGNING_SECRET` - The signing secret
+
+---
+
+## Step 7: Invite Bot to Channels
+
+In Slack, invite the bot to channels where it should respond:
+
+```
+/invite @vibeteam
+```
+
+Or add the bot via channel settings:
+1. Open channel settings
+2. Go to **"Integrations"** tab
+3. Click **"Add apps"**
+4. Select **"VibeTeam"**
+
+---
+
+## Step 8: Test the Integration
+
+Send a test message in a channel where the bot is present:
+
+```
+@vibeteam Hello! Can you confirm you're working?
+```
+
+Expected behavior:
+1. Bot acknowledges the message (typing indicator)
+2. Processes the request (may take 10-60 seconds)
+3. Replies in the same thread
+
+---
+
+## Webhook Server Architecture
+
+The Slack webhook server runs as a Kubernetes deployment:
+
+```yaml
+# k8s/base/slack-webhook-bot.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slack-webhook-bot
+  namespace: vibeteam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slack-webhook-bot
+  template:
+    spec:
+      containers:
+        - name: webhook
+          image: ghcr.io/vibetechnologies/vibeteam:latest
+          command: ["python", "-m", "vibeteam.webhook.server"]
+          envFrom:
+            - secretRef:
+                name: vibeteam-secrets
+            - secretRef:
+                name: slack-bot-secrets
+          ports:
+            - containerPort: 8080
+```
+
+---
+
+## Troubleshooting
+
+### Bot Not Responding
+
+1. **Check bot is in channel:**
+   ```
+   /invite @vibeteam
+   ```
+
+2. **Check webhook server logs:**
+   ```bash
+   kubectl logs -n vibeteam -l app=slack-webhook-bot --tail=50
+   ```
+
+3. **Verify token is valid:**
+   ```bash
+   curl -s -X POST "https://slack.com/api/auth.test" \
+     -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+     | jq
+   ```
+
+### Request URL Verification Failed
+
+1. Ensure webhook server is deployed and accessible
+2. Check ingress configuration
+3. Verify SSL certificate is valid
+4. Check server responds to challenge:
+   ```bash
+   curl -X POST https://team.vibebrowser.app/slack/events \
+     -H "Content-Type: application/json" \
+     -d '{"type":"url_verification","challenge":"test123"}'
+   ```
+   Should return: `{"challenge":"test123"}`
+
+### Signature Verification Failed
+
+1. Verify `SLACK_SIGNING_SECRET` matches app settings
+2. Check server time is synchronized (NTP)
+3. Ensure request body is not modified by proxies
+
+### Rate Limiting
+
+Slack has rate limits. If you see 429 errors:
+
+1. Implement exponential backoff
+2. Use message queuing for high-volume channels
+3. Consider using Slack's Web API for bulk operations
+
+---
+
+## Security Best Practices
+
+1. **Never commit tokens** - Use secrets management
+2. **Rotate tokens regularly** - Regenerate in app settings if compromised
+3. **Verify signatures** - Always validate `X-Slack-Signature` header
+4. **Limit scopes** - Only request permissions you need
+5. **Monitor usage** - Check Slack app analytics for anomalies
+
+---
+
+## API Reference
+
+### Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/slack/events` | POST | Receives Slack events |
+| `/slack/interactivity` | POST | Handles button clicks, etc. |
+| `/slack/commands` | POST | Slash command handler |
+
+### Event Types Handled
 
 | Event | Description |
 |-------|-------------|
-| `app_mention` | When someone mentions @vibeteam |
-| `message.im` | Direct messages to the bot |
-
-Click **Save Changes**.
-
----
-
-## Step 4: Get Signing Secret
-
-Navigate to **Basic Information** in the sidebar.
-
-1. Scroll to **App Credentials**
-2. Copy the **Signing Secret**
-
-Save this - you'll need it for `SLACK_SIGNING_SECRET`.
-
----
-
-## Step 5: Configure App Home (Optional)
-
-Navigate to **App Home** in the sidebar.
-
-1. Under **Show Tabs**, enable:
-   - **Messages Tab**: On
-   - **Allow users to send Slash commands and messages**: Checked
-2. Edit the **App Display Name** if desired
-
----
-
-## Step 6: Deploy Secrets
-
-### GitHub Actions Secrets
-
-Add these secrets to your GitHub repository:
-
-```bash
-# Using GitHub CLI
-gh secret set SLACK_BOT_TOKEN --body "xoxb-your-token-here"
-gh secret set SLACK_SIGNING_SECRET --body "your-signing-secret-here"
-```
-
-Or via GitHub UI:
-1. Go to **Settings > Secrets and variables > Actions**
-2. Add `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`
-
-### Kubernetes Secrets
-
-The deploy workflow automatically creates the K8s secret. To manually create:
-
-```bash
-kubectl create secret generic vibeteam-secrets \
-  --namespace vibeteam \
-  --from-literal=SLACK_BOT_TOKEN="xoxb-..." \
-  --from-literal=SLACK_SIGNING_SECRET="..." \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
----
-
-## Step 7: Verify Installation
-
-### Test the Bot
-
-1. Invite the bot to a channel: `/invite @vibeteam`
-2. Mention the bot: `@vibeteam hello`
-3. Check for response
-
-### Check Logs
-
-```bash
-# View webhook server logs
-kubectl logs -n vibeteam -l app=vibeteam-webhook -f
-
-# Check for Slack events
-kubectl logs -n vibeteam -l app=vibeteam-webhook | grep -i slack
-```
-
-### Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Bot doesn't respond | Check Event Subscriptions URL is verified |
-| "Invalid signature" in logs | Verify `SLACK_SIGNING_SECRET` matches app |
-| "SLACK_BOT_TOKEN not set" | Check K8s secret is mounted correctly |
-| Bot responds but fails | Check Azure OpenAI credentials |
-
----
-
-## App Manifest (Alternative Setup)
-
-Instead of manual configuration, you can use this manifest:
-
-```yaml
-display_information:
-  name: VibeTeam
-  description: AI-powered software engineering assistant
-  background_color: "#4A154B"
-features:
-  app_home:
-    home_tab_enabled: false
-    messages_tab_enabled: true
-    messages_tab_read_only_enabled: false
-  bot_user:
-    display_name: VibeTeam
-    always_online: true
-oauth_config:
-  scopes:
-    bot:
-      - app_mentions:read
-      - chat:write
-      - im:history
-      - im:read
-      - im:write
-      - users:read
-settings:
-  event_subscriptions:
-    request_url: https://webhook.team.vibebrowser.app/slack/events
-    bot_events:
-      - app_mention
-      - message.im
-  org_deploy_enabled: false
-  socket_mode_enabled: false
-  token_rotation_enabled: false
-```
-
-To use:
-1. Go to **App Manifest** in sidebar
-2. Paste the YAML above
-3. Click **Save Changes**
-
----
-
-## Security Considerations
-
-1. **Never commit tokens** - Use secrets management
-2. **Rotate tokens periodically** - Regenerate in Slack app settings
-3. **Limit workspace access** - Only install in required workspaces
-4. **Monitor usage** - Check Slack app analytics for unusual activity
+| `app_mention` | User @mentions the bot |
+| `message.im` | Direct message to bot |
+| `url_verification` | Slack URL verification challenge |
 
 ---
 
 ## Related Documentation
 
-- [OpenHands Integration Guide](openhands-integration.md) - Overall bot usage
+- [OpenHands Integration Guide](openhands-integration.md)
+- [Team Readiness Requirements](team-readiness-requirements.md)
 - [Slack API Documentation](https://api.slack.com/docs)
-- [Slack Events API](https://api.slack.com/events-api)
