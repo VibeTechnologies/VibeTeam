@@ -1,0 +1,19 @@
+# VibeTeam Webhook Service
+# Exposes the webhook server within the cluster
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vibeteam-webhook
+  labels:
+    app: vibeteam-webhook
+    team: vibeteam
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: vibeteam-webhook

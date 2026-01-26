@@ -7,6 +7,8 @@ resources:
   - support-engineer.yaml
   - release-engineer.yaml  # Also contains reliability-engineer
   - software-engineer.yaml
+  - openhands/             # OpenHands server for Web UI and API
+  - webhook/               # Webhook server for GitHub and Slack events
   # Note: github-app-secret.yaml is a template.
   # Create the actual secret manually or via sealed-secrets.
   # Do not include in resources as it contains placeholder values.

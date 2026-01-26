@@ -1,0 +1,30 @@
+# VibeTeam Webhook Ingress
+# Exposes webhook endpoints for GitHub and Slack
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vibeteam-webhook
+  labels:
+    app: vibeteam-webhook
+    team: vibeteam
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: default-redirect-https@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - webhook.team.vibebrowser.app
+      secretName: vibeteam-webhook-tls
+  rules:
+    - host: webhook.team.vibebrowser.app
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vibeteam-webhook
+                port:
+                  number: 8080

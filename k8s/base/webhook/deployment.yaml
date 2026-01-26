@@ -1,0 +1,108 @@
+# VibeTeam Webhook Server Deployment
+# Handles GitHub and Slack webhook events
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vibeteam-webhook
+  labels:
+    app: vibeteam-webhook
+    team: vibeteam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vibeteam-webhook
+  template:
+    metadata:
+      labels:
+        app: vibeteam-webhook
+        team: vibeteam
+    spec:
+      containers:
+        - name: webhook
+          image: ghcr.io/vibetechnologies/vibeteam:latest
+          command: ["python", "-m", "vibeteam.webhook.server"]
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # GitHub configuration
+            - name: GITHUB_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: GITHUB_WEBHOOK_SECRET
+                  optional: true
+            - name: GITHUB_BOT_USERNAME
+              value: "vibeteam-bot[bot]"
+            - name: GITHUB_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: github-app-secret
+                  key: app-id
+                  optional: true
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: github-app-secret
+                  key: private-key
+                  optional: true
+            - name: GITHUB_APP_INSTALLATION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: github-app-secret
+                  key: installation-id
+                  optional: true
+            # Slack configuration
+            - name: SLACK_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_SIGNING_SECRET
+                  optional: true
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_BOT_TOKEN
+                  optional: true
+            # LLM configuration (Azure OpenAI)
+            - name: AZURE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_KEY
+            - name: AZURE_API_BASE
+              value: "https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/"
+            - name: AZURE_API_VERSION
+              value: "2024-08-01-preview"
+            # GitHub Token for API calls
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: GITHUB_TOKEN
+                  optional: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3

@@ -104,7 +104,19 @@ jobs:
             --from-literal=LANGFUSE_SECRET_KEY="${{ secrets.LANGFUSE_SECRET_KEY }}" \
             --from-literal=LANGFUSE_BASE_URL="https://langfuse.vibebrowser.app" \
             --from-literal=AZURE_API_KEY="${{ secrets.AZURE_API_KEY }}" \
-            --from-literal=AZURE_API_BASE="${{ secrets.AZURE_API_BASE }}"
+            --from-literal=AZURE_API_BASE="${{ secrets.AZURE_API_BASE }}" \
+            --from-literal=SLACK_SIGNING_SECRET="${{ secrets.SLACK_SIGNING_SECRET }}" \
+            --from-literal=SLACK_BOT_TOKEN="${{ secrets.SLACK_BOT_TOKEN }}" \
+            --from-literal=GITHUB_WEBHOOK_SECRET="${{ secrets.GITHUB_WEBHOOK_SECRET }}"
+
+          # Create/update slack-bot-secrets (for Slack integration)
+          if [ -n "${{ secrets.SLACK_BOT_TOKEN }}" ]; then
+            kubectl -n $NAMESPACE delete secret slack-bot-secrets --ignore-not-found
+            kubectl -n $NAMESPACE create secret generic slack-bot-secrets \
+              --from-literal=SLACK_BOT_TOKEN="${{ secrets.SLACK_BOT_TOKEN }}" \
+              --from-literal=SLACK_SIGNING_SECRET="${{ secrets.SLACK_SIGNING_SECRET }}" \
+              --from-literal=SLACK_APP_ID="A0AAZGWEAVA"
+          fi
 
           # Create/update gmail-oauth-secrets (if secrets exist)
           if [ -n "${{ secrets.GMAIL_CREDENTIALS_JSON }}" ]; then
@@ -125,7 +137,7 @@ jobs:
           IMAGE="${{ env.REGISTRY }}/${IMAGE_NAME}:${SHORT_SHA}"
           
           # Update all k8s manifests with new image
-          for file in k8s/base/*.yaml; do
+          for file in k8s/base/*.yaml k8s/base/webhook/*.yaml; do
             if [ -f "$file" ]; then
               sed -i "s|image: ghcr.io/vibetechnologies/vibeteam:.*|image: ${IMAGE}|g" "$file"
             fi
@@ -142,7 +154,7 @@ jobs:
           kubectl get cronjobs -n $NAMESPACE
           echo ""
           echo "=== Secrets ==="
-          kubectl get secrets -n $NAMESPACE | grep -E "(gmail|vibeteam)" || echo "No matching secrets"
+          kubectl get secrets -n $NAMESPACE | grep -E "(gmail|vibeteam|slack)" || echo "No matching secrets"
           echo ""
           echo "=== Recent Jobs ==="
           kubectl get jobs -n $NAMESPACE --sort-by=.metadata.creationTimestamp | tail -5 || echo "No jobs yet"
