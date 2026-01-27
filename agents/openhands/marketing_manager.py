@@ -3,6 +3,7 @@ MarketingManager agent using OpenHands.
 
 Capabilities:
 - Chrome DevTools via MCP for browser automation
+- Browser context injection using shared browser tools
 - Social media post creation
 - Web research and analysis
 - Screenshot and content capture
@@ -23,6 +24,12 @@ from agents.config import (
     get_mcp_config_dict,
 )
 from agents.sessions import get_or_create_session, get_session_store
+
+# Import shared browser tools for context injection
+from agents.shared.browser_tools import (
+    get_browser_context,
+    web_search_sync,
+)
 
 try:
     from openhands.sdk import LLM, Agent, LocalConversation
@@ -95,6 +102,61 @@ class OpenHandsMarketingManager:
             },
         )
 
+    def _inject_browser_context(self, task: str) -> str:
+        """Inject browser context based on task keywords.
+
+        Automatically fetches web content when task mentions URLs or search-related keywords.
+
+        Args:
+            task: The task description
+
+        Returns:
+            Additional context string to prepend to the task
+        """
+        context_parts = []
+        task_lower = task.lower()
+
+        # Check for URL patterns
+        import re
+
+        urls = re.findall(r"https?://[^\s]+", task)
+        for url in urls[:3]:  # Limit to 3 URLs
+            try:
+                content = get_browser_context(url.rstrip(".,;:)"))
+                context_parts.append(content)
+            except Exception as e:
+                context_parts.append(f"## Error fetching {url}\n{e}")
+
+        # Check for search-related keywords
+        search_keywords = [
+            "search for",
+            "find information",
+            "research",
+            "look up",
+            "competitor",
+            "market analysis",
+        ]
+        if any(kw in task_lower for kw in search_keywords):
+            # Extract search terms (simple heuristic)
+            if "competitor" in task_lower or "market analysis" in task_lower:
+                # Try to extract company/product name
+                words = task.split()
+                for i, word in enumerate(words):
+                    if word.lower() in ["competitor", "analyze", "research"]:
+                        if i + 1 < len(words):
+                            search_term = words[i + 1].strip(".,;:)")
+                            if len(search_term) > 2:
+                                try:
+                                    results = web_search_sync(f"{search_term} product features")
+                                    context_parts.append(f"## Search Results\n{results}")
+                                except Exception as e:
+                                    context_parts.append(f"## Search Error\n{e}")
+                                break
+
+        if context_parts:
+            return "\n\n".join(context_parts) + "\n\n"
+        return ""
+
     def run(
         self,
         task: str,
@@ -144,7 +206,10 @@ class OpenHandsMarketingManager:
                 workspace=workspace_path,
             )
 
-            full_task = f"{MARKETING_MANAGER_CONTEXT}\n\nTask: {task}"
+            # Inject browser context based on task keywords
+            browser_context = self._inject_browser_context(task)
+
+            full_task = f"{MARKETING_MANAGER_CONTEXT}\n\n{browser_context}Task: {task}"
             response = conversation.ask_agent(full_task)
 
             session.add_message("user", task)
