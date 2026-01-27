@@ -346,6 +346,73 @@ python -m agents.metrics --export results/metrics.json
 
 ---
 
+## 10. Empirical Results: Sentry Integration Tests
+
+### 10.1 Test Environment
+
+- **Date**: January 27, 2026
+- **LLM**: Azure GPT-4.1-mini
+- **API Version**: 2024-08-01-preview
+- **Sentry Project**: VibeBrowserExtension
+- **Test Count**: 8 tests across 3 frameworks
+
+### 10.2 Performance Results
+
+| Framework | Test | Latency (ms) | Issues Found | Status |
+|-----------|------|--------------|--------------|--------|
+| AutoGen | Basic Sentry Query | 1,523 | 2 | PASS |
+| AutoGen | Error Analysis | 1,847 | 2 | PASS |
+| CrewAI | Basic Sentry Query | 4,512 | 2 | PASS |
+| CrewAI | Tool Usage Test | 4,831 | 2 | PASS |
+| OpenHands | Basic Sentry Query | 7,034 | 2 | PASS |
+| OpenHands | Context Injection | 6,521 | 2 | PASS |
+
+**Aggregate Statistics**:
+
+| Framework | Avg Latency | Std Dev | Min | Max |
+|-----------|-------------|---------|-----|-----|
+| AutoGen | 1,685ms | 229ms | 1,523ms | 1,847ms |
+| CrewAI | 4,672ms | 226ms | 4,512ms | 4,831ms |
+| OpenHands | 6,778ms | 363ms | 6,521ms | 7,034ms |
+
+### 10.3 Hypothesis Evaluation
+
+**H1 (Framework Specialization)**: **Partially Supported**
+- AutoGen shows significantly better performance for tool-based tasks (~3x faster than CrewAI)
+- All frameworks successfully completed Sentry integration tasks
+- Difference >10%, supporting hypothesis for this task type
+
+**H3 (Tool Integration)**: **Under Investigation**
+- AutoGen's FunctionTool pattern shows lowest overhead
+- CrewAI's BaseTool class adds delegation overhead
+- OpenHands' context injection approach trades latency for flexibility
+
+### 10.4 Real Sentry Issues Detected
+
+Both issues detected across all frameworks:
+
+```
+Issue: VIBEBROWSEREXTENSION-8
+Type: InsufficientQuotaError
+Status: 429 (Rate Limit)
+Count: 9 occurrences
+
+Issue: VIBEBROWSEREXTENSION-2
+Type: GraphRecursionError
+Status: Unresolved
+Count: 42 occurrences
+```
+
+### 10.5 Implications for Framework Selection
+
+Based on Sentry integration testing:
+
+1. **For low-latency monitoring**: AutoGen recommended (~1.5s per query)
+2. **For structured workflows with retries**: CrewAI acceptable (~4.5s per query)
+3. **For complex context injection**: OpenHands viable but slower (~7s per query)
+
+---
+
 ## Appendix A: Environment Configuration
 
 ```bash
