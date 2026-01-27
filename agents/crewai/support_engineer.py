@@ -106,15 +106,58 @@ class CalendarTool(BaseTool if CREWAI_AVAILABLE else object):
 
 
 class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Query Sentry for errors."""
+    """Query Sentry for errors using real API."""
 
     name: str = "sentry"
-    description: str = "Query Sentry for errors. Input: issue ID or search query."
+    description: str = "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
 
-    def _run(self, query: str) -> str:
-        """Query Sentry (mock implementation)."""
-        # In production, use Sentry API
-        return f"Sentry results for: {query}\n[Mock - integrate with Sentry API]"
+    def _run(self, query: str = "") -> str:
+        """Query Sentry for unresolved issues."""
+        import json
+        import os
+
+        try:
+            from vibeteam.connectors.sentry import SentryConnector
+
+            auth_token = os.getenv("SENTRY_AUTH_TOKEN")
+            if not auth_token:
+                return "Error: SENTRY_AUTH_TOKEN not configured."
+
+            # Parse optional parameters from query
+            project = None
+            hours = 24
+            limit = 10
+
+            if query:
+                try:
+                    params = json.loads(query)
+                    project = params.get("project")
+                    hours = params.get("hours", 24)
+                    limit = params.get("limit", 10)
+                except json.JSONDecodeError:
+                    # Query is just a search string, use defaults
+                    pass
+
+            connector = SentryConnector(auth_token=auth_token)
+            issues = connector.fetch_unresolved_issues(project=project, hours=hours, limit=limit)
+
+            if not issues:
+                return f"No unresolved issues found in the last {hours} hours."
+
+            result = f"Found {len(issues)} unresolved issues:\n\n"
+            for issue in issues:
+                result += f"**[{issue.project}] {issue.short_id}**: {issue.title}\n"
+                result += (
+                    f"  Level: {issue.level} | Count: {issue.count} | Users: {issue.user_count}\n"
+                )
+                result += f"  URL: {issue.permalink}\n\n"
+
+            return result
+
+        except ImportError:
+            return "Error: vibeteam.connectors.sentry module not available."
+        except Exception as e:
+            return f"Error fetching Sentry issues: {e}"
 
 
 class CrewAISupportEngineer:

@@ -20,6 +20,38 @@ from typing import Any
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 
+
+def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
+    """Fetch Sentry issues and format as context for the agent."""
+    try:
+        from vibeteam.connectors.sentry import SentryConnector
+
+        auth_token = os.getenv("SENTRY_AUTH_TOKEN")
+        if not auth_token:
+            return "Sentry: SENTRY_AUTH_TOKEN not configured."
+
+        connector = SentryConnector(auth_token=auth_token)
+        issues = connector.fetch_unresolved_issues(hours=hours, limit=limit)
+
+        if not issues:
+            return f"Sentry: No unresolved issues found in the last {hours} hours."
+
+        result = f"## Current Sentry Issues (last {hours}h)\n\n"
+        for issue in issues:
+            result += f"### [{issue.project}] {issue.short_id}\n"
+            result += f"**{issue.title}**\n"
+            result += f"- Level: {issue.level} | Count: {issue.count} | Users: {issue.user_count}\n"
+            result += f"- First seen: {issue.first_seen[:10]} | Last seen: {issue.last_seen[:10]}\n"
+            result += f"- URL: {issue.permalink}\n\n"
+
+        return result
+
+    except ImportError:
+        return "Sentry: vibeteam.connectors.sentry module not available."
+    except Exception as e:
+        return f"Sentry: Error fetching issues - {e}"
+
+
 try:
     from openhands.sdk import LLM, Agent, LocalConversation
 
@@ -139,7 +171,13 @@ class OpenHandsSupportEngineer:
                 workspace=workspace_path,
             )
 
-            full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\nTask: {task}"
+            # Check if task involves Sentry and inject real data
+            task_lower = task.lower()
+            sentry_context = ""
+            if "sentry" in task_lower or "error" in task_lower or "issue" in task_lower:
+                sentry_context = f"\n\n{fetch_sentry_context()}\n"
+
+            full_task = f"{SUPPORT_ENGINEER_CONTEXT}{sentry_context}\n\nTask: {task}"
             response = conversation.ask_agent(full_task)
 
             session.add_message("user", task)
