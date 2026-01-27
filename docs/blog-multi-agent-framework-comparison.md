@@ -871,57 +871,57 @@ Once deployed, here's how you interact with VibeTeam agents using slash commands
 
 | Command | Agent | Example |
 |---------|-------|---------|
-| `/swe` | Turing (Software Engineer) | `/swe review PR #123` |
-| `/pm` | Curie (Product Manager) | `/pm what's the roadmap?` |
-| `/release` | Einstein (Release Engineer) | `/release deploy to staging` |
-| `/support` | Darwin (Support Engineer) | `/support check customer ticket` |
-| `/sre` | Newton (Reliability Engineer) | `/sre check system health` |
-| `/marketer` | Ada (Marketer) | `/marketer announce the release` |
+| `/SoftwareEngineer` | Turing | `/SoftwareEngineer review PR #123` |
+| `/ProductManager` | Curie | `/ProductManager what's the roadmap?` |
+| `/ReleaseEngineer` | Einstein | `/ReleaseEngineer deploy to staging` |
+| `/SupportEngineer` | Darwin | `/SupportEngineer check customer ticket` |
+| `/ReliabilityEngineer` | Newton | `/ReliabilityEngineer check system health` |
+| `/MarketingManager` | Ada | `/MarketingManager announce the release` |
 
 ### Examples
 
-**Ask SWE to review code:**
+**Ask Software Engineer to review code:**
 ```
-/swe review PR #123
+/SoftwareEngineer review PR #123
 ```
 Response:
 ```
-🤖 Turing (SWE): I've reviewed PR #123. LGTM with one suggestion...
+🤖 Turing (Software Engineer): I've reviewed PR #123. LGTM with one suggestion...
 ```
 
-**Ask PM about priorities:**
+**Ask Product Manager about priorities:**
 ```
-/pm what should we focus on this sprint?
+/ProductManager what should we focus on this sprint?
 ```
 Response:
 ```
-🤖 Curie (PM): Based on customer feedback, top priorities are...
+🤖 Curie (Product Manager): Based on customer feedback, top priorities are...
 ```
 
 **Check production health:**
 ```
-/sre is production healthy?
+/ReliabilityEngineer is production healthy?
 ```
 Response:
 ```
-🤖 Newton (SRE): All systems operational. Uptime: 99.97%
+🤖 Newton (Reliability Engineer): All systems operational. Uptime: 99.97%
 ```
 
 ### Generic Command
 
-Use `/vibeteam` with keywords for automatic routing:
+Use `/VibeTeam` with keywords for automatic routing:
 ```
-/vibeteam fix the login bug        → routes to SWE
-/vibeteam deploy the hotfix        → routes to Release
-/vibeteam what do customers want?  → routes to PM
+/VibeTeam fix the login bug        → routes to Software Engineer
+/VibeTeam deploy the hotfix        → routes to Release Engineer
+/VibeTeam what do customers want?  → routes to Product Manager
 ```
 
 ### Agent-to-Agent Handoffs
 
 Agents can trigger other agents in their responses:
 ```
-🤖 Turing (SWE): Implementation complete. Triggering release...
-🤖 Einstein (Release): Starting deployment to staging...
+🤖 Turing (Software Engineer): Implementation complete. Triggering release...
+🤖 Einstein (Release Engineer): Starting deployment to staging...
 ```
 
 ---
