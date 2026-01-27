@@ -38,6 +38,12 @@ dependencies = [
     "google-api-python-client>=2.0.0",
     # Observability
     "sentry-sdk>=1.0.0",
+    # Agent Frameworks
+    "openhands-ai>=0.40.0",
+    "crewai>=0.100.0",
+    "pyautogen>=0.4.0",
+    # MCP support
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]
