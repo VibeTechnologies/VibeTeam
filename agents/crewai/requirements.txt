@@ -1,0 +1,25 @@
+# CrewAI Agent Framework Requirements
+# Python 3.10+ compatible
+
+# Core CrewAI
+crewai>=1.9.0
+
+# LLM and API (CrewAI uses litellm internally)
+litellm>=1.35.0
+pydantic>=2.0.0,<3.0
+
+# Shared utilities
+rich>=13.0.0
+tenacity>=8.2.0
+requests>=2.28.0
+
+# MCP support
+mcp>=1.0.0
+
+# Gmail integration (for SupportEngineer)
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+
+# Observability
+sentry-sdk>=1.0.0
