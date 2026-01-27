@@ -11,7 +11,7 @@ These tests verify:
 import pytest
 from fastapi.testclient import TestClient
 
-from vibeteam.api.main import app, _sessions
+from vibeteam.api.main import _sessions, app
 
 
 @pytest.fixture
@@ -177,7 +177,8 @@ class TestSessionCleanup:
     def test_cleanup_old_sessions(self):
         """Test cleanup of old sessions."""
         from datetime import datetime, timedelta, timezone
-        from vibeteam.api.main import cleanup_old_sessions, _sessions
+
+        from vibeteam.api.main import _sessions, cleanup_old_sessions
         from vibeteam.swarm import create_swarm_orchestrator
 
         _sessions.clear()

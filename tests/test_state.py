@@ -1,8 +1,6 @@
 """Tests for SharedMessageState and SwarmMessage."""
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import datetime
 
 from vibeteam.state import SharedMessageState, SwarmMessage
 

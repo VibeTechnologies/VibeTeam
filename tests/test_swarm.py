@@ -8,18 +8,19 @@ These tests verify:
 4. SwarmOrchestrator routing and iteration
 """
 
+from datetime import datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from vibeteam.state import SharedMessageState, SwarmMessage
 from vibeteam.tools.transfer import (
-    TransferToSWETool,
+    HANDOFF_PREFIX,
     TransferToSRETool,
     TransferToSupervisorTool,
+    TransferToSWETool,
+    get_transfer_tools_for_agent,
     is_handoff_result,
     parse_handoff,
-    get_transfer_tools_for_agent,
-    HANDOFF_PREFIX,
 )
 
 
