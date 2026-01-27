@@ -181,8 +181,8 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
         resp = requests.get(
             url,
             auth=(langfuse_public, langfuse_secret),
-            params=params,
-            timeout=30,  # type: ignore[arg-type]
+            params=params,  # type: ignore[arg-type]
+            timeout=30,
         )
         resp.raise_for_status()
         traces = resp.json().get("data", [])

@@ -83,7 +83,7 @@ class TransferToSupervisorTool(BaseTool):
             },
         }
 
-    async def execute(
+    async def execute(  # type: ignore[override]
         self, result: str, needs_followup: bool = False, **kwargs: Any
     ) -> HandoffResult:
         context = "needs_followup" if needs_followup else "complete"
@@ -129,7 +129,7 @@ class TransferToSWETool(BaseTool):
             },
         }
 
-    async def execute(
+    async def execute(  # type: ignore[override]
         self, task: str, context: str = "", priority: str = "medium", **kwargs: Any
     ) -> HandoffResult:
         return create_handoff_result("swe", task, f"priority={priority}, context={context}")
@@ -168,7 +168,9 @@ class TransferToSRETool(BaseTool):
             },
         }
 
-    async def execute(self, task: str, context: str = "", **kwargs: Any) -> HandoffResult:
+    async def execute(  # type: ignore[override]
+        self, task: str, context: str = "", **kwargs: Any
+    ) -> HandoffResult:
         return create_handoff_result("sre", task, context)
 
 
@@ -205,7 +207,9 @@ class TransferToReleaseTool(BaseTool):
             },
         }
 
-    async def execute(self, task: str, version: str = "", **kwargs: Any) -> HandoffResult:
+    async def execute(  # type: ignore[override]
+        self, task: str, version: str = "", **kwargs: Any
+    ) -> HandoffResult:
         return create_handoff_result("release", task, f"version={version}" if version else "")
 
 
@@ -242,7 +246,9 @@ class TransferToSupportTool(BaseTool):
             },
         }
 
-    async def execute(self, task: str, customer_info: str = "", **kwargs: Any) -> HandoffResult:
+    async def execute(  # type: ignore[override]
+        self, task: str, customer_info: str = "", **kwargs: Any
+    ) -> HandoffResult:
         return create_handoff_result(
             "support", task, f"customer={customer_info}" if customer_info else ""
         )
@@ -282,7 +288,9 @@ class TransferToMarketerTool(BaseTool):
             },
         }
 
-    async def execute(self, task: str, platform: str = "all", **kwargs: Any) -> HandoffResult:
+    async def execute(  # type: ignore[override]
+        self, task: str, platform: str = "all", **kwargs: Any
+    ) -> HandoffResult:
         return create_handoff_result("marketer", task, f"platform={platform}")
 
 
@@ -319,12 +327,14 @@ class TransferToPMTool(BaseTool):
             },
         }
 
-    async def execute(self, task: str, context: str = "", **kwargs: Any) -> HandoffResult:
+    async def execute(  # type: ignore[override]
+        self, task: str, context: str = "", **kwargs: Any
+    ) -> HandoffResult:
         return create_handoff_result("pm", task, context)
 
 
 # Agent key to tool mapping
-TRANSFER_TOOLS = {
+TRANSFER_TOOLS: dict[str, type[BaseTool]] = {
     "supervisor": TransferToSupervisorTool,
     "swe": TransferToSWETool,
     "sre": TransferToSRETool,
