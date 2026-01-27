@@ -32,6 +32,7 @@ from agents.openhands.support_engineer import (
     OpenHandsSupportEngineer,
     create_support_engineer,
 )
+from agents.openhands.team import OpenHandsTeam, create_team
 
 __all__ = [
     "OpenHandsMarketingManager",
@@ -39,9 +40,11 @@ __all__ = [
     "OpenHandsReleaseEngineer",
     "OpenHandsSoftwareEngineer",
     "OpenHandsSupportEngineer",
+    "OpenHandsTeam",
     "create_marketing_manager",
     "create_product_manager",
     "create_release_engineer",
     "create_software_engineer",
     "create_support_engineer",
+    "create_team",
 ]

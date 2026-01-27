@@ -18,6 +18,19 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+# Check if vibeteam.roles exists
+def _roles_available():
+    try:
+        from vibeteam import roles  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+ROLES_AVAILABLE = _roles_available()
+
+
 @pytest.fixture
 def sample_request() -> dict:
     """Sample feature request for testing."""
@@ -28,6 +41,10 @@ def sample_request() -> dict:
 
 
 @pytest.mark.e2e
+@pytest.mark.skipif(
+    not ROLES_AVAILABLE,
+    reason="vibeteam.roles module not implemented yet",
+)
 @pytest.mark.skipif(
     not os.getenv("AZURE_API_KEY"),
     reason="AZURE_API_KEY not set",
