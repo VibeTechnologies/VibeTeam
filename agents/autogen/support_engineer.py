@@ -71,103 +71,18 @@ When you complete a task, summarize actions taken and any follow-ups needed.
 """
 
 
-# Tool functions for SupportEngineer
-async def list_emails(label: str = "INBOX", max_results: int = 10) -> str:
-    """List emails from a Gmail label.
-
-    Args:
-        label: Gmail label (INBOX, SENT, SPAM, etc.)
-        max_results: Maximum number of emails to return
-
-    Returns:
-        List of email summaries
-    """
-    # Simulated response - in production, use Gmail MCP or API
-    return f"""
-=== Emails from {label} (last {max_results}) ===
-
-Note: This is a simulated response. In production, integrate with:
-- Gmail MCP server
-- Google Workspace API
-
-For now, please describe the email operations you want to perform, and I'll help you structure them.
-"""
-
-
-async def send_email(to: str, subject: str, body: str) -> str:
-    """Send an email via Gmail.
-
-    Args:
-        to: Recipient email address
-        subject: Email subject
-        body: Email body content
-
-    Returns:
-        Status message
-    """
-    # Validate email format
-    if "@" not in to:
-        return "Error: Invalid email address format"
-
-    return f"""
-=== Email Draft Created ===
-To: {to}
-Subject: {subject}
-Body:
-{body}
-
-Status: Draft created (simulated)
-Note: In production, this would send via Gmail API/MCP
-"""
-
-
-async def list_calendar_events(days: int = 7) -> str:
-    """List upcoming calendar events.
-
-    Args:
-        days: Number of days to look ahead
-
-    Returns:
-        List of calendar events
-    """
-    return f"""
-=== Calendar Events (next {days} days) ===
-
-Note: This is a simulated response. In production, integrate with:
-- Google Calendar MCP server
-- Google Workspace API
-
-Please describe the calendar operations you want to perform.
-"""
-
-
-async def create_calendar_event(
-    title: str,
-    start_time: str,
-    duration_minutes: int = 60,
-    attendees: str = "",
-) -> str:
-    """Create a calendar event.
-
-    Args:
-        title: Event title
-        start_time: Start time (ISO format or natural language)
-        duration_minutes: Duration in minutes
-        attendees: Comma-separated email addresses
-
-    Returns:
-        Event creation status
-    """
-    return f"""
-=== Calendar Event Draft ===
-Title: {title}
-Start: {start_time}
-Duration: {duration_minutes} minutes
-Attendees: {attendees or "None"}
-
-Status: Draft created (simulated)
-Note: In production, this would create via Google Calendar API/MCP
-"""
+# Import shared tool functions - these use real connectors
+from agents.shared.calendar_tools import (
+    create_calendar_event,
+    list_calendar_events,
+)
+from agents.shared.gmail_tools import (
+    list_emails,
+    send_email,
+)
+from agents.shared.langfuse_tools import (
+    get_langfuse_traces,
+)
 
 
 async def get_sentry_issues(project: str | None = None, hours: int = 24, limit: int = 10) -> str:
@@ -215,29 +130,7 @@ async def get_sentry_issues(project: str | None = None, hours: int = 24, limit: 
         return f"Error fetching Sentry issues: {e}"
 
 
-async def get_langfuse_traces(
-    limit: int = 10,
-    min_latency_ms: int = 0,
-) -> str:
-    """Get recent traces from Langfuse.
-
-    Args:
-        limit: Maximum number of traces to return
-        min_latency_ms: Filter traces with latency above this threshold
-
-    Returns:
-        List of Langfuse traces
-    """
-    return f"""
-=== Langfuse Traces (last {limit}) ===
-Latency filter: >= {min_latency_ms}ms
-
-Note: This is a simulated response. In production, integrate with:
-- Langfuse API
-- Custom Langfuse connector
-
-Please describe the observability data you want to analyze.
-"""
+# get_langfuse_traces is imported from agents.shared.langfuse_tools
 
 
 async def create_support_ticket(

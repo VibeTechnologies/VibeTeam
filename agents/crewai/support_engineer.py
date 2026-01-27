@@ -2,10 +2,10 @@
 SupportEngineer agent using CrewAI.
 
 Capabilities:
-- Email management (Gmail integration)
-- Calendar scheduling (Google Calendar)
-- Error tracking (Sentry)
-- LLM observability (Langfuse)
+- Email management (Gmail integration via shared tools)
+- Calendar scheduling (Google Calendar via shared tools)
+- Error tracking (Sentry via real SentryConnector)
+- LLM observability (Langfuse via shared tools)
 """
 
 import os
@@ -13,6 +13,12 @@ from typing import Any
 
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.calendar_tools import create_calendar_event, list_calendar_events
+
+# Import shared tools for real API integration
+from agents.shared.gmail_tools import fetch_unread_emails
+from agents.shared.gmail_tools import send_email as shared_send_email
+from agents.shared.langfuse_tools import detect_langfuse_anomalies, get_langfuse_traces
 
 try:
     from crewai import Agent, Crew, Process, Task
@@ -26,6 +32,7 @@ except ImportError:
     Task = None
     Crew = None
     LLM = None
+    BaseTool = object
 
 
 SUPPORT_ENGINEER_BACKSTORY = """You are Grace, the Support Engineer for VibeTeam.
@@ -44,25 +51,32 @@ and monitor system health for VibeTeam."""
 
 
 class EmailSearchTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Search emails in Gmail."""
+    """Search and list emails from Gmail using real API."""
 
     name: str = "search_emails"
-    description: str = "Search emails in Gmail. Input: search query."
+    description: str = (
+        "Search and list unread emails from Gmail. Input: max number of results (default 10)."
+    )
 
-    def _run(self, query: str) -> str:
-        """Search emails (mock implementation)."""
-        # In production, use Gmail API
-        return f"Email search results for: {query}\n[Mock results - integrate with Gmail API]"
+    def _run(self, query: str = "10") -> str:
+        """Fetch unread emails using real Gmail connector."""
+        try:
+            max_results = int(query) if query.isdigit() else 10
+        except (ValueError, AttributeError):
+            max_results = 10
+
+        return fetch_unread_emails(max_results=max_results)
 
 
 class SendEmailTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Send an email via Gmail."""
+    """Send an email via Gmail using real API."""
 
     name: str = "send_email"
-    description: str = "Send an email. Input: JSON with 'to', 'subject', and 'body' keys."
+    description: str = "Send an email via Gmail. Input: JSON with 'to', 'subject', and 'body' keys."
 
     def _run(self, input_data: str) -> str:
-        """Send email (mock implementation)."""
+        """Send email using real Gmail connector."""
+        import asyncio
         import json
 
         try:
@@ -74,20 +88,23 @@ class SendEmailTool(BaseTool if CREWAI_AVAILABLE else object):
             if not all([to, subject, body]):
                 return "Error: 'to', 'subject', and 'body' are required"
 
-            # In production, use Gmail API
-            return f"Email sent to {to} with subject: {subject}\n[Mock - integrate with Gmail API]"
+            # shared_send_email is async, run it synchronously
+            return asyncio.run(shared_send_email(to=to, subject=subject, body=body))
+        except json.JSONDecodeError:
+            return "Error: Input must be valid JSON with 'to', 'subject', and 'body' keys"
         except Exception as e:
             return f"Error sending email: {e}"
 
 
 class CalendarTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Manage Google Calendar events."""
+    """Manage Google Calendar events using real API."""
 
     name: str = "calendar"
     description: str = "Manage calendar. Input: JSON with 'action' (list/create) and event details."
 
     def _run(self, input_data: str) -> str:
-        """Manage calendar (mock implementation)."""
+        """Manage calendar using real Google Calendar API."""
+        import asyncio
         import json
 
         try:
@@ -95,12 +112,30 @@ class CalendarTool(BaseTool if CREWAI_AVAILABLE else object):
             action = data.get("action", "list")
 
             if action == "list":
-                return "Upcoming events:\n[Mock - integrate with Google Calendar API]"
+                days = data.get("days", 7)
+                max_results = data.get("max_results", 10)
+                return asyncio.run(list_calendar_events(days=days, max_results=max_results))
             elif action == "create":
                 title = data.get("title", "Meeting")
-                return f"Created event: {title}\n[Mock - integrate with Google Calendar API]"
+                start_time = data.get("start_time")
+                if not start_time:
+                    return "Error: 'start_time' is required for creating events (ISO format)"
+                duration = data.get("duration_minutes", 60)
+                attendees = data.get("attendees", "")
+                description = data.get("description", "")
+                return asyncio.run(
+                    create_calendar_event(
+                        title=title,
+                        start_time=start_time,
+                        duration_minutes=duration,
+                        attendees=attendees,
+                        description=description,
+                    )
+                )
             else:
-                return f"Unknown action: {action}"
+                return f"Unknown action: {action}. Use 'list' or 'create'."
+        except json.JSONDecodeError:
+            return "Error: Input must be valid JSON"
         except Exception as e:
             return f"Error with calendar: {e}"
 
@@ -109,9 +144,7 @@ class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
     """Query Sentry for errors using real API."""
 
     name: str = "sentry"
-    description: str = (
-        "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
-    )
+    description: str = "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
 
     def _run(self, query: str = "") -> str:
         """Query Sentry for unresolved issues."""
@@ -162,6 +195,42 @@ class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
             return f"Error fetching Sentry issues: {e}"
 
 
+class LangfuseTool(BaseTool if CREWAI_AVAILABLE else object):
+    """Query Langfuse for LLM observability data using real API."""
+
+    name: str = "langfuse"
+    description: str = "Query Langfuse for LLM traces and detect anomalies. Input: optional JSON with 'action' (traces/anomalies), 'hours', 'limit' keys."
+
+    def _run(self, query: str = "") -> str:
+        """Query Langfuse for traces and anomalies."""
+        import asyncio
+        import json
+
+        try:
+            # Parse optional parameters
+            action = "traces"
+            hours = 24
+            limit = 10
+
+            if query:
+                try:
+                    params = json.loads(query)
+                    action = params.get("action", "traces")
+                    hours = params.get("hours", 24)
+                    limit = params.get("limit", 10)
+                except json.JSONDecodeError:
+                    # Query is just a string, use defaults
+                    pass
+
+            if action == "anomalies":
+                return asyncio.run(detect_langfuse_anomalies(hours=hours))
+            else:
+                return asyncio.run(get_langfuse_traces(limit=limit, hours=hours))
+
+        except Exception as e:
+            return f"Error fetching Langfuse data: {e}"
+
+
 class CrewAISupportEngineer:
     """Support Engineer agent using CrewAI."""
 
@@ -180,6 +249,7 @@ class CrewAISupportEngineer:
             SendEmailTool(),
             CalendarTool(),
             SentryTool(),
+            LangfuseTool(),
         ]
 
     def _create_agent(self) -> "Agent":
