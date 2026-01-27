@@ -12,15 +12,15 @@ import asyncio
 import os
 from typing import Any
 
-from agents.config import AgentConfig, MARKETING_MANAGER_CONFIG
+from agents.config import MARKETING_MANAGER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 
 # AutoGen imports - will fail gracefully if not installed
 try:
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.base import TaskResult
-    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
     from autogen_core.models import ModelFamily
+    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 
     AUTOGEN_AVAILABLE = True
 except ImportError:
@@ -83,7 +83,7 @@ async def web_search(query: str) -> str:
 
 Note: This is a simulated response. In production, integrate with:
 - Google Custom Search API
-- Bing Search API  
+- Bing Search API
 - SerpAPI
 
 For now, please use your knowledge to provide relevant information about: {query}
@@ -100,8 +100,8 @@ async def fetch_webpage(url: str) -> str:
         Webpage content or error message
     """
     try:
-        import urllib.request
         import urllib.error
+        import urllib.request
         from html.parser import HTMLParser
 
         class TextExtractor(HTMLParser):

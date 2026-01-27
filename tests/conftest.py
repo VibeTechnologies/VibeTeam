@@ -8,10 +8,11 @@ Provides shared fixtures for:
 """
 
 import os
-import pytest
 from pathlib import Path
 
-from agents.metrics import MetricsCollector, reset_collector
+import pytest
+
+from agents.metrics import reset_collector
 
 
 def pytest_addoption(parser):

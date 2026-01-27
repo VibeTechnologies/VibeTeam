@@ -6,14 +6,14 @@ and AutoGen frameworks to enable fair comparison of agent performance.
 """
 
 import json
-import os
+import threading
 import time
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
-from contextlib import contextmanager
-import threading
+from typing import Any
 
 # Thread-local storage for metrics context
 _local = threading.local()
@@ -472,8 +472,8 @@ def timed_execution(
     """
 
     def decorator(func: Callable) -> Callable:
-        import functools
         import asyncio
+        import functools
 
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):

@@ -13,11 +13,10 @@ With metrics export:
 """
 
 import asyncio
+
 import pytest
-from typing import Any
 
-from agents.metrics import MetricsContext, get_collector, track_task
-
+from agents.metrics import track_task
 
 # ============================================================================
 # AutoGen Tests
@@ -568,7 +567,7 @@ class TestStressTasks:
             "S1", "autogen", "release_engineer", "stress", "10 sequential tasks"
         ) as ctx:
             results = []
-            for i, task in enumerate(tasks):
+            for _i, task in enumerate(tasks):
                 result = await autogen_engineer.run_async(task)
                 results.append(result)
                 ctx.increment_tool_calls()
@@ -582,8 +581,8 @@ class TestStressTasks:
     @pytest.mark.asyncio
     async def test_s2_concurrent_agents(self, azure_credentials):
         """S2: Concurrent agent execution."""
-        from agents.autogen.release_engineer import AutoGenReleaseEngineer
         from agents.autogen.marketing_manager import AutoGenMarketingManager
+        from agents.autogen.release_engineer import AutoGenReleaseEngineer
         from agents.autogen.support_engineer import AutoGenSupportEngineer
 
         release = AutoGenReleaseEngineer()

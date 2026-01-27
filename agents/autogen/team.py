@@ -8,43 +8,40 @@ import asyncio
 import os
 from typing import Any
 
-from agents.config import AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
+from agents.autogen.marketing_manager import (
+    analyze_sentiment,
+    create_social_post,
+    fetch_webpage,
+    web_search,
+)
 
 # Import agent modules (will create agents on demand)
 from agents.autogen.release_engineer import (
-    AutoGenReleaseEngineer,
     execute_shell,
+    list_directory,
     read_file,
     write_file,
-    list_directory,
-)
-from agents.autogen.marketing_manager import (
-    AutoGenMarketingManager,
-    web_search,
-    fetch_webpage,
-    create_social_post,
-    analyze_sentiment,
 )
 from agents.autogen.support_engineer import (
-    AutoGenSupportEngineer,
+    create_calendar_event,
+    create_support_ticket,
+    get_langfuse_traces,
+    get_sentry_issues,
+    list_calendar_events,
     list_emails,
     send_email,
-    list_calendar_events,
-    create_calendar_event,
-    get_sentry_issues,
-    get_langfuse_traces,
-    create_support_ticket,
 )
+from agents.config import AgentConfig
+from agents.sessions import get_or_create_session, get_session_store
 
 # AutoGen imports
 try:
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.base import TaskResult
-    from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
+    from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
     from autogen_agentchat.teams import SelectorGroupChat
-    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
     from autogen_core.models import ModelFamily
+    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 
     AUTOGEN_AVAILABLE = True
 except ImportError:

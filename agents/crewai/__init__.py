@@ -8,19 +8,19 @@ CrewAI provides:
 - Task delegation and hierarchical processes
 """
 
-from agents.crewai.release_engineer import (
-    CrewAIReleaseEngineer,
-    create_release_engineer,
-)
+from agents.crewai.crew import CrewAITeam, create_team
 from agents.crewai.marketing_manager import (
     CrewAIMarketingManager,
     create_marketing_manager,
+)
+from agents.crewai.release_engineer import (
+    CrewAIReleaseEngineer,
+    create_release_engineer,
 )
 from agents.crewai.support_engineer import (
     CrewAISupportEngineer,
     create_support_engineer,
 )
-from agents.crewai.crew import CrewAITeam, create_team
 
 __all__ = [
     "CrewAIReleaseEngineer",
