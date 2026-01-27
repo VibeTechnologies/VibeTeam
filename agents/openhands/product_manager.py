@@ -1,11 +1,11 @@
 """
-MarketingManager agent using OpenHands.
+ProductManager agent using OpenHands.
 
 Capabilities:
-- Chrome DevTools via MCP for browser automation
-- Social media post creation
-- Web research and analysis
-- Screenshot and content capture
+- GitHub issue and project management
+- PRD and user story creation
+- Backlog prioritization
+- Multi-agent task coordination
 
 Note: OpenHands SDK v1.2.1 uses:
 - LLM: model, api_key, base_url, api_version, max_output_tokens
@@ -17,11 +17,7 @@ import os
 import tempfile
 from typing import Any
 
-from agents.config import (
-    MARKETING_MANAGER_CONFIG,
-    AgentConfig,
-    get_mcp_config_dict,
-)
+from agents.config import PRODUCT_MANAGER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 
 try:
@@ -35,39 +31,67 @@ except ImportError:
     LocalConversation = None
 
 
-MARKETING_MANAGER_CONTEXT = """You are Ada, the Marketing Manager for VibeTeam.
+PRODUCT_MANAGER_CONTEXT = """You are Maya, the Product Manager for VibeTeam.
 
 Your responsibilities:
-1. **Social Media**: Create and schedule posts on Twitter/X, LinkedIn
-2. **Content Creation**: Write blog posts, announcements, release notes
-3. **Web Research**: Analyze competitors, trends, and market opportunities
-4. **Brand Management**: Ensure consistent messaging and brand voice
+1. **Feature Requests**: Process and analyze customer feature requests
+2. **PRDs**: Write detailed Product Requirement Documents
+3. **User Stories**: Create actionable user stories for engineers
+4. **Backlog**: Prioritize product backlog based on impact and effort
+5. **Coordination**: Coordinate multi-agent tasks requiring orchestration
+6. **Conflict Resolution**: Resolve disagreements between agents
 
-## Brand Guidelines
-- Voice: Professional but approachable, technical but accessible
-- Hashtags: #AI #DevTools #Automation #VibeTeam
-- Always include relevant links and CTAs
+## Product Vision
+VibeTeam is an AI-powered multi-agent platform for SaaS development. We focus on:
+- Developer productivity through AI automation
+- Human visibility into all agent activities
+- Seamless integration with existing tools (GitHub, Slack, Sentry)
 
-## Communication
-- Post updates to Slack #marketing
-- Coordinate with @ReleaseEngineer for release announcements
-- Tag @SupportEngineer for customer testimonials
+## PRD Template
+When writing PRDs, include:
+1. Problem Statement
+2. User Personas
+3. User Stories (As a [role], I want [feature], so that [benefit])
+4. Success Metrics
+5. Non-functional Requirements
+6. Open Questions
 
-When posting to social media:
-1. Draft the post content
-2. Take a screenshot for approval (if needed)
-3. Confirm before publishing
+## Prioritization Framework
+Use RICE scoring:
+- Reach: How many users affected?
+- Impact: How much impact per user? (3=massive, 2=high, 1=medium, 0.5=low)
+- Confidence: How confident in estimates? (100%, 80%, 50%)
+- Effort: Person-months to implement
+
+RICE Score = (Reach × Impact × Confidence) / Effort
+
+## Agent Coordination
+As the supervisor agent, you can delegate to:
+- @SoftwareEngineer for implementation tasks
+- @ReleaseEngineer for deployment and infrastructure
+- @SupportEngineer for customer communication and error analysis
+- @MarketingManager for announcements and social media
+
+## Customer Requests Table
+Feature requests are tracked in GitHub Issue #322 (VibeTechnologies/VibeWebAgent).
+Format: | Request | Customer | Priority | Status | Assigned |
+
+When you complete a task, provide a clear summary and next steps.
 """
 
 
-class OpenHandsMarketingManager:
-    """Marketing Manager agent using OpenHands SDK."""
+class OpenHandsProductManager:
+    """
+    Product Manager agent using OpenHands SDK.
+
+    Uses OpenHands' agentic loop for product management tasks.
+    """
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
             raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
 
-        self.config = config or MARKETING_MANAGER_CONFIG
+        self.config = config or PRODUCT_MANAGER_CONFIG
 
     def _create_llm(self) -> "LLM":
         """Create LLM with Azure configuration."""
@@ -84,14 +108,11 @@ class OpenHandsMarketingManager:
         )
 
     def _create_agent(self, llm: "LLM") -> "Agent":
-        """Create Agent with MCP config if available."""
-        mcp_config = get_mcp_config_dict(self.config.mcp_servers)
-
+        """Create Agent with LLM."""
         return Agent(
             llm=llm,
-            mcp_config=mcp_config if mcp_config.get("mcpServers") else None,
             system_prompt_kwargs={
-                "agent_context": MARKETING_MANAGER_CONTEXT,
+                "agent_context": PRODUCT_MANAGER_CONTEXT,
             },
         )
 
@@ -104,11 +125,11 @@ class OpenHandsMarketingManager:
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
-        Run a task with the Marketing Manager agent.
+        Run a task with the Product Manager agent.
 
         Args:
             task: The task description
-            context_type: Type of context (campaign, post, slack, ephemeral)
+            context_type: Type of context (issue, pr, slack, ephemeral)
             context_id: ID for the context
             workspace: Working directory for the agent
 
@@ -122,7 +143,7 @@ class OpenHandsMarketingManager:
 
         session = get_or_create_session(
             framework="openhands",
-            role="marketing_manager",
+            role="product_manager",
             context_type=context_type,
             context_id=context_id,
         )
@@ -144,7 +165,7 @@ class OpenHandsMarketingManager:
                 workspace=workspace_path,
             )
 
-            full_task = f"{MARKETING_MANAGER_CONTEXT}\n\nTask: {task}"
+            full_task = f"{PRODUCT_MANAGER_CONTEXT}\n\nTask: {task}"
             response = conversation.ask_agent(full_task)
 
             session.add_message("user", task)
@@ -156,7 +177,7 @@ class OpenHandsMarketingManager:
                 "session_key": session.key,
                 "session_id": session.session_id,
                 "framework": "openhands",
-                "agent": "marketing_manager",
+                "agent": "product_manager",
             }
 
         finally:
@@ -183,6 +204,6 @@ class OpenHandsMarketingManager:
         )
 
 
-def create_marketing_manager(config: AgentConfig | None = None) -> OpenHandsMarketingManager:
-    """Factory function to create Marketing Manager agent."""
-    return OpenHandsMarketingManager(config)
+def create_product_manager(config: AgentConfig | None = None) -> OpenHandsProductManager:
+    """Factory function to create Product Manager agent."""
+    return OpenHandsProductManager(config)

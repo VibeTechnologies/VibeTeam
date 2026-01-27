@@ -126,6 +126,19 @@ SUPPORT_ENGINEER_CONFIG = AgentConfig(
     },
 )
 
+SOFTWARE_ENGINEER_CONFIG = AgentConfig(
+    mcp_servers={
+        "github": MCP_SERVERS["github"],
+        "filesystem": MCP_SERVERS["filesystem"],
+    },
+)
+
+PRODUCT_MANAGER_CONFIG = AgentConfig(
+    mcp_servers={
+        "github": MCP_SERVERS["github"],
+    },
+)
+
 
 def get_mcp_config_dict(servers: dict[str, MCPServerConfig]) -> dict[str, Any]:
     """Convert MCPServerConfig objects to dict format for frameworks."""

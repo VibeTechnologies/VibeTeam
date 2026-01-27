@@ -147,6 +147,7 @@ class CrewAISupportEngineer:
         # Create LLM with explicit Azure configuration
         llm = LLM(
             model=model_name,
+            provider="litellm",
             api_base=self.config.llm.api_base,
             api_key=self.config.llm.api_key,
             api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
