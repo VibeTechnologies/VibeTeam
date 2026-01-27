@@ -109,7 +109,9 @@ class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
     """Query Sentry for errors using real API."""
 
     name: str = "sentry"
-    description: str = "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
+    description: str = (
+        "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
+    )
 
     def _run(self, query: str = "") -> str:
         """Query Sentry for unresolved issues."""
