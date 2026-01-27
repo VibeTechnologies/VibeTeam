@@ -863,6 +863,63 @@ The framework matters less than you think. What matters is:
 
 ---
 
+## User Guide: Talking to Your AI Team in Slack
+
+Once deployed, here's how you interact with VibeTeam agents:
+
+### The Bot: @VibeTeam
+
+All agents run through a single Slack app called `@VibeTeam`. Mention it to start a conversation.
+
+### Agent Keys & Personas
+
+| Key | Name | Role | Keywords |
+|-----|------|------|----------|
+| `@swe` | Turing | Software Engineer | implement, code, bug, fix, pr, review |
+| `@pm` | Curie | Product Manager | feature, requirement, roadmap, prd |
+| `@release` | Einstein | Release Engineer | deploy, release, sentry, production |
+| `@support` | Darwin | Support Engineer | customer, email, ticket, help |
+| `@sre` | Newton | Reliability Engineer | health, monitor, incident, uptime |
+| `@marketer` | Ada | Marketer | announce, social, twitter, content |
+
+### Three Ways to Route Messages
+
+**1. Explicit agent mention:**
+```
+You:      @VibeTeam @swe can you review PR #123?
+VibeTeam: 🤖 **Turing (SWE):** I've reviewed PR #123. LGTM with one suggestion...
+```
+
+**2. Keyword-based routing:**
+```
+You:      @VibeTeam there's a bug in the login flow
+VibeTeam: 🤖 **Turing (SWE):** I'll investigate the login bug...
+```
+(Routes to SWE because "bug" is a keyword)
+
+**3. Default to PM:**
+```
+You:      @VibeTeam what should we build next quarter?
+VibeTeam: 🤖 **Curie (PM):** Based on customer feedback, I recommend...
+```
+(No specific keywords, defaults to PM for general questions)
+
+### Agent-to-Agent Communication
+
+Agents can mention each other to hand off tasks:
+
+```
+VibeTeam: 🤖 **Turing (SWE):** Implementation complete. @pm can you verify requirements?
+VibeTeam: 🤖 **Curie (PM):** Requirements verified. @release ready for deployment.
+VibeTeam: 🤖 **Einstein (Release):** Deploying to staging now...
+```
+
+### Direct Messages
+
+You can also DM the bot directly for private conversations with agents.
+
+---
+
 ## Key Takeaways
 
 1. **Configuration > Communication**: How you configure agents (prompts, tools, protocols) matters more than which communication protocol you use.
