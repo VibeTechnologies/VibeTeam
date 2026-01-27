@@ -301,7 +301,7 @@ actionable outputs.{tool_descriptions}"""
                             "function": {
                                 "name": tc.function.name,
                                 "arguments": tc.function.arguments,
-                            }
+                            },
                         }
                         for tc in assistant_message.tool_calls
                     ]
