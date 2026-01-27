@@ -36,6 +36,9 @@ dependencies = [
     "google-auth>=2.0.0",
     "google-auth-oauthlib>=1.0.0",
     "google-api-python-client>=2.0.0",
+    # Slack integration
+    "slack-sdk>=3.21.0",
+    "slack-bolt>=1.18.0",
     # Observability
     "sentry-sdk>=1.0.0",
 ]
