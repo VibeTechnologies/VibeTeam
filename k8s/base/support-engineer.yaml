@@ -64,6 +64,8 @@ spec:
                   readOnly: true
                 - name: token-storage
                   mountPath: /data
+                - name: docs-cache
+                  mountPath: /tmp/vibeteam-docs
               resources:
                 requests:
                   memory: "128Mi"
@@ -72,6 +74,26 @@ spec:
                   memory: "256Mi"
                   cpu: "200m"
           initContainers:
+            # Sync documentation repos for agent context
+            - name: init-docs
+              image: ghcr.io/vibetechnologies/vibeteam:latest
+              command: ["vibeteam", "docs", "sync"]
+              env:
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: GITHUB_TOKEN
+              volumeMounts:
+                - name: docs-cache
+                  mountPath: /tmp/vibeteam-docs
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "100m"
             # Copy token to writable location if not exists
             - name: init-token
               image: busybox:1.36
@@ -102,3 +124,5 @@ spec:
             - name: token-storage
               persistentVolumeClaim:
                 claimName: gmail-token-storage
+            - name: docs-cache
+              emptyDir: {}

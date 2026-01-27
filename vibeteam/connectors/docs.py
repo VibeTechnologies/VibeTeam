@@ -4,7 +4,8 @@ Docs Connector - Knowledge base connector for documentation files.
 Provides access to markdown documentation files across multiple repositories.
 Used by agents to retrieve context about infrastructure, services, and codebase.
 
-Supports both local paths and git repositories - repos are cloned/pulled automatically.
+Documentation repos should be cloned/pulled at container startup via the
+`vibeteam docs sync` CLI command, not on every query.
 """
 
 import fnmatch
@@ -45,6 +46,17 @@ class DocsSource:
     def is_git_repo(self) -> bool:
         """Check if this source is a git repository URL."""
         return self.path.startswith(("git@", "https://github.com", "git://"))
+
+    def get_local_path(self) -> str:
+        """Get the local path for this source (resolves git repos to cache dir)."""
+        if self.is_git_repo:
+            # name is always set in __post_init__ for git repos
+            name = self.name or "unknown"
+            base_path = Path(DOCS_CACHE_DIR) / name
+            if self.subdirectory:
+                return str(base_path / self.subdirectory)
+            return str(base_path)
+        return self.path
 
 
 @dataclass
@@ -94,14 +106,16 @@ class DocsConnector:
         ),
     ]
 
-    def __init__(self, sources: list[DocsSource] | None = None, auto_sync: bool = True):
+    def __init__(self, sources: list[DocsSource] | None = None, auto_sync: bool = False):
         """
         Initialize the docs connector.
 
         Args:
             sources: List of DocsSource configurations. If None, uses
                      VIBETEAM_DOCS_REPOS env var or DEFAULT_SOURCES.
-            auto_sync: If True, automatically clone/pull git repos on init.
+            auto_sync: If False (default), assumes repos are already cloned
+                       via `vibeteam docs sync` at container startup.
+                       If True, clone/pull git repos on init (slow).
         """
         if sources:
             self.sources = sources
@@ -152,7 +166,9 @@ class DocsConnector:
             if not source.is_git_repo:
                 continue
 
-            repo_dir = cache_dir / source.name
+            # name is always set in __post_init__ for git repos
+            source_name = source.name or "unknown"
+            repo_dir = cache_dir / source_name
 
             try:
                 if repo_dir.exists():

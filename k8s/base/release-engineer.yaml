@@ -26,6 +26,27 @@ spec:
           restartPolicy: OnFailure
           imagePullSecrets:
             - name: ghcr-pull-secret
+          initContainers:
+            # Sync documentation repos for agent context
+            - name: init-docs
+              image: ghcr.io/vibetechnologies/vibeteam:latest
+              command: ["vibeteam", "docs", "sync"]
+              env:
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: vibeteam-secrets
+                      key: GITHUB_TOKEN
+              volumeMounts:
+                - name: docs-cache
+                  mountPath: /tmp/vibeteam-docs
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "100m"
           containers:
             - name: checker
               image: ghcr.io/vibetechnologies/vibeteam:latest
@@ -36,6 +57,9 @@ spec:
                     secretKeyRef:
                       name: vibeteam-secrets
                       key: GITHUB_TOKEN
+              volumeMounts:
+                - name: docs-cache
+                  mountPath: /tmp/vibeteam-docs
               resources:
                 requests:
                   memory: "128Mi"
@@ -43,6 +67,9 @@ spec:
                 limits:
                   memory: "256Mi"
                   cpu: "200m"
+          volumes:
+            - name: docs-cache
+              emptyDir: {}
 ---
 # Reliability Engineer CronJob
 # Health checks on production endpoints
