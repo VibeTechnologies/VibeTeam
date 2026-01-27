@@ -676,5 +676,209 @@ def run_live_webhook_tests():
     return result.returncode
 
 
+class TestSentryWebhook:
+    """Test Sentry webhook handling and routing."""
+
+    def generate_sentry_signature(self, payload: bytes, secret: str) -> str:
+        """Generate a valid Sentry webhook signature."""
+        return hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+
+    @pytest.fixture
+    def sentry_app(self):
+        """Create a test client with Sentry config."""
+        with patch.dict(
+            os.environ,
+            {
+                "SENTRY_CLIENT_SECRET": "test_sentry_secret",
+                "LLM_API_KEY": "test_llm_key",
+                "LLM_MODEL": "azure/gpt-5-2",
+            },
+        ):
+            from vibeteam.webhook.server import app
+
+            yield TestClient(app)
+
+    def test_sentry_webhook_endpoint_exists(self, webhook_app):
+        """Test that /webhook/sentry endpoint exists."""
+        response = webhook_app.post("/webhook/sentry", json={})
+        # Should not be 404
+        assert response.status_code != 404
+
+    def test_sentry_noise_classification(self):
+        """Test that noise patterns are correctly classified."""
+        from vibeteam.webhook.server import classify_sentry_issue
+
+        noise_issues = [
+            {"title": "Failed to fetch", "count": 10, "userCount": 5},
+            {"title": "NetworkError when attempting to fetch", "count": 20, "userCount": 8},
+            {"title": "net::ERR_INTERNET_DISCONNECTED", "count": 15, "userCount": 3},
+            {"title": "ResizeObserver loop limit exceeded", "count": 50, "userCount": 10},
+            {"title": "Script error.", "count": 30, "userCount": 5},
+            {"title": "AbortError: The user aborted a request", "count": 10, "userCount": 2},
+        ]
+
+        for issue in noise_issues:
+            # Low impact noise should be NOISE
+            low_impact = {**issue, "count": 5, "userCount": 2}
+            classification = classify_sentry_issue(low_impact)
+            assert classification == "NOISE", f"Expected NOISE for: {issue['title']}"
+
+    def test_sentry_high_impact_noise_needs_investigation(self):
+        """Test that high-impact noise patterns need investigation."""
+        from vibeteam.webhook.server import classify_sentry_issue
+
+        # High impact noise should be NEEDS_INVESTIGATION
+        issue = {"title": "Failed to fetch", "count": 150, "userCount": 30}
+        classification = classify_sentry_issue(issue)
+        assert classification == "NEEDS_INVESTIGATION"
+
+    def test_sentry_valid_bug_classification(self):
+        """Test that bug patterns are correctly classified."""
+        from vibeteam.webhook.server import classify_sentry_issue
+
+        bug_issues = [
+            {
+                "title": "TypeError: Cannot read property 'id' of undefined",
+                "count": 10,
+                "userCount": 5,
+            },
+            {"title": "ReferenceError: myVar is not defined", "count": 5, "userCount": 2},
+            {"title": "Uncaught TypeError: x is not a function", "count": 8, "userCount": 3},
+            {"title": "Unhandled Promise rejection: Error in module", "count": 12, "userCount": 6},
+        ]
+
+        for issue in bug_issues:
+            classification = classify_sentry_issue(issue)
+            assert classification == "VALID_BUG", f"Expected VALID_BUG for: {issue['title']}"
+
+    def test_sentry_high_impact_unknown_is_valid_bug(self):
+        """Test that high-impact unknown issues are classified as bugs."""
+        from vibeteam.webhook.server import classify_sentry_issue
+
+        issue = {"title": "Unknown error in application", "count": 100, "userCount": 25}
+        classification = classify_sentry_issue(issue)
+        assert classification == "VALID_BUG"
+
+    def test_sentry_low_impact_unknown_is_noise(self):
+        """Test that low-impact unknown issues are classified as noise."""
+        from vibeteam.webhook.server import classify_sentry_issue
+
+        issue = {"title": "Something went wrong", "count": 2, "userCount": 1}
+        classification = classify_sentry_issue(issue)
+        assert classification == "NOISE"
+
+    def test_sentry_chrome_extension_noise(self):
+        """Test that other chrome extensions are classified as noise."""
+        from vibeteam.webhook.server import classify_sentry_issue
+
+        # Other extension - NOISE
+        other_ext = {
+            "title": "Error in chrome-extension://abcdef123456/script.js",
+            "count": 10,
+            "userCount": 3,
+        }
+        assert classify_sentry_issue(other_ext) == "NOISE"
+
+        # Our extension - should be checked as bug
+        our_ext = {
+            "title": "TypeError in chrome-extension://ajfjlohdpfgngdjfafhhcnpmijbbdgln/app.js",
+            "count": 10,
+            "userCount": 3,
+        }
+        assert classify_sentry_issue(our_ext) == "VALID_BUG"
+
+    def test_sentry_webhook_skips_noise(self, sentry_app):
+        """Test that noise issues are skipped without calling agent."""
+        payload = json.dumps(
+            {
+                "action": "created",
+                "data": {
+                    "issue": {
+                        "id": "123",
+                        "shortId": "VIBE-123",
+                        "title": "Failed to fetch",
+                        "count": 5,
+                        "userCount": 2,
+                        "project": {"slug": "vibebrowserextension"},
+                    }
+                },
+            }
+        ).encode()
+
+        with patch.dict(os.environ, {"SENTRY_CLIENT_SECRET": ""}):
+            response = sentry_app.post(
+                "/webhook/sentry",
+                content=payload,
+                headers={"Content-Type": "application/json"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "skipped"
+        assert data["reason"] == "noise"
+
+    def test_sentry_webhook_processes_valid_bug(self, sentry_app):
+        """Test that valid bugs trigger agent processing."""
+        payload = json.dumps(
+            {
+                "action": "created",
+                "data": {
+                    "issue": {
+                        "id": "456",
+                        "shortId": "VIBE-456",
+                        "title": "TypeError: Cannot read property 'user' of undefined",
+                        "count": 50,
+                        "userCount": 15,
+                        "level": "error",
+                        "firstSeen": "2024-01-01T00:00:00Z",
+                        "lastSeen": "2024-01-02T00:00:00Z",
+                        "permalink": "https://sentry.io/issues/456",
+                        "culprit": "src/auth/login.js",
+                        "project": {"slug": "vibebrowserextension"},
+                    }
+                },
+            }
+        ).encode()
+
+        with patch.dict(os.environ, {"SENTRY_CLIENT_SECRET": ""}):
+            with patch(
+                "vibeteam.webhook.server.start_openhands_conversation",
+                new_callable=AsyncMock,
+            ) as mock_start:
+                mock_start.return_value = {"id": "conv-123"}
+                response = sentry_app.post(
+                    "/webhook/sentry",
+                    content=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert data["classification"] == "VALID_BUG"
+        assert data["short_id"] == "VIBE-456"
+
+    def test_sentry_webhook_ignores_no_issue_data(self, sentry_app):
+        """Test that events without issue data are ignored."""
+        payload = json.dumps(
+            {
+                "action": "created",
+                "data": {},  # No issue
+            }
+        ).encode()
+
+        with patch.dict(os.environ, {"SENTRY_CLIENT_SECRET": ""}):
+            response = sentry_app.post(
+                "/webhook/sentry",
+                content=payload,
+                headers={"Content-Type": "application/json"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"
+        assert data["reason"] == "no_issue_data"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

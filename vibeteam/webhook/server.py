@@ -1,12 +1,17 @@
 """
 Webhook Server for VibeTeam.
 
-Receives GitHub and Slack webhook events and dispatches to appropriate agents.
+Receives webhook events and routes to appropriate agents via OpenHands.
 Supports:
 - GitHub issues.assigned: Trigger agent when issue assigned to vibeteam-bot
 - GitHub issue_comment.created: Respond to @mentions in comments
 - Slack app_mention: Respond to @VibeTeam mentions in Slack
 - Slack message.im: Respond to direct messages
+- Sentry issue.created: Triage new errors and create GitHub issues
+
+Routing Strategy:
+- Known sources (Sentry, GitHub) → Inject specific context/instructions
+- Unknown intent (Slack) → Let microagents handle via keyword triggers
 """
 
 import asyncio
@@ -19,6 +24,7 @@ import subprocess
 import sys
 from typing import Any
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
 
@@ -41,6 +47,16 @@ BOT_USERNAME = os.environ.get("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
 # Configuration - Slack
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+
+# Configuration - Sentry
+SENTRY_CLIENT_SECRET = os.environ.get("SENTRY_CLIENT_SECRET", "")
+
+# Configuration - OpenHands Agent Server
+OPENHANDS_SERVER_URL = os.environ.get("OPENHANDS_SERVER_URL", "http://openhands-server:8000")
+OPENHANDS_API_KEY = os.environ.get("OPENHANDS_API_KEY", "")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+LLM_MODEL = os.environ.get("LLM_MODEL", "azure/gpt-5-2")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 
 
 class WebhookPayload(BaseModel):
@@ -244,6 +260,246 @@ async def handle_webhook(
     return {"status": "ignored", "event": f"{x_github_event}.{action}"}
 
 
+# ==============================================================================
+# OpenHands Agent Server Integration
+# ==============================================================================
+
+
+async def start_openhands_conversation(
+    task: str,
+    workspace_dir: str = "/workspace/VibeWebAgent",
+) -> dict[str, Any]:
+    """
+    Start a conversation with the OpenHands Agent Server.
+
+    This routes the task to OpenHands which will use microagents based on
+    keyword triggers in the task message.
+
+    Args:
+        task: The task description (keywords trigger appropriate microagents)
+        workspace_dir: Working directory for the agent
+
+    Returns:
+        Conversation response with ID and status
+    """
+    if not LLM_API_KEY:
+        logger.error("LLM_API_KEY not set, cannot start agent conversation")
+        return {"error": "LLM_API_KEY not configured"}
+
+    agent_config = {
+        "agent": {
+            "llm": {
+                "model": LLM_MODEL,
+                "api_key": LLM_API_KEY,
+                "base_url": LLM_BASE_URL or None,
+                "temperature": 0.3,
+            },
+            "tools": [
+                {"name": "TerminalTool"},
+                {"name": "FileEditorTool"},
+                {"name": "TaskTrackerTool"},
+            ],
+            "kind": "Agent",
+        },
+        "workspace": {
+            "working_dir": workspace_dir,
+            "kind": "LocalWorkspace",
+        },
+        "initial_message": {
+            "content": [{"text": task}],
+        },
+        "max_iterations": 100,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            headers = {"Content-Type": "application/json"}
+            if OPENHANDS_API_KEY:
+                headers["Authorization"] = f"Bearer {OPENHANDS_API_KEY}"
+
+            response = await client.post(
+                f"{OPENHANDS_SERVER_URL}/api/conversations",
+                headers=headers,
+                json=agent_config,
+            )
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Started OpenHands conversation: {result.get('id')}")
+            return result
+
+    except httpx.HTTPError as e:
+        logger.exception(f"Failed to start OpenHands conversation: {e}")
+        return {"error": str(e)}
+
+
+# ==============================================================================
+# Sentry Webhook Handler
+# ==============================================================================
+
+
+def verify_sentry_signature(payload: bytes, signature: str, secret: str) -> bool:
+    """Verify Sentry webhook signature (HMAC-SHA256)."""
+    if not secret:
+        logger.warning("SENTRY_CLIENT_SECRET not set, skipping verification")
+        return True
+
+    if not signature:
+        return False
+
+    expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
+def classify_sentry_issue(issue: dict[str, Any]) -> str:
+    """
+    Classify a Sentry issue as NOISE, VALID_BUG, or NEEDS_INVESTIGATION.
+
+    This provides a fast pre-filter before invoking the LLM agent.
+    """
+    title = issue.get("title", "")
+    count = issue.get("count", 0)
+    user_count = issue.get("userCount", 0)
+
+    # NOISE patterns - auto-skip
+    noise_patterns = [
+        "Failed to fetch",
+        "NetworkError",
+        "net::ERR_",
+        "ResizeObserver loop",
+        "Script error.",
+        "AbortError",
+        "ECONNREFUSED",
+    ]
+
+    for pattern in noise_patterns:
+        if pattern.lower() in title.lower():
+            # Even noise with high impact should be investigated
+            if count >= 100 or user_count >= 20:
+                return "NEEDS_INVESTIGATION"
+            return "NOISE"
+
+    # Check for chrome extension errors (except ours)
+    if "chrome-extension://" in title:
+        our_extension_id = "ajfjlohdpfgngdjfafhhcnpmijbbdgln"
+        if our_extension_id not in title:
+            return "NOISE"
+
+    # VALID_BUG patterns
+    bug_patterns = [
+        "TypeError",
+        "ReferenceError",
+        "Cannot read property",
+        "is not a function",
+        "undefined is not",
+        "Unhandled Promise",
+    ]
+
+    for pattern in bug_patterns:
+        if pattern.lower() in title.lower():
+            return "VALID_BUG"
+
+    # High impact issues need investigation
+    if count >= 50 or user_count >= 10:
+        return "VALID_BUG"
+
+    # Low impact unknown issues
+    if count < 5 and user_count < 3:
+        return "NOISE"
+
+    return "NEEDS_INVESTIGATION"
+
+
+@app.post("/webhook/sentry")
+async def handle_sentry_webhook(
+    request: Request,
+    sentry_hook_signature: str = Header(None, alias="Sentry-Hook-Signature"),
+) -> dict[str, Any]:
+    """
+    Handle incoming Sentry webhook events.
+
+    Sentry webhooks are triggered when new issues are created or existing
+    issues receive new events. We route these to the Release Engineer agent
+    via OpenHands with Sentry-specific context.
+    """
+    payload_bytes = await request.body()
+
+    # Verify signature
+    if not verify_sentry_signature(
+        payload_bytes, sentry_hook_signature or "", SENTRY_CLIENT_SECRET
+    ):
+        logger.warning("Invalid Sentry webhook signature")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    payload = json.loads(payload_bytes)
+    action = payload.get("action", "")
+    data = payload.get("data", {})
+    issue = data.get("issue", {})
+
+    logger.info(f"Received Sentry webhook: action={action}, issue={issue.get('shortId')}")
+
+    # Only process issue events
+    if not issue:
+        return {"status": "ignored", "reason": "no_issue_data"}
+
+    # Pre-classify to avoid LLM calls for obvious noise
+    classification = classify_sentry_issue(issue)
+
+    if classification == "NOISE":
+        logger.info(f"Sentry issue {issue.get('shortId')} classified as NOISE, skipping")
+        return {
+            "status": "skipped",
+            "reason": "noise",
+            "issue_id": issue.get("id"),
+            "short_id": issue.get("shortId"),
+        }
+
+    # Build task for OpenHands agent with Sentry-specific context
+    # This will trigger the sentry.md microagent via keywords
+    task = f"""## Sentry Issue Triage
+
+A new Sentry error requires triage. Please analyze and take appropriate action.
+
+### Issue Details
+- **Title:** {issue.get("title", "Unknown")}
+- **Short ID:** {issue.get("shortId", "Unknown")}
+- **Project:** {issue.get("project", {}).get("slug", "Unknown")}
+- **Level:** {issue.get("level", "error")}
+- **Events:** {issue.get("count", 0)}
+- **Users Affected:** {issue.get("userCount", 0)}
+- **First Seen:** {issue.get("firstSeen", "Unknown")}
+- **Last Seen:** {issue.get("lastSeen", "Unknown")}
+- **Permalink:** {issue.get("permalink", "N/A")}
+
+### Pre-Classification
+This issue was pre-classified as: **{classification}**
+
+### Culprit
+{issue.get("culprit", "Unknown")}
+
+### Your Task
+1. Analyze the error and confirm/update the classification
+2. If VALID_BUG:
+   - Create a GitHub issue in VibeTechnologies/VibeWebAgent
+   - Include the Sentry permalink and relevant details
+   - Attempt to identify the root cause from the stack trace
+3. If you can fix it:
+   - Clone the repo and implement the fix
+   - Create a PR referencing the GitHub issue
+
+Keywords: sentry, error, production, monitoring
+"""
+
+    # Start agent conversation in background
+    asyncio.create_task(start_openhands_conversation(task))
+
+    return {
+        "status": "accepted",
+        "classification": classification,
+        "issue_id": issue.get("id"),
+        "short_id": issue.get("shortId"),
+    }
+
+
 def verify_slack_signature(payload: bytes, timestamp: str, signature: str, secret: str) -> bool:
     """Verify Slack request signature."""
     if not secret:
@@ -307,44 +563,56 @@ async def send_slack_message(channel: str, text: str, thread_ts: str | None = No
 async def run_agent_for_slack(
     user_message: str, channel: str, thread_ts: str | None, user_id: str
 ) -> None:
-    """Run the appropriate agent based on Slack message and respond."""
+    """
+    Run the appropriate agent based on Slack message and respond.
+
+    Slack messages have unknown intent, so we pass them to OpenHands and let
+    the microagents handle routing based on keyword triggers:
+    - "sentry", "error" → sentry.md microagent
+    - "email", "customer" → support.md microagent
+    - "fix", "implement" → code_fix.md microagent
+    """
     logger.info(f"Processing Slack message from {user_id}: {user_message[:100]}")
 
-    # For now, acknowledge and process with a general response
-    # TODO: Integrate with proper agent dispatch based on message content
-
     try:
-        # Run the orchestrator or appropriate agent
-        cmd = [
-            sys.executable,
-            "-m",
-            "vibeteam.cli",
-            "run",
-            user_message,
-            "--agent",
-            "swe",  # Default to SWE agent
-        ]
+        # Build task for OpenHands - microagents will activate based on keywords
+        task = f"""## Slack Request
 
-        env = os.environ.copy()
-        env["SLACK_RESPONSE_CHANNEL"] = channel
-        if thread_ts:
-            env["SLACK_RESPONSE_THREAD"] = thread_ts
+A user has requested help via Slack.
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
+### User Message
+{user_message}
 
-        if process.returncode == 0:
-            response = stdout.decode().strip() or "Task completed successfully."
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Response thread: {thread_ts or "new thread"}
+
+### Instructions
+1. Analyze what the user is asking for
+2. Complete the task using available tools
+3. Provide a clear, concise response
+
+Please help with this request.
+"""
+
+        # Start OpenHands conversation
+        result = await start_openhands_conversation(task)
+
+        if "error" in result:
+            await send_slack_message(
+                channel,
+                f"Sorry, I encountered an error: {result['error']}",
+                thread_ts,
+            )
         else:
-            response = f"I encountered an error processing your request. Please try again or check the logs."
-            logger.error(f"Agent failed: {stderr.decode()}")
-
-        await send_slack_message(channel, response, thread_ts)
+            # TODO: Stream conversation events back to Slack
+            # For now, just acknowledge that processing started
+            await send_slack_message(
+                channel,
+                f"I'm working on your request. Conversation ID: {result.get('id', 'unknown')}",
+                thread_ts,
+            )
 
     except Exception as e:
         logger.exception(f"Failed to run agent for Slack: {e}")

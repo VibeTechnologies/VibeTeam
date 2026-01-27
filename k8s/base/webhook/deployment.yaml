@@ -93,6 +93,35 @@ spec:
                   name: vibeteam-secrets
                   key: GITHUB_TOKEN
                   optional: true
+            # Sentry webhook configuration
+            - name: SENTRY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-webhook-secret
+                  key: client-secret
+                  optional: true
+            # OpenHands Agent Server configuration
+            - name: OPENHANDS_SERVER_URL
+              value: "http://openhands-server:8000"
+            - name: OPENHANDS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openhands-secret
+                  key: api-key
+                  optional: true
+            # LLM configuration for OpenHands
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_KEY
+            - name: LLM_MODEL
+              value: "azure/gpt-5-2"
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_BASE
           resources:
             requests:
               memory: "256Mi"

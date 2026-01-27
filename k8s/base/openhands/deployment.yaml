@@ -72,6 +72,10 @@ spec:
               mountPath: /app/config.toml
               subPath: config.toml
               readOnly: true
+            # Mount microagents for agent behavior customization
+            - name: microagents
+              mountPath: /opt/workspace/.openhands/microagents
+              readOnly: true
           resources:
             requests:
               memory: "512Mi"
@@ -100,3 +104,7 @@ spec:
         - name: config
           configMap:
             name: openhands-config
+        # Microagents ConfigMap for agent skill definitions
+        - name: microagents
+          configMap:
+            name: openhands-microagents
