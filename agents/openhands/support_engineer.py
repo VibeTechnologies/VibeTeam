@@ -2,9 +2,9 @@
 SupportEngineer agent using OpenHands.
 
 Capabilities:
-- Gmail access via MCP for email management
-- Google Calendar via MCP for scheduling
-- Langfuse integration for LLM observability
+- Gmail access via shared tools for email management
+- Google Calendar via shared tools for scheduling
+- Langfuse integration via shared tools for LLM observability
 - Sentry integration for error tracking
 
 Note: OpenHands SDK v1.2.1 uses:
@@ -19,6 +19,11 @@ from typing import Any
 
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.calendar_tools import get_calendar_context
+
+# Import shared tools for context injection
+from agents.shared.gmail_tools import get_email_context
+from agents.shared.langfuse_tools import get_langfuse_context
 
 
 def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
@@ -50,6 +55,21 @@ def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
         return "Sentry: vibeteam.connectors.sentry module not available."
     except Exception as e:
         return f"Sentry: Error fetching issues - {e}"
+
+
+def fetch_gmail_context(max_results: int = 5) -> str:
+    """Fetch Gmail context using shared tools."""
+    return get_email_context(max_results=max_results)
+
+
+def fetch_langfuse_context_wrapper(hours: int = 6) -> str:
+    """Fetch Langfuse context using shared tools."""
+    return get_langfuse_context(hours=hours)
+
+
+def fetch_calendar_context_wrapper(days: int = 3) -> str:
+    """Fetch Calendar context using shared tools."""
+    return get_calendar_context(days=days)
 
 
 try:
@@ -171,13 +191,36 @@ class OpenHandsSupportEngineer:
                 workspace=workspace_path,
             )
 
-            # Check if task involves Sentry and inject real data
+            # Inject relevant context based on task keywords
             task_lower = task.lower()
-            sentry_context = ""
-            if "sentry" in task_lower or "error" in task_lower or "issue" in task_lower:
-                sentry_context = f"\n\n{fetch_sentry_context()}\n"
+            injected_context = []
 
-            full_task = f"{SUPPORT_ENGINEER_CONTEXT}{sentry_context}\n\nTask: {task}"
+            # Sentry context for error-related tasks
+            if any(kw in task_lower for kw in ["sentry", "error", "issue", "bug", "crash"]):
+                injected_context.append(fetch_sentry_context())
+
+            # Gmail context for email-related tasks
+            if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
+                injected_context.append(fetch_gmail_context())
+
+            # Calendar context for scheduling-related tasks
+            if any(kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]):
+                injected_context.append(fetch_calendar_context_wrapper())
+
+            # Langfuse context for LLM observability tasks
+            if any(
+                kw in task_lower
+                for kw in ["langfuse", "trace", "llm", "observability", "latency", "token"]
+            ):
+                injected_context.append(fetch_langfuse_context_wrapper())
+
+            # Build full task with context
+            context_str = "\n\n".join(injected_context) if injected_context else ""
+            if context_str:
+                full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\n{context_str}\n\nTask: {task}"
+            else:
+                full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\nTask: {task}"
+
             response = conversation.ask_agent(full_task)
 
             session.add_message("user", task)

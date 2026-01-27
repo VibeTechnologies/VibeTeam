@@ -1,0 +1,59 @@
+"""
+Shared tool functions for all agent frameworks.
+
+These functions wrap the vibeteam connectors and provide a consistent
+interface that can be used by AutoGen, CrewAI, and OpenHands agents.
+
+Usage:
+    # AutoGen - use directly as FunctionTool
+    from agents.shared.gmail_tools import list_emails, send_email
+    agent = AssistantAgent(tools=[list_emails, send_email, ...])
+
+    # CrewAI - wrap in BaseTool
+    from agents.shared.gmail_tools import fetch_unread_emails
+    class EmailSearchTool(BaseTool):
+        def _run(self, query): return fetch_unread_emails(query)
+
+    # OpenHands - use for context injection
+    from agents.shared.gmail_tools import get_email_context
+    context = get_email_context()
+"""
+
+from agents.shared.calendar_tools import (
+    create_calendar_event,
+    get_calendar_context,
+    list_calendar_events,
+)
+from agents.shared.gmail_tools import (
+    fetch_unread_emails,
+    get_email_context,
+    list_emails,
+    mark_email_as_read,
+    send_email,
+    send_email_reply,
+)
+from agents.shared.langfuse_tools import (
+    detect_langfuse_anomalies,
+    get_langfuse_context,
+    get_langfuse_stats,
+    get_langfuse_traces,
+)
+
+__all__ = [
+    # Gmail
+    "list_emails",
+    "fetch_unread_emails",
+    "send_email",
+    "send_email_reply",
+    "mark_email_as_read",
+    "get_email_context",
+    # Calendar
+    "list_calendar_events",
+    "create_calendar_event",
+    "get_calendar_context",
+    # Langfuse
+    "get_langfuse_traces",
+    "get_langfuse_stats",
+    "detect_langfuse_anomalies",
+    "get_langfuse_context",
+]
