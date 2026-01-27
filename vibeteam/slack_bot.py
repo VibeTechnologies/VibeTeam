@@ -12,9 +12,9 @@ This is the entry point for Slack-based agent communication.
 import asyncio
 import logging
 import os
-import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -412,7 +412,7 @@ def cli_start_bot() -> None:
 
     try:
         bot = create_slack_bot(model=args.model, default_channel=args.channel)
-        print(f"Starting VibeTeam Slack Bot...")
+        print("Starting VibeTeam Slack Bot...")
         print(f"  Model: {args.model}")
         print(f"  Channel: {args.channel}")
         print(f"  Agents: {', '.join(AGENT_REGISTRY.keys())}")

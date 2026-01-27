@@ -1,0 +1,7 @@
+{
+  "originalText": "Done. Updated the design to use slash commands:\n\n| Command | Agent | Example |\n|---------|-------|---------|\n| `/swe` | Turing | `/swe review PR #123` |\n| `/pm` | Curie | `/pm what's the roadmap?` |\n| `/release` | Einstein | `/release deploy to staging` |\n| `/support` | Darwin | `/support check customer ticket` |\n| `/sre` | Newton | `/sre check system health` |\n| `/marketer` | Ada | `/marketer announce the release` |\n| `/vibeteam` | Auto-route | `/vibeteam fix the bug` → routes to SWE |\n\nPR #27 updated.",
+  "cleanedText": "Done. Updated the design to use slash commands: | Command | Agent | Example | |---------|-------|---------| | | Turing | | | | Curie | | | | Einstein | | | | Darwin | | | | Newton | | | | Ada | | | | Auto-route | → routes to SWE | PR 27 updated.",
+  "spokenText": "Done. Updated the design to use slash commands: | Command | Agent | Example | |---------|-------|---------| | | Turing | | | | Curie | | | | Einstein | | | | Darwin | | | | Newton | | | | Ada | | | | Auto-route | → routes to SWE | PR 27 updated.",
+  "engine": "coqui",
+  "timestamp": "2026-01-27T05:36:05.324Z"
+}

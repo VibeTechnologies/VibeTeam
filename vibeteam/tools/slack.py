@@ -5,7 +5,6 @@ Provides agent-callable functions for Slack messaging operations.
 """
 
 import json
-from dataclasses import asdict
 from typing import Any
 
 from vibeteam.agents.base import BaseTool, ToolResult

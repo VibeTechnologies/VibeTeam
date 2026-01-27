@@ -9,8 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from vibeteam.agents.base import ToolResult
-
 
 class TestSlackConnector:
     """Test SlackConnector functionality."""
@@ -228,8 +226,9 @@ class TestSlackTool:
     @pytest.mark.asyncio
     async def test_read_channel_action(self, slack_tool, mock_connector):
         """Test read_channel action."""
-        from vibeteam.connectors.slack import SlackMessage
         from datetime import datetime
+
+        from vibeteam.connectors.slack import SlackMessage
 
         mock_connector.get_channel_history.return_value = [
             SlackMessage(

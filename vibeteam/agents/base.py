@@ -182,7 +182,7 @@ actionable outputs.{tool_descriptions}"""
             api_base = os.environ.get("AZURE_API_BASE") or os.environ.get("AZURE_OPENAI_ENDPOINT")
             api_key = os.environ.get("AZURE_API_KEY") or os.environ.get("AZURE_OPENAI_API_KEY")
             api_version = os.environ.get("AZURE_API_VERSION", "2024-08-01-preview")
-            
+
             if api_base:
                 kwargs["api_base"] = api_base
             if api_key:
