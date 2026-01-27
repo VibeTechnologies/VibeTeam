@@ -1,583 +1,258 @@
-# Agent-to-Agent Communication: Problem & Solutions
+# How Do AI Agents Talk to Each Other?
 
-*Exploring multi-agent orchestration frameworks for VibeTeam*
+*And should humans be able to see the conversation?*
+
+---
+
+## TL;DR
+
+We're building an AI team where agents have different tools, different knowledge, and hand off work to each other. After evaluating 8 frameworks, we found: **none natively support human-visible communication**. 
+
+Our proposal: **OpenHands for agents** (skills, MCP, sessions, 77.6% SWE-Bench) + **Slack/GitHub for communication** (human-visible) + **context-aware sessions** (per issue/PR/thread).
+
+**Still figuring this out.** [What do you think?](#what-do-you-think)
 
 ---
 
 ## The Problem
 
-We're building an AI team (VibeTeam) where multiple specialized agents work together:
+We're building VibeTeam - an AI team where specialized agents collaborate:
 
 | Agent | Tools | Knowledge |
 |-------|-------|-----------|
-| **SoftwareEngineer** | GitHub, Bash, Code | Codebase, architecture docs |
-| **ReleaseEngineer** | GitHub, Bash, Sentry | Release process, changelog |
+| **SoftwareEngineer** | GitHub, Bash, Code | Codebase, architecture |
+| **ReleaseEngineer** | GitHub, Sentry, Deploy | Release process |
 | **ProductManager** | GitHub Issues, Langfuse | Roadmap, customer requests |
-| **SupportEngineer** | Gmail, Docs | Customer tickets, FAQ |
-| **MarketingManager** | Twitter, LinkedIn | Brand guidelines, announcements |
+| **MarketingManager** | Chrome DevTools, Twitter | Brand, announcements |
 
-### Key Requirements
+### Requirements
 
-1. **Different tools per agent** - SoftwareEngineer needs Bash, ProductManager doesn't
-2. **Different knowledge bases** - Each agent knows different parts of the system
-3. **Agent-to-agent handoffs** - SWE says "done, @ReleaseEngineer deploy please"
-4. **Single process** - Not 6 running containers consuming resources
-5. **On-demand instantiation** - Build agent only when needed, not pre-running
-6. **Human-visible communication** - All agent-to-agent communication must happen in public channels (Slack, Discord, GitHub Issues) where human team members can observe and participate
+1. **Different tools per agent** - SWE needs Bash, PM doesn't
+2. **Different knowledge** - Each knows their domain
+3. **Handoffs** - SWE says "@ReleaseEngineer deploy this"
+4. **Session memory** - Agent remembers previous work on same issue
+5. **Human-visible** - All agent chat observable in Slack/GitHub
 
 ### The Transparency Requirement
-
-This is critical: **Agent communication must not be hidden in internal function calls or message queues.**
-
-Why?
-- **Observability** - Humans need to see what agents are discussing
-- **Intervention** - Humans can jump in and correct course ("Actually, don't deploy yet")
-- **Auditability** - Full history of agent decisions visible in Slack/GitHub
-- **Collaboration** - Agents and humans work together in the same channels
 
 ```
 #ai-team channel:
 
-🤖 Turing (SoftwareEngineer): Fixed the login bug in auth.py. Created PR #45. 
-                              @ReleaseEngineer please deploy to staging.
-
-👤 CEO: Wait, let's also add the password reset fix before deploying.
-
-🤖 Turing (SoftwareEngineer): Good point. Adding password reset fix to PR #45...
-
-🤖 Turing (SoftwareEngineer): Done. PR #45 now includes both fixes.
-                              @ReleaseEngineer ready for staging now.
-
-🤖 Einstein (ReleaseEngineer): Deploying PR #45 to staging...
+Turing (SWE): Fixed login bug. PR #45 ready. @ReleaseEngineer deploy.
+CEO: Wait, add the password reset fix first.
+Turing (SWE): Done. PR #45 updated. @ReleaseEngineer ready now.
+Einstein (Release): Deploying PR #45 to staging...
 ```
 
-Most multi-agent frameworks fail this requirement - they route messages internally without exposing them to humans.
-
-### The Core Question
-
-> When SoftwareEngineer finishes and says "@ReleaseEngineer deploy this", how do we:
-> 1. Detect the handoff request
-> 2. Build ReleaseEngineer with different tools/knowledge
-> 3. Pass conversation context
-> 4. Continue the workflow
+Humans need to **see**, **intervene**, and **audit**.
 
 ---
 
-## Solutions Explored
+## Framework Comparison
 
-### 1. OpenAI Swarm / Agents SDK
+| Framework | MCP | Skills | Sessions | Sub-agents | Built-in Tools |
+|-----------|-----|--------|----------|------------|----------------|
+| [OpenHands](https://github.com/All-Hands-AI/OpenHands) | ✅ | ✅ | ✅ | ✅ | ✅ Bash, File, Glob |
+| [PydanticAI](https://github.com/pydantic/pydantic-ai) | ✅ | ❌ | ❌ | ✅ | ❌ |
+| [LangGraph](https://github.com/langchain-ai/langgraph) | ❌ | ❌ | ✅ | ✅ | ❌ |
+| [AutoGen](https://github.com/microsoft/autogen) | ❌ | ❌ | ✅ | ✅ | ❌ |
+| [CrewAI](https://github.com/crewAIInc/crewAI) | ❌ | ❌ | ❌ | ✅ | ✅ 40+ |
 
-**Approach:** Agent returns another `Agent` object from a function to handoff.
+**Key insight**: Only OpenHands has all four: MCP + Skills + Sessions + Built-in tools.
 
-```python
-def transfer_to_release():
-    return release_agent  # Handoff by returning agent
+### What About External Tools (Gmail, Chrome DevTools)?
 
-swe_agent = Agent(functions=[transfer_to_release, github_tool, bash_tool])
-release_agent = Agent(functions=[sentry_tool, deploy_tool])
-```
-
-**Pros:**
-- Extremely lightweight (~100 lines core)
-- Easy to understand
-- Each agent has distinct tool sets
-- Stateless, on-demand
-
-**Limitations:**
-- No built-in supervisor/router
-- No built-in state management
-- Educational/experimental (Swarm deprecated, replaced by Agents SDK)
-- Have to build orchestration yourself
-
----
-
-### 2. LangGraph with langgraph-supervisor
-
-**Approach:** Graph-based workflow with supervisor node routing to specialized agents.
+Both OpenHands and PydanticAI support **MCP (Model Context Protocol)** - they can connect to any MCP server:
 
 ```python
-math_agent = create_react_agent(model, tools=[add, multiply], name="math")
-research_agent = create_react_agent(model, tools=[search], name="research")
-
-workflow = create_supervisor(
-    [math_agent, research_agent],
-    model=model,
-    prompt="Route tasks to appropriate specialist"
+# OpenHands
+agent = Agent(
+    llm=llm,
+    mcp_config={
+        "mcpServers": {
+            "chrome": {"command": "npx", "args": ["@anthropic/mcp-server-chrome-devtools"]},
+            "gmail": {"command": "npx", "args": ["@anthropic/mcp-server-gmail"]},
+        }
+    }
 )
+
+# PydanticAI
+from pydantic_ai.mcp import MCPServerStdio
+chrome = MCPServerStdio('npx', args=['@anthropic/mcp-server-chrome-devtools'])
+agent = Agent('azure:gpt-4.1', toolsets=[chrome])
 ```
 
-**Pros:**
-- Native supervisor pattern via `create_supervisor()`
-- Each agent gets own tool set
-- Flexible handoffs with state control
-- Production-ready with persistence, streaming
-- Single process, agents as graph nodes
-
-**Limitations:**
-- Higher complexity (full graph framework)
-- Learning curve
-- Heavier dependency
+**Both can use Gmail, Chrome DevTools, Notion, Slack, etc. via MCP.**
 
 ---
 
-### 3. AutoGen
+## The Gap: Human-Visible Communication
 
-**Approach:** Pub/sub topics with factory-based agent instantiation.
+| Framework | Communication Pattern | Human-Visible? |
+|-----------|----------------------|----------------|
+| OpenHands | DelegateTool (internal) | ❌ |
+| PydanticAI | Tool call (internal) | ❌ |
+| LangGraph | Shared state (internal) | ❌ |
+| AutoGen | Pub-Sub (internal) | ❌ |
+| CrewAI | Delegation (internal) | ❌ |
 
-```python
-await AIAgent.register(
-    runtime,
-    type="software_engineer",
-    factory=lambda: AIAgent(
-        tools=[github_tool, bash_tool],
-        delegate_tools=[transfer_to_release]
-    )
-)
+**None expose agent-to-agent messages to humans.**
+
+### Our Solution: External Channels
+
+Route all communication through Slack/GitHub:
+
+```
+         Slack #ai-team / GitHub Issues
+                    │
+                    ▼
+         ┌──────────────────────┐
+         │   VibeTeam Router    │
+         │  - Watches @mentions │
+         │  - Resolves sessions │
+         │  - Posts responses   │
+         └──────────────────────┘
+                    │
+    ┌───────────────┼───────────────┐
+    ▼               ▼               ▼
+┌───────┐       ┌───────┐       ┌───────┐
+│  SWE  │       │  PM   │       │Release│
+│ Agent │       │ Agent │       │ Agent │
+└───────┘       └───────┘       └───────┘
+[bash,git]      [langfuse]      [sentry]
+[github]        [github]        [github]
 ```
 
-**Pros:**
-- Factory pattern = on-demand instantiation
-- Different tools per agent
-- Pub/sub decouples agents
-
-**Limitations:**
-- Complex runtime system
-- Topic-based routing adds indirection
-- Steeper learning curve
-- Overkill for our use case
+**The framework runs agents. Slack/GitHub handles communication.**
 
 ---
 
-### 4. CrewAI
+## Context-Aware Sessions
 
-**Approach:** Role-based agents with sequential or hierarchical process.
+When `/SoftwareEngineer` is invoked, which session do we load? The agent needs different context for different issues.
 
-```python
-swe = Agent(role="Software Engineer", tools=[github, bash], allow_delegation=True)
-release = Agent(role="Release Engineer", tools=[sentry, deploy])
-
-crew = Crew(
-    agents=[swe, release],
-    process=Process.hierarchical,
-    manager_llm="gpt-4"
-)
-```
-
-**Pros:**
-- Most "human-like" abstraction (roles, goals, backstories)
-- Built-in delegation
-- Easy to understand
-
-**Limitations:**
-- Agents are pre-instantiated (not on-demand)
-- Less flexible handoff control
-- Better for fixed team compositions
-
----
-
-### 5. PydanticAI
-
-**Approach:** Call another agent inside a tool function.
-
-```python
-@outer_agent.tool
-async def delegate_to_release(ctx: RunContext[Deps]) -> str:
-    result = await release_agent.run("deploy", deps=ctx.deps)
-    return result.output
-```
-
-**Pros:**
-- Full Pydantic type safety
-- Clean, explicit delegation
-- Lightweight
-
-**Limitations:**
-- Multi-agent patterns are manual
-- No built-in supervisor
-- Better for single agents
-
----
-
-## Comparison Matrix
-
-| Feature | Swarm | LangGraph | AutoGen | CrewAI | PydanticAI |
-|---------|-------|-----------|---------|--------|------------|
-| Different tools per agent | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Built-in supervisor | ❌ | ✅ | ❌ | ✅ | ❌ |
-| On-demand agents | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Single process | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Handoff mechanism | Function return | Command(goto) | Topic pub/sub | Delegation flag | Tool call |
-| **Human-visible comms** | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Complexity | Very Low | Medium | High | Low | Low |
-| Production-ready | ❌ | ✅ | ✅ | ✅ | ✅ |
-
-### The Gap: Human-Visible Communication
-
-**None of these frameworks natively support human-visible agent-to-agent communication.**
-
-All frameworks route messages internally:
-- **Swarm/Agents SDK**: Function returns agent object (internal)
-- **LangGraph**: `Command(goto=agent)` updates graph state (internal)
-- **AutoGen**: Topic pub/sub messages (internal)
-- **CrewAI**: Delegation happens in memory (internal)
-- **PydanticAI**: Agent called inside tool function (internal)
-
-**Our requirement**: Messages must appear in Slack/Discord/GitHub where humans can see and intervene.
-
----
-
-## The Real Solution: Slack/GitHub IS the Communication Layer
-
-Instead of using a framework's internal communication, we use external channels:
+### Session Key Design
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Slack #ai-team channel                       │
-│                                                                 │
-│  All agent messages posted here                                 │
-│  All agent @mentions trigger other agents                       │
-│  Humans see everything, can participate                         │
-│                                                                 │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    VibeTeam Supervisor                          │
-│                                                                 │
-│  1. Watches Slack for /commands and @mentions                   │
-│  2. Builds agent on-demand (tools + knowledge)                  │
-│  3. Agent executes and posts response to Slack                  │
-│  4. If response contains @Agent, triggers next agent            │
-│  5. Loop continues in public channel                            │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+session_key = {role}:{context_type}:{context_id}
+
+Examples:
+  swe:issue:123           # SWE on Issue #123
+  swe:pr:45               # SWE on PR #45  
+  release:issue:123       # Release on same issue (shares context)
+  pm:slack:C0123-T456     # PM in Slack thread
 ```
 
-**Key insight**: The multi-agent framework handles agent configuration (tools, knowledge, prompts). But communication happens through Slack/GitHub, not internal message passing.
-
----
-
-## Revised Recommendation
-
-### Use LangGraph for Agent Configuration, Slack for Communication
-
-**LangGraph provides:**
-- Different tools per agent via `create_react_agent()`
-- On-demand agent instantiation
-- State management within a single agent's execution
-
-**Slack provides:**
-- Human-visible agent-to-agent communication
-- Human intervention points
-- Audit trail
-- @mention-based routing
-
-**We build:**
-- Supervisor that watches Slack
-- Routes to LangGraph agents based on @mentions
-- Posts agent responses back to Slack
-- Detects @mentions in responses to trigger next agent
-
----
-
-## Architecture
+### Architecture
 
 ```
-Slack: /SoftwareEngineer fix the login bug
+                    Request: "/SoftwareEngineer fix issue #123"
+                                      │
+                                      ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                        VibeTeam Router                           │
+│                                                                  │
+│  1. Parse: agent=SWE, issue=123, channel=C0123                   │
+│  2. Build key: "swe:issue:123"                                   │
+│  3. Check session store                                          │
+└──────────────────────────────────────────────────────────────────┘
+                                      │
+                    ┌─────────────────┴─────────────────┐
+                    ▼                                   ▼
+             Session Exists                      Create New
+                    │                                   │
+                    ▼                                   ▼
+┌────────────────────────────────┐    ┌────────────────────────────────┐
+│  Resume from S3/local:         │    │  Initialize:                   │
+│  sessions/swe:issue:123/       │    │  - Load agent skills           │
+│    ├── metadata.json           │    │  - Inject issue context        │
+│    ├── agent_state.pkl         │    │  - Configure MCP tools         │
+│    └── events/0.json, 1.json   │    │                                │
+│                                │    │                                │
+│  Agent remembers:              │    │                                │
+│  "Last time I edited auth.py"  │    │                                │
+│  "PR #45 has 2 commits"        │    │                                │
+└────────────────────────────────┘    └────────────────────────────────┘
+                    │                                   │
+                    └─────────────────┬─────────────────┘
+                                      ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                     OpenHands Agent Execution                    │
+│                                                                  │
+│  conversation_id = "swe:issue:123"                               │
+│  # Full history from previous work on this issue                 │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+                           Post response to Slack
+```
 
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ VibeTeam Supervisor                                             │
-│                                                                 │
-│ 1. Parse command → SoftwareEngineer                             │
-│ 2. Build agent with LangGraph (tools: github, bash, code)       │
-│ 3. Execute agent                                                │
-│ 4. Post response to Slack:                                      │
-│    "Fixed! PR #45 created. @ReleaseEngineer deploy please"      │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+### Session Resolution Priority
 
-Slack shows:
-🤖 Turing (SoftwareEngineer): Fixed! PR #45 created. 
-                              @ReleaseEngineer deploy please
+| Priority | Context | Key | Example |
+|----------|---------|-----|---------|
+| 1 | Issue mentioned | `{role}:issue:{id}` | "fix issue #123" |
+| 2 | PR mentioned | `{role}:pr:{id}` | "review PR #45" |
+| 3 | Slack thread | `{role}:slack:{ch}-{ts}` | Thread-specific |
+| 4 | Slack channel | `{role}:slack:{ch}` | Channel-level |
+| 5 | None | `{role}:ephemeral:{uuid}` | One-off |
 
-CEO can intervene here: "Wait, add the other fix too"
+### Cross-Agent Context
 
-     │ If no human intervention, supervisor sees @ReleaseEngineer
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ VibeTeam Supervisor                                             │
-│                                                                 │
-│ 1. Detect @ReleaseEngineer in previous message                  │
-│ 2. Build agent with LangGraph (tools: github, sentry, bash)     │
-│ 3. Pass context: original request + SWE response                │
-│ 4. Execute agent                                                │
-│ 5. Post response to Slack                                       │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+When SWE hands off to Release on the same issue:
 
-Slack shows:
-🤖 Einstein (ReleaseEngineer): Deployed PR #45 to staging. 
-                               Tests passing. Ready for production.
+```
+Issue #123 Context (shared):
+├── swe:issue:123     → "Edited auth.py, created PR #45"
+└── release:issue:123 → "Deployed PR #45 to staging"
+                         (knows what SWE did)
 ```
 
 ---
 
-## Next Steps
+## Proposed Stack
 
-1. Keep LangGraph for agent configuration (tools, prompts, execution)
-2. Build Supervisor that integrates with Slack
-3. All agent responses go to Slack (human-visible)
-4. @mentions in Slack trigger agent handoffs
-5. Humans can intervene at any point
-
----
-
-## Research: Academic Foundations for Multi-Agent Communication
-
-### Key Papers
-
-| Paper | Authors | Key Contribution |
-|-------|---------|------------------|
-| **AutoGen** (arXiv:2308.08155) | Wu et al. (Microsoft) | Multi-agent conversation framework; agents are customizable, conversable |
-| **CAMEL** (arXiv:2303.17760, NeurIPS 2023) | Li et al. | Role-playing inception prompting for autonomous agent cooperation |
-| **CoELA** (arXiv:2307.02485, ICLR 2024) | Zhang et al. | Cognitive-inspired agents that plan, communicate, and cooperate in natural language |
-| **Generative Agents** (arXiv:2304.03442) | Park et al. (Stanford/Google) | Memory architecture: observation, planning, reflection |
-| **μACP** (arXiv:2601.00219, AAMAS 2026) | Minimal four-verb basis {PING, TELL, ASK, OBSERVE} for agent communication |
-| **Agent Contracts** (arXiv:2601.08815) | Formal framework extending Contract Net Protocol with resource governance |
-
-### Communication Architecture Patterns
-
-#### Pattern 1: Message Passing (Explicit Communication)
-
-Agents exchange discrete messages through defined channels (AutoGen, CAMEL, Slack).
-
-- **Pros:** Transparent, auditable, human-readable, flexible topology
-- **Cons:** Higher latency, token overhead
-
-#### Pattern 2: Shared Memory / Blackboard
-
-Agents read/write to a common knowledge store (Generative Agents' memory stream).
-
-- **Pros:** Reduces redundant communication, enables implicit coordination
-- **Cons:** Concurrency issues, less transparent
-
-#### Pattern 3: Hybrid Approach (Recommended by Research)
-
-Combine explicit messaging with shared context:
-
-```
-┌─────────────────────────────────────────────────────┐
-│                 SHARED CONTEXT STORE                │
-│  (Task state, artifacts, decisions, assignments)    │
-└─────────────────────────────────────────────────────┘
-         ▲                    ▲                 ▲
-         │ read/write         │ read/write      │ read/write
-    ┌────┴────┐          ┌────┴────┐       ┌────┴────┐
-    │ Agent A │◄────────►│ Agent B │◄─────►│ Agent C │
-    └─────────┘ messages └─────────┘       └─────────┘
-```
-
-### Why Natural Language Communication Works
-
-From **CoELA** paper:
-> "CoELA communicating in natural language can earn more trust and cooperate more effectively with humans."
-
-From **μACP** paper:
-> A minimal four-verb basis {PING, TELL, ASK, OBSERVE} is sufficient for semantic expressiveness.
-
-**Reasons NL works for LLM agents:**
-1. LLMs are native NL processors - no encoding/decoding overhead
-2. Human interpretability - auditable, debuggable
-3. Flexibility - handles ambiguity and context
-4. Emergent behavior - agents develop communication conventions
-
-### Human-Agent Teaming Research
-
-**Trust Building Factors** (from CoELA, Generative Agents):
-1. **Transparency** - Agents explain their reasoning
-2. **Natural Language** - Human-readable communication
-3. **Predictability** - Consistent behavior patterns
-4. **Controllability** - Human can intervene/override
-
-**Human-in-the-Loop Patterns:**
-
-| Pattern | Description | Use Case |
-|---------|-------------|----------|
-| **Approval Gates** | Human approves before critical actions | Deployments, external comms |
-| **Escalation** | Agent requests human help when uncertain | Complex decisions |
-| **Monitoring** | Human observes, intervenes as needed | Continuous oversight |
-| **Collaborative** | Human and agents work together | Creative tasks |
-
-### Why Slack Aligns with Research
-
-| Research Finding | Slack Alignment |
-|-----------------|-----------------|
-| Asynchronous event-driven (AutoGen v0.4) | ✅ Async by design |
-| Natural language native (CAMEL, CoELA) | ✅ Text-based |
-| Human-readable transparency | ✅ All messages visible |
-| Shared memory pattern | ✅ Thread history acts as shared context |
-| Human escalation points | ✅ Humans in same channel |
-
-### Recommended Message Protocol
-
-Based on μACP research, use typed intents with natural language content:
-
-| Intent | Description | Example |
-|--------|-------------|---------|
-| `TELL` | Share information | "PR #45 is ready for review" |
-| `ASK` | Request action/info | "@ReleaseEngineer deploy to staging" |
-| `OBSERVE` | Monitor status | "Watching Sentry for errors" |
-| `PING` | Acknowledge | "Acknowledged, starting deployment" |
+| Layer | Technology | Why |
+|-------|------------|-----|
+| **Agents** | OpenHands | Skills, MCP, sessions, 77.6% SWE-Bench |
+| **External Tools** | MCP servers | Gmail, Chrome DevTools, Notion, etc. |
+| **Sessions** | S3 / Local | Per issue/PR/thread context |
+| **Communication** | Slack + GitHub | Human-visible, auditable |
+| **Router** | VibeTeam | Resolves sessions, routes @mentions |
 
 ---
 
-## Questions for Discussion
+## What Do You Think?
 
-1. Should agents be able to run in parallel, or always sequential?
-2. How deep should handoff chains go before requiring human intervention?
-3. Should we persist conversation state across Slack sessions?
-4. Do we need different LLM models for different agents (cost optimization)?
+Open questions:
 
----
+1. **OpenHands vs PydanticAI?** - OpenHands has more batteries, PydanticAI is lighter
+2. **Session expiry?** - Keep until issue closed? 7 days? Forever?
+3. **Cross-agent inheritance?** - Should Release see full SWE history or just summary?
+4. **Parallel agents?** - Two agents on same issue simultaneously?
 
-## Alternative Approaches
-
-### 1. GitHub Issues as Communication Channel
-
-Instead of Slack, use GitHub Issues/Discussions:
-
-```
-Issue #123: "Fix login bug"
-
-@SoftwareEngineer: Investigating...
-@SoftwareEngineer: Fixed in PR #45. @ReleaseEngineer please deploy.
-@CEO: Wait, also add the password reset fix.
-@SoftwareEngineer: Added. PR updated.
-@ReleaseEngineer: Deployed to staging.
-```
-
-**Pros:**
-- Native to developer workflow
-- Version controlled
-- Rich formatting (code blocks, references)
-- Already integrated with CI/CD
-
-**Cons:**
-- Slower than Slack (not real-time)
-- Less conversational
-- Notification fatigue
-
-### 2. Discord with Bots
-
-Similar to Slack, but with:
-- Better threading model
-- Richer bot ecosystem
-- Voice channels for complex discussions
-
-### 3. Microsoft Teams + Power Automate
-
-Enterprise option with:
-- Deep Office 365 integration
-- Power Automate for workflows
-- Compliance/governance built-in
-
-### 4. Custom Web Dashboard
-
-Build a dedicated agent coordination UI:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  VibeTeam Dashboard                                             │
-├─────────────────────────────────────────────────────────────────┤
-│  Active Tasks          │  Agent Activity                       │
-│  ──────────────────    │  ──────────────────────────────────   │
-│  □ Fix login bug       │  🤖 Turing: Working on PR #45...      │
-│    └─ Turing (active)  │  🤖 Einstein: Waiting for deployment  │
-│  □ Deploy v2.3.1       │  👤 CEO: Reviewing PR #45             │
-│    └─ Einstein (wait)  │                                       │
-│                        │  [Intervene] [Approve] [Cancel]       │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Pros:**
-- Full control over UX
-- Real-time updates (WebSocket)
-- Custom approval workflows
-
-**Cons:**
-- Build and maintain UI
-- Not where users already are
-
-### 5. Email-Based (Traditional)
-
-Agents communicate via email threads:
-- support@company.com receives customer email
-- SupportEngineer agent replies
-- Escalates to swe@company.com if needed
-
-**Pros:**
-- Universal, works everywhere
-- Full audit trail
-- Async by design
-
-**Cons:**
-- Slow
-- Poor for real-time coordination
-- Email overload
-
-### 6. Hybrid: Slack + GitHub
-
-Recommended approach combining both:
-
-| Channel | Purpose |
-|---------|---------|
-| **Slack #ai-team** | Real-time coordination, quick decisions |
-| **GitHub Issues** | Long-running tasks, code-related discussion |
-| **GitHub PRs** | Code review, technical details |
-
-```
-Slack: /SoftwareEngineer fix issue #123
-  └─ Agent works, creates PR, links to GitHub
-  └─ Agent posts: "PR #45 ready. See GitHub for details."
-
-GitHub PR #45:
-  └─ Full code review
-  └─ CI/CD status
-  └─ Merge when approved
-
-Slack: @ReleaseEngineer PR #45 merged, deploy please
-  └─ Agent deploys, posts status to Slack
-```
+**We'd love your input:**
+- [GitHub Discussions](https://github.com/AnomalyCo/VibeTeam/discussions)
+- [@AnomalyCo](https://twitter.com/AnomalyCo)
 
 ---
 
 ## References
 
-### Academic Papers
+**Papers:**
+[AutoGen](https://arxiv.org/abs/2308.08155) ·
+[CAMEL](https://arxiv.org/abs/2303.17760) ·
+[CoELA](https://arxiv.org/abs/2307.02485) ·
+[Generative Agents](https://arxiv.org/abs/2304.03442) ·
+[μACP](https://arxiv.org/abs/2601.00219)
 
-| Paper | Link |
-|-------|------|
-| AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation | [arXiv:2308.08155](https://arxiv.org/abs/2308.08155) |
-| CAMEL: Communicative Agents for Mind Exploration | [arXiv:2303.17760](https://arxiv.org/abs/2303.17760) |
-| The Rise and Potential of Large Language Model Based Agents: A Survey | [arXiv:2309.07864](https://arxiv.org/abs/2309.07864) |
-| Generative Agents: Interactive Simulacra of Human Behavior | [arXiv:2304.03442](https://arxiv.org/abs/2304.03442) |
-| CoELA: Building Cooperative Embodied Agents with LLMs | [arXiv:2307.02485](https://arxiv.org/abs/2307.02485) |
-| μACP: Formal Calculus for Agent Communication | [arXiv:2601.00219](https://arxiv.org/abs/2601.00219) |
-| Agent Contracts: Formal Framework for Resource-Bounded AI | [arXiv:2601.08815](https://arxiv.org/abs/2601.08815) |
-| More Agents Is All You Need | [arXiv:2402.05120](https://arxiv.org/abs/2402.05120) |
-| The Orchestration of Multi-Agent Systems | [arXiv:2601.13671](https://arxiv.org/abs/2601.13671) |
-
-### Industry Resources
-
-| Resource | Link |
-|----------|------|
-| Microsoft AutoGen | [github.com/microsoft/autogen](https://github.com/microsoft/autogen) |
-| LangGraph Multi-Agent Workflows | [blog.langchain.dev](https://blog.langchain.dev/langgraph-multi-agent-workflows/) |
-| OpenAI Swarm (Educational) | [github.com/openai/swarm](https://github.com/openai/swarm) |
-| CrewAI | [github.com/crewAIInc/crewAI](https://github.com/crewAIInc/crewAI) |
-| Anthropic Research | [anthropic.com/research](https://www.anthropic.com/research) |
+**Frameworks:**
+[OpenHands](https://github.com/All-Hands-AI/OpenHands) ·
+[PydanticAI](https://github.com/pydantic/pydantic-ai) ·
+[LangGraph](https://github.com/langchain-ai/langgraph) ·
+[AutoGen](https://github.com/microsoft/autogen) ·
+[CrewAI](https://github.com/crewAIInc/crewAI)
 
 ---
 
