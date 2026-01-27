@@ -2,7 +2,7 @@
 MarketingManager agent using AutoGen.
 
 Capabilities:
-- Web browsing and research
+- Web browsing and research (via shared browser tools)
 - Social media content creation
 - Brand monitoring
 - Competitive analysis
@@ -14,6 +14,15 @@ from typing import Any
 
 from agents.config import MARKETING_MANAGER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+
+# Import shared browser tools
+from agents.shared.browser_tools import (
+    analyze_competitor_page,
+    extract_links,
+    fetch_webpage,
+    take_screenshot,
+    web_search,
+)
 
 # AutoGen imports - will fail gracefully if not installed
 try:
@@ -69,79 +78,8 @@ When you complete a task, summarize the content created and any scheduled posts.
 
 
 # Tool functions for MarketingManager
-async def web_search(query: str) -> str:
-    """Search the web for information.
-
-    Args:
-        query: The search query
-
-    Returns:
-        Search results (simulated for now)
-    """
-    # In production, this would use a real search API
-    return f"""Web search results for: "{query}"
-
-Note: This is a simulated response. In production, integrate with:
-- Google Custom Search API
-- Bing Search API
-- SerpAPI
-
-For now, please use your knowledge to provide relevant information about: {query}
-"""
-
-
-async def fetch_webpage(url: str) -> str:
-    """Fetch and parse a webpage.
-
-    Args:
-        url: The URL to fetch
-
-    Returns:
-        Webpage content or error message
-    """
-    try:
-        import urllib.error
-        import urllib.request
-        from html.parser import HTMLParser
-
-        class TextExtractor(HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.text = []
-                self.skip = False
-
-            def handle_starttag(self, tag, attrs):
-                if tag in ["script", "style", "nav", "footer", "header"]:
-                    self.skip = True
-
-            def handle_endtag(self, tag):
-                if tag in ["script", "style", "nav", "footer", "header"]:
-                    self.skip = False
-
-            def handle_data(self, data):
-                if not self.skip:
-                    text = data.strip()
-                    if text:
-                        self.text.append(text)
-
-        req = urllib.request.Request(url, headers={"User-Agent": "VibeTeam Marketing Bot/1.0"})
-        with urllib.request.urlopen(req, timeout=30) as response:
-            html = response.read().decode("utf-8", errors="ignore")
-
-        parser = TextExtractor()
-        parser.feed(html)
-        text = " ".join(parser.text)
-
-        # Truncate to reasonable length
-        if len(text) > 5000:
-            text = text[:5000] + "... (truncated)"
-
-        return f"Content from {url}:\n\n{text}"
-
-    except urllib.error.URLError as e:
-        return f"Error fetching URL: {e.reason}"
-    except Exception as e:
-        return f"Error fetching webpage: {e}"
+# NOTE: web_search, fetch_webpage, take_screenshot, extract_links, and analyze_competitor_page
+# are imported from agents.shared.browser_tools above
 
 
 async def create_social_post(platform: str, content: str, hashtags: str = "") -> str:
@@ -287,8 +225,13 @@ class AutoGenMarketingManager:
             name="MarketingManager",
             model_client=self.model_client,
             tools=[
+                # Browser tools from shared layer
                 web_search,
                 fetch_webpage,
+                take_screenshot,
+                extract_links,
+                analyze_competitor_page,
+                # Content tools
                 create_social_post,
                 analyze_sentiment,
             ],

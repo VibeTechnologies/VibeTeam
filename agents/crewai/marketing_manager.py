@@ -2,7 +2,7 @@
 MarketingManager agent using CrewAI.
 
 Capabilities:
-- Web browsing via BrowserbaseTool or custom browser tool
+- Web browsing via shared browser tools (real playwright-based implementation)
 - Content creation and social media posting
 - Research and analysis
 """
@@ -12,6 +12,15 @@ from typing import Any
 
 from agents.config import MARKETING_MANAGER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+
+# Import shared browser tools
+from agents.shared.browser_tools import (
+    analyze_competitor_page_sync,
+    extract_links_sync,
+    fetch_webpage_sync,
+    take_screenshot_sync,
+    web_search_sync,
+)
 
 try:
     from crewai import Agent, Crew, Process, Task
@@ -25,6 +34,7 @@ except ImportError:
     Task = None
     Crew = None
     LLM = None
+    BaseTool = None
 
 
 MARKETING_MANAGER_BACKSTORY = """You are Ada, the Marketing Manager for VibeTeam.
@@ -43,15 +53,63 @@ and build brand awareness for VibeTeam."""
 
 
 class WebSearchTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Search the web for information."""
+    """Search the web for information using real browser automation."""
 
     name: str = "web_search"
-    description: str = "Search the web for information. Input: search query."
+    description: str = "Search the web for information. Input: search query string."
 
     def _run(self, query: str) -> str:
-        """Perform web search (mock implementation)."""
-        # In production, use a real search API
-        return f"Web search results for: {query}\n[Mock results - integrate with actual search API]"
+        """Perform web search using shared browser tools."""
+        return web_search_sync(query)
+
+
+class FetchWebpageTool(BaseTool if CREWAI_AVAILABLE else object):
+    """Fetch and parse a webpage."""
+
+    name: str = "fetch_webpage"
+    description: str = "Fetch and parse a webpage. Input: URL string."
+
+    def _run(self, url: str) -> str:
+        """Fetch webpage using shared browser tools."""
+        return fetch_webpage_sync(url)
+
+
+class TakeScreenshotTool(BaseTool if CREWAI_AVAILABLE else object):
+    """Take a screenshot of a webpage."""
+
+    name: str = "take_screenshot"
+    description: str = "Take a screenshot of a webpage. Input: URL string."
+
+    def _run(self, url: str) -> str:
+        """Take screenshot using shared browser tools."""
+        result = take_screenshot_sync(url)
+        if result.get("success"):
+            return f"Screenshot saved to: {result['path']}"
+        return f"Failed to take screenshot: {result.get('error', 'Unknown error')}"
+
+
+class ExtractLinksTool(BaseTool if CREWAI_AVAILABLE else object):
+    """Extract links from a webpage."""
+
+    name: str = "extract_links"
+    description: str = "Extract links from a webpage. Input: URL string."
+
+    def _run(self, url: str) -> str:
+        """Extract links using shared browser tools."""
+        return extract_links_sync(url)
+
+
+class CompetitorAnalysisTool(BaseTool if CREWAI_AVAILABLE else object):
+    """Analyze a competitor's webpage for marketing insights."""
+
+    name: str = "analyze_competitor"
+    description: str = (
+        "Analyze a competitor's webpage for marketing insights. Input: competitor URL."
+    )
+
+    def _run(self, url: str) -> str:
+        """Analyze competitor using shared browser tools."""
+        return analyze_competitor_page_sync(url)
 
 
 class ContentDraftTool(BaseTool if CREWAI_AVAILABLE else object):
@@ -92,7 +150,13 @@ class CrewAIMarketingManager:
     def _create_tools(self) -> list:
         """Create tools for the agent."""
         return [
+            # Browser tools (using shared layer)
             WebSearchTool(),
+            FetchWebpageTool(),
+            TakeScreenshotTool(),
+            ExtractLinksTool(),
+            CompetitorAnalysisTool(),
+            # Content tools
             ContentDraftTool(),
         ]
 

@@ -19,6 +19,19 @@ Usage:
     context = get_email_context()
 """
 
+from agents.shared.browser_tools import (
+    analyze_competitor_page,
+    analyze_competitor_page_sync,
+    extract_links,
+    extract_links_sync,
+    fetch_webpage,
+    fetch_webpage_sync,
+    get_browser_context,
+    take_screenshot,
+    take_screenshot_sync,
+    web_search,
+    web_search_sync,
+)
 from agents.shared.calendar_tools import (
     create_calendar_event,
     get_calendar_context,
@@ -56,4 +69,16 @@ __all__ = [
     "get_langfuse_stats",
     "detect_langfuse_anomalies",
     "get_langfuse_context",
+    # Browser
+    "fetch_webpage",
+    "fetch_webpage_sync",
+    "web_search",
+    "web_search_sync",
+    "take_screenshot",
+    "take_screenshot_sync",
+    "extract_links",
+    "extract_links_sync",
+    "get_browser_context",
+    "analyze_competitor_page",
+    "analyze_competitor_page_sync",
 ]
