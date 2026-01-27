@@ -186,6 +186,41 @@ async def post_acknowledgment(repo: str, issue_number: int) -> None:
         logger.exception(f"Failed to post acknowledgment: {e}")
 
 
+async def run_release_engineer_agent(issue_data: dict[str, Any], classification: str) -> None:
+    """Run the Release Engineer agent on a Sentry issue."""
+    issue_id = issue_data.get("shortId", "unknown")
+    logger.info(f"Starting Release Engineer agent for Sentry issue {issue_id}")
+
+    # Run the CLI command asynchronously
+    cmd = [
+        sys.executable,
+        "-m",
+        "vibeteam.cli",
+        "scheduled",
+        "release-triage",
+        "--issue-json",
+        json.dumps(issue_data),
+        "--classification",
+        classification,
+    ]
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode == 0:
+            logger.info(f"Release Engineer agent completed successfully for {issue_id}")
+        else:
+            logger.error(f"Release Engineer agent failed: {stderr.decode()}")
+
+    except Exception as e:
+        logger.exception(f"Failed to run Release Engineer agent: {e}")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     """Health check endpoint."""
@@ -455,42 +490,12 @@ async def handle_sentry_webhook(
 
     # Build task for OpenHands agent with Sentry-specific context
     # This will trigger the sentry.md microagent via keywords
-    task = f"""## Sentry Issue Triage
-
-A new Sentry error requires triage. Please analyze and take appropriate action.
-
-### Issue Details
-- **Title:** {issue.get("title", "Unknown")}
-- **Short ID:** {issue.get("shortId", "Unknown")}
-- **Project:** {issue.get("project", {}).get("slug", "Unknown")}
-- **Level:** {issue.get("level", "error")}
-- **Events:** {issue.get("count", 0)}
-- **Users Affected:** {issue.get("userCount", 0)}
-- **First Seen:** {issue.get("firstSeen", "Unknown")}
-- **Last Seen:** {issue.get("lastSeen", "Unknown")}
-- **Permalink:** {issue.get("permalink", "N/A")}
-
-### Pre-Classification
-This issue was pre-classified as: **{classification}**
-
-### Culprit
-{issue.get("culprit", "Unknown")}
-
-### Your Task
-1. Analyze the error and confirm/update the classification
-2. If VALID_BUG:
-   - Create a GitHub issue in VibeTechnologies/VibeWebAgent
-   - Include the Sentry permalink and relevant details
-   - Attempt to identify the root cause from the stack trace
-3. If you can fix it:
-   - Clone the repo and implement the fix
-   - Create a PR referencing the GitHub issue
-
-Keywords: sentry, error, production, monitoring
-"""
 
     # Start agent conversation in background
-    asyncio.create_task(start_openhands_conversation(task))
+    # asyncio.create_task(start_openhands_conversation(task))
+
+    # Trigger Release Engineer agent directly
+    asyncio.create_task(run_release_engineer_agent(issue, classification))
 
     return {
         "status": "accepted",

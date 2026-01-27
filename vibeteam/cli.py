@@ -205,7 +205,10 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
 
     try:
         resp = requests.get(
-            url, auth=(langfuse_public, langfuse_secret), params=params, timeout=30  # type: ignore[arg-type]
+            url,
+            auth=(langfuse_public, langfuse_secret),
+            params=params,
+            timeout=30,  # type: ignore[arg-type]
         )
         resp.raise_for_status()
         traces = resp.json().get("data", [])
@@ -440,11 +443,60 @@ def release_check() -> None:
         sys.exit(1)
 
 
+@scheduled.command(name="release-triage")
+@click.option("--issue-json", help="JSON string of Sentry issue data")
+@click.option("--classification", help="Pre-classification result")
+def release_triage(issue_json: str, classification: str) -> None:
+    """Release Engineer: Triage a specific Sentry issue."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    console.print("[bold]Release Engineer - Sentry Triage[/bold]")
+
+    try:
+        issue_data = json.loads(issue_json)
+        issue_id = issue_data.get("shortId", "unknown")
+
+        console.print(f"Triaging issue {issue_id} ({classification})")
+
+        from vibeteam.agents.release_engineer import ReleaseEngineerAgent
+
+        agent = ReleaseEngineerAgent()
+
+        # Construct triage prompt
+        prompt = f"""Triage Sentry issue {issue_id}.
+        
+Issue Details:
+- Title: {issue_data.get("title")}
+- Project: {issue_data.get("project", {}).get("slug")}
+- Events: {issue_data.get("count")}
+- Users: {issue_data.get("userCount")}
+- Permalink: {issue_data.get("permalink")}
+- Culprit: {issue_data.get("culprit")}
+
+Pre-classification: {classification}
+
+Action required:
+1. Verify if this is a VALID_BUG or NOISE
+2. If VALID_BUG, create a GitHub issue with stack trace and details
+3. If possible, create a fix PR
+"""
+
+        console.print("Running agent analysis...")
+        result = asyncio.run(agent.run(prompt))
+        console.print(f"Result: {result[:200]}...")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
 @scheduled.command(name="swe-issues")
 @click.option("--label", default="auto-fix", help="GitHub label to filter issues")
 @click.option("--repo", default="VibeTechnologies/VibeWebAgent", help="GitHub repo")
 @click.option("--dry-run", is_flag=True, help="Don't create PRs, just analyze")
-@click.option("--workdir", default="/tmp/swe-workspace", help="Working directory for git operations")
+@click.option(
+    "--workdir", default="/tmp/swe-workspace", help="Working directory for git operations"
+)
 def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
     """Software Engineer: Analyze issues and create PRs with fixes."""
     import shutil
@@ -475,14 +527,23 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
 
     try:
         # Fetch open issues with the specified label
-        success, stdout, stderr = run_cmd([
-            "gh", "issue", "list",
-            "--repo", repo,
-            "--state", "open",
-            "--label", label,
-            "--limit", "3",
-            "--json", "number,title,body,labels",
-        ])
+        success, stdout, stderr = run_cmd(
+            [
+                "gh",
+                "issue",
+                "list",
+                "--repo",
+                repo,
+                "--state",
+                "open",
+                "--label",
+                label,
+                "--limit",
+                "3",
+                "--json",
+                "number,title,body,labels",
+            ]
+        )
 
         if not success:
             console.print(f"[red]Failed to fetch issues: {stderr}[/red]")
@@ -496,12 +557,19 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
             return
 
         # Check for existing PRs to avoid duplicates
-        success, pr_stdout, _ = run_cmd([
-            "gh", "pr", "list",
-            "--repo", repo,
-            "--state", "open",
-            "--json", "title,headRefName",
-        ])
+        success, pr_stdout, _ = run_cmd(
+            [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--state",
+                "open",
+                "--json",
+                "title,headRefName",
+            ]
+        )
         existing_prs = json.loads(pr_stdout) if success else []
         existing_branches = {pr.get("headRefName", "") for pr in existing_prs}
 
@@ -525,7 +593,7 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
             # Analyze issue with SWE agent
             issue_content = f"""## Issue #{issue_num}: {issue_title}
 
-{issue.get('body', 'No description provided.')}
+{issue.get("body", "No description provided.")}
 
 ## Repository
 {repo}
@@ -583,7 +651,9 @@ Be precise and provide complete, working code changes.
             import re
 
             # Parse edit blocks from analysis
-            edit_pattern = r"```edit\nFILE:\s*(.+?)\nOLD:\n<<<\n(.*?)\n>>>\nNEW:\n<<<\n(.*?)\n>>>\n```"
+            edit_pattern = (
+                r"```edit\nFILE:\s*(.+?)\nOLD:\n<<<\n(.*?)\n>>>\nNEW:\n<<<\n(.*?)\n>>>\n```"
+            )
             edits = re.findall(edit_pattern, analysis, re.DOTALL)
 
             for file_path, old_code, new_code in edits:
@@ -616,11 +686,18 @@ The agent analyzed this issue but could not automatically apply fixes.
 ---
 *Manual intervention required. Generated by VibeTeam SWE-Agent.*
 """
-                run_cmd([
-                    "gh", "issue", "comment", str(issue_num),
-                    "--repo", repo,
-                    "--body", comment_body,
-                ])
+                run_cmd(
+                    [
+                        "gh",
+                        "issue",
+                        "comment",
+                        str(issue_num),
+                        "--repo",
+                        repo,
+                        "--body",
+                        comment_body,
+                    ]
+                )
                 continue
 
             # Commit changes
@@ -628,7 +705,9 @@ The agent analyzed this issue but could not automatically apply fixes.
             run_cmd(["git", "config", "user.name", "VibeTeam SWE-Agent"], cwd=str(repo_dir))
             run_cmd(["git", "add", "-A"], cwd=str(repo_dir))
 
-            commit_msg = f"fix: {issue_title[:50]}\n\nFixes #{issue_num}\n\nGenerated by VibeTeam SWE-Agent"
+            commit_msg = (
+                f"fix: {issue_title[:50]}\n\nFixes #{issue_num}\n\nGenerated by VibeTeam SWE-Agent"
+            )
             success, _, stderr = run_cmd(["git", "commit", "-m", commit_msg], cwd=str(repo_dir))
             if not success:
                 console.print(f"  [red]Commit failed: {stderr}[/red]")
@@ -636,7 +715,9 @@ The agent analyzed this issue but could not automatically apply fixes.
 
             # Push branch
             console.print("  Pushing branch...")
-            success, _, stderr = run_cmd(["git", "push", "-u", "origin", branch_name], cwd=str(repo_dir))
+            success, _, stderr = run_cmd(
+                ["git", "push", "-u", "origin", branch_name], cwd=str(repo_dir)
+            )
             if not success:
                 console.print(f"  [red]Push failed: {stderr}[/red]")
                 continue
@@ -655,13 +736,21 @@ Automated fix for #{issue_num}
 *This PR was automatically generated by VibeTeam SWE-Agent. Please review carefully before merging.*
 """
             console.print("  Creating PR...")
-            success, pr_out, stderr = run_cmd([
-                "gh", "pr", "create",
-                "--repo", repo,
-                "--head", branch_name,
-                "--title", f"fix: {issue_title[:60]} (#{issue_num})",
-                "--body", pr_body,
-            ])
+            success, pr_out, stderr = run_cmd(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--repo",
+                    repo,
+                    "--head",
+                    branch_name,
+                    "--title",
+                    f"fix: {issue_title[:60]} (#{issue_num})",
+                    "--body",
+                    pr_body,
+                ]
+            )
 
             if success:
                 console.print(f"  [green]PR created: {pr_out.strip()}[/green]")
@@ -677,6 +766,7 @@ Automated fix for #{issue_num}
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
