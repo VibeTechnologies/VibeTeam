@@ -865,58 +865,64 @@ The framework matters less than you think. What matters is:
 
 ## User Guide: Talking to Your AI Team in Slack
 
-Once deployed, here's how you interact with VibeTeam agents:
+Once deployed, here's how you interact with VibeTeam agents using slash commands:
 
-### The Bot: @VibeTeam
+### Slash Commands
 
-All agents run through a single Slack app called `@VibeTeam`. Mention it to start a conversation.
+| Command | Agent | Example |
+|---------|-------|---------|
+| `/swe` | Turing (Software Engineer) | `/swe review PR #123` |
+| `/pm` | Curie (Product Manager) | `/pm what's the roadmap?` |
+| `/release` | Einstein (Release Engineer) | `/release deploy to staging` |
+| `/support` | Darwin (Support Engineer) | `/support check customer ticket` |
+| `/sre` | Newton (Reliability Engineer) | `/sre check system health` |
+| `/marketer` | Ada (Marketer) | `/marketer announce the release` |
 
-### Agent Keys & Personas
+### Examples
 
-| Key | Name | Role | Keywords |
-|-----|------|------|----------|
-| `@swe` | Turing | Software Engineer | implement, code, bug, fix, pr, review |
-| `@pm` | Curie | Product Manager | feature, requirement, roadmap, prd |
-| `@release` | Einstein | Release Engineer | deploy, release, sentry, production |
-| `@support` | Darwin | Support Engineer | customer, email, ticket, help |
-| `@sre` | Newton | Reliability Engineer | health, monitor, incident, uptime |
-| `@marketer` | Ada | Marketer | announce, social, twitter, content |
-
-### Three Ways to Route Messages
-
-**1. Explicit agent mention:**
+**Ask SWE to review code:**
 ```
-You:      @VibeTeam @swe can you review PR #123?
-VibeTeam: 🤖 **Turing (SWE):** I've reviewed PR #123. LGTM with one suggestion...
+/swe review PR #123
 ```
-
-**2. Keyword-based routing:**
+Response:
 ```
-You:      @VibeTeam there's a bug in the login flow
-VibeTeam: 🤖 **Turing (SWE):** I'll investigate the login bug...
-```
-(Routes to SWE because "bug" is a keyword)
-
-**3. Default to PM:**
-```
-You:      @VibeTeam what should we build next quarter?
-VibeTeam: 🤖 **Curie (PM):** Based on customer feedback, I recommend...
-```
-(No specific keywords, defaults to PM for general questions)
-
-### Agent-to-Agent Communication
-
-Agents can mention each other to hand off tasks:
-
-```
-VibeTeam: 🤖 **Turing (SWE):** Implementation complete. @pm can you verify requirements?
-VibeTeam: 🤖 **Curie (PM):** Requirements verified. @release ready for deployment.
-VibeTeam: 🤖 **Einstein (Release):** Deploying to staging now...
+🤖 Turing (SWE): I've reviewed PR #123. LGTM with one suggestion...
 ```
 
-### Direct Messages
+**Ask PM about priorities:**
+```
+/pm what should we focus on this sprint?
+```
+Response:
+```
+🤖 Curie (PM): Based on customer feedback, top priorities are...
+```
 
-You can also DM the bot directly for private conversations with agents.
+**Check production health:**
+```
+/sre is production healthy?
+```
+Response:
+```
+🤖 Newton (SRE): All systems operational. Uptime: 99.97%
+```
+
+### Generic Command
+
+Use `/vibeteam` with keywords for automatic routing:
+```
+/vibeteam fix the login bug        → routes to SWE
+/vibeteam deploy the hotfix        → routes to Release
+/vibeteam what do customers want?  → routes to PM
+```
+
+### Agent-to-Agent Handoffs
+
+Agents can trigger other agents in their responses:
+```
+🤖 Turing (SWE): Implementation complete. Triggering release...
+🤖 Einstein (Release): Starting deployment to staging...
+```
 
 ---
 
