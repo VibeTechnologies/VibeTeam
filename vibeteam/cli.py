@@ -422,7 +422,6 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
     """Software Engineer: Analyze issues and create PRs with fixes."""
     import shutil
     import subprocess
-    import tempfile
     from pathlib import Path
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")

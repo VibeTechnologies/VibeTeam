@@ -14,15 +14,15 @@ import os
 from datetime import datetime
 from typing import Any
 
-from agents.config import AgentConfig, SUPPORT_ENGINEER_CONFIG
+from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 
 # AutoGen imports - will fail gracefully if not installed
 try:
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.base import TaskResult
-    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
     from autogen_core.models import ModelFamily
+    from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
 
     AUTOGEN_AVAILABLE = True
 except ImportError:

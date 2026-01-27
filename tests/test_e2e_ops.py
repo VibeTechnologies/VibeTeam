@@ -14,13 +14,9 @@ These tests require:
 - Optional: AZURE_API_KEY for LLM-powered tests
 """
 
-import json
 import os
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -238,7 +234,7 @@ class TestCLICommands:
 class TestE2EWorkflow:
     """
     Full end-to-end workflow test.
-    
+
     This test creates a real issue, runs the SWE agent, and verifies the result.
     Only runs when E2E_FULL_TEST=1 is set.
     """
@@ -291,7 +287,7 @@ Fix the typo in the test file.
             env=env,
         )
         assert result.returncode == 0, f"Failed to create issue: {result.stderr}"
-        
+
         # Extract issue number from URL
         issue_url = result.stdout.strip()
         issue_number = issue_url.split("/")[-1]
@@ -301,7 +297,7 @@ Fix the typo in the test file.
             # Wait for GitHub API to propagate the issue
             import time
             time.sleep(3)
-            
+
             # 2. Run SWE agent in dry-run mode
             result = subprocess.run(
                 [
@@ -317,7 +313,7 @@ Fix the typo in the test file.
             )
             print(f"SWE agent output: {result.stdout}")
             print(f"SWE agent stderr: {result.stderr}")
-            
+
             assert result.returncode == 0, f"SWE agent failed: {result.stderr}"
             assert f"#{issue_number}" in result.stdout or "Processing issue" in result.stdout
 

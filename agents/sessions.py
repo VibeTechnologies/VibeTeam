@@ -10,7 +10,6 @@ Session keys follow the format: {framework}:{role}:{context_type}:{context_id}
 """
 
 import json
-import os
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
@@ -164,8 +163,8 @@ class RedisSessionStore(SessionStore):
 
             self.client = redis.from_url(redis_url)
             self.ttl = ttl_seconds
-        except ImportError:
-            raise ImportError("redis package required for RedisSessionStore")
+        except ImportError as err:
+            raise ImportError("redis package required for RedisSessionStore") from err
 
     def save(self, session: SessionState) -> None:
         """Save session to Redis."""

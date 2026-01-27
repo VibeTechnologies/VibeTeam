@@ -7,30 +7,22 @@ Capabilities:
 - Git operations
 - k3s cluster deployment
 - GitHub PR and release management
+
+Note: OpenHands integration is currently blocked due to Azure OpenAI compatibility issues.
+The SDK uses litellm.responses() which doesn't support Azure OpenAI Service endpoints.
 """
 
-import os
 from typing import Any
 
-from agents.config import (
-    AgentConfig,
-    LLMConfig,
-    RELEASE_ENGINEER_CONFIG,
-    get_mcp_config_dict,
-)
-from agents.sessions import SessionState, get_or_create_session, get_session_store
+from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
 
 # OpenHands imports - will fail gracefully if not installed
 try:
-    from openhands.sdk import Agent, Conversation, LLM, Tool
-    from openhands.tools.terminal import TerminalTool
-    from openhands.tools.file_editor import FileEditorTool
+    from openhands.sdk import LLM, Agent, LocalConversation
 
     OPENHANDS_AVAILABLE = True
 except ImportError:
     OPENHANDS_AVAILABLE = False
-    Agent = None
-    Conversation = None
 
 
 RELEASE_ENGINEER_SYSTEM_PROMPT = """You are Einstein, the Release Engineer for VibeTeam.
@@ -72,38 +64,23 @@ When you complete a task, summarize what was done and any next steps.
 
 
 class OpenHandsReleaseEngineer:
-    """Release Engineer agent using OpenHands SDK."""
+    """
+    Release Engineer agent using OpenHands SDK.
+
+    Note: Currently blocked due to Azure OpenAI compatibility issues.
+    The OpenHands SDK uses litellm.responses() which doesn't support
+    Azure OpenAI Service endpoints (*.api.cognitive.microsoft.com).
+    """
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
             raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
 
         self.config = config or RELEASE_ENGINEER_CONFIG
-        self.llm = self._create_llm()
-        self.agent = self._create_agent()
-
-    def _create_llm(self) -> "LLM":
-        """Create OpenHands LLM instance."""
-        return LLM(
-            model=self.config.llm.model,
-            api_key=self.config.llm.api_key,
-            base_url=self.config.llm.api_base,
-            temperature=self.config.llm.temperature,
-        )
-
-    def _create_agent(self) -> "Agent":
-        """Create OpenHands Agent with tools and MCP config."""
-        mcp_config = get_mcp_config_dict(self.config.mcp_servers)
-
-        return Agent(
-            llm=self.llm,
-            tools=[
-                Tool(name=TerminalTool.name),
-                Tool(name=FileEditorTool.name),
-            ],
-            mcp_config=mcp_config if mcp_config["mcpServers"] else None,
-            system_prompt=RELEASE_ENGINEER_SYSTEM_PROMPT,
-        )
+        # Store references to SDK classes for type hints
+        self._LLM = LLM
+        self._Agent = Agent
+        self._LocalConversation = LocalConversation
 
     def run(
         self,
@@ -123,48 +100,18 @@ class OpenHandsReleaseEngineer:
 
         Returns:
             dict with response, session_key, and metadata
+
+        Raises:
+            NotImplementedError: OpenHands Azure integration is blocked
         """
-        import uuid
+        # Suppress unused variable warnings
+        _ = (task, context_type, context_id, workspace)
 
-        # Get or create session
-        if context_id is None:
-            context_id = str(uuid.uuid4())[:8]
-
-        session = get_or_create_session(
-            framework="openhands",
-            role="release_engineer",
-            context_type=context_type,
-            context_id=context_id,
+        raise NotImplementedError(
+            "OpenHands integration is currently blocked due to Azure OpenAI compatibility. "
+            "The SDK uses litellm.responses() which doesn't support Azure OpenAI Service "
+            "endpoints (*.api.cognitive.microsoft.com). Use AutoGen agents instead."
         )
-
-        # Create conversation with persistence
-        workspace = workspace or os.getcwd()
-        conversation = Conversation(
-            agent=self.agent,
-            workspace=workspace,
-            persistence_dir=self.config.session.storage_path,
-            conversation_id=session.session_id,
-        )
-
-        # Send message and run
-        conversation.send_message(task)
-        conversation.run()
-
-        # Get response
-        response = conversation.get_last_assistant_message()
-
-        # Update session
-        session.add_message("user", task)
-        session.add_message("assistant", response)
-        get_session_store().save(session)
-
-        return {
-            "response": response,
-            "session_key": session.key,
-            "session_id": session.session_id,
-            "framework": "openhands",
-            "agent": "release_engineer",
-        }
 
     async def run_async(
         self,
@@ -173,10 +120,8 @@ class OpenHandsReleaseEngineer:
         context_id: str | None = None,
         workspace: str | None = None,
     ) -> dict[str, Any]:
-        """Async version of run (OpenHands is sync, so this wraps it)."""
-        import asyncio
-
-        return await asyncio.to_thread(self.run, task, context_type, context_id, workspace)
+        """Async version of run."""
+        return self.run(task, context_type, context_id, workspace)
 
 
 def create_release_engineer(config: AgentConfig | None = None) -> OpenHandsReleaseEngineer:

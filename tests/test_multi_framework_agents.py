@@ -4,22 +4,21 @@ Tests for multi-framework agent implementations.
 Tests the agents/ package with OpenHands, CrewAI, and AutoGen frameworks.
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-import json
 
 from agents import AgentFramework, AgentRole
 from agents.config import (
-    AgentConfig,
-    LLMConfig,
-    SessionConfig,
-    MCPServerConfig,
     MCP_SERVERS,
+    LLMConfig,
+    MCPServerConfig,
+    SessionConfig,
     get_mcp_config_dict,
 )
 from agents.sessions import (
-    SessionState,
     LocalSessionStore,
+    SessionState,
     get_or_create_session,
 )
 

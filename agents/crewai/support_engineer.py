@@ -11,13 +11,13 @@ Capabilities:
 import os
 from typing import Any
 
-from agents.config import AgentConfig, SUPPORT_ENGINEER_CONFIG
+from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 
 try:
-    from crewai import Agent, Task, Crew, Process
-    from crewai.tools import BaseTool
+    from crewai import Agent, Crew, Process, Task
     from crewai.llm import LLM
+    from crewai.tools import BaseTool
 
     CREWAI_AVAILABLE = True
 except ImportError:

@@ -7,8 +7,8 @@ Coordinates multiple agents and routes tasks based on @mentions.
 from typing import Any
 
 from agents.config import AgentConfig
-from agents.openhands.release_engineer import OpenHandsReleaseEngineer
 from agents.openhands.marketing_manager import OpenHandsMarketingManager
+from agents.openhands.release_engineer import OpenHandsReleaseEngineer
 from agents.openhands.support_engineer import OpenHandsSupportEngineer
 
 

@@ -7,13 +7,13 @@ Uses AutoGen 0.4+ with:
 - AzureOpenAIChatCompletionClient for Azure OpenAI
 """
 
-from agents.autogen.release_engineer import (
-    AutoGenReleaseEngineer,
-    create_release_engineer,
-)
 from agents.autogen.marketing_manager import (
     AutoGenMarketingManager,
     create_marketing_manager,
+)
+from agents.autogen.release_engineer import (
+    AutoGenReleaseEngineer,
+    create_release_engineer,
 )
 from agents.autogen.support_engineer import (
     AutoGenSupportEngineer,
