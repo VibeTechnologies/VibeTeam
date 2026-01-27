@@ -9,7 +9,6 @@ Based on the AutoGen Swarm pattern with tool-based handoffs.
 import logging
 from typing import Any
 
-from vibeteam.agents.base import BaseVibeAgent
 from vibeteam.agents.product_manager import ProductManagerAgent
 from vibeteam.state import SharedMessageState
 from vibeteam.tools.transfer import (

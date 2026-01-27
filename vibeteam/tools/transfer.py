@@ -11,7 +11,6 @@ from typing import Any
 
 from vibeteam.agents.base import BaseTool, ToolResult
 
-
 # Special prefix that signals a handoff
 HANDOFF_PREFIX = "HANDOFF:"
 

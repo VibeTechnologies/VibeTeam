@@ -22,7 +22,6 @@ from vibeteam.agents.supervisor import SupervisorAgent
 from vibeteam.state import SharedMessageState
 from vibeteam.tools.transfer import (
     TransferToSupervisorTool,
-    get_transfer_tools_for_agent,
     is_handoff_result,
     parse_handoff,
 )
