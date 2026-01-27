@@ -442,20 +442,142 @@ Based on μACP research, use typed intents with natural language content:
 
 ---
 
+## Alternative Approaches
+
+### 1. GitHub Issues as Communication Channel
+
+Instead of Slack, use GitHub Issues/Discussions:
+
+```
+Issue #123: "Fix login bug"
+
+@SoftwareEngineer: Investigating...
+@SoftwareEngineer: Fixed in PR #45. @ReleaseEngineer please deploy.
+@CEO: Wait, also add the password reset fix.
+@SoftwareEngineer: Added. PR updated.
+@ReleaseEngineer: Deployed to staging.
+```
+
+**Pros:**
+- Native to developer workflow
+- Version controlled
+- Rich formatting (code blocks, references)
+- Already integrated with CI/CD
+
+**Cons:**
+- Slower than Slack (not real-time)
+- Less conversational
+- Notification fatigue
+
+### 2. Discord with Bots
+
+Similar to Slack, but with:
+- Better threading model
+- Richer bot ecosystem
+- Voice channels for complex discussions
+
+### 3. Microsoft Teams + Power Automate
+
+Enterprise option with:
+- Deep Office 365 integration
+- Power Automate for workflows
+- Compliance/governance built-in
+
+### 4. Custom Web Dashboard
+
+Build a dedicated agent coordination UI:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  VibeTeam Dashboard                                             │
+├─────────────────────────────────────────────────────────────────┤
+│  Active Tasks          │  Agent Activity                       │
+│  ──────────────────    │  ──────────────────────────────────   │
+│  □ Fix login bug       │  🤖 Turing: Working on PR #45...      │
+│    └─ Turing (active)  │  🤖 Einstein: Waiting for deployment  │
+│  □ Deploy v2.3.1       │  👤 CEO: Reviewing PR #45             │
+│    └─ Einstein (wait)  │                                       │
+│                        │  [Intervene] [Approve] [Cancel]       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Pros:**
+- Full control over UX
+- Real-time updates (WebSocket)
+- Custom approval workflows
+
+**Cons:**
+- Build and maintain UI
+- Not where users already are
+
+### 5. Email-Based (Traditional)
+
+Agents communicate via email threads:
+- support@company.com receives customer email
+- SupportEngineer agent replies
+- Escalates to swe@company.com if needed
+
+**Pros:**
+- Universal, works everywhere
+- Full audit trail
+- Async by design
+
+**Cons:**
+- Slow
+- Poor for real-time coordination
+- Email overload
+
+### 6. Hybrid: Slack + GitHub
+
+Recommended approach combining both:
+
+| Channel | Purpose |
+|---------|---------|
+| **Slack #ai-team** | Real-time coordination, quick decisions |
+| **GitHub Issues** | Long-running tasks, code-related discussion |
+| **GitHub PRs** | Code review, technical details |
+
+```
+Slack: /SoftwareEngineer fix issue #123
+  └─ Agent works, creates PR, links to GitHub
+  └─ Agent posts: "PR #45 ready. See GitHub for details."
+
+GitHub PR #45:
+  └─ Full code review
+  └─ CI/CD status
+  └─ Merge when approved
+
+Slack: @ReleaseEngineer PR #45 merged, deploy please
+  └─ Agent deploys, posts status to Slack
+```
+
+---
+
 ## References
 
-### Academic Papers (arXiv)
-- 2308.08155 - AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation
-- 2303.17760 - CAMEL: Communicative Agents for Mind Exploration
-- 2309.07864 - The Rise and Potential of Large Language Model Based Agents: A Survey
-- 2304.03442 - Generative Agents: Interactive Simulacra of Human Behavior
-- 2307.02485 - CoELA: Building Cooperative Embodied Agents with LLMs
-- 2601.00219 - μACP: Formal Calculus for Agent Communication
-- 2601.08815 - Agent Contracts: Formal Framework for Resource-Bounded AI
+### Academic Papers
+
+| Paper | Link |
+|-------|------|
+| AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation | [arXiv:2308.08155](https://arxiv.org/abs/2308.08155) |
+| CAMEL: Communicative Agents for Mind Exploration | [arXiv:2303.17760](https://arxiv.org/abs/2303.17760) |
+| The Rise and Potential of Large Language Model Based Agents: A Survey | [arXiv:2309.07864](https://arxiv.org/abs/2309.07864) |
+| Generative Agents: Interactive Simulacra of Human Behavior | [arXiv:2304.03442](https://arxiv.org/abs/2304.03442) |
+| CoELA: Building Cooperative Embodied Agents with LLMs | [arXiv:2307.02485](https://arxiv.org/abs/2307.02485) |
+| μACP: Formal Calculus for Agent Communication | [arXiv:2601.00219](https://arxiv.org/abs/2601.00219) |
+| Agent Contracts: Formal Framework for Resource-Bounded AI | [arXiv:2601.08815](https://arxiv.org/abs/2601.08815) |
+| More Agents Is All You Need | [arXiv:2402.05120](https://arxiv.org/abs/2402.05120) |
+| The Orchestration of Multi-Agent Systems | [arXiv:2601.13671](https://arxiv.org/abs/2601.13671) |
 
 ### Industry Resources
-- Microsoft AutoGen: https://github.com/microsoft/autogen
-- LangGraph: https://blog.langchain.dev/langgraph-multi-agent-workflows/
+
+| Resource | Link |
+|----------|------|
+| Microsoft AutoGen | [github.com/microsoft/autogen](https://github.com/microsoft/autogen) |
+| LangGraph Multi-Agent Workflows | [blog.langchain.dev](https://blog.langchain.dev/langgraph-multi-agent-workflows/) |
+| OpenAI Swarm (Educational) | [github.com/openai/swarm](https://github.com/openai/swarm) |
+| CrewAI | [github.com/crewAIInc/crewAI](https://github.com/crewAIInc/crewAI) |
+| Anthropic Research | [anthropic.com/research](https://www.anthropic.com/research) |
 
 ---
 
