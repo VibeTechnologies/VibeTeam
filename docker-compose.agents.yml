@@ -1,0 +1,69 @@
+# VibeTeam Multi-Framework Agent Services
+# Each framework runs in its own isolated container
+
+services:
+  # AutoGen Framework Service
+  autogen:
+    build:
+      context: .
+      dockerfile: agents/autogen/Dockerfile
+    environment:
+      - AZURE_API_KEY=${AZURE_API_KEY}
+      - AZURE_API_BASE=${AZURE_API_BASE}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-2024-08-01-preview}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - ./agents:/app/agents:ro
+      - autogen-sessions:/app/.sessions
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "from agents.autogen import AutoGenReleaseEngineer; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CrewAI Framework Service
+  crewai:
+    build:
+      context: .
+      dockerfile: agents/crewai/Dockerfile
+    environment:
+      - AZURE_API_KEY=${AZURE_API_KEY}
+      - AZURE_API_BASE=${AZURE_API_BASE}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-2024-08-01-preview}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - ./agents:/app/agents:ro
+      - crewai-sessions:/app/.sessions
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "from agents.crewai import CrewAIReleaseEngineer; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # OpenHands Framework Service
+  openhands:
+    build:
+      context: .
+      dockerfile: agents/openhands/Dockerfile
+    environment:
+      - AZURE_API_KEY=${AZURE_API_KEY}
+      - AZURE_API_BASE=${AZURE_API_BASE}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-2024-08-01-preview}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - ./agents:/app/agents:ro
+      - openhands-sessions:/app/.sessions
+      - /var/run/docker.sock:/var/run/docker.sock  # For OpenHands sandbox
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "from agents.openhands import OpenHandsReleaseEngineer; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  autogen-sessions:
+  crewai-sessions:
+  openhands-sessions:
