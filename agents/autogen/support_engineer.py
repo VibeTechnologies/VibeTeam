@@ -170,26 +170,49 @@ Note: In production, this would create via Google Calendar API/MCP
 """
 
 
-async def get_sentry_issues(project: str = "vibeteam", status: str = "unresolved") -> str:
-    """Get issues from Sentry.
+async def get_sentry_issues(project: str | None = None, hours: int = 24, limit: int = 10) -> str:
+    """Get unresolved issues from Sentry.
 
     Args:
-        project: Sentry project slug
-        status: Issue status (unresolved, resolved, ignored)
+        project: Sentry project slug (None for all projects)
+        hours: Time window in hours (default: 24)
+        limit: Maximum issues to return (default: 10)
 
     Returns:
-        List of Sentry issues
+        List of Sentry issues with details
     """
-    return f"""
-=== Sentry Issues ({project}) ===
-Status filter: {status}
+    import os
 
-Note: This is a simulated response. In production, integrate with:
-- Sentry MCP server
-- Sentry API
+    try:
+        from vibeteam.connectors.sentry import SentryConnector
 
-Please describe the error tracking operations you want to perform.
-"""
+        auth_token = os.getenv("SENTRY_AUTH_TOKEN")
+        if not auth_token:
+            return "Error: SENTRY_AUTH_TOKEN not configured. Please set this environment variable."
+
+        connector = SentryConnector(auth_token=auth_token)
+        issues = connector.fetch_unresolved_issues(project=project, hours=hours, limit=limit)
+
+        if not issues:
+            return f"No unresolved issues found in the last {hours} hours."
+
+        result = (
+            f"=== Sentry Issues (last {hours}h) ===\nFound {len(issues)} unresolved issues:\n\n"
+        )
+        for issue in issues:
+            result += f"**[{issue.project}] {issue.short_id}**: {issue.title}\n"
+            result += f"  - Level: {issue.level} | Count: {issue.count} | Users affected: {issue.user_count}\n"
+            result += (
+                f"  - First seen: {issue.first_seen[:10]} | Last seen: {issue.last_seen[:10]}\n"
+            )
+            result += f"  - URL: {issue.permalink}\n\n"
+
+        return result
+
+    except ImportError:
+        return "Error: vibeteam.connectors.sentry module not available. Please install the vibeteam package."
+    except Exception as e:
+        return f"Error fetching Sentry issues: {e}"
 
 
 async def get_langfuse_traces(
