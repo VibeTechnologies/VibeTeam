@@ -218,3 +218,76 @@ docker-compose -f docker-compose.agents.yml up -d
 | OpenHands | - | - | Pydantic conflict |
 
 *Note: OpenHands requires isolated Python 3.12 environment with pydantic>=2.11.3*
+
+---
+
+## Real Sentry Integration Tests (2026-01-27)
+
+### Summary
+
+All three agent frameworks now use the **real `SentryConnector`** from `vibeteam.connectors.sentry` 
+instead of mock implementations. This enables live querying of Sentry issues.
+
+### Test Results
+
+| Framework | Test Type | Latency | Issues Found | Status |
+|-----------|-----------|---------|--------------|--------|
+| AutoGen | Basic Query | ~1.5s | 2 | ✅ PASS |
+| AutoGen | Error Analysis | ~1.8s | 2 | ✅ PASS |
+| CrewAI | Basic Query | ~4.5s | 2 | ✅ PASS |
+| CrewAI | Tool Usage | ~4.8s | 2 | ✅ PASS |
+| OpenHands | Basic Query | ~7.0s | 2 | ✅ PASS |
+| OpenHands | Context Injection | ~6.5s | 2 | ✅ PASS |
+
+### Real Sentry Issues Detected
+
+| Issue ID | Error Type | Occurrences |
+|----------|------------|-------------|
+| `VIBEBROWSEREXTENSION-8` | InsufficientQuotaError (429) | 9 |
+| `VIBEBROWSEREXTENSION-2` | GraphRecursionError | 42 |
+
+### Framework Performance Comparison
+
+```
+AutoGen:   ████░░░░░░ ~1.5s  (fastest)
+CrewAI:    ████████░░ ~4.5s  (moderate)
+OpenHands: ██████████ ~7.0s  (slowest)
+```
+
+**Key Observations**:
+- **AutoGen** is ~3x faster than CrewAI and ~4.5x faster than OpenHands for Sentry queries
+- **CrewAI** has overhead from Tool class instantiation and LLM delegation
+- **OpenHands** uses context injection rather than tool calls, adding LLM processing time
+
+### Files Modified
+
+```
+agents/autogen/support_engineer.py   - get_sentry_issues() uses SentryConnector
+agents/crewai/support_engineer.py    - SentryTool._run() uses SentryConnector  
+agents/openhands/support_engineer.py - fetch_sentry_context() for context injection
+tests/test_sentry_integration.py     - 8 real integration tests (NEW)
+```
+
+### Test Commands
+
+```bash
+# Run all Sentry integration tests
+pytest tests/test_sentry_integration.py -v --run-integration
+
+# Run specific framework
+pytest tests/test_sentry_integration.py -v --run-integration -k "autogen"
+pytest tests/test_sentry_integration.py -v --run-integration -k "crewai"
+pytest tests/test_sentry_integration.py -v --run-integration -k "openhands"
+
+# Cross-framework comparison
+pytest tests/test_sentry_integration.py -v --run-integration -k "CrossFramework"
+```
+
+### Remaining Gaps vs Requirements
+
+| Gap | Requirement | Current State | Priority |
+|-----|-------------|---------------|----------|
+| Gmail/Calendar | Real Gmail MCP integration | Simulated | High |
+| Browser Automation | Chrome DevTools MCP for posting | Draft only | High |
+| Product Docs Search | RAG-based documentation search | Not implemented | Medium |
+| Langfuse | Real trace analysis API | Simulated | Medium |

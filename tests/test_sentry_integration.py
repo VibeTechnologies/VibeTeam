@@ -25,7 +25,6 @@ import asyncio
 import os
 import time
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
@@ -152,7 +151,7 @@ class TestAutoGenSentryIntegration:
         is_valid, issue_count = validate_sentry_response(response)
 
         print(f"\n{'=' * 60}")
-        print(f"AutoGen SupportEngineer - Sentry Integration Test")
+        print("AutoGen SupportEngineer - Sentry Integration Test")
         print(f"{'=' * 60}")
         print(f"Latency: {latency_ms:.0f}ms")
         print(f"Issues found: {issue_count}")
@@ -182,7 +181,7 @@ class TestAutoGenSentryIntegration:
         is_valid, issue_count = validate_sentry_response(response)
 
         print(f"\n{'=' * 60}")
-        print(f"AutoGen SupportEngineer - Error Analysis Test")
+        print("AutoGen SupportEngineer - Error Analysis Test")
         print(f"{'=' * 60}")
         print(f"Latency: {latency_ms:.0f}ms")
         print(f"Response preview:\n{response[:600]}...")
@@ -226,7 +225,7 @@ class TestCrewAISentryIntegration:
         is_valid, issue_count = validate_sentry_response(response)
 
         print(f"\n{'=' * 60}")
-        print(f"CrewAI SupportEngineer - Sentry Integration Test")
+        print("CrewAI SupportEngineer - Sentry Integration Test")
         print(f"{'=' * 60}")
         print(f"Latency: {latency_ms:.0f}ms")
         print(f"Issues found: {issue_count}")
@@ -249,7 +248,7 @@ class TestCrewAISentryIntegration:
         is_valid, issue_count = validate_sentry_response(response)
 
         print(f"\n{'=' * 60}")
-        print(f"CrewAI SupportEngineer - Tool Usage Test")
+        print("CrewAI SupportEngineer - Tool Usage Test")
         print(f"{'=' * 60}")
         print(f"Latency: {latency_ms:.0f}ms")
         print(f"Issues found: {issue_count}")
@@ -290,7 +289,7 @@ class TestOpenHandsSentryIntegration:
         is_valid, issue_count = validate_sentry_response(response)
 
         print(f"\n{'=' * 60}")
-        print(f"OpenHands SupportEngineer - Sentry Integration Test")
+        print("OpenHands SupportEngineer - Sentry Integration Test")
         print(f"{'=' * 60}")
         print(f"Latency: {latency_ms:.0f}ms")
         print(f"Issues found: {issue_count}")
@@ -315,7 +314,7 @@ class TestOpenHandsSentryIntegration:
         is_valid, issue_count = validate_sentry_response(response)
 
         print(f"\n{'=' * 60}")
-        print(f"OpenHands SupportEngineer - Context Injection Test")
+        print("OpenHands SupportEngineer - Context Injection Test")
         print(f"{'=' * 60}")
         print(f"Latency: {latency_ms:.0f}ms")
         print(f"Issues found: {issue_count}")
