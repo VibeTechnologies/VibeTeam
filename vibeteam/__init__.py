@@ -75,9 +75,12 @@ from vibeteam.agents import (
     ReleaseEngineerAgent,
     ReliabilityEngineerAgent,
     SoftwareEngineerAgent,
+    SupervisorAgent,
     SupportEngineerAgent,
 )
 from vibeteam.orchestrator import AgentType, TaskResult, VibeTeam
+from vibeteam.state import SharedMessageState
+from vibeteam.swarm import SwarmOrchestrator, create_swarm_orchestrator
 
 __all__ = [
     # Core
@@ -86,6 +89,10 @@ __all__ = [
     "VibeTeam",
     "AgentType",
     "TaskResult",
+    # Swarm
+    "SwarmOrchestrator",
+    "create_swarm_orchestrator",
+    "SharedMessageState",
     # Agents
     "BaseVibeAgent",
     "ProductManagerAgent",
@@ -94,4 +101,5 @@ __all__ = [
     "SupportEngineerAgent",
     "ReliabilityEngineerAgent",
     "ReleaseEngineerAgent",
+    "SupervisorAgent",
 ]
