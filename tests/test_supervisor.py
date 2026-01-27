@@ -1,6 +1,5 @@
 """Tests for SupervisorAgent."""
 
-import pytest
 
 from vibeteam.agents.supervisor import (
     SupervisorAgent,

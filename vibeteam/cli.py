@@ -427,7 +427,6 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
     """Software Engineer: Analyze issues and create PRs with fixes."""
     import shutil
     import subprocess
-    import tempfile
     from pathlib import Path
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -737,7 +736,7 @@ def serve(host: str, port: int, reload: bool) -> None:
 )
 def chat_cli(message: str, model: str) -> None:
     """Chat with the VibeTeam Supervisor."""
-    console.print(f"[bold blue]VibeTeam Supervisor[/bold blue]")
+    console.print("[bold blue]VibeTeam Supervisor[/bold blue]")
     console.print(f"[dim]Model: {model}[/dim]\n")
 
     from vibeteam.swarm import create_swarm_orchestrator
