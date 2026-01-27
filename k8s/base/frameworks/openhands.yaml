@@ -1,0 +1,92 @@
+# OpenHands Framework Deployment
+# Runs OpenHands-based agents in isolated environment
+# Note: OpenHands requires pydantic>=2.11.3 which conflicts with other frameworks
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhands-agents
+  labels:
+    app: openhands-agents
+    framework: openhands
+    team: vibeteam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openhands-agents
+  template:
+    metadata:
+      labels:
+        app: openhands-agents
+        framework: openhands
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: openhands
+          image: ghcr.io/vibetechnologies/vibeteam-openhands:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: AZURE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_KEY
+            - name: AZURE_API_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_BASE
+            - name: AZURE_API_VERSION
+              value: "2024-08-01-preview"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: GITHUB_TOKEN
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          # OpenHands may need Docker socket for sandboxing
+          volumeMounts:
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhands-agents
+  labels:
+    app: openhands-agents
+    framework: openhands
+spec:
+  selector:
+    app: openhands-agents
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
