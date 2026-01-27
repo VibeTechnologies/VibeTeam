@@ -1,11 +1,11 @@
 """
-MarketingManager agent using OpenHands.
+SoftwareEngineer agent using OpenHands.
 
 Capabilities:
-- Chrome DevTools via MCP for browser automation
-- Social media post creation
-- Web research and analysis
-- Screenshot and content capture
+- Shell command execution for builds and tests
+- File editing and creation
+- Git operations (branch, commit, merge)
+- Full development workflow automation
 
 Note: OpenHands SDK v1.2.1 uses:
 - LLM: model, api_key, base_url, api_version, max_output_tokens
@@ -17,11 +17,7 @@ import os
 import tempfile
 from typing import Any
 
-from agents.config import (
-    MARKETING_MANAGER_CONFIG,
-    AgentConfig,
-    get_mcp_config_dict,
-)
+from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 
 try:
@@ -35,39 +31,54 @@ except ImportError:
     LocalConversation = None
 
 
-MARKETING_MANAGER_CONTEXT = """You are Ada, the Marketing Manager for VibeTeam.
+SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
 
 Your responsibilities:
-1. **Social Media**: Create and schedule posts on Twitter/X, LinkedIn
-2. **Content Creation**: Write blog posts, announcements, release notes
-3. **Web Research**: Analyze competitors, trends, and market opportunities
-4. **Brand Management**: Ensure consistent messaging and brand voice
+1. **Feature Implementation**: Implement features from user stories and PRDs
+2. **Bug Fixing**: Fix bugs reported by SupportEngineer or from Sentry
+3. **Testing**: Write and maintain unit tests and integration tests
+4. **Code Review**: Review code changes and suggest improvements
+5. **Pull Requests**: Create and manage pull requests
 
-## Brand Guidelines
-- Voice: Professional but approachable, technical but accessible
-- Hashtags: #AI #DevTools #Automation #VibeTeam
-- Always include relevant links and CTAs
+## Development Workflow
+1. Understand the requirement from the issue or user story
+2. Create a feature branch: `git checkout -b feat/feature-name`
+3. Implement the changes with tests
+4. Run tests to verify: `pytest tests/`
+5. Commit with descriptive message: `git commit -m "feat: description"`
+6. Create a pull request with summary
+
+## Code Standards
+- Follow existing code patterns in the repository
+- Write docstrings for functions and classes
+- Add type hints where appropriate
+- Keep functions focused and small
+- Write tests for new functionality
 
 ## Communication
-- Post updates to Slack #marketing
-- Coordinate with @ReleaseEngineer for release announcements
-- Tag @SupportEngineer for customer testimonials
+- Post updates to Slack #ai-team
+- Tag @ReleaseEngineer when ready for deployment
+- Tag @SupportEngineer if changes affect customer-facing features
 
-When posting to social media:
-1. Draft the post content
-2. Take a screenshot for approval (if needed)
-3. Confirm before publishing
+When you complete a task, summarize what was done, files changed, and any next steps.
 """
 
 
-class OpenHandsMarketingManager:
-    """Marketing Manager agent using OpenHands SDK."""
+class OpenHandsSoftwareEngineer:
+    """
+    Software Engineer agent using OpenHands SDK.
+
+    Uses OpenHands' agentic loop with built-in tools for:
+    - Shell command execution
+    - File editing and creation
+    - Web browsing (optional)
+    """
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
             raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
 
-        self.config = config or MARKETING_MANAGER_CONFIG
+        self.config = config or SOFTWARE_ENGINEER_CONFIG
 
     def _create_llm(self) -> "LLM":
         """Create LLM with Azure configuration."""
@@ -84,14 +95,11 @@ class OpenHandsMarketingManager:
         )
 
     def _create_agent(self, llm: "LLM") -> "Agent":
-        """Create Agent with MCP config if available."""
-        mcp_config = get_mcp_config_dict(self.config.mcp_servers)
-
+        """Create Agent with LLM."""
         return Agent(
             llm=llm,
-            mcp_config=mcp_config if mcp_config.get("mcpServers") else None,
             system_prompt_kwargs={
-                "agent_context": MARKETING_MANAGER_CONTEXT,
+                "agent_context": SOFTWARE_ENGINEER_CONTEXT,
             },
         )
 
@@ -104,12 +112,12 @@ class OpenHandsMarketingManager:
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
-        Run a task with the Marketing Manager agent.
+        Run a task with the Software Engineer agent.
 
         Args:
             task: The task description
-            context_type: Type of context (campaign, post, slack, ephemeral)
-            context_id: ID for the context
+            context_type: Type of context (issue, pr, slack, ephemeral)
+            context_id: ID for the context (issue number, PR number, etc.)
             workspace: Working directory for the agent
 
         Returns:
@@ -122,7 +130,7 @@ class OpenHandsMarketingManager:
 
         session = get_or_create_session(
             framework="openhands",
-            role="marketing_manager",
+            role="software_engineer",
             context_type=context_type,
             context_id=context_id,
         )
@@ -144,7 +152,7 @@ class OpenHandsMarketingManager:
                 workspace=workspace_path,
             )
 
-            full_task = f"{MARKETING_MANAGER_CONTEXT}\n\nTask: {task}"
+            full_task = f"{SOFTWARE_ENGINEER_CONTEXT}\n\nTask: {task}"
             response = conversation.ask_agent(full_task)
 
             session.add_message("user", task)
@@ -156,7 +164,8 @@ class OpenHandsMarketingManager:
                 "session_key": session.key,
                 "session_id": session.session_id,
                 "framework": "openhands",
-                "agent": "marketing_manager",
+                "agent": "software_engineer",
+                "workspace": workspace_path,
             }
 
         finally:
@@ -183,6 +192,6 @@ class OpenHandsMarketingManager:
         )
 
 
-def create_marketing_manager(config: AgentConfig | None = None) -> OpenHandsMarketingManager:
-    """Factory function to create Marketing Manager agent."""
-    return OpenHandsMarketingManager(config)
+def create_software_engineer(config: AgentConfig | None = None) -> OpenHandsSoftwareEngineer:
+    """Factory function to create Software Engineer agent."""
+    return OpenHandsSoftwareEngineer(config)
