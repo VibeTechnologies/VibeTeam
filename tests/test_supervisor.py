@@ -1,6 +1,5 @@
 """Tests for SupervisorAgent."""
 
-
 from vibeteam.agents.supervisor import (
     SupervisorAgent,
     get_handoff_target,
