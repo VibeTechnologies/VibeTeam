@@ -44,6 +44,7 @@ try:
     from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
     from autogen_agentchat.teams import SelectorGroupChat
     from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+    from autogen_core.models import ModelFamily
 
     AUTOGEN_AVAILABLE = True
 except ImportError:
@@ -52,6 +53,16 @@ except ImportError:
     TaskResult = None
     SelectorGroupChat = None
     AzureOpenAIChatCompletionClient = None
+    ModelFamily = None
+
+# Model info for custom Azure deployments
+AZURE_MODEL_INFO = {
+    "vision": True,
+    "function_calling": True,
+    "json_output": True,
+    "family": "gpt-4o",
+    "structured_output": True,
+}
 
 
 TEAM_COORDINATOR_PROMPT = """You are the Team Coordinator for VibeTeam.
@@ -97,7 +108,7 @@ class AutoGenTeam:
 
     def _create_model_client(self) -> "AzureOpenAIChatCompletionClient":
         """Create Azure OpenAI model client."""
-        model_name = self.config.llm.model
+        model_name = self.config.llm.model or "gpt-4.1-mini"
         if model_name.startswith("azure/"):
             model_name = model_name[6:]
 
@@ -105,8 +116,9 @@ class AutoGenTeam:
             azure_deployment=model_name,
             model=model_name,
             api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
-            azure_endpoint=self.config.llm.api_base,
-            api_key=self.config.llm.api_key,
+            azure_endpoint=self.config.llm.api_base or "",
+            api_key=self.config.llm.api_key or "",
+            model_info=AZURE_MODEL_INFO,
         )
 
     def _get_agents(self) -> list["AssistantAgent"]:

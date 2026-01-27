@@ -74,15 +74,23 @@ class SessionConfig:
 class LLMConfig:
     """LLM configuration for agents."""
 
-    model: str = "azure/gpt-5-2"
+    model: str | None = None
     api_base: str | None = None
     api_key: str | None = None
     temperature: float = 0.7
     max_tokens: int = 4096
 
     def __post_init__(self):
-        self.api_base = self.api_base or os.getenv("AZURE_API_BASE")
-        self.api_key = self.api_key or os.getenv("AZURE_API_KEY")
+        # Use AZURE_OPENAI_DEPLOYMENT if available, otherwise fall back to gpt-4.1-mini
+        if self.model is None:
+            self.model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+        # Use AZURE_OPENAI_ENDPOINT/API_KEY first, then fall back to AZURE_API_BASE/KEY
+        self.api_base = (
+            self.api_base or os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_API_BASE")
+        )
+        self.api_key = (
+            self.api_key or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
+        )
 
 
 @dataclass

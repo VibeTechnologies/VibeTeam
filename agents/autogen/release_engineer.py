@@ -22,6 +22,7 @@ try:
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.base import TaskResult
     from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+    from autogen_core.models import ModelFamily
 
     AUTOGEN_AVAILABLE = True
 except ImportError:
@@ -29,6 +30,16 @@ except ImportError:
     AssistantAgent = None
     TaskResult = None
     AzureOpenAIChatCompletionClient = None
+    ModelFamily = None
+
+# Model info for custom Azure deployments (gpt-5-2 is not in AutoGen's built-in list)
+GPT5_MODEL_INFO = {
+    "vision": True,
+    "function_calling": True,
+    "json_output": True,
+    "family": "gpt-4o",  # Use gpt-4o family as base
+    "structured_output": True,
+}
 
 
 RELEASE_ENGINEER_SYSTEM_PROMPT = """You are Einstein, the Release Engineer for VibeTeam.
@@ -176,7 +187,7 @@ class AutoGenReleaseEngineer:
     def _create_model_client(self) -> "AzureOpenAIChatCompletionClient":
         """Create Azure OpenAI model client."""
         # Parse model name (e.g., "azure/gpt-5-2" -> "gpt-5-2")
-        model_name = self.config.llm.model
+        model_name = self.config.llm.model or "gpt-4.1-mini"
         if model_name.startswith("azure/"):
             model_name = model_name[6:]
 
@@ -184,8 +195,9 @@ class AutoGenReleaseEngineer:
             azure_deployment=model_name,
             model=model_name,
             api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
-            azure_endpoint=self.config.llm.api_base,
-            api_key=self.config.llm.api_key,
+            azure_endpoint=self.config.llm.api_base or "",
+            api_key=self.config.llm.api_key or "",
+            model_info=GPT5_MODEL_INFO,  # Custom model info for Azure deployments
         )
 
     def _create_agent(self) -> "AssistantAgent":

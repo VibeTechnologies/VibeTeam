@@ -17,6 +17,7 @@ from agents.sessions import get_or_create_session, get_session_store
 try:
     from crewai import Agent, Task, Crew, Process
     from crewai.tools import BaseTool
+    from crewai.llm import LLM
 
     CREWAI_AVAILABLE = True
 except ImportError:
@@ -24,6 +25,7 @@ except ImportError:
     Agent = None
     Task = None
     Crew = None
+    LLM = None
 
 
 RELEASE_ENGINEER_BACKSTORY = """You are Einstein, the Release Engineer for VibeTeam.
@@ -132,13 +134,26 @@ class CrewAIReleaseEngineer:
 
     def _create_agent(self) -> "Agent":
         """Create CrewAI Agent."""
+        # CrewAI uses litellm which needs azure/<deployment> format
+        model_name = self.config.llm.model or "gpt-4.1-mini"
+        if not model_name.startswith("azure/"):
+            model_name = f"azure/{model_name}"
+
+        # Create LLM with explicit Azure configuration
+        llm = LLM(
+            model=model_name,
+            api_base=self.config.llm.api_base,
+            api_key=self.config.llm.api_key,
+            api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
+        )
+
         return Agent(
             role="Release Engineer",
             goal=RELEASE_ENGINEER_GOAL,
             backstory=RELEASE_ENGINEER_BACKSTORY,
             tools=self.tools,
             verbose=self.config.verbose,
-            llm=self.config.llm.model,
+            llm=llm,
         )
 
     def run(
