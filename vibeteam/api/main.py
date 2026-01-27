@@ -13,7 +13,6 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from vibeteam.state import SharedMessageState
 from vibeteam.swarm import SwarmOrchestrator, create_swarm_orchestrator
 
 logger = logging.getLogger(__name__)
@@ -202,7 +201,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     except Exception as e:
         logger.exception("Chat error")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/v1/chat/completions", response_model=OpenAIChatResponse)
@@ -261,7 +260,7 @@ async def chat_completions(request: OpenAIChatRequest) -> OpenAIChatResponse:
         raise
     except Exception as e:
         logger.exception("Chat completions error")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/v1/sessions/{session_id}/history", response_model=SessionHistoryResponse)
