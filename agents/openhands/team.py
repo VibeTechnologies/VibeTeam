@@ -8,7 +8,9 @@ from typing import Any
 
 from agents.config import AgentConfig
 from agents.openhands.marketing_manager import OpenHandsMarketingManager
+from agents.openhands.product_manager import OpenHandsProductManager
 from agents.openhands.release_engineer import OpenHandsReleaseEngineer
+from agents.openhands.software_engineer import OpenHandsSoftwareEngineer
 from agents.openhands.support_engineer import OpenHandsSupportEngineer
 
 
@@ -33,6 +35,10 @@ class OpenHandsTeam:
                 self._agents[role] = OpenHandsMarketingManager(self.config)
             elif role == "support_engineer":
                 self._agents[role] = OpenHandsSupportEngineer(self.config)
+            elif role == "product_manager":
+                self._agents[role] = OpenHandsProductManager(self.config)
+            elif role == "software_engineer":
+                self._agents[role] = OpenHandsSoftwareEngineer(self.config)
             else:
                 raise ValueError(f"Unknown agent role: {role}")
         return self._agents[role]
@@ -45,12 +51,16 @@ class OpenHandsTeam:
         - @ReleaseEngineer, @release, @einstein
         - @MarketingManager, @marketing, @ada
         - @SupportEngineer, @support, @grace
+        - @ProductManager, @product, @pm
+        - @SoftwareEngineer, @swe, @dev
         """
         text_lower = text.lower()
 
         release_patterns = ["@releaseengineer", "@release", "@einstein"]
         marketing_patterns = ["@marketingmanager", "@marketing", "@ada"]
         support_patterns = ["@supportengineer", "@support", "@grace"]
+        product_patterns = ["@productmanager", "@product", "@pm"]
+        software_patterns = ["@softwareengineer", "@swe", "@dev"]
 
         for pattern in release_patterns:
             if pattern in text_lower:
@@ -64,6 +74,14 @@ class OpenHandsTeam:
             if pattern in text_lower:
                 return "support_engineer"
 
+        for pattern in product_patterns:
+            if pattern in text_lower:
+                return "product_manager"
+
+        for pattern in software_patterns:
+            if pattern in text_lower:
+                return "software_engineer"
+
         return None
 
     def route_by_keywords(self, text: str) -> str:
@@ -72,7 +90,7 @@ class OpenHandsTeam:
         """
         text_lower = text.lower()
 
-        # Release Engineer keywords
+        # Release Engineer keywords (check first - deploy/release are specific)
         if any(
             kw in text_lower
             for kw in [
@@ -86,9 +104,49 @@ class OpenHandsTeam:
                 "version",
                 "tag",
                 "infrastructure",
+                "production",
             ]
         ):
             return "release_engineer"
+
+        # Software Engineer keywords
+        if any(
+            kw in text_lower
+            for kw in [
+                "code",
+                "implement",
+                "refactor",
+                "debug",
+                "fix bug",
+                "pull request",
+                "pr",
+                "review code",
+                "test",
+                "unit test",
+                "function",
+                "class",
+                "api",
+            ]
+        ):
+            return "software_engineer"
+
+        # Product Manager keywords
+        if any(
+            kw in text_lower
+            for kw in [
+                "roadmap",
+                "prioritize",
+                "feature",
+                "user story",
+                "requirements",
+                "stakeholder",
+                "product manager",
+                "backlog",
+                "sprint",
+                "prd",
+            ]
+        ):
+            return "product_manager"
 
         # Marketing Manager keywords
         if any(
