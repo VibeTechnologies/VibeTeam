@@ -166,7 +166,7 @@ Guidelines:
 - Write clear, actionable requirements
 - Consider technical feasibility when scoping
 
-Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None'}
+Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """
 
     async def process_feature_request(

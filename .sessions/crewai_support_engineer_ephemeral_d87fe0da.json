@@ -1,0 +1,22 @@
+{
+  "session_id": "38d7deff-b9f2-47cc-b5fc-9b213236ee8b",
+  "framework": "crewai",
+  "role": "support_engineer",
+  "context_type": "ephemeral",
+  "context_id": "d87fe0da",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Query Sentry for unresolved issues and list them with their error counts.",
+      "timestamp": "2026-01-27T21:19:34.347281+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Found 2 unresolved issues:\n\n**[vibebrowserextension] VIBEBROWSEREXTENSION-8**: InsufficientQuotaError: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.\n  - Level: error | Count: 9 | Users: 0\n  - URL: https://vibetechnologies.sentry.io/issues/7210972124/\n\n**[vibebrowserextension] VIBEBROWSEREXTENSION-2**: GraphRecursionError: Recursion limit of 512 reached without hitting a stop condition. You can increase the limit by setting the \"recursionLimit\" config key.\n  - Level: error | Count: 42 | Users: 0\n  - URL: https://vibetechnologies.sentry.io/issues/6996178791/",
+      "timestamp": "2026-01-27T21:19:34.347294+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T21:19:30.570314+00:00",
+  "updated_at": "2026-01-27T21:19:34.347296+00:00"
+}

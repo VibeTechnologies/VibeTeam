@@ -1,0 +1,22 @@
+{
+  "session_id": "6ce93b20-2953-4245-9dc2-4beb5e6e2079",
+  "framework": "crewai",
+  "role": "marketing_manager",
+  "context_type": "ephemeral",
+  "context_id": "37206573",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Analyze the sentiment of this text: 'I absolutely love this product, it changed my life!'",
+      "timestamp": "2026-01-27T20:17:46.301210+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "The sentiment of the text \"I absolutely love this product, it changed my life!\" is overwhelmingly positive. The use of the phrase \"I absolutely love\" indicates strong enthusiasm and satisfaction, while \"it changed my life\" suggests a significant and transformative impact on the speaker's experience. \n\nRecommendations: \n1. Leverage this positive feedback in marketing materials to build brand credibility.\n2. Encourage more customer testimonials to highlight similar transformational experiences.\n3. Use positive sentiment in social media campaigns to engage potential customers looking for impactful products.",
+      "timestamp": "2026-01-27T20:17:46.301224+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T20:17:43.544759+00:00",
+  "updated_at": "2026-01-27T20:17:46.301227+00:00"
+}

@@ -128,7 +128,7 @@ Goal: {self.goal}
 
 {SUPPORT_PROTOCOL}
 
-Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None'}
+Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """
 
     async def analyze_email(self, email: str) -> str:
