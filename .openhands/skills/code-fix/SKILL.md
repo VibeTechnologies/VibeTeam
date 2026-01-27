@@ -1,6 +1,10 @@
 ---
 name: code-fix
-trigger:
+description: >
+  Guidelines for implementing code fixes, creating branches, and submitting PRs.
+  Used by the Software Engineer agent.
+license: MIT
+triggers:
   - fix
   - implement
   - code
@@ -9,6 +13,9 @@ trigger:
   - branch
   - commit
   - refactor
+metadata:
+  author: VibeTechnologies
+  version: "1.0"
 ---
 
 # Code Fix & Implementation

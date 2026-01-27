@@ -1,6 +1,10 @@
 ---
 name: customer-support
-trigger:
+description: >
+  Guidelines for handling customer support emails with proper tone,
+  security rules, and escalation triggers. Used by the Support Engineer agent.
+license: MIT
+triggers:
   - email
   - customer
   - support
@@ -8,6 +12,9 @@ trigger:
   - user
   - feedback
   - complaint
+metadata:
+  author: VibeTechnologies
+  version: "1.0"
 ---
 
 # Customer Support

@@ -1,6 +1,10 @@
 ---
 name: sentry-triage
-trigger:
+description: >
+  Guidelines for triaging Sentry errors and classifying them as NOISE or VALID_BUG.
+  Used by the Release Engineer agent.
+license: MIT
+triggers:
   - sentry
   - error
   - exception
@@ -8,6 +12,9 @@ trigger:
   - crash
   - production
   - monitoring
+metadata:
+  author: VibeTechnologies
+  version: "1.0"
 ---
 
 # Sentry Issue Triage
@@ -41,9 +48,9 @@ You are the Release Engineer responsible for triaging Sentry errors.
    - Count events and affected users
 
 2. **Classify**
-   - NOISE → Log and skip (optionally resolve in Sentry)
-   - VALID_BUG → Continue to step 3
-   - NEEDS_INVESTIGATION → Flag for human review
+   - NOISE -> Log and skip (optionally resolve in Sentry)
+   - VALID_BUG -> Continue to step 3
+   - NEEDS_INVESTIGATION -> Flag for human review
 
 3. **Create GitHub Issue** (for VALID_BUG only)
    ```markdown

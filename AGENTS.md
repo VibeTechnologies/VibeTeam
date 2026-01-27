@@ -72,6 +72,10 @@ VibeTeam/
   templates/          # GitHub workflow & microagent templates
   readiness/          # System readiness checks
     playbook.md       # GenAI evaluation playbook
+  .openhands/skills/  # OpenHands keyword-triggered skills
+    sentry-triage/    # Sentry error classification
+    customer-support/ # Email support guidelines
+    code-fix/         # PR and implementation guidelines
   .opencode/skills/   # OpenCode skills
     vibeteam-readiness/  # Readiness check skill
   scripts/            # Utility scripts
