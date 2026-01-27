@@ -179,7 +179,10 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
 
     try:
         resp = requests.get(
-            url, auth=(langfuse_public, langfuse_secret), params=params, timeout=30  # type: ignore[arg-type]
+            url,
+            auth=(langfuse_public, langfuse_secret),
+            params=params,
+            timeout=30,  # type: ignore[arg-type]
         )
         resp.raise_for_status()
         traces = resp.json().get("data", [])
@@ -515,7 +518,7 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
             # Analyze issue with SWE agent
             issue_content = f"""## Issue #{issue_num}: {issue_title}
 
-{issue.get('body', 'No description provided.')}
+{issue.get("body", "No description provided.")}
 
 ## Repository
 {repo}

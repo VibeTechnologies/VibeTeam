@@ -1,0 +1,22 @@
+{
+  "session_id": "ae21fcf1-5337-4c7b-80d3-04165dd25246",
+  "framework": "crewai",
+  "role": "release_engineer",
+  "context_type": "ephemeral",
+  "context_id": "f14626c8",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Create a file at /private/var/folders/gq/0rs975rd2b9bj2h6zkymwx6r0000gn/T/pytest-of-engineer/pytest-12/test_u2_create_file1/test.txt with content 'Hello World'",
+      "timestamp": "2026-01-27T20:21:12.806094+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "The requirements are met. \n\nFinal Answer:\nHello World",
+      "timestamp": "2026-01-27T20:21:12.806107+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T20:21:11.332467+00:00",
+  "updated_at": "2026-01-27T20:21:12.806109+00:00"
+}

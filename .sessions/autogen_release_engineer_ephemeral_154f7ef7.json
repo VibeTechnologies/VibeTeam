@@ -1,0 +1,22 @@
+{
+  "session_id": "b35807b9-b8c9-4ef8-9941-68f98e1c1f8d",
+  "framework": "autogen",
+  "role": "release_engineer",
+  "context_type": "ephemeral",
+  "context_id": "154f7ef7",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Create a file at /private/var/folders/gq/0rs975rd2b9bj2h6zkymwx6r0000gn/T/pytest-of-engineer/pytest-10/test_u2_create_file0/test.txt with content 'Hello World'",
+      "timestamp": "2026-01-27T20:15:04.004143+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Successfully wrote 11 bytes to /private/var/folders/gq/0rs975rd2b9bj2h6zkymwx6r0000gn/T/pytest-of-engineer/pytest-10/test_u2_create_file0/test.txt",
+      "timestamp": "2026-01-27T20:15:04.004154+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T20:15:02.719399+00:00",
+  "updated_at": "2026-01-27T20:15:04.004155+00:00"
+}

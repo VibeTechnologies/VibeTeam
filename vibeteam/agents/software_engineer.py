@@ -113,7 +113,7 @@ Goal: {self.goal}
 
 {TORVALDS_PROTOCOL}
 
-Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None'}
+Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """
 
     async def write_code(self, task: str, context: str = "") -> str:
