@@ -258,7 +258,7 @@ We use Google OAuth for authentication.
         """Test tool schema is correctly structured."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         schema = tool.get_schema()
 
         assert schema["type"] == "function"
@@ -269,7 +269,7 @@ We use Google OAuth for authentication.
         """Test all expected actions are in schema."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         schema = tool.get_schema()
         actions = schema["function"]["parameters"]["properties"]["action"]["enum"]
 
@@ -279,6 +279,7 @@ We use Google OAuth for authentication.
             "list_files",
             "get_summary",
             "search_topic",
+            "sync",
         ]
         for action in expected_actions:
             assert action in actions
@@ -288,7 +289,7 @@ We use Google OAuth for authentication.
         """Test search action finds relevant documentation."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="search", query="kubernetes cluster")
 
         assert result.success is True
@@ -300,7 +301,7 @@ We use Google OAuth for authentication.
         """Test search returns appropriate message when no results."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="search", query="nonexistent_xyz_123")
 
         assert result.success is True
@@ -311,7 +312,7 @@ We use Google OAuth for authentication.
         """Test get_file action retrieves file content."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="get_file", path="auth.md")
 
         assert result.success is True
@@ -323,7 +324,7 @@ We use Google OAuth for authentication.
         """Test get_file returns error for missing file."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="get_file", path="nonexistent.md")
 
         assert result.success is False
@@ -334,7 +335,7 @@ We use Google OAuth for authentication.
         """Test list_files action lists available documentation."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="list_files")
 
         assert result.success is True
@@ -347,7 +348,7 @@ We use Google OAuth for authentication.
         """Test list_files with pattern filter."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="list_files", pattern="*deploy*")
 
         assert result.success is True
@@ -359,7 +360,7 @@ We use Google OAuth for authentication.
         """Test get_summary action returns knowledge base summary."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="get_summary")
 
         assert result.success is True
@@ -371,7 +372,7 @@ We use Google OAuth for authentication.
         """Test search_topic action with topic expansion."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="search_topic", topic="auth")
 
         assert result.success is True
@@ -382,7 +383,7 @@ We use Google OAuth for authentication.
         """Test search returns error when query is missing."""
         from vibeteam.connectors.docs import DocsSource
 
-        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))])
+        tool = DocsTool(sources=[DocsSource(path=str(temp_docs_dir))], auto_sync=False)
         result = await tool.execute(action="search")
 
         assert result.success is False

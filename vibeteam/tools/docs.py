@@ -17,7 +17,8 @@ class DocsTool(BaseTool):
     Tool for searching and retrieving documentation.
 
     Provides agents with access to a knowledge base of markdown documentation
-    from configured repositories and directories.
+    from configured repositories and directories. Git repos are automatically
+    cloned/pulled.
 
     Actions:
         - search: Search documentation by keywords or phrase
@@ -25,20 +26,22 @@ class DocsTool(BaseTool):
         - list_files: List available documentation files
         - get_summary: Get summary of available documentation sources
         - search_topic: Search by high-level topic with keyword expansion
+        - sync: Refresh documentation by pulling latest from git repos
     """
 
     name = "docs"
-    description = "Search and retrieve documentation from the knowledge base"
+    description = "Search and retrieve documentation from the knowledge base (auto-syncs git repos)"
 
-    def __init__(self, sources: list[DocsSource] | None = None):
+    def __init__(self, sources: list[DocsSource] | None = None, auto_sync: bool = True):
         """
         Initialize the docs tool.
 
         Args:
             sources: Optional list of DocsSource configurations.
-                     If None, uses VIBETEAM_DOCS_PATHS env var or defaults.
+                     If None, uses VIBETEAM_DOCS_REPOS env var or defaults.
+            auto_sync: If True, clone/pull git repos on initialization.
         """
-        self.connector = DocsConnector(sources=sources)
+        self.connector = DocsConnector(sources=sources, auto_sync=auto_sync)
 
     def get_schema(self) -> dict:
         """Return OpenAI function schema."""
@@ -58,6 +61,7 @@ class DocsTool(BaseTool):
                                 "list_files",
                                 "get_summary",
                                 "search_topic",
+                                "sync",
                             ],
                             "description": "The documentation action to perform",
                         },
@@ -197,6 +201,16 @@ class DocsTool(BaseTool):
                     )
 
                 return ToolResult(success=True, output="\n\n".join(output_parts))
+
+            elif action == "sync":
+                # Re-sync git repos and rebuild index
+                self.connector._sync_repos()
+                self.connector._rebuild_index()
+                summary = self.connector.get_summary()
+                return ToolResult(
+                    success=True,
+                    output=f"Documentation synced. {summary['total_files']} files indexed from {len(summary['sources'])} sources.",
+                )
 
             else:
                 return ToolResult(success=False, output="", error=f"Unknown action: {action}")

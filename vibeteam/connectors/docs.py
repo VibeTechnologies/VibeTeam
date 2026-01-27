@@ -3,31 +3,48 @@ Docs Connector - Knowledge base connector for documentation files.
 
 Provides access to markdown documentation files across multiple repositories.
 Used by agents to retrieve context about infrastructure, services, and codebase.
+
+Supports both local paths and git repositories - repos are cloned/pulled automatically.
 """
 
 import fnmatch
 import logging
 import os
-import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Default directory for cloned repos
+DOCS_CACHE_DIR = os.environ.get("VIBETEAM_DOCS_CACHE", "/tmp/vibeteam-docs")
 
 
 @dataclass
 class DocsSource:
     """A documentation source configuration."""
 
-    path: str  # Base path to documentation
+    path: str  # Local path or git repo URL
     patterns: list[str] = field(default_factory=lambda: ["*.md"])
     name: str | None = None  # Optional name for this source
+    branch: str = "master"  # Git branch (only used for git repos)
+    subdirectory: str | None = None  # Subdirectory within repo to index
 
     def __post_init__(self):
-        # Expand ~ and environment variables
-        self.path = os.path.expanduser(os.path.expandvars(self.path))
+        # Expand ~ and environment variables for local paths
+        if not self.is_git_repo:
+            self.path = os.path.expanduser(os.path.expandvars(self.path))
         if not self.name:
-            self.name = Path(self.path).name
+            if self.is_git_repo:
+                # Extract repo name from URL
+                self.name = self.path.rstrip("/").split("/")[-1].replace(".git", "")
+            else:
+                self.name = Path(self.path).name
+
+    @property
+    def is_git_repo(self) -> bool:
+        """Check if this source is a git repository URL."""
+        return self.path.startswith(("git@", "https://github.com", "git://"))
 
 
 @dataclass
@@ -63,40 +80,37 @@ class DocsConnector:
     """
 
     DEFAULT_SOURCES = [
+        # Git repositories - will be cloned/pulled automatically
         DocsSource(
-            path="~/workspace/vibebrowser/vibe/docs",
-            patterns=["*.md"],
-            name="vibe-docs",
+            path="https://github.com/VibeTechnologies/VibeWebAgent.git",
+            patterns=["**/*.md"],
+            name="vibe",
+            subdirectory="docs",
         ),
         DocsSource(
-            path="~/workspace/vibebrowser/vibe/.opencode/skills",
-            patterns=["**/SKILL.md"],
-            name="skills",
-        ),
-        DocsSource(
-            path="~/workspace/vibebrowser/vibe/services/subscription/docs",
-            patterns=["*.md"],
-            name="subscription",
-        ),
-        DocsSource(
-            path="~/workspace/vibebrowser/VibeTeam/docs",
-            patterns=["*.md"],
+            path="https://github.com/VibeTechnologies/VibeTeam.git",
+            patterns=["**/*.md"],
             name="vibeteam",
         ),
     ]
 
-    def __init__(self, sources: list[DocsSource] | None = None):
+    def __init__(self, sources: list[DocsSource] | None = None, auto_sync: bool = True):
         """
         Initialize the docs connector.
 
         Args:
             sources: List of DocsSource configurations. If None, uses
-                     VIBETEAM_DOCS_PATHS env var or DEFAULT_SOURCES.
+                     VIBETEAM_DOCS_REPOS env var or DEFAULT_SOURCES.
+            auto_sync: If True, automatically clone/pull git repos on init.
         """
         if sources:
             self.sources = sources
         else:
             self.sources = self._load_sources_from_env()
+
+        # Sync git repos if enabled
+        if auto_sync:
+            self._sync_repos()
 
         # Build index of available files
         self._file_index: list[DocFile] = []
@@ -104,17 +118,89 @@ class DocsConnector:
 
     def _load_sources_from_env(self) -> list[DocsSource]:
         """Load documentation sources from environment variable."""
+        # Support both repo URLs and local paths
+        repos_env = os.environ.get("VIBETEAM_DOCS_REPOS", "")
         paths_env = os.environ.get("VIBETEAM_DOCS_PATHS", "")
 
+        sources = []
+
+        # Git repos (comma-separated URLs)
+        if repos_env:
+            for repo in repos_env.split(","):
+                repo = repo.strip()
+                if repo:
+                    sources.append(DocsSource(path=repo))
+
+        # Local paths (comma-separated)
         if paths_env:
-            sources = []
             for path in paths_env.split(","):
                 path = path.strip()
                 if path:
                     sources.append(DocsSource(path=path))
+
+        if sources:
             return sources
 
         return self.DEFAULT_SOURCES
+
+    def _sync_repos(self) -> None:
+        """Clone or pull git repositories."""
+        cache_dir = Path(DOCS_CACHE_DIR)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        for source in self.sources:
+            if not source.is_git_repo:
+                continue
+
+            repo_dir = cache_dir / source.name
+
+            try:
+                if repo_dir.exists():
+                    # Pull latest changes
+                    logger.info(f"Pulling {source.name}...")
+                    result = subprocess.run(
+                        ["git", "pull", "--ff-only"],
+                        cwd=repo_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if result.returncode != 0:
+                        logger.warning(f"Git pull failed for {source.name}: {result.stderr}")
+                else:
+                    # Clone repository
+                    logger.info(f"Cloning {source.name} from {source.path}...")
+                    result = subprocess.run(
+                        [
+                            "git",
+                            "clone",
+                            "--depth",
+                            "1",
+                            "--branch",
+                            source.branch,
+                            source.path,
+                            str(repo_dir),
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                    if result.returncode != 0:
+                        logger.error(f"Git clone failed for {source.name}: {result.stderr}")
+                        continue
+
+                # Update source path to local clone
+                if source.subdirectory:
+                    source.path = str(repo_dir / source.subdirectory)
+                else:
+                    source.path = str(repo_dir)
+
+                logger.info(f"Synced {source.name} to {source.path}")
+
+            except subprocess.TimeoutExpired:
+                logger.error(f"Git operation timed out for {source.name}")
+            except Exception as e:
+                logger.error(f"Failed to sync {source.name}: {e}")
 
     def _rebuild_index(self) -> None:
         """Rebuild the file index from all sources."""
