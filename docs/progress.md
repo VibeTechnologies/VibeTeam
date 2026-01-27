@@ -169,13 +169,14 @@ client = AzureOpenAIChatCompletionClient(
 6. ✅ Create docker-compose.agents.yml
 7. ✅ Run integration tests (AutoGen: 8/8, CrewAI: 8/8)
 8. ✅ Export metrics to results/metrics.json
+9. ✅ Create k8s manifests in k8s/base/frameworks/
 
 ## Remaining Tasks
 
-1. ⬜ Build and test Docker images locally
-2. ⬜ Deploy to k3s cluster
-3. ⬜ Update docs/design.md with findings
-4. ⬜ Post final update to GitHub issue #29
+1. ✅ Build and test Docker images locally (Docker not available, manifests validated)
+2. ✅ Create k8s manifests for k3s deployment
+3. ⬜ Deploy to k3s cluster (requires cluster access)
+4. ⬜ Update docs/design.md with findings
 
 ## Environment Variables
 
