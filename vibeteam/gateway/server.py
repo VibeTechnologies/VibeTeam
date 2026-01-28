@@ -36,7 +36,9 @@ class GatewayConfig:
     CREWAI_SERVICE_URL = os.environ.get("CREWAI_SERVICE_URL", "http://crewai-svc:8080")
     OPENHANDS_SERVICE_URL = os.environ.get("OPENHANDS_SERVICE_URL", "http://openhands-svc:8080")
     SCHEDULER_SERVICE_URL = os.environ.get("SCHEDULER_SERVICE_URL", "http://scheduler-svc:8080")
-    DEFAULT_FRAMEWORK = os.environ.get("DEFAULT_FRAMEWORK", "autogen")
+    # OpenHands selected as default based on benchmark results (100% success, 0.80 composite)
+    # See docs/research.md Section 16 for detailed analysis
+    DEFAULT_FRAMEWORK = os.environ.get("DEFAULT_FRAMEWORK", "openhands")
 
     # GitHub configuration
     GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")

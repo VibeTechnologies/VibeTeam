@@ -103,9 +103,9 @@ This replaces the previous CronJob-based approach with long-running services tha
 |-----------|-----------|----------|
 | **AutoGen** | Multi-agent conversations, tool calling | Complex workflows requiring agent collaboration |
 | **CrewAI** | Role-based crews, structured output | Defined processes with clear responsibilities |
-| **OpenHands** | Code generation, file manipulation | Software engineering tasks, code review |
+| **OpenHands** (Default) | Code generation, file manipulation, 100% benchmark success | Software engineering tasks, code review, general tasks |
 
-The gateway selects the appropriate framework based on the task type or explicit request.
+The gateway selects the appropriate framework based on the task type or explicit request. **OpenHands is the default** due to its superior benchmark performance (100% success rate, 0.80 composite score).
 
 ### Why Microservices vs Monolith?
 
@@ -198,8 +198,10 @@ Central entry point for all external events:
 
 **Framework Selection:**
 - Explicit: Pass `framework` parameter in request
-- Default: Uses `DEFAULT_FRAMEWORK` env var (autogen)
+- Default: Uses `DEFAULT_FRAMEWORK` env var (openhands - selected based on benchmark results)
 - Role-based: Future - route based on task type
+
+**Recommended Framework:** OpenHands achieved 100% success rate (3/3 tasks) with 0.80 composite score in benchmarks. See [research.md Section 16](research.md#16-updated-benchmark-results-multi-task-evaluation-january-28-2026) for detailed analysis.
 
 ### 3. Scheduler Service (scheduler-svc)
 
