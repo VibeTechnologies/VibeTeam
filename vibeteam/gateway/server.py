@@ -209,9 +209,9 @@ async def call_scheduler_service(
     payload = {
         "task": task,
         "role": role,
-        "agent_service": "autogen-svc"
-        if framework not in ("crewai", "openhands")
-        else f"{framework}-svc",
+        "agent_service": (
+            "autogen-svc" if framework not in ("crewai", "openhands") else f"{framework}-svc"
+        ),
         "context_type": context_type,
         "context_id": context_id,
     }
