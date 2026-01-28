@@ -53,7 +53,7 @@ Available tools:
 - `edit_file(file_path, old_text, new_text)` - Edit a file.
 - `git_command(command)` - Run git commands (without 'git' prefix).
 
-IMPORTANT: 
+IMPORTANT:
 - For GitHub issue tasks: ALWAYS call `list_issues` first, then `get_issue` for details.
 - NEVER generate fake data or respond from memory - use tools to get real information.
 - If a task mentions "issues", "PRs", "code", or "files", you MUST use tools.
