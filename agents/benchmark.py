@@ -48,8 +48,8 @@ class BenchmarkConfig:
     """Benchmark configuration from environment."""
 
     GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
-    AZURE_API_KEY = os.getenv("AZURE_API_KEY", os.getenv("AZURE_OPENAI_API_KEY", ""))
-    AZURE_API_BASE = os.getenv("AZURE_API_BASE", os.getenv("AZURE_OPENAI_ENDPOINT", ""))
+    AZURE_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", os.getenv("AZURE_API_KEY", ""))
+    AZURE_API_BASE = os.getenv("AZURE_OPENAI_ENDPOINT", os.getenv("AZURE_API_BASE", ""))
     AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2024-08-01-preview")
     JUDGE_MODEL = os.getenv(
         "BENCHMARK_JUDGE_MODEL", os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
@@ -61,8 +61,8 @@ class BenchmarkConfig:
     def reload_from_env(cls) -> None:
         """Reload configuration from environment variables."""
         cls.GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
-        cls.AZURE_API_KEY = os.getenv("AZURE_API_KEY", os.getenv("AZURE_OPENAI_API_KEY", ""))
-        cls.AZURE_API_BASE = os.getenv("AZURE_API_BASE", os.getenv("AZURE_OPENAI_ENDPOINT", ""))
+        cls.AZURE_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", os.getenv("AZURE_API_KEY", ""))
+        cls.AZURE_API_BASE = os.getenv("AZURE_OPENAI_ENDPOINT", os.getenv("AZURE_API_BASE", ""))
         cls.AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2024-08-01-preview")
         cls.JUDGE_MODEL = os.getenv(
             "BENCHMARK_JUDGE_MODEL", os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
@@ -366,7 +366,7 @@ Only return the JSON, no other text."""
                 json={
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
-                    "max_tokens": 500,
+                    "max_completion_tokens": 500,  # GPT-5.2 requires max_completion_tokens
                 },
             )
             response.raise_for_status()
@@ -587,7 +587,7 @@ Return ONLY valid JSON in this exact format:
                 json={
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
-                    "max_tokens": 800,
+                    "max_completion_tokens": 800,  # GPT-5.2 requires max_completion_tokens
                 },
             )
             response.raise_for_status()

@@ -81,10 +81,9 @@ class LLMConfig:
     max_tokens: int = 4096
 
     def __post_init__(self):
-        # Use AZURE_OPENAI_DEPLOYMENT if available, otherwise fall back to gpt-4.1-mini
+        # Use standard Azure OpenAI environment variables
         if self.model is None:
             self.model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
-        # Use AZURE_OPENAI_ENDPOINT/API_KEY first, then fall back to AZURE_API_BASE/KEY
         self.api_base = (
             self.api_base or os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_API_BASE")
         )
