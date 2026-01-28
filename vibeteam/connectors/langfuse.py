@@ -234,7 +234,7 @@ class LangfuseConnector:
             anomalies.append(
                 LangfuseAnomaly(
                     type="error_rate",
-                    severity="critical" if error_rate > self.ERROR_RATE_CRITICAL else "warning",
+                    severity=("critical" if error_rate > self.ERROR_RATE_CRITICAL else "warning"),
                     message=f"Error rate {error_rate:.1%} ({len(errors)}/{len(traces)} traces)",
                     value=error_rate,
                     threshold=self.ERROR_RATE_WARNING,
@@ -252,7 +252,9 @@ class LangfuseConnector:
             anomalies.append(
                 LangfuseAnomaly(
                     type="token_usage",
-                    severity="critical" if budget_usage > self.TOKEN_BUDGET_CRITICAL else "warning",
+                    severity=(
+                        "critical" if budget_usage > self.TOKEN_BUDGET_CRITICAL else "warning"
+                    ),
                     message=f"Projected daily token usage: {projected_daily:,.0f} ({budget_usage:.0%} of budget)",
                     value=projected_daily,
                     threshold=daily_token_budget * self.TOKEN_BUDGET_WARNING,

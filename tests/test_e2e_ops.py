@@ -123,7 +123,14 @@ class TestSupportEngineer:
         """Test support emails in dry-run mode."""
         # This will fail without Gmail credentials, but should show proper error
         result = subprocess.run(
-            ["vibeteam", "scheduled", "support-emails", "--dry-run", "--max-emails", "1"],
+            [
+                "vibeteam",
+                "scheduled",
+                "support-emails",
+                "--dry-run",
+                "--max-emails",
+                "1",
+            ],
             capture_output=True,
             text=True,
             timeout=30,

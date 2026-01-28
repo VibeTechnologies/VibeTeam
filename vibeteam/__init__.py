@@ -66,40 +66,43 @@ def _init_langfuse() -> bool:
 # Initialize Langfuse on import
 _langfuse_enabled = _init_langfuse()
 
-# Primary exports - OpenHands-based (v3.x)
-# Agent exports for direct usage
-from vibeteam.agents import (
-    BaseVibeAgent,
-    MarketerAgent,
-    ProductManagerAgent,
-    ReleaseEngineerAgent,
-    ReliabilityEngineerAgent,
-    SoftwareEngineerAgent,
-    SupervisorAgent,
-    SupportEngineerAgent,
-)
-from vibeteam.orchestrator import AgentType, TaskResult, VibeTeam
-from vibeteam.state import SharedMessageState
-from vibeteam.swarm import SwarmOrchestrator, create_swarm_orchestrator
-
+# Base exports (always available)
 __all__ = [
     # Core
     "__version__",
-    # Orchestrator
-    "VibeTeam",
-    "AgentType",
-    "TaskResult",
-    # Swarm
-    "SwarmOrchestrator",
-    "create_swarm_orchestrator",
-    "SharedMessageState",
-    # Agents
-    "BaseVibeAgent",
-    "ProductManagerAgent",
-    "SoftwareEngineerAgent",
-    "MarketerAgent",
-    "SupportEngineerAgent",
-    "ReliabilityEngineerAgent",
-    "ReleaseEngineerAgent",
-    "SupervisorAgent",
 ]
+
+# Primary exports - OpenHands-based (v3.x)
+# Agent exports for direct usage - optional import for standalone connector usage
+try:
+    from vibeteam.agents import (
+        BaseVibeAgent,
+        MarketerAgent,
+        ProductManagerAgent,
+        ReleaseEngineerAgent,
+        ReliabilityEngineerAgent,
+        SoftwareEngineerAgent,
+        SupportEngineerAgent,
+    )
+    from vibeteam.orchestrator import AgentType, TaskResult, VibeTeam
+
+    __all__.extend(
+        [
+            # Orchestrator
+            "VibeTeam",
+            "AgentType",
+            "TaskResult",
+            # Agents
+            "BaseVibeAgent",
+            "ProductManagerAgent",
+            "SoftwareEngineerAgent",
+            "MarketerAgent",
+            "SupportEngineerAgent",
+            "ReliabilityEngineerAgent",
+            "ReleaseEngineerAgent",
+        ]
+    )
+except ImportError:
+    # Running in standalone mode (e.g., Docker containers with only connectors)
+    # Agents and orchestrator not available
+    logger.debug("vibeteam.agents/orchestrator not available - running in connector-only mode")
