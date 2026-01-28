@@ -36,6 +36,9 @@ dependencies = [
     "google-auth>=2.0.0",
     "google-auth-oauthlib>=1.0.0",
     "google-api-python-client>=2.0.0",
+    # GitHub App authentication
+    "PyJWT>=2.8.0",
+    "cryptography>=41.0.0",
     # Observability
     "sentry-sdk>=1.0.0",
     # Core agent framework (AutoGen - Python 3.10+ compatible)
