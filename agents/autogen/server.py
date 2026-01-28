@@ -4,7 +4,6 @@ AutoGen Agent Microservice.
 FastAPI server exposing AutoGen team functionality via REST API.
 """
 
-import asyncio
 import logging
 import os
 import time
@@ -210,7 +209,7 @@ async def run_task(request: RunRequest):
 
     except Exception as e:
         logger.error(f"Task execution failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/run/stream")
@@ -287,7 +286,7 @@ async def get_session(session_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to get session: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/sessions")
@@ -299,7 +298,7 @@ async def list_sessions(prefix: str = "", limit: int = 100):
         return {"sessions": sessions, "count": len(sessions)}
     except Exception as e:
         logger.error(f"Failed to list sessions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def main():

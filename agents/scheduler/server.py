@@ -388,7 +388,7 @@ async def cancel_task(job_id: str):
         return {"status": "cancelled", "job_id": job_id}
     except Exception as e:
         logger.error(f"Failed to cancel task {job_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/tasks/{job_id}/run")
@@ -402,7 +402,7 @@ async def run_task_now(job_id: str):
         return {"status": "executed", "job_id": job_id}
     except Exception as e:
         logger.error(f"Failed to execute task {job_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def main():

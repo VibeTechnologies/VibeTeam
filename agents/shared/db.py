@@ -7,9 +7,10 @@ Provides async session storage using SQLAlchemy with asyncpg.
 import json
 import os
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from sqlalchemy import Column, DateTime, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
