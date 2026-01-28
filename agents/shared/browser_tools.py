@@ -180,7 +180,9 @@ async def _fetch_with_urllib(url: str) -> str:
                     self.text.append(text)
 
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "VibeTeam Browser Bot/1.0"})
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "VibeTeam Browser Bot/1.0"}
+        )
         with urllib.request.urlopen(req, timeout=30) as response:
             html = response.read().decode("utf-8", errors="ignore")
 
@@ -223,7 +225,9 @@ async def web_search(query: str, num_results: int = 5) -> str:
             page = await browser.new_page()
 
             try:
-                await page.goto(search_url, timeout=15000, wait_until="domcontentloaded")
+                await page.goto(
+                    search_url, timeout=15000, wait_until="domcontentloaded"
+                )
 
                 # Extract search results
                 results = await page.evaluate(
