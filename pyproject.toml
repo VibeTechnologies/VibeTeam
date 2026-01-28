@@ -38,9 +38,28 @@ dependencies = [
     "google-api-python-client>=2.0.0",
     # Observability
     "sentry-sdk>=1.0.0",
+    # Core agent framework (AutoGen - Python 3.10+ compatible)
+    "pyautogen>=0.4.0",
+    # MCP support
+    "mcp>=1.0.0",
+    # Documentation search
+    "rank-bm25>=0.2.2",
 ]
 
 [project.optional-dependencies]
+# OpenHands requires Python 3.12+
+openhands = [
+    "openhands-ai>=0.40.0; python_version >= '3.12'",
+]
+# CrewAI
+crewai = [
+    "crewai>=0.100.0",
+]
+# All agent frameworks
+agents = [
+    "openhands-ai>=0.40.0; python_version >= '3.12'",
+    "crewai>=0.100.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.23.0",

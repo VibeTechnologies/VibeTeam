@@ -1,0 +1,22 @@
+{
+  "session_id": "02d13fa9-3513-4e27-8845-360bf117c170",
+  "framework": "autogen",
+  "role": "release_engineer",
+  "context_type": "ephemeral",
+  "context_id": "fe2a748c",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Execute the command 'echo Integration Test Passed'",
+      "timestamp": "2026-01-27T20:15:04.889774+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Integration Test Passed\n",
+      "timestamp": "2026-01-27T20:15:04.889784+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T20:15:04.014840+00:00",
+  "updated_at": "2026-01-27T20:15:04.889786+00:00"
+}

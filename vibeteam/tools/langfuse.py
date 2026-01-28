@@ -120,7 +120,7 @@ class LangfuseTool(BaseTool):
                 healthy = self.connector.health_check()
                 return ToolResult(
                     success=True,
-                    output="Langfuse is healthy" if healthy else "Langfuse is not responding",
+                    output=("Langfuse is healthy" if healthy else "Langfuse is not responding"),
                     metadata={"healthy": healthy},
                 )
 

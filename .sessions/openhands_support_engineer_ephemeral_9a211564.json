@@ -1,0 +1,22 @@
+{
+  "session_id": "166c0bd8-ffbf-4212-a5d9-9f32749d236a",
+  "framework": "openhands",
+  "role": "support_engineer",
+  "context_type": "ephemeral",
+  "context_id": "9a211564",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What errors are currently affecting our users?",
+      "timestamp": "2026-01-27T21:19:28.463530+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "The current errors affecting users are:\n\n1. **InsufficientQuotaError (VIBEBROWSEREXTENSION-8)**: This error indicates that the user has exceeded their current quota. It has been logged 9 times in the last 24 hours, but there are no affected users. More details can be found [here](https://vibetechnologies.sentry.io/issues/7210972124/).\n\n2. **GraphRecursionError (VIBEBROWSEREXTENSION-2)**: This error occurs when the recursion limit of 512 is reached without hitting a stop condition. It has been logged 42 times in the last 24 hours, with no affected users. More details can be found [here](https://vibetechnologies.sentry.io/issues/6996178791/). \n\nBoth errors are currently not impacting any users directly, as indicated by the user count being zero.",
+      "timestamp": "2026-01-27T21:19:28.463541+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T21:19:25.663517+00:00",
+  "updated_at": "2026-01-27T21:19:28.463543+00:00"
+}
