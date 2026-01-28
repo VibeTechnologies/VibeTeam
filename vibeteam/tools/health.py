@@ -113,7 +113,9 @@ class HealthCheckTool(BaseTool):
             elif action == "check_ssl":
                 hostname = kwargs.get("hostname")
                 if not hostname:
-                    return ToolResult(success=False, output="", error="hostname required")
+                    return ToolResult(
+                        success=False, output="", error="hostname required"
+                    )
                 days_left = self.connector.check_ssl_expiry(hostname)
                 if days_left is None:
                     return ToolResult(
@@ -128,7 +130,9 @@ class HealthCheckTool(BaseTool):
                 )
 
             else:
-                return ToolResult(success=False, output="", error=f"Unknown action: {action}")
+                return ToolResult(
+                    success=False, output="", error=f"Unknown action: {action}"
+                )
 
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

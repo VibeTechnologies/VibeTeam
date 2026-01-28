@@ -287,6 +287,8 @@ class AutoGenReleaseEngineer:
             await self.model_client.close()
 
 
-def create_release_engineer(config: AgentConfig | None = None) -> AutoGenReleaseEngineer:
+def create_release_engineer(
+    config: AgentConfig | None = None,
+) -> AutoGenReleaseEngineer:
     """Factory function to create Release Engineer agent."""
     return AutoGenReleaseEngineer(config)

@@ -146,7 +146,9 @@ class LocalSessionStore(SessionStore):
         keys = []
         for path in self.storage_path.glob(f"{safe_prefix}*.json"):
             # Convert back from safe key to original
-            key = path.stem.replace("_", ":", 3)  # Only replace first 3 for framework:role:type:id
+            key = path.stem.replace(
+                "_", ":", 3
+            )  # Only replace first 3 for framework:role:type:id
             keys.append(key)
         return keys
 

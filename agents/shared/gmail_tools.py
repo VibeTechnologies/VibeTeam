@@ -17,7 +17,9 @@ def _get_gmail_connector():
     """Get authenticated Gmail connector."""
     from vibeteam.connectors.gmail import GmailConnector
 
-    creds_path = Path(os.environ.get("GMAIL_CREDENTIALS_PATH", ".secrets/gmail-credentials.json"))
+    creds_path = Path(
+        os.environ.get("GMAIL_CREDENTIALS_PATH", ".secrets/gmail-credentials.json")
+    )
     token_path = Path(os.environ.get("GMAIL_TOKEN_PATH", ".secrets/gmail-token.json"))
 
     connector = GmailConnector(
@@ -54,7 +56,9 @@ async def list_emails(label: str = "INBOX", max_results: int = 10) -> str:
         if label.upper() == "UNREAD":
             emails = connector.fetch_unread_emails(max_results=max_results)
         elif label.upper() == "INBOX":
-            emails = connector.fetch_unread_emails(max_results=max_results, label_ids=["INBOX"])
+            emails = connector.fetch_unread_emails(
+                max_results=max_results, label_ids=["INBOX"]
+            )
         else:
             # For other labels, use the label_ids parameter
             emails = connector.fetch_unread_emails(

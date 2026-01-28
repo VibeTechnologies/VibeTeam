@@ -38,7 +38,10 @@ from agents.sessions import get_or_create_session, get_session_store
 try:
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.base import TaskResult
-    from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
+    from autogen_agentchat.conditions import (
+        MaxMessageTermination,
+        TextMentionTermination,
+    )
     from autogen_agentchat.teams import SelectorGroupChat
     from autogen_core.models import ModelFamily
     from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
@@ -136,7 +139,12 @@ class AutoGenTeam:
             self._agents["marketing_manager"] = AssistantAgent(
                 name="MarketingManager",
                 model_client=self.model_client,
-                tools=[web_search, fetch_webpage, create_social_post, analyze_sentiment],
+                tools=[
+                    web_search,
+                    fetch_webpage,
+                    create_social_post,
+                    analyze_sentiment,
+                ],
                 system_message="""You are Ada, the Marketing Manager.
                 Handle content creation, social media, web research, and brand monitoring.
                 When your part is done, let the coordinator know.""",
@@ -170,7 +178,9 @@ class AutoGenTeam:
             agents = self._get_agents()
 
             # Termination conditions
-            termination = TextMentionTermination("TASK_COMPLETE") | MaxMessageTermination(20)
+            termination = TextMentionTermination(
+                "TASK_COMPLETE"
+            ) | MaxMessageTermination(20)
 
             self._team = SelectorGroupChat(
                 participants=agents,
@@ -300,7 +310,9 @@ Reply with just the agent name.""",
         # Check for @mention
         role = self.parse_mention(task)
         if role:
-            return await self.run_single_agent_async(task, role, context_type, context_id)
+            return await self.run_single_agent_async(
+                task, role, context_type, context_id
+            )
 
         # Use team for multi-agent coordination
         session = get_or_create_session(

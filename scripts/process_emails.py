@@ -221,24 +221,38 @@ class EmailProcessor:
         # Detect escalation triggers
         escalation_triggers = []
 
-        if any(word in body_lower for word in ["refund", "charge", "billing", "payment"]):
+        if any(
+            word in body_lower for word in ["refund", "charge", "billing", "payment"]
+        ):
             escalation_triggers.append("BILLING")
 
-        if any(word in body_lower for word in ["security", "vulnerability", "breach", "hack"]):
+        if any(
+            word in body_lower
+            for word in ["security", "vulnerability", "breach", "hack"]
+        ):
             escalation_triggers.append("SECURITY")
 
-        if any(word in body_lower for word in ["lawyer", "legal", "sue", "gdpr", "subpoena"]):
+        if any(
+            word in body_lower
+            for word in ["lawyer", "legal", "sue", "gdpr", "subpoena"]
+        ):
             escalation_triggers.append("LEGAL")
 
         if any(
-            word in body_lower for word in ["angry", "frustrated", "terrible", "worst", "lawsuit"]
+            word in body_lower
+            for word in ["angry", "frustrated", "terrible", "worst", "lawsuit"]
         ):
             escalation_triggers.append("ANGRY_CUSTOMER")
 
-        if any(word in body_lower for word in ["partnership", "enterprise", "sales", "business"]):
+        if any(
+            word in body_lower
+            for word in ["partnership", "enterprise", "sales", "business"]
+        ):
             escalation_triggers.append("PARTNERSHIP")
 
-        if any(word in body_lower for word in ["journalist", "press", "interview", "media"]):
+        if any(
+            word in body_lower for word in ["journalist", "press", "interview", "media"]
+        ):
             escalation_triggers.append("PRESS")
 
         # Determine category
@@ -254,9 +268,13 @@ class EmailProcessor:
         sentiment = "Neutral"
         if any(word in body_lower for word in ["thanks", "great", "love", "amazing"]):
             sentiment = "Positive"
-        elif any(word in body_lower for word in ["frustrated", "annoyed", "disappointed"]):
+        elif any(
+            word in body_lower for word in ["frustrated", "annoyed", "disappointed"]
+        ):
             sentiment = "Frustrated"
-        elif any(word in body_lower for word in ["angry", "furious", "terrible", "worst"]):
+        elif any(
+            word in body_lower for word in ["angry", "furious", "terrible", "worst"]
+        ):
             sentiment = "Angry"
 
         return {
@@ -277,7 +295,9 @@ class EmailProcessor:
         ticket_id = analysis.get("ticket_id", "UNKNOWN")
         customer_email = analysis.get("customer_email", email.sender_email)
 
-        logger.warning(f"ESCALATING ticket #{ticket_id}: {analysis.get('escalation_triggers', [])}")
+        logger.warning(
+            f"ESCALATING ticket #{ticket_id}: {analysis.get('escalation_triggers', [])}"
+        )
 
         # Create escalation ticket for internal tracking
         ticket = {
@@ -320,7 +340,9 @@ support@vibebrowser.app
             )
             logger.info(f"Sent escalation acknowledgment to {customer_email}")
         else:
-            logger.info(f"[DRY RUN] Would send escalation acknowledgment to {customer_email}")
+            logger.info(
+                f"[DRY RUN] Would send escalation acknowledgment to {customer_email}"
+            )
 
     async def _handle_response(self, email: Email, analysis: dict) -> None:
         """Generate and send response to customer for non-escalation email."""

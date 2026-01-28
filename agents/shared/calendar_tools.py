@@ -25,7 +25,10 @@ def _get_calendar_service():
         token_path = Path(os.environ.get("GCAL_TOKEN_PATH", ".secrets/gcal-token.json"))
 
         if not token_path.exists():
-            return None, "Google Calendar token not found. Run calendar authentication first."
+            return (
+                None,
+                "Google Calendar token not found. Run calendar authentication first.",
+            )
 
         SCOPES = [
             "https://www.googleapis.com/auth/calendar.readonly",
@@ -37,7 +40,10 @@ def _get_calendar_service():
         return service
 
     except ImportError:
-        return None, "Google Calendar API not installed. Run: pip install google-api-python-client"
+        return (
+            None,
+            "Google Calendar API not installed. Run: pip install google-api-python-client",
+        )
     except Exception as e:
         return None, str(e)
 
@@ -165,9 +171,13 @@ Note: {result[1]}
         }
 
         if attendees:
-            event["attendees"] = [{"email": email.strip()} for email in attendees.split(",")]
+            event["attendees"] = [
+                {"email": email.strip()} for email in attendees.split(",")
+            ]
 
-        created_event = service.events().insert(calendarId="primary", body=event).execute()
+        created_event = (
+            service.events().insert(calendarId="primary", body=event).execute()
+        )
 
         return f"""
 === Calendar Event Created ===

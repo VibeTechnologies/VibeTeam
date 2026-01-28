@@ -57,7 +57,9 @@ class ReadinessReport:
     checks: list[CheckResult] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
     timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        default_factory=lambda: datetime.now(timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
     )
 
     def add_check(self, check: CheckResult) -> None:
@@ -285,7 +287,10 @@ def check_kubernetes(report: ReadinessReport, namespace: str = "vibe") -> None:
         )
 
         if result.returncode != 0:
-            if "Unable to connect" in result.stderr or "connection refused" in result.stderr:
+            if (
+                "Unable to connect" in result.stderr
+                or "connection refused" in result.stderr
+            ):
                 check = CheckResult(
                     name="kubectl",
                     status="WARN",
@@ -418,7 +423,9 @@ def check_sentry(report: ReadinessReport) -> None:
                 name="Sentry",
                 status="WARN",
                 message=f"{len(high_frequency)} high-frequency issues (>100 events)",
-                details="\n".join(f"{i.short_id}: {i.title[:40]}" for i in high_frequency[:3]),
+                details="\n".join(
+                    f"{i.short_id}: {i.title[:40]}" for i in high_frequency[:3]
+                ),
                 critical=False,
             )
         elif error_count > 10:
@@ -494,7 +501,9 @@ def check_langfuse(report: ReadinessReport) -> None:
                     name="Langfuse",
                     status="WARN",
                     message=f"{len(anomalies)} anomalies ({len(critical_anomalies)} critical)",
-                    details="\n".join(f"{a.type}: {a.message[:50]}" for a in anomalies[:3]),
+                    details="\n".join(
+                        f"{a.type}: {a.message[:50]}" for a in anomalies[:3]
+                    ),
                     critical=False,
                 )
             else:

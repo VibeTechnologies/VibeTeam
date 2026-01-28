@@ -76,7 +76,9 @@ class OpenHandsSoftwareEngineer:
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
-            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
+            raise ImportError(
+                "OpenHands SDK not installed. Run: pip install openhands-ai"
+            )
 
         self.config = config or SOFTWARE_ENGINEER_CONFIG
 
@@ -192,6 +194,8 @@ class OpenHandsSoftwareEngineer:
         )
 
 
-def create_software_engineer(config: AgentConfig | None = None) -> OpenHandsSoftwareEngineer:
+def create_software_engineer(
+    config: AgentConfig | None = None,
+) -> OpenHandsSoftwareEngineer:
     """Factory function to create Software Engineer agent."""
     return OpenHandsSoftwareEngineer(config)

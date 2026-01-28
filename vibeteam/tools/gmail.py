@@ -150,7 +150,9 @@ class GmailTool(BaseTool):
                         output="",
                         error="to, subject, and body required",
                     )
-                msg_id = self.connector.send_email(to=str(to), subject=str(subject), body=str(body))
+                msg_id = self.connector.send_email(
+                    to=str(to), subject=str(subject), body=str(body)
+                )
                 return ToolResult(
                     success=True,
                     output=f"Email sent, message ID: {msg_id}",
@@ -160,14 +162,20 @@ class GmailTool(BaseTool):
             elif action == "mark_as_read":
                 message_id = kwargs.get("message_id")
                 if not message_id:
-                    return ToolResult(success=False, output="", error="message_id required")
+                    return ToolResult(
+                        success=False, output="", error="message_id required"
+                    )
                 self.connector.mark_as_read(message_id)
-                return ToolResult(success=True, output=f"Message {message_id} marked as read")
+                return ToolResult(
+                    success=True, output=f"Message {message_id} marked as read"
+                )
 
             elif action == "get_thread":
                 thread_id = kwargs.get("thread_id")
                 if not thread_id:
-                    return ToolResult(success=False, output="", error="thread_id required")
+                    return ToolResult(
+                        success=False, output="", error="thread_id required"
+                    )
                 emails = self.connector.get_thread(thread_id)
                 output = json.dumps([asdict(e) for e in emails], indent=2)
                 return ToolResult(
@@ -177,7 +185,9 @@ class GmailTool(BaseTool):
                 )
 
             else:
-                return ToolResult(success=False, output="", error=f"Unknown action: {action}")
+                return ToolResult(
+                    success=False, output="", error=f"Unknown action: {action}"
+                )
 
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

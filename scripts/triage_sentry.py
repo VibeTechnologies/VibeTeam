@@ -287,7 +287,9 @@ class SentryTriager:
                     severity=severity,
                     suggested_title=self._generate_title(issue),
                     suggested_labels=labels,
-                    root_cause_hypothesis=self._hypothesize_root_cause(issue, stacktrace),
+                    root_cause_hypothesis=self._hypothesize_root_cause(
+                        issue, stacktrace
+                    ),
                 )
 
         # Default: Check frequency and user impact
@@ -439,7 +441,9 @@ class SentryTriager:
                         f"GitHub issue created: {gh_url}\n\nThis issue is being tracked and will be fixed.",
                     )
                 else:
-                    logger.error(f"Failed to create GitHub issue: {result_output.stderr}")
+                    logger.error(
+                        f"Failed to create GitHub issue: {result_output.stderr}"
+                    )
 
             except Exception as e:
                 logger.error(f"Error creating GitHub issue: {e}")
@@ -468,7 +472,9 @@ If you believe this is a real bug, please reopen and add the `needs-investigatio
                 self.sentry.add_comment(issue.id, comment)
 
                 # Ignore for 30 days (in case it recurs frequently)
-                self.sentry.ignore_issue(issue.id, ignore_duration=43200)  # 30 days in minutes
+                self.sentry.ignore_issue(
+                    issue.id, ignore_duration=43200
+                )  # 30 days in minutes
 
                 logger.info(f"Resolved Sentry issue: {issue.short_id}")
 

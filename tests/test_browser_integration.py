@@ -45,7 +45,9 @@ class BrowserTestResult:
         return f"[{status}] {self.framework}/{self.agent}: {self.latency_ms:.0f}ms"
 
 
-def validate_webpage_response(response: str, expected_content: list[str] | None = None) -> bool:
+def validate_webpage_response(
+    response: str, expected_content: list[str] | None = None
+) -> bool:
     """
     Validate that the response contains valid webpage content.
 
@@ -60,7 +62,9 @@ def validate_webpage_response(response: str, expected_content: list[str] | None 
 
     # Check for error responses (still valid, just not successful fetch)
     if "error" in response_lower and (
-        "timeout" in response_lower or "connection" in response_lower or "fetch" in response_lower
+        "timeout" in response_lower
+        or "connection" in response_lower
+        or "fetch" in response_lower
     ):
         # This is a valid error response
         return True
@@ -78,7 +82,9 @@ def validate_webpage_response(response: str, expected_content: list[str] | None 
 
     # Check for expected content if provided
     if expected_content:
-        return has_content and any(ec.lower() in response_lower for ec in expected_content)
+        return has_content and any(
+            ec.lower() in response_lower for ec in expected_content
+        )
 
     return has_content or len(response) > 100
 
@@ -366,7 +372,9 @@ class TestAutoGenBrowserIntegration:
         await marketing_manager.close()
 
     @pytest.mark.asyncio
-    async def test_autogen_competitor_analysis(self, marketing_manager, check_playwright):
+    async def test_autogen_competitor_analysis(
+        self, marketing_manager, check_playwright
+    ):
         """Test AutoGen MarketingManager analyzes competitor."""
         if not check_playwright:
             pytest.skip("Playwright recommended for competitor analysis")
@@ -515,7 +523,9 @@ class TestCrossFrameworkBrowserComparison:
     """Compare all frameworks on the same browser task."""
 
     @pytest.mark.asyncio
-    async def test_all_frameworks_web_research(self, azure_credentials, check_playwright):
+    async def test_all_frameworks_web_research(
+        self, azure_credentials, check_playwright
+    ):
         """Run identical web research task across all three frameworks."""
         from agents.autogen.marketing_manager import AutoGenMarketingManager
         from agents.crewai.marketing_manager import CrewAIMarketingManager

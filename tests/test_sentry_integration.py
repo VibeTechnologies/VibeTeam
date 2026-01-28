@@ -65,7 +65,9 @@ def validate_sentry_response(response: str) -> tuple[bool, int]:
         return False, 0
 
     # Check for real Sentry issue indicators
-    has_issue_id = "vibebrowserextension-" in response_lower or "issue" in response_lower
+    has_issue_id = (
+        "vibebrowserextension-" in response_lower or "issue" in response_lower
+    )
     has_url = "sentry.io" in response_lower
     has_level = "level:" in response_lower or "error" in response_lower
     has_count = "count:" in response_lower or "occurrences" in response_lower
@@ -139,7 +141,9 @@ class TestAutoGenSentryIntegration:
         return AutoGenSupportEngineer()
 
     @pytest.mark.asyncio
-    async def test_autogen_sentry_fetch_issues(self, support_engineer, verify_sentry_connectivity):
+    async def test_autogen_sentry_fetch_issues(
+        self, support_engineer, verify_sentry_connectivity
+    ):
         """Test AutoGen SupportEngineer fetches real Sentry issues."""
         task = "Pull all unresolved issues from Sentry and provide a summary of errors."
 
@@ -212,7 +216,9 @@ class TestCrewAISentryIntegration:
         return CrewAISupportEngineer()
 
     @pytest.mark.asyncio
-    async def test_crewai_sentry_fetch_issues(self, support_engineer, verify_sentry_connectivity):
+    async def test_crewai_sentry_fetch_issues(
+        self, support_engineer, verify_sentry_connectivity
+    ):
         """Test CrewAI SupportEngineer fetches real Sentry issues."""
         task = "Pull all unresolved issues from Sentry and provide a summary of errors."
 
@@ -236,7 +242,9 @@ class TestCrewAISentryIntegration:
         assert is_valid, f"Response does not contain real Sentry data: {response[:300]}"
 
     @pytest.mark.asyncio
-    async def test_crewai_sentry_tool_usage(self, support_engineer, verify_sentry_connectivity):
+    async def test_crewai_sentry_tool_usage(
+        self, support_engineer, verify_sentry_connectivity
+    ):
         """Test that CrewAI SupportEngineer uses the Sentry tool."""
         task = "Use the Sentry tool to get current errors affecting the VibeBrowser extension."
 
@@ -343,7 +351,9 @@ class TestCrossFrameworkSentryComparison:
         from agents.crewai.support_engineer import CrewAISupportEngineer
         from agents.openhands.support_engineer import OpenHandsSupportEngineer
 
-        task = "Query Sentry for unresolved issues and list them with their error counts."
+        task = (
+            "Query Sentry for unresolved issues and list them with their error counts."
+        )
 
         results: list[SentryTestResult] = []
 
@@ -484,7 +494,9 @@ class TestCrossFrameworkSentryComparison:
         print("=" * 70)
 
         # Assert all passed
-        assert len(successful) == 3, f"Not all frameworks passed: {[r.framework for r in failed]}"
+        assert (
+            len(successful) == 3
+        ), f"Not all frameworks passed: {[r.framework for r in failed]}"
 
 
 # =============================================================================

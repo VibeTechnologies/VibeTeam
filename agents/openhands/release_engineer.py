@@ -87,7 +87,9 @@ class OpenHandsReleaseEngineer:
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
-            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
+            raise ImportError(
+                "OpenHands SDK not installed. Run: pip install openhands-ai"
+            )
 
         self.config = config or RELEASE_ENGINEER_CONFIG
 
@@ -212,6 +214,8 @@ class OpenHandsReleaseEngineer:
         )
 
 
-def create_release_engineer(config: AgentConfig | None = None) -> OpenHandsReleaseEngineer:
+def create_release_engineer(
+    config: AgentConfig | None = None,
+) -> OpenHandsReleaseEngineer:
     """Factory function to create Release Engineer agent."""
     return OpenHandsReleaseEngineer(config)

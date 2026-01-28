@@ -100,7 +100,9 @@ class SentryTool(BaseTool):
             elif action == "get_issue_details":
                 issue_id = kwargs.get("issue_id")
                 if not issue_id:
-                    return ToolResult(success=False, output="", error="issue_id required")
+                    return ToolResult(
+                        success=False, output="", error="issue_id required"
+                    )
                 details = self.connector.get_issue_details(issue_id)
                 return ToolResult(success=True, output=json.dumps(details, indent=2))
 
@@ -108,22 +110,32 @@ class SentryTool(BaseTool):
                 issue_id = kwargs.get("issue_id")
                 text = kwargs.get("text")
                 if not issue_id or not text:
-                    return ToolResult(success=False, output="", error="issue_id and text required")
+                    return ToolResult(
+                        success=False, output="", error="issue_id and text required"
+                    )
                 self.connector.add_comment(issue_id, text)
-                return ToolResult(success=True, output=f"Comment added to issue {issue_id}")
+                return ToolResult(
+                    success=True, output=f"Comment added to issue {issue_id}"
+                )
 
             elif action == "resolve_issue":
                 issue_id = kwargs.get("issue_id")
                 resolution = kwargs.get("resolution", "resolved")
                 if not issue_id:
-                    return ToolResult(success=False, output="", error="issue_id required")
+                    return ToolResult(
+                        success=False, output="", error="issue_id required"
+                    )
                 self.connector.resolve_issue(issue_id, resolution)
-                return ToolResult(success=True, output=f"Issue {issue_id} marked as {resolution}")
+                return ToolResult(
+                    success=True, output=f"Issue {issue_id} marked as {resolution}"
+                )
 
             elif action == "ignore_issue":
                 issue_id = kwargs.get("issue_id")
                 if not issue_id:
-                    return ToolResult(success=False, output="", error="issue_id required")
+                    return ToolResult(
+                        success=False, output="", error="issue_id required"
+                    )
                 self.connector.ignore_issue(issue_id)
                 return ToolResult(success=True, output=f"Issue {issue_id} ignored")
 
@@ -134,7 +146,9 @@ class SentryTool(BaseTool):
                 return ToolResult(success=True, output=json.dumps(stats, indent=2))
 
             else:
-                return ToolResult(success=False, output="", error=f"Unknown action: {action}")
+                return ToolResult(
+                    success=False, output="", error=f"Unknown action: {action}"
+                )
 
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

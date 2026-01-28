@@ -160,9 +160,13 @@ class VibeTeam:
             if agent_type in AGENT_REGISTRY:
                 agent_class = AGENT_REGISTRY[agent_type]
                 self._agents[agent_type] = agent_class(model=self.model)
-                self.console.print(f"[green]Initialized: {agent_class.__name__}[/green]")
+                self.console.print(
+                    f"[green]Initialized: {agent_class.__name__}[/green]"
+                )
 
-        self.console.print(f"[bold blue]VibeTeam ready with {len(self._agents)} agents[/bold blue]")
+        self.console.print(
+            f"[bold blue]VibeTeam ready with {len(self._agents)} agents[/bold blue]"
+        )
 
     def get_agent(self, agent_type: AgentType) -> BaseVibeAgent | None:
         """Get a specific agent by type."""

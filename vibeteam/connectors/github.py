@@ -132,7 +132,9 @@ class GitHubConnector:
         self.repo = repo
 
         if not self.token:
-            raise ValueError("GitHub token required. Set GITHUB_TOKEN env var or pass token.")
+            raise ValueError(
+                "GitHub token required. Set GITHUB_TOKEN env var or pass token."
+            )
 
     def _headers(self) -> dict:
         """Get request headers with auth."""
@@ -316,7 +318,9 @@ class GitHubConnector:
 
         # Find the table and add a new row
         date = datetime.now().strftime("%Y-%m-%d")
-        new_row = f"| {date} | {source} | {request} | {priority} | {status} | {analysis} |"
+        new_row = (
+            f"| {date} | {source} | {request} | {priority} | {status} | {analysis} |"
+        )
 
         # Insert after header row
         lines = body.split("\n")
@@ -610,7 +614,9 @@ class GitHubConnector:
                 subprocess.run(["git", "add"] + files, check=True, capture_output=True)
             else:
                 subprocess.run(["git", "add", "-A"], check=True, capture_output=True)
-            subprocess.run(["git", "commit", "-m", message], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-m", message], check=True, capture_output=True
+            )
             return True
         except subprocess.CalledProcessError:
             return False

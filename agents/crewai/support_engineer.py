@@ -73,7 +73,9 @@ class SendEmailTool(BaseTool if CREWAI_AVAILABLE else object):
     """Send an email via Gmail using real API."""
 
     name: str = "send_email"
-    description: str = "Send an email via Gmail. Input: JSON with 'to', 'subject', and 'body' keys."
+    description: str = (
+        "Send an email via Gmail. Input: JSON with 'to', 'subject', and 'body' keys."
+    )
 
     def _run(self, input_data: str) -> str:
         """Send email using real Gmail connector."""
@@ -92,7 +94,9 @@ class SendEmailTool(BaseTool if CREWAI_AVAILABLE else object):
             # shared_send_email is async, run it synchronously
             return asyncio.run(shared_send_email(to=to, subject=subject, body=body))
         except json.JSONDecodeError:
-            return "Error: Input must be valid JSON with 'to', 'subject', and 'body' keys"
+            return (
+                "Error: Input must be valid JSON with 'to', 'subject', and 'body' keys"
+            )
         except Exception as e:
             return f"Error sending email: {e}"
 
@@ -101,7 +105,9 @@ class CalendarTool(BaseTool if CREWAI_AVAILABLE else object):
     """Manage Google Calendar events using real API."""
 
     name: str = "calendar"
-    description: str = "Manage calendar. Input: JSON with 'action' (list/create) and event details."
+    description: str = (
+        "Manage calendar. Input: JSON with 'action' (list/create) and event details."
+    )
 
     def _run(self, input_data: str) -> str:
         """Manage calendar using real Google Calendar API."""
@@ -115,7 +121,9 @@ class CalendarTool(BaseTool if CREWAI_AVAILABLE else object):
             if action == "list":
                 days = data.get("days", 7)
                 max_results = data.get("max_results", 10)
-                return asyncio.run(list_calendar_events(days=days, max_results=max_results))
+                return asyncio.run(
+                    list_calendar_events(days=days, max_results=max_results)
+                )
             elif action == "create":
                 title = data.get("title", "Meeting")
                 start_time = data.get("start_time")
@@ -177,7 +185,9 @@ class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
                     pass
 
             connector = SentryConnector(auth_token=auth_token)
-            issues = connector.fetch_unresolved_issues(project=project, hours=hours, limit=limit)
+            issues = connector.fetch_unresolved_issues(
+                project=project, hours=hours, limit=limit
+            )
 
             if not issues:
                 return f"No unresolved issues found in the last {hours} hours."
@@ -185,9 +195,7 @@ class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
             result = f"Found {len(issues)} unresolved issues:\n\n"
             for issue in issues:
                 result += f"**[{issue.project}] {issue.short_id}**: {issue.title}\n"
-                result += (
-                    f"  Level: {issue.level} | Count: {issue.count} | Users: {issue.user_count}\n"
-                )
+                result += f"  Level: {issue.level} | Count: {issue.count} | Users: {issue.user_count}\n"
                 result += f"  URL: {issue.permalink}\n\n"
 
             return result
@@ -383,7 +391,9 @@ class CrewAISupportEngineer:
         """Async version of run."""
         import asyncio
 
-        return await asyncio.to_thread(self.run, task, context_type, context_id, **kwargs)
+        return await asyncio.to_thread(
+            self.run, task, context_type, context_id, **kwargs
+        )
 
 
 def create_support_engineer(config: AgentConfig | None = None) -> CrewAISupportEngineer:

@@ -101,7 +101,9 @@ class TestPMFeatureRequest:
             print("\nGitHub Customer Requests issue updated!")
             print("Check: https://github.com/VibeTechnologies/VibeWebAgent/issues/322")
         else:
-            print(f"\nGitHub update failed: {result.get('github_error', 'Unknown error')}")
+            print(
+                f"\nGitHub update failed: {result.get('github_error', 'Unknown error')}"
+            )
 
         print(f"\nResult: {json.dumps(result, indent=2)}")
 
@@ -158,7 +160,9 @@ if __name__ == "__main__":
     import asyncio
 
     async def manual_test():
-        request = "I want to integrate with Notion.so to sync my browser automation tasks"
+        request = (
+            "I want to integrate with Notion.so to sync my browser automation tasks"
+        )
         source = "docs-chat"
 
         print(f"Testing feature request: {request}")
