@@ -66,15 +66,8 @@ spec:
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
-          # OpenHands may need Docker socket for sandboxing
-          volumeMounts:
-            - name: docker-sock
-              mountPath: /var/run/docker.sock
-      volumes:
-        - name: docker-sock
-          hostPath:
-            path: /var/run/docker.sock
-            type: Socket
+          # Note: Docker socket mounting removed - K3s uses containerd
+          # OpenHands sandboxing may need alternative configuration
 ---
 apiVersion: v1
 kind: Service
