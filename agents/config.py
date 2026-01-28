@@ -64,7 +64,7 @@ class SessionConfig:
     """Configuration for session/state management."""
 
     storage_type: str = "local"  # "local", "redis", "s3"
-    storage_path: str = "./.sessions"
+    storage_path: str = os.getenv("SESSION_STORAGE_PATH", "/tmp/.sessions")
     redis_url: str | None = None
     s3_bucket: str | None = None
     ttl_seconds: int = 86400 * 7  # 7 days default
