@@ -6,6 +6,51 @@
 
 ---
 
+## Quick Start
+
+### Run Tests
+
+```bash
+# Load environment
+source .env
+
+# Run all unit tests (fast, no LLM calls)
+pytest tests/test_supervisor.py tests/test_tools.py tests/test_state.py -v
+
+# Run benchmark tests (requires LLM, ~2 min)
+pytest tests/e2e/test_benchmark.py -v
+
+# Run framework comparison with LLM-as-judge
+pytest tests/e2e/test_support_agent_sentry.py -v -s -k "compare_all"
+
+# Run full test suite (excludes slow e2e)
+pytest tests/ --ignore=tests/e2e/test_agent_services.py -v
+```
+
+### Run Benchmarks
+
+```bash
+# CLI benchmark (all frameworks)
+python -m agents.benchmark \
+    --frameworks autogen crewai openhands \
+    --tasks sentry-weekly-summary
+
+# Export results to JSON
+pytest tests/e2e/test_benchmark.py -v --export-benchmark=results/benchmark.json
+```
+
+### System Readiness Check
+
+```bash
+# Quick check (endpoints only)
+python readiness/check.py --quick
+
+# Full check (includes k8s, Sentry, Langfuse)
+python readiness/check.py --full
+```
+
+---
+
 ## Overview
 
 VibeTeam is a multi-framework AI agent system that automates software engineering workflows. The architecture consists of:
@@ -673,15 +718,23 @@ FINAL VERDICT: CREWAI wins with score 4/5
 
 ### Key Findings
 
-Based on LLM-as-judge evaluation:
+**Latest Benchmark Results (January 28, 2026):**
 
-| Framework | Avg Score | Latency | Best For |
-|-----------|-----------|---------|----------|
-| **AutoGen** | 0-2/5 | ~1.5s | Fast responses, simple queries |
-| **CrewAI** | 4/5 | ~4.5s | Structured workflows, real data |
-| **OpenHands** | 4-5/5 | ~3.5s | Detailed analysis, documentation |
+| Framework | Success Rate | Avg Latency | Avg Composite | Winner |
+|-----------|--------------|-------------|---------------|--------|
+| **OpenHands** | 3/3 (100%) | 4744ms | **0.81** | :trophy: |
+| CrewAI | 1/3 (33%) | 5594ms | 0.26 | |
+| AutoGen | 1/3 (33%) | 3972ms | 0.23 | |
 
-**Key Insight**: Speed and quality are not correlated. AutoGen is 2-3x faster but produces lower quality responses for analysis tasks.
+**Per-Task Results:**
+
+| Task | AutoGen | CrewAI | OpenHands |
+|------|---------|--------|-----------|
+| `sentry-weekly-summary` | PASS (0.72) | PASS (0.80) | **PASS (0.85)** |
+| `github-issue-triage` | FAIL | FAIL | **PASS (0.80)** |
+| `release-notes` | PASS (0.70) | PASS (0.77) | **PASS (0.79)** |
+
+**Key Insight**: OpenHands is the clear winner with 100% success rate across all tasks. AutoGen and CrewAI both fail on `github-issue-triage` task but perform well on Sentry summaries and release notes.
 
 ### Alternatives Considered
 
@@ -909,6 +962,12 @@ kubectl exec -n vibeteam deployment/autogen-svc -- \
 ---
 
 ## Changelog
+
+### v2.4 (January 28, 2026)
+- Added Quick Start section with test and benchmark commands
+- Updated benchmark results: OpenHands wins with 100% success rate (0.81 composite)
+- Fixed AutoGen Sentry API issue (`statsPeriod` parameter validation)
+- All 3 frameworks now pass `sentry-weekly-summary` and `release-notes` tasks
 
 ### v2.3 (January 28, 2026)
 - Added SENTRY_AUTH_TOKEN to all agent K8s manifests

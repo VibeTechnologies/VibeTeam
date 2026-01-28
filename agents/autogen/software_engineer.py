@@ -203,6 +203,69 @@ async def git_command(command: str) -> str:
     return await execute_shell(f"git {command}")
 
 
+async def list_issues(state: str = "open", limit: int = 10) -> str:
+    """List GitHub issues from the repository.
+
+    Args:
+        state: Issue state - "open", "closed", or "all" (default: open)
+        limit: Maximum number of issues to return (default: 10)
+
+    Returns:
+        Formatted list of issues with number, title, labels, and age
+    """
+    try:
+        from vibeteam.connectors.github import GitHubConnector
+
+        connector = GitHubConnector()
+        # Use search_issues to get issues
+        issues = connector.search_issues(query="", state=state, limit=limit)
+
+        if not issues:
+            return f"No {state} issues found."
+
+        result = [f"Found {len(issues)} {state} issues:\n"]
+        for issue in issues:
+            labels = ", ".join(issue.labels) if issue.labels else "none"
+            result.append(
+                f"#{issue.number}: {issue.title}\n"
+                f"  Labels: {labels}\n"
+                f"  Age: {issue.age_days:.1f} days\n"
+                f"  URL: {issue.html_url}\n"
+            )
+        return "\n".join(result)
+    except Exception as e:
+        return f"Error listing issues: {e}"
+
+
+async def get_issue(issue_number: int) -> str:
+    """Get details of a specific GitHub issue.
+
+    Args:
+        issue_number: The issue number to retrieve
+
+    Returns:
+        Issue details including title, body, labels, and state
+    """
+    try:
+        from vibeteam.connectors.github import GitHubConnector
+
+        connector = GitHubConnector()
+        issue = connector.get_issue(issue_number)
+
+        labels = ", ".join(issue.labels) if issue.labels else "none"
+        return (
+            f"Issue #{issue.number}: {issue.title}\n"
+            f"State: {issue.state}\n"
+            f"Labels: {labels}\n"
+            f"Created: {issue.created_at} ({issue.age_days:.1f} days ago)\n"
+            f"Author: {issue.user}\n"
+            f"URL: {issue.html_url}\n\n"
+            f"Body:\n{issue.body}"
+        )
+    except Exception as e:
+        return f"Error getting issue: {e}"
+
+
 class AutoGenSoftwareEngineer:
     """Software Engineer agent using AutoGen."""
 
@@ -243,6 +306,8 @@ class AutoGenSoftwareEngineer:
                 edit_file,
                 list_directory,
                 git_command,
+                list_issues,
+                get_issue,
             ],
             system_message=SOFTWARE_ENGINEER_SYSTEM_PROMPT,
             description="Software Engineer for code implementation, bug fixes, and pull requests.",

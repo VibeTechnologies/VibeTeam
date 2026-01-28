@@ -1,0 +1,43 @@
+# Slack App Manifest for VibeTeam
+# Import this at https://api.slack.com/apps/A0AAZGWEAVA/app-manifest
+# or use `slack manifest update --app-id A0AAZGWEAVA --manifest manifest.yaml`
+
+display_information:
+  name: VibeTeam
+  description: AI-powered team assistant for VibeTechnologies
+  background_color: "#4A154B"
+
+features:
+  bot_user:
+    display_name: VibeTeam
+    always_online: true
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - channels:read
+      - chat:write
+      - im:history
+      - im:read
+      - im:write
+      - users:read
+
+settings:
+  event_subscriptions:
+    # Update this URL after deploying the webhook server
+    request_url: https://team.vibebrowser.app/slack/events
+    bot_events:
+      - app_mention
+      - message.im
+  interactivity:
+    is_enabled: true
+    request_url: https://team.vibebrowser.app/slack/interactive
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
