@@ -23,8 +23,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 COPY pyproject.toml README.md ./
 COPY vibeteam/ ./vibeteam/
 
-# Install package
-RUN pip install --no-cache-dir -e .
+# Install package (non-editable for production)
+RUN pip install --no-cache-dir .
 
 # Production stage
 FROM python:3.12-slim
@@ -45,9 +45,8 @@ COPY --from=builder /usr/share/keyrings/githubcli-archive-keyring.gpg /usr/share
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin/vibeteam /usr/local/bin/vibeteam
 
-# Copy application code
-COPY --from=builder /app/vibeteam /app/vibeteam
-COPY --from=builder /app/pyproject.toml /app/
+# Set Python path to ensure module is found
+ENV PYTHONPATH=/usr/local/lib/python3.12/site-packages
 
 # Create non-root user
 RUN useradd -m -u 1000 vibeteam
