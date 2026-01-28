@@ -9,7 +9,7 @@ Capabilities:
 """
 
 import os
-from typing import Any, Type
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -130,7 +130,7 @@ class ShellTool(BaseTool if CREWAI_AVAILABLE else object):
     description: str = (
         "Execute shell commands. Use for builds, tests, git operations, and system tasks."
     )
-    args_schema: Type[BaseModel] = ShellInput
+    args_schema: type[BaseModel] = ShellInput
 
     def _run(self, command: str) -> str:
         """Execute the shell command."""
@@ -161,7 +161,7 @@ class FileReadTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "read_file"
     description: str = "Read the contents of a file."
-    args_schema: Type[BaseModel] = FileReadInput
+    args_schema: type[BaseModel] = FileReadInput
 
     def _run(self, file_path: str) -> str:
         """Read the file."""
@@ -177,7 +177,7 @@ class FileWriteTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "write_file"
     description: str = "Write content to a file."
-    args_schema: Type[BaseModel] = FileWriteInput
+    args_schema: type[BaseModel] = FileWriteInput
 
     def _run(self, path: str, content: str) -> str:
         """Write to the file."""
@@ -195,7 +195,7 @@ class FileEditTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "edit_file"
     description: str = "Edit a file by replacing text."
-    args_schema: Type[BaseModel] = FileEditInput
+    args_schema: type[BaseModel] = FileEditInput
 
     def _run(self, path: str, old_text: str, new_text: str) -> str:
         """Edit the file."""
@@ -221,7 +221,7 @@ class ListDirectoryTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "list_directory"
     description: str = "List contents of a directory."
-    args_schema: Type[BaseModel] = ListDirectoryInput
+    args_schema: type[BaseModel] = ListDirectoryInput
 
     def _run(self, path: str = ".") -> str:
         """List the directory."""
@@ -250,7 +250,7 @@ class GitTool(BaseTool if CREWAI_AVAILABLE else object):
         "Execute git commands without 'git' prefix "
         "(e.g., 'status', 'log -5', 'checkout -b feature')."
     )
-    args_schema: Type[BaseModel] = GitInput
+    args_schema: type[BaseModel] = GitInput
 
     def _run(self, command: str) -> str:
         """Execute the git command."""
@@ -281,7 +281,7 @@ class ListIssuesTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "list_issues"
     description: str = "List GitHub issues from the repository."
-    args_schema: Type[BaseModel] = ListIssuesInput
+    args_schema: type[BaseModel] = ListIssuesInput
 
     def _run(
         self, state: str = "open", limit: int = 10, sort: str = "created", order: str = "desc"
@@ -317,7 +317,7 @@ class GetIssueTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "get_issue"
     description: str = "Get details of a specific GitHub issue by number."
-    args_schema: Type[BaseModel] = GetIssueInput
+    args_schema: type[BaseModel] = GetIssueInput
 
     def _run(self, issue_number: int) -> str:
         """Get issue details."""
