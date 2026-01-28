@@ -31,7 +31,7 @@ from vibeteam.tools.transfer import (
     is_handoff_result,
     parse_handoff,
 )
-from vibeteam.tracing import SwarmTrace, is_tracing_enabled, trace_swarm_run
+from vibeteam.tracing import SwarmTrace, is_tracing_enabled
 
 logger = logging.getLogger(__name__)
 

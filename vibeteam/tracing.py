@@ -12,13 +12,12 @@ Uses Langfuse SDK v3 with start_span/start_as_current_span API.
 
 import logging
 import os
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, Generator, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
     from langfuse import Langfuse
-    from langfuse._client.span import LangfuseSpan
 
 logger = logging.getLogger(__name__)
 
