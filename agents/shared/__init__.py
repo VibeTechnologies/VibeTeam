@@ -51,6 +51,14 @@ from agents.shared.langfuse_tools import (
     get_langfuse_stats,
     get_langfuse_traces,
 )
+from agents.shared.docs_tools import (
+    search_docs,
+    search_docs_sync,
+    list_docs,
+    get_doc_content,
+    get_docs_context,
+    rebuild_index,
+)
 
 __all__ = [
     # Gmail
@@ -81,4 +89,11 @@ __all__ = [
     "get_browser_context",
     "analyze_competitor_page",
     "analyze_competitor_page_sync",
+    # Documentation Search
+    "search_docs",
+    "search_docs_sync",
+    "list_docs",
+    "get_doc_content",
+    "get_docs_context",
+    "rebuild_index",
 ]

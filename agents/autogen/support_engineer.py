@@ -76,6 +76,11 @@ from agents.shared.calendar_tools import (
     create_calendar_event,
     list_calendar_events,
 )
+from agents.shared.docs_tools import (
+    get_doc_content,
+    list_docs,
+    search_docs,
+)
 from agents.shared.gmail_tools import (
     list_emails,
     send_email,
@@ -207,6 +212,9 @@ class AutoGenSupportEngineer:
                 get_sentry_issues,
                 get_langfuse_traces,
                 create_support_ticket,
+                search_docs,
+                list_docs,
+                get_doc_content,
             ],
             system_message=SUPPORT_ENGINEER_SYSTEM_PROMPT,
             description="Support Engineer for customer support, email, calendar, and monitoring.",

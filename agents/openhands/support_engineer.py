@@ -20,6 +20,7 @@ from typing import Any
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 from agents.shared.calendar_tools import get_calendar_context
+from agents.shared.docs_tools import get_docs_context
 
 # Import shared tools for context injection
 from agents.shared.gmail_tools import get_email_context
@@ -70,6 +71,11 @@ def fetch_langfuse_context_wrapper(hours: int = 6) -> str:
 def fetch_calendar_context_wrapper(days: int = 3) -> str:
     """Fetch Calendar context using shared tools."""
     return get_calendar_context(days=days)
+
+
+def fetch_docs_context_wrapper(query: str) -> str:
+    """Fetch documentation context using shared tools."""
+    return get_docs_context(query=query, max_results=3)
 
 
 try:
@@ -213,6 +219,23 @@ class OpenHandsSupportEngineer:
                 for kw in ["langfuse", "trace", "llm", "observability", "latency", "token"]
             ):
                 injected_context.append(fetch_langfuse_context_wrapper())
+
+            # Documentation context for product/feature/setup questions
+            if any(
+                kw in task_lower
+                for kw in [
+                    "doc",
+                    "documentation",
+                    "how to",
+                    "setup",
+                    "configure",
+                    "install",
+                    "api",
+                    "feature",
+                ]
+            ):
+                # Use the task itself as the search query
+                injected_context.append(fetch_docs_context_wrapper(task))
 
             # Build full task with context
             context_str = "\n\n".join(injected_context) if injected_context else ""
