@@ -5,6 +5,8 @@ kind: Kustomization
 resources:
   # Infrastructure
   - postgres.yaml
+  # Gateway (routes webhooks to agent microservices)
+  - vibeteam-gateway.yaml
   # Agent Microservices (long-running servers)
   - autogen-svc.yaml
   - crewai-svc.yaml

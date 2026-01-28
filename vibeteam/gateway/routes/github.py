@@ -1,0 +1,230 @@
+"""
+GitHub Webhook Handlers.
+
+Handles GitHub webhook events and routes to agent microservices:
+- issues.assigned: Trigger SWE agent when issue assigned to bot
+- issue_comment.created: Respond to @mentions in comments
+"""
+
+import asyncio
+import hashlib
+import hmac
+import json
+import logging
+import os
+from typing import Any
+
+import httpx
+from fastapi import APIRouter, Header, HTTPException, Request
+
+from vibeteam.gateway.server import call_agent_service, config
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["GitHub"])
+
+
+def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
+    """Verify GitHub webhook signature (HMAC-SHA256)."""
+    if not secret:
+        logger.warning("GITHUB_WEBHOOK_SECRET not set, skipping verification")
+        return True
+
+    if not signature or not signature.startswith("sha256="):
+        return False
+
+    expected = "sha256=" + hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
+def is_assigned_to_bot(assignee: dict[str, Any] | None) -> bool:
+    """Check if the assignee is our bot."""
+    if not assignee:
+        return False
+
+    assignee_login = assignee.get("login", "")
+    bot_user_id = os.environ.get("GITHUB_BOT_USER_ID")
+
+    # Check by login name
+    if config.BOT_USERNAME.replace("[bot]", "") in assignee_login:
+        return True
+
+    # Check by user ID if available
+    if bot_user_id and str(assignee.get("id")) == bot_user_id:
+        return True
+
+    return False
+
+
+async def get_installation_token() -> str | None:
+    """Get GitHub App installation token."""
+    try:
+        from vibeteam.utils.github_app import get_installation_token
+
+        if (
+            config.GITHUB_APP_ID
+            and config.GITHUB_APP_PRIVATE_KEY
+            and config.GITHUB_APP_INSTALLATION_ID
+        ):
+            return get_installation_token(
+                config.GITHUB_APP_ID,
+                config.GITHUB_APP_PRIVATE_KEY,
+                config.GITHUB_APP_INSTALLATION_ID,
+            )
+    except ImportError:
+        logger.warning("github_app utility not available")
+    except Exception as e:
+        logger.error(f"Failed to get installation token: {e}")
+
+    return None
+
+
+async def post_acknowledgment(repo: str, issue_number: int) -> None:
+    """Post a comment acknowledging the assignment."""
+    token = await get_installation_token()
+    if not token:
+        token = os.environ.get("GITHUB_TOKEN")
+
+    if not token:
+        logger.warning("No GitHub token available, skipping acknowledgment")
+        return
+
+    try:
+        comment_body = (
+            "I've been assigned to this issue and will start working on it.\n\n"
+            "I'll analyze the problem and create a PR with a fix if possible. "
+            "You can track my progress in the linked PR once it's created."
+        )
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                json={"body": comment_body},
+            )
+            response.raise_for_status()
+            logger.info(f"Posted acknowledgment to {repo}#{issue_number}")
+
+    except Exception as e:
+        logger.error(f"Failed to post acknowledgment: {e}")
+
+
+async def run_swe_agent(
+    repo: str,
+    issue_number: int,
+    issue_title: str,
+    issue_body: str,
+) -> None:
+    """Run the Software Engineer agent on an issue via the agent service."""
+    logger.info(f"Starting SWE agent for {repo}#{issue_number}: {issue_title}")
+
+    # Build the task description
+    task = f"""## GitHub Issue Assignment
+
+You have been assigned to fix GitHub issue #{issue_number} in repository {repo}.
+
+### Issue Title
+{issue_title}
+
+### Issue Description
+{issue_body}
+
+### Instructions
+1. Analyze the issue to understand the problem
+2. Search the codebase for relevant files
+3. Implement a fix following the project's coding standards
+4. Create unit tests if applicable
+5. Create a pull request with your changes
+6. Link the PR to this issue
+
+Repository: {repo}
+Issue: #{issue_number}
+"""
+
+    try:
+        result = await call_agent_service(
+            task=task,
+            role="software_engineer",
+            context_type="issue",
+            context_id=f"{repo}#{issue_number}",
+        )
+
+        if "error" in result:
+            logger.error(f"SWE agent failed for {repo}#{issue_number}: {result['error']}")
+        else:
+            logger.info(f"SWE agent completed for {repo}#{issue_number}")
+
+    except Exception as e:
+        logger.exception(f"Failed to run SWE agent: {e}")
+
+
+@router.post("/webhook")
+async def handle_github_webhook(
+    request: Request,
+    x_github_event: str = Header(..., alias="X-GitHub-Event"),
+    x_hub_signature_256: str = Header(None, alias="X-Hub-Signature-256"),
+) -> dict[str, str]:
+    """Handle incoming GitHub webhook events."""
+    payload_bytes = await request.body()
+
+    # Verify signature
+    if not verify_signature(payload_bytes, x_hub_signature_256 or "", config.GITHUB_WEBHOOK_SECRET):
+        logger.warning("Invalid webhook signature")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    payload = json.loads(payload_bytes)
+    action = payload.get("action", "")
+    repo_data = payload.get("repository", {})
+    repo_full_name = repo_data.get("full_name", "")
+
+    logger.info(f"Received {x_github_event}.{action} for {repo_full_name}")
+
+    # Handle issue assignment
+    if x_github_event == "issues" and action == "assigned":
+        assignee = payload.get("assignee")
+        issue = payload.get("issue", {})
+
+        if is_assigned_to_bot(assignee):
+            issue_number = issue.get("number")
+            issue_title = issue.get("title", "")
+            issue_body = issue.get("body", "")
+
+            logger.info(f"Issue #{issue_number} assigned to bot, triggering SWE agent")
+
+            # Post acknowledgment and run agent in background
+            asyncio.create_task(post_acknowledgment(repo_full_name, issue_number))
+            asyncio.create_task(
+                run_swe_agent(repo_full_name, issue_number, issue_title, issue_body)
+            )
+
+            return {"status": "accepted", "message": f"Processing issue #{issue_number}"}
+
+    # Handle @mention in comments
+    if x_github_event == "issue_comment" and action == "created":
+        comment = payload.get("comment", {})
+        comment_body = comment.get("body", "")
+        issue = payload.get("issue", {})
+
+        # Check if bot is mentioned
+        bot_mention = f"@{config.BOT_USERNAME.replace('[bot]', '')}"
+        if bot_mention in comment_body:
+            issue_number = issue.get("number")
+            logger.info(f"Bot mentioned in comment on #{issue_number}")
+
+            # Trigger SWE agent
+            asyncio.create_task(
+                run_swe_agent(
+                    repo_full_name,
+                    issue_number,
+                    issue.get("title", ""),
+                    issue.get("body", ""),
+                )
+            )
+
+            return {"status": "accepted", "message": f"Processing mention in #{issue_number}"}
+
+    return {"status": "ignored", "event": f"{x_github_event}.{action}"}

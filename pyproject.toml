@@ -44,6 +44,10 @@ dependencies = [
     "mcp>=1.0.0",
     # Documentation search
     "rank-bm25>=0.2.2",
+    # Gateway server
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "httpx>=0.26.0",
 ]
 
 [project.optional-dependencies]

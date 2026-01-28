@@ -157,5 +157,121 @@ class TestAgentExecution:
             proc.terminate()
 
 
+class TestGateway:
+    """Test the VibeTeam Gateway service."""
+
+    def test_gateway_health(self):
+        """Test Gateway health endpoint with downstream service status."""
+        proc = port_forward("vibeteam-gateway", 18090)
+        try:
+            time.sleep(2)
+            response = httpx.get("http://localhost:18090/health", timeout=10)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "healthy"
+            assert data["service"] == "vibeteam-gateway"
+            assert "services" in data
+            # Gateway should report downstream service status
+            assert "autogen-svc" in data["services"]
+            assert "crewai-svc" in data["services"]
+            assert "scheduler-svc" in data["services"]
+        finally:
+            proc.terminate()
+
+    def test_gateway_api_run(self):
+        """Test Gateway API run endpoint routes to agent service."""
+        proc = port_forward("vibeteam-gateway", 18091)
+        try:
+            time.sleep(2)
+            response = httpx.post(
+                "http://localhost:18091/api/run",
+                json={
+                    "task": "What is 2 + 2? Reply with just the number.",
+                    "context_type": "test",
+                    "context_id": "gateway-e2e",
+                },
+                timeout=120,
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "response" in data
+            assert "session_id" in data
+            assert data["framework"] in ["autogen", "crewai"]
+        finally:
+            proc.terminate()
+
+    def test_gateway_api_sessions(self):
+        """Test Gateway API can list sessions."""
+        proc = port_forward("vibeteam-gateway", 18092)
+        try:
+            time.sleep(2)
+            response = httpx.get(
+                "http://localhost:18092/api/sessions",
+                timeout=30,
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "sessions" in data
+            assert "count" in data
+        finally:
+            proc.terminate()
+
+    def test_gateway_api_tasks(self):
+        """Test Gateway API can list scheduled tasks."""
+        proc = port_forward("vibeteam-gateway", 18093)
+        try:
+            time.sleep(2)
+            response = httpx.get(
+                "http://localhost:18093/api/tasks",
+                timeout=30,
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "tasks" in data
+            assert "count" in data
+        finally:
+            proc.terminate()
+
+    def test_gateway_github_webhook_ignored(self):
+        """Test Gateway handles unknown GitHub events gracefully."""
+        proc = port_forward("vibeteam-gateway", 18094)
+        try:
+            time.sleep(2)
+            response = httpx.post(
+                "http://localhost:18094/webhook",
+                json={"action": "unknown", "repository": {"full_name": "test/repo"}},
+                headers={
+                    "X-GitHub-Event": "ping",
+                    "Content-Type": "application/json",
+                },
+                timeout=10,
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ignored"
+        finally:
+            proc.terminate()
+
+    def test_gateway_slack_url_verification(self):
+        """Test Gateway responds to Slack URL verification challenge."""
+        proc = port_forward("vibeteam-gateway", 18095)
+        try:
+            time.sleep(2)
+            response = httpx.post(
+                "http://localhost:18095/slack/events",
+                json={
+                    "type": "url_verification",
+                    "challenge": "test-challenge-123",
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["challenge"] == "test-challenge-123"
+        finally:
+            proc.terminate()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
