@@ -34,6 +34,9 @@ jobs:
           - name: vibeteam-crewai
             dockerfile: agents/crewai/Dockerfile
             context: .
+          - name: vibeteam-openhands
+            dockerfile: agents/openhands/Dockerfile
+            context: .
           - name: vibeteam-scheduler
             dockerfile: agents/scheduler/Dockerfile
             context: .
@@ -139,6 +142,7 @@ jobs:
           sed -i "s|ghcr.io/vibetechnologies/vibeteam:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam:${SHORT_SHA}|g" k8s/base/*.yaml
           sed -i "s|ghcr.io/vibetechnologies/vibeteam-autogen:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam-autogen:${SHORT_SHA}|g" k8s/base/*.yaml
           sed -i "s|ghcr.io/vibetechnologies/vibeteam-crewai:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam-crewai:${SHORT_SHA}|g" k8s/base/*.yaml
+          sed -i "s|ghcr.io/vibetechnologies/vibeteam-openhands:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam-openhands:${SHORT_SHA}|g" k8s/base/*.yaml
           sed -i "s|ghcr.io/vibetechnologies/vibeteam-scheduler:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam-scheduler:${SHORT_SHA}|g" k8s/base/*.yaml
 
       - name: Deploy all resources
@@ -148,6 +152,7 @@ jobs:
         run: |
           kubectl rollout status deployment/autogen-svc -n $NAMESPACE --timeout=120s || true
           kubectl rollout status deployment/crewai-svc -n $NAMESPACE --timeout=120s || true
+          kubectl rollout status deployment/openhands-svc -n $NAMESPACE --timeout=120s || true
           kubectl rollout status deployment/scheduler-svc -n $NAMESPACE --timeout=120s || true
 
       - name: Verify deployment

@@ -34,6 +34,7 @@ class GatewayConfig:
     # Agent service URLs
     AUTOGEN_SERVICE_URL = os.environ.get("AUTOGEN_SERVICE_URL", "http://autogen-svc:8080")
     CREWAI_SERVICE_URL = os.environ.get("CREWAI_SERVICE_URL", "http://crewai-svc:8080")
+    OPENHANDS_SERVICE_URL = os.environ.get("OPENHANDS_SERVICE_URL", "http://openhands-svc:8080")
     SCHEDULER_SERVICE_URL = os.environ.get("SCHEDULER_SERVICE_URL", "http://scheduler-svc:8080")
     DEFAULT_FRAMEWORK = os.environ.get("DEFAULT_FRAMEWORK", "autogen")
 
@@ -57,6 +58,8 @@ class GatewayConfig:
         fw = framework or cls.DEFAULT_FRAMEWORK
         if fw == "crewai":
             return cls.CREWAI_SERVICE_URL
+        elif fw == "openhands":
+            return cls.OPENHANDS_SERVICE_URL
         return cls.AUTOGEN_SERVICE_URL
 
 
@@ -76,7 +79,7 @@ class RunRequest(BaseModel):
         None,
         description="Agent role (support_engineer, release_engineer, software_engineer, etc.)",
     )
-    framework: str | None = Field(None, description="Agent framework (autogen, crewai)")
+    framework: str | None = Field(None, description="Agent framework (autogen, crewai, openhands)")
     context_type: str = Field("api", description="Context type")
     context_id: str | None = Field(None, description="Context ID")
     stream: bool = Field(False, description="Stream the response (SSE)")
@@ -206,7 +209,9 @@ async def call_scheduler_service(
     payload = {
         "task": task,
         "role": role,
-        "agent_service": "autogen-svc" if framework != "crewai" else "crewai-svc",
+        "agent_service": "autogen-svc"
+        if framework not in ("crewai", "openhands")
+        else f"{framework}-svc",
         "context_type": context_type,
         "context_id": context_id,
     }
@@ -252,6 +257,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting VibeTeam Gateway...")
     logger.info(f"AutoGen service: {config.AUTOGEN_SERVICE_URL}")
     logger.info(f"CrewAI service: {config.CREWAI_SERVICE_URL}")
+    logger.info(f"OpenHands service: {config.OPENHANDS_SERVICE_URL}")
     logger.info(f"Scheduler service: {config.SCHEDULER_SERVICE_URL}")
     logger.info(f"Default framework: {config.DEFAULT_FRAMEWORK}")
 
@@ -280,6 +286,7 @@ async def health_check():
     services = {
         "autogen-svc": await check_service_health(config.AUTOGEN_SERVICE_URL),
         "crewai-svc": await check_service_health(config.CREWAI_SERVICE_URL),
+        "openhands-svc": await check_service_health(config.OPENHANDS_SERVICE_URL),
         "scheduler-svc": await check_service_health(config.SCHEDULER_SERVICE_URL),
     }
 

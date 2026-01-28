@@ -10,6 +10,7 @@ resources:
   # Agent Microservices (long-running servers with APScheduler)
   - autogen-svc.yaml
   - crewai-svc.yaml
+  - openhands-svc.yaml
   - scheduler-svc.yaml
   # Multi-framework agent deployments (AutoGen, CrewAI, OpenHands)
   - frameworks/

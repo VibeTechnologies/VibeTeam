@@ -29,6 +29,7 @@ COPY agents/__init__.py ./agents/
 COPY agents/config.py ./agents/
 COPY agents/sessions.py ./agents/
 COPY agents/metrics.py ./agents/
+COPY agents/shared/ ./agents/shared/
 COPY agents/openhands/ ./agents/openhands/
 
 # Production stage
@@ -36,11 +37,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install runtime dependencies (OpenHands may need Docker for sandboxed execution)
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
-    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy GitHub CLI from builder
@@ -52,8 +52,8 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 # Copy application code
 COPY --from=builder /app/agents /app/agents
 
-# Create non-root user with docker group access
-RUN useradd -m -u 1000 -G docker vibeteam
+# Create non-root user
+RUN useradd -m -u 1000 vibeteam
 USER vibeteam
 
 # Environment variables (override at runtime)
@@ -63,8 +63,11 @@ ENV AZURE_API_VERSION="2024-08-01-preview"
 ENV PYTHONPATH="/app"
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "from agents.openhands import OpenHandsReleaseEngineer; print('OK')"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 
-# Default command - can be overridden
-CMD ["python", "-c", "print('OpenHands agent service ready')"]
+# Expose port
+EXPOSE 8080
+
+# Default command - run FastAPI server
+CMD ["python", "-m", "agents.openhands.server"]
