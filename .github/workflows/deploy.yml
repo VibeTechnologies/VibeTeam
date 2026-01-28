@@ -5,6 +5,7 @@ on:
     branches: [master, main]
     paths:
       - 'vibeteam/**'
+      - 'agents/**'
       - 'k8s/**'
       - 'Dockerfile'
       - 'pyproject.toml'
@@ -21,14 +22,28 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+    strategy:
+      matrix:
+        include:
+          - name: vibeteam
+            dockerfile: Dockerfile
+            context: .
+          - name: vibeteam-autogen
+            dockerfile: agents/autogen/Dockerfile
+            context: .
+          - name: vibeteam-crewai
+            dockerfile: agents/crewai/Dockerfile
+            context: .
+          - name: vibeteam-scheduler
+            dockerfile: agents/scheduler/Dockerfile
+            context: .
     steps:
       - uses: actions/checkout@v4
 
       - name: Set image name lowercase
-        id: image_name
-        run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+        run: |
+          REPO_OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=${REPO_OWNER}/${{ matrix.name }}" >> $GITHUB_ENV
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -53,7 +68,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -67,7 +83,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set image name lowercase
-        run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+        run: |
+          REPO_OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "REPO_OWNER=${REPO_OWNER}" >> $GITHUB_ENV
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
@@ -88,14 +106,12 @@ jobs:
 
       - name: Create secrets
         run: |
-          # Create/update ghcr-pull-secret for pulling images
           kubectl -n $NAMESPACE delete secret ghcr-pull-secret --ignore-not-found
           kubectl -n $NAMESPACE create secret docker-registry ghcr-pull-secret \
             --docker-server=ghcr.io \
             --docker-username=${{ github.actor }} \
             --docker-password=${{ secrets.PAT_TOKEN }}
 
-          # Create/update vibeteam-secrets
           kubectl -n $NAMESPACE delete secret vibeteam-secrets --ignore-not-found
           kubectl -n $NAMESPACE create secret generic vibeteam-secrets \
             --from-literal=SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" \
@@ -106,7 +122,6 @@ jobs:
             --from-literal=AZURE_API_KEY="${{ secrets.AZURE_API_KEY }}" \
             --from-literal=AZURE_API_BASE="${{ secrets.AZURE_API_BASE }}"
 
-          # Create/update gmail-oauth-secrets (if secrets exist)
           if [ -n "${{ secrets.GMAIL_CREDENTIALS_JSON }}" ]; then
             kubectl -n $NAMESPACE delete secret gmail-oauth-secrets --ignore-not-found
             echo '${{ secrets.GMAIL_CREDENTIALS_JSON }}' > /tmp/gmail-credentials.json
@@ -117,43 +132,24 @@ jobs:
             rm -f /tmp/gmail-credentials.json /tmp/gmail-token.json
           fi
 
-      - name: Update image in manifests
+      - name: Update image tags in manifests
         run: |
-          # Get the SHA tag
           SHA_TAG="${{ github.sha }}"
           SHORT_SHA="${SHA_TAG:0:7}"
-          IMAGE="${{ env.REGISTRY }}/${IMAGE_NAME}:${SHORT_SHA}"
-          
-          # Update all k8s manifests with new image
-          for file in k8s/base/*.yaml; do
-            if [ -f "$file" ]; then
-              sed -i "s|image: ghcr.io/vibetechnologies/vibeteam:.*|image: ${IMAGE}|g" "$file"
-            fi
-          done
+          sed -i "s|ghcr.io/vibetechnologies/vibeteam:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam:${SHORT_SHA}|g" k8s/base/*.yaml
+          sed -i "s|ghcr.io/vibetechnologies/vibeteam-autogen:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam-autogen:${SHORT_SHA}|g" k8s/base/*.yaml
+          sed -i "s|ghcr.io/vibetechnologies/vibeteam-crewai:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam-crewai:${SHORT_SHA}|g" k8s/base/*.yaml
+          sed -i "s|ghcr.io/vibetechnologies/vibeteam-scheduler:latest|${{ env.REGISTRY }}/${REPO_OWNER}/vibeteam-scheduler:${SHORT_SHA}|g" k8s/base/*.yaml
 
-      - name: Deploy CronJobs
+      - name: Deploy all resources
+        run: kubectl apply -k k8s/base/ -n $NAMESPACE
+
+      - name: Wait for deployments
         run: |
-          kubectl apply -k k8s/base/ -n $NAMESPACE
+          kubectl rollout status deployment/autogen-svc -n $NAMESPACE --timeout=120s || true
+          kubectl rollout status deployment/crewai-svc -n $NAMESPACE --timeout=120s || true
+          kubectl rollout status deployment/scheduler-svc -n $NAMESPACE --timeout=120s || true
 
       - name: Verify deployment
         run: |
-          set +e  # Don't fail on errors
-          echo "=== CronJobs ==="
-          kubectl get cronjobs -n $NAMESPACE
-          echo ""
-          echo "=== Secrets ==="
-          kubectl get secrets -n $NAMESPACE | grep -E "(gmail|vibeteam)" || echo "No matching secrets"
-          echo ""
-          echo "=== Recent Jobs ==="
-          kubectl get jobs -n $NAMESPACE --sort-by=.metadata.creationTimestamp | tail -5 || echo "No jobs yet"
-          echo ""
-          echo "=== All Pods ==="
-          kubectl get pods -n $NAMESPACE --sort-by=.metadata.creationTimestamp | tail -10 || echo "No pods"
-          echo ""
-          echo "=== Recent Pod Logs ==="
-          # Get logs from the last few pods
-          for pod in $(kubectl get pods -n $NAMESPACE --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | tail -5); do
-            echo "--- Logs for $pod ---"
-            kubectl logs -n $NAMESPACE $pod --tail=30 2>/dev/null || echo "No logs available"
-          done
-          echo "=== Deployment verification complete ==="
+          kubectl get deployments,services,pods -n $NAMESPACE
