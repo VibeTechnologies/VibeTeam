@@ -5,6 +5,9 @@ kind: Kustomization
 resources:
   # Infrastructure
   - postgres.yaml
+  # Agent Microservices (long-running servers)
+  - autogen-svc.yaml
+  - crewai-svc.yaml
   # Agent CronJobs (to be replaced by microservices)
   - product-manager.yaml
   - support-engineer.yaml
