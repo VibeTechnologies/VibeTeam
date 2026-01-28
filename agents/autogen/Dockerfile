@@ -32,6 +32,10 @@ COPY agents/metrics.py ./agents/
 COPY agents/shared/ ./agents/shared/
 COPY agents/autogen/ ./agents/autogen/
 
+# Copy vibeteam connectors (for Sentry, Langfuse, etc.)
+COPY vibeteam/__init__.py ./vibeteam/
+COPY vibeteam/connectors/ ./vibeteam/connectors/
+
 # Production stage
 FROM python:3.12-slim
 
@@ -52,6 +56,7 @@ COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
 # Copy application code
 COPY --from=builder /app/agents /app/agents
+COPY --from=builder /app/vibeteam /app/vibeteam
 
 # Create non-root user
 RUN useradd -m -u 1000 vibeteam

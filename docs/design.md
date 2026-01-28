@@ -1,6 +1,6 @@
 # VibeTeam Agent Microservices Architecture
 
-**Version**: 2.1  
+**Version**: 2.2  
 **Date**: January 2026  
 **Status**: Complete
 
@@ -8,11 +8,14 @@
 
 ## Overview
 
-This document describes the architecture for VibeTeam's multi-framework agent microservices, replacing the previous CronJob-based approach with long-running services that support:
+VibeTeam is a multi-framework AI agent system that automates software engineering workflows. The architecture consists of:
 
-1. **Separate agent microservices** - Each framework (AutoGen, CrewAI, OpenHands) runs in its own container
-2. **Dynamic task scheduling** - Agents can schedule future tasks (e.g., "message customer in 1 hour")
-3. **Human-in-the-loop** - Agents can wait for human input without consuming idle resources
+1. **Three agent frameworks** - AutoGen, CrewAI, and OpenHands running as separate microservices
+2. **Centralized gateway** - Routes webhooks and API requests to appropriate agents
+3. **Task scheduler** - APScheduler with PostgreSQL for persistent job scheduling
+4. **Session persistence** - PostgreSQL database for conversation history
+
+This replaces the previous CronJob-based approach with long-running services that support dynamic task scheduling and human-in-the-loop workflows.
 
 ---
 
@@ -21,14 +24,14 @@ This document describes the architecture for VibeTeam's multi-framework agent mi
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                     External Events                                          │
-│  GitHub Webhooks │ Slack Events │ API Requests │ Scheduled                   │
+│  GitHub Webhooks │ Slack Events │ Sentry Alerts │ REST API                   │
 └──────────────────────────────────┬──────────────────────────────────────────┘
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                  vibeteam-gateway (FastAPI)                                  │
 │  - Routes to agent services   - WebSocket streaming                          │
-│  - GitHub/Slack webhooks      - REST API                                     │
+│  - GitHub/Slack/Sentry hooks  - REST API at /api/*                           │
 └──────────┬───────────────────────┬───────────────────────┬──────────────────┘
            │                       │                       │
      ┌─────┴─────┐           ┌─────┴─────┐           ┌─────┴─────┐
@@ -47,67 +50,126 @@ This document describes the architecture for VibeTeam's multi-framework agent mi
 
 ---
 
-## Technology Choices
+## Design Decisions
 
-| Component | Choice | Rationale |
-|-----------|--------|-----------|
-| Agent Framework | AutoGen, CrewAI, OpenHands | Multi-framework for different use cases |
-| Scheduler | APScheduler v4 | Simple, async, PostgreSQL backend |
-| Sessions | PostgreSQL | Single database for all state |
-| Database | In-cluster PostgreSQL | Simple, cost-effective for k3s |
-| API Framework | FastAPI | Async, automatic OpenAPI docs |
-| HTTP Client | httpx | Async HTTP for inter-service calls |
+### Why Three Agent Frameworks?
+
+| Framework | Strengths | Best For |
+|-----------|-----------|----------|
+| **AutoGen** | Multi-agent conversations, tool calling | Complex workflows requiring agent collaboration |
+| **CrewAI** | Role-based crews, structured output | Defined processes with clear responsibilities |
+| **OpenHands** | Code generation, file manipulation | Software engineering tasks, code review |
+
+The gateway selects the appropriate framework based on the task type or explicit request.
+
+### Why Microservices vs Monolith?
+
+1. **Independent scaling** - Each framework has different resource needs
+2. **Isolation** - Framework-specific dependencies don't conflict
+3. **Resilience** - One framework failure doesn't affect others
+4. **Deployment flexibility** - Update frameworks independently
+
+### Why APScheduler vs Kubernetes CronJobs?
+
+1. **Dynamic scheduling** - Agents can schedule follow-up tasks at runtime
+2. **Persistence** - Jobs survive pod restarts via PostgreSQL
+3. **Visibility** - REST API for job management
+4. **Flexibility** - Supports cron, interval, and one-time triggers
+
+### Why PostgreSQL?
+
+1. **Session continuity** - Agents resume conversations across restarts
+2. **Single database** - Simplifies operations (vs Redis + SQLite)
+3. **APScheduler support** - Built-in SQLAlchemy data store
+4. **k3s compatible** - Works with local-path storage class
 
 ---
 
 ## Components
 
-### 1. Agent Microservices (autogen-svc, crewai-svc, openhands-svc)
+### 1. Agent Microservices
 
-Each agent service is a FastAPI application exposing:
+Each agent service (autogen-svc, crewai-svc, openhands-svc) is a FastAPI application:
+
+**Endpoints:**
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/health` | GET | Health check |
+| `/health` | GET | Health check (liveness/readiness probes) |
 | `/run` | POST | Execute task synchronously |
 | `/run/stream` | POST | Execute task with SSE streaming |
-| `/sessions/{id}` | GET | Get session history |
+| `/sessions/{id}` | GET | Get session by ID |
+| `/sessions` | GET | List sessions with optional prefix filter |
 
-**Request Schema:**
+**Request Schema (`/run`):**
 ```json
 {
-  "task": "Fix issue #123: Login button not working",
-  "context_type": "issue",
-  "context_id": "123",
-  "session_id": "optional-resume-session"
+  "task": "Analyze Sentry errors from the past week",
+  "role": "support_engineer",
+  "context_type": "api",
+  "context_id": "optional-session-key"
 }
 ```
 
 **Response Schema:**
 ```json
 {
-  "response": "I've analyzed the issue and created PR #456...",
-  "session_id": "ses_abc123",
-  "agents_used": ["SoftwareEngineer"],
+  "response": "I found 15 errors this week...",
+  "session_id": "abc123",
+  "session_key": "autogen:support_engineer:api:abc123",
+  "framework": "autogen",
+  "agents_used": ["SupportEngineer"],
   "metadata": {
-    "framework": "autogen",
-    "tokens_used": 1234,
-    "latency_ms": 5600
+    "latency_ms": 5600,
+    "message_count": 2
   }
 }
 ```
 
-### 2. Scheduler Service (scheduler-svc)
+**Agent Roles:**
 
-APScheduler with PostgreSQL backend for task persistence.
+| Role | Description |
+|------|-------------|
+| `support_engineer` | Handles Sentry errors, customer support, health monitoring |
+| `release_engineer` | Manages releases, changelogs, version bumps |
+| `marketing_manager` | Creates release announcements, social content |
+| `software_engineer` | Triages issues, reviews PRs, writes code |
+
+### 2. Gateway Service (vibeteam-gateway)
+
+Central entry point for all external events:
+
+**Endpoints:**
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/health` | GET | Health check |
+| `/health` | GET | Gateway health with downstream service status |
+| `/webhook` | POST | GitHub webhook handler |
+| `/slack/events` | POST | Slack event handler |
+| `/sentry/webhook` | POST | Sentry issue/error alerts |
+| `/api/run` | POST | Manual task execution |
+| `/api/schedule` | POST | Schedule a task |
+| `/api/sessions` | GET | List sessions |
+
+**Framework Selection:**
+- Explicit: Pass `framework` parameter in request
+- Default: Uses `DEFAULT_FRAMEWORK` env var (autogen)
+- Role-based: Future - route based on task type
+
+### 3. Scheduler Service (scheduler-svc)
+
+APScheduler with PostgreSQL persistence:
+
+**Endpoints:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Health check with job count |
 | `/tasks` | POST | Schedule a new task |
-| `/tasks` | GET | List scheduled tasks |
+| `/tasks` | GET | List all scheduled tasks |
 | `/tasks/{id}` | GET | Get task details |
 | `/tasks/{id}` | DELETE | Cancel a scheduled task |
+| `/tasks/{id}/run` | POST | Execute task immediately |
 
 **Schedule Request:**
 ```json
@@ -115,45 +177,20 @@ APScheduler with PostgreSQL backend for task persistence.
   "task": "Follow up with customer about ticket #789",
   "run_at": "2026-01-28T15:00:00Z",
   "agent_service": "autogen-svc",
-  "context_type": "email",
-  "context_id": "msg-xyz"
+  "role": "support_engineer",
+  "context_type": "scheduled"
 }
 ```
 
-**Agent Tool Integration:**
+**Default Recurring Tasks (CronJob replacements):**
 
-Agents can schedule tasks via the `schedule_task` tool:
-```python
-@tool
-def schedule_task(
-    task: str,
-    delay_hours: int = 0,
-    delay_minutes: int = 0,
-) -> str:
-    """Schedule a task for future execution."""
-    # Calls scheduler-svc API
-```
-
-### 3. Gateway Service (vibeteam-gateway)
-
-Routes external events to appropriate agent services.
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/health` | GET | Health check |
-| `/webhook` | POST | GitHub webhook handler |
-| `/slack/events` | POST | Slack event handler |
-| `/api/run` | POST | Manual task invocation |
-| `/api/schedule` | POST | Schedule a task |
-
-**Environment Variables:**
-```bash
-AUTOGEN_SERVICE_URL=http://autogen-svc:8080
-CREWAI_SERVICE_URL=http://crewai-svc:8080
-OPENHANDS_SERVICE_URL=http://openhands-svc:8080
-SCHEDULER_SERVICE_URL=http://scheduler-svc:8080
-DEFAULT_FRAMEWORK=autogen
-```
+| Job ID | Schedule | Description |
+|--------|----------|-------------|
+| `support-emails` | `*/15 * * * *` | Process Gmail inbox |
+| `product-analysis` | `0 */2 * * *` | Analyze feature requests |
+| `release-check` | `0 9 * * *` | Check pending releases |
+| `health-check` | `*/5 * * * *` | Monitor Sentry/Langfuse |
+| `issue-triage` | `0 */4 * * *` | Triage GitHub issues |
 
 ### 4. PostgreSQL Database
 
@@ -162,249 +199,401 @@ DEFAULT_FRAMEWORK=autogen
 | Table | Purpose |
 |-------|---------|
 | `sessions` | Agent conversation history |
-| `apscheduler_jobs` | APScheduler job storage (auto-created) |
-| `task_results` | Historical task execution results |
+| `apscheduler_*` | APScheduler job storage (auto-created) |
 
 **Session Schema:**
 ```sql
 CREATE TABLE sessions (
-    id UUID PRIMARY KEY,
-    key VARCHAR(255) UNIQUE,  -- "autogen:support:issue:123"
-    framework VARCHAR(50),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    key VARCHAR(255) UNIQUE NOT NULL,
+    framework VARCHAR(50) NOT NULL,
     role VARCHAR(50),
     context_type VARCHAR(50),
     context_id VARCHAR(255),
-    messages JSONB,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP
+    messages JSONB DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 ```
 
 ---
 
-## Kubernetes Resources
+## Kubernetes Deployment
 
-### Deployments
+### Resource Overview
 
-| Name | Image | Replicas | Resources |
-|------|-------|----------|-----------|
-| `autogen-svc` | `vibeteam-autogen:latest` | 1 | 512Mi/1Gi, 250m/500m |
-| `crewai-svc` | `vibeteam-crewai:latest` | 1 | 512Mi/1Gi, 250m/500m |
-| `openhands-svc` | `vibeteam-openhands:latest` | 1 | 512Mi/1Gi, 250m/500m |
-| `scheduler-svc` | `vibeteam-scheduler:latest` | 1 | 256Mi/512Mi, 100m/200m |
-| `vibeteam-gateway` | `vibeteam:latest` | 1 | 256Mi/512Mi, 100m/200m |
+| Resource Type | Name | Replicas | Purpose |
+|--------------|------|----------|---------|
+| Deployment | `autogen-svc` | 1 | AutoGen agent server |
+| Deployment | `crewai-svc` | 1 | CrewAI agent server |
+| Deployment | `openhands-svc` | 1 | OpenHands agent server |
+| Deployment | `scheduler-svc` | 1 | APScheduler server |
+| Deployment | `vibeteam-gateway` | 1 | Gateway/webhook receiver |
+| StatefulSet | `postgres` | 1 | PostgreSQL database |
+| PVC | `postgres-pvc` | - | 10Gi persistent storage |
 
-### StatefulSets
+### Resource Limits
 
-| Name | Image | Replicas | Storage |
-|------|-------|----------|---------|
-| `postgres` | `postgres:16-alpine` | 1 | 10Gi PVC |
+| Component | Memory (req/limit) | CPU (req/limit) |
+|-----------|-------------------|-----------------|
+| Agent services | 512Mi / 1Gi | 250m / 500m |
+| Scheduler | 256Mi / 512Mi | 100m / 200m |
+| Gateway | 256Mi / 512Mi | 100m / 500m |
+| PostgreSQL | 256Mi / 512Mi | 100m / 500m |
 
-### Services
+### Services (ClusterIP)
 
-| Name | Type | Port | Target |
-|------|------|------|--------|
-| `autogen-svc` | ClusterIP | 8080 | autogen-svc:8080 |
-| `crewai-svc` | ClusterIP | 8080 | crewai-svc:8080 |
-| `openhands-svc` | ClusterIP | 8080 | openhands-svc:8080 |
-| `scheduler-svc` | ClusterIP | 8080 | scheduler-svc:8080 |
-| `postgres` | ClusterIP | 5432 | postgres:5432 |
-| `vibeteam-gateway` | ClusterIP | 8080 | vibeteam-gateway:8080 |
+| Service | Port | Target |
+|---------|------|--------|
+| `autogen-svc` | 8080 | autogen pods |
+| `crewai-svc` | 8080 | crewai pods |
+| `openhands-svc` | 8080 | openhands pods |
+| `scheduler-svc` | 8080 | scheduler pods |
+| `vibeteam-gateway` | 8080 | gateway pods |
+| `postgres` | 5432 | postgres pods |
 
 ### Secrets
 
-| Name | Keys |
-|------|------|
-| `postgres-secret` | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` |
-| `vibeteam-secrets` | (existing) `AZURE_API_KEY`, `GITHUB_TOKEN`, etc. |
+| Secret | Keys |
+|--------|------|
+| `postgres-secret` | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL` |
+| `vibeteam-secrets` | `AZURE_API_KEY`, `AZURE_API_BASE`, `GITHUB_TOKEN`, `SENTRY_AUTH_TOKEN`, `LANGFUSE_*` |
+| `ghcr-pull-secret` | Docker registry credentials |
+| `github-app-secret` | `app-id`, `private-key`, `installation-id` (optional) |
+| `gmail-oauth-secrets` | `gmail-credentials.json`, `gmail-token.json` (optional) |
+
+### Kustomize Structure
+
+```
+k8s/
+├── base/
+│   ├── kustomization.yaml      # Main kustomization
+│   ├── postgres.yaml           # StatefulSet + PVC + Secret
+│   ├── vibeteam-gateway.yaml   # Gateway deployment + service
+│   ├── autogen-svc.yaml        # AutoGen deployment + service
+│   ├── crewai-svc.yaml         # CrewAI deployment + service
+│   ├── openhands-svc.yaml      # OpenHands deployment + service
+│   ├── scheduler-svc.yaml      # Scheduler deployment + service
+│   └── frameworks/             # Legacy (deprecated)
+└── overlays/
+    └── prod/
+        └── kustomization.yaml  # Production patches
+```
+
+---
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflow (`.github/workflows/deploy.yml`)
+
+**Triggers:**
+- Push to `master` or `main` branch
+- Changes to: `vibeteam/**`, `agents/**`, `k8s/**`, `Dockerfile`, `pyproject.toml`
+- Manual `workflow_dispatch`
+
+**Build Job (matrix strategy):**
+
+| Image | Dockerfile | Context |
+|-------|------------|---------|
+| `vibeteam` | `Dockerfile` | `.` |
+| `vibeteam-autogen` | `agents/autogen/Dockerfile` | `.` |
+| `vibeteam-crewai` | `agents/crewai/Dockerfile` | `.` |
+| `vibeteam-openhands` | `agents/openhands/Dockerfile` | `.` |
+| `vibeteam-scheduler` | `agents/scheduler/Dockerfile` | `.` |
+
+**Image Tags:**
+- `ghcr.io/vibetechnologies/vibeteam-<name>:<sha>` (short SHA)
+- `ghcr.io/vibetechnologies/vibeteam-<name>:latest` (default branch)
+- `ghcr.io/vibetechnologies/vibeteam-<name>:<branch>`
+
+**Deploy Job:**
+1. Configure kubectl with `KUBECONFIG` secret
+2. Create/update namespace `vibeteam`
+3. Create pull secret `ghcr-pull-secret`
+4. Create `vibeteam-secrets` from GitHub secrets
+5. Update image tags in manifests (sed with SHA)
+6. Apply via `kubectl apply -k k8s/base/`
+7. Wait for rollout status
+
+### Dockerfile Structure
+
+Each agent Dockerfile uses multi-stage builds:
+
+```dockerfile
+# Builder stage - install dependencies
+FROM python:3.12-slim AS builder
+COPY agents/<framework>/requirements.txt ./
+RUN pip install -r requirements.txt
+COPY agents/ ./agents/
+COPY vibeteam/__init__.py ./vibeteam/
+COPY vibeteam/connectors/ ./vibeteam/connectors/
+
+# Production stage - minimal runtime
+FROM python:3.12-slim
+COPY --from=builder /usr/local/lib/python3.12/site-packages ...
+COPY --from=builder /app/agents /app/agents
+COPY --from=builder /app/vibeteam /app/vibeteam
+CMD ["python", "-m", "uvicorn", "agents.<framework>.server:app", ...]
+```
+
+**Key inclusions:**
+- `agents/shared/` - Common database, tools, utilities
+- `agents/config.py` - Configuration management
+- `vibeteam/connectors/` - Sentry, Langfuse, GitHub, Gmail connectors
 
 ---
 
 ## File Structure
 
 ```
-agents/
-├── autogen/
+VibeTeam/
+├── agents/
 │   ├── __init__.py
-│   ├── server.py           # FastAPI server
-│   ├── team.py             # AutoGenTeam class
-│   ├── release_engineer.py
-│   ├── marketing_manager.py
-│   ├── support_engineer.py
-│   ├── Dockerfile          # Updated for server mode
-│   └── requirements.txt    # Updated with fastapi, etc.
-├── crewai/
+│   ├── config.py               # AgentConfig class
+│   ├── sessions.py             # Session management
+│   ├── metrics.py              # Metrics collection
+│   ├── benchmark.py            # Benchmarking system
+│   ├── shared/
+│   │   ├── db.py               # PostgreSQL connection
+│   │   ├── scheduler_tools.py  # schedule_task tool
+│   │   └── docs_tools.py       # Documentation search
+│   ├── autogen/
+│   │   ├── server.py           # FastAPI server
+│   │   ├── team.py             # AutoGenTeam class
+│   │   ├── support_engineer.py # SupportEngineer agent
+│   │   ├── release_engineer.py
+│   │   ├── marketing_manager.py
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   ├── crewai/
+│   │   ├── server.py
+│   │   ├── crew.py
+│   │   ├── support_engineer.py
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   ├── openhands/
+│   │   ├── server.py
+│   │   ├── support_engineer.py
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   └── scheduler/
+│       ├── server.py           # APScheduler + FastAPI
+│       ├── Dockerfile
+│       └── requirements.txt
+├── vibeteam/
 │   ├── __init__.py
-│   ├── server.py           # FastAPI server
-│   ├── crew.py
-│   ├── release_engineer.py
-│   ├── marketing_manager.py
-│   ├── support_engineer.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── openhands/
-│   ├── __init__.py
-│   ├── server.py           # FastAPI server
-│   ├── support_engineer.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── scheduler/
-│   ├── __init__.py
-│   ├── server.py           # APScheduler + FastAPI
-│   ├── models.py           # SQLAlchemy models
-│   ├── Dockerfile
-│   └── requirements.txt
-├── shared/
-│   ├── __init__.py
-│   ├── db.py               # Database connection
-│   ├── scheduler_tools.py  # schedule_task tool
-│   ├── docs_tools.py       # Documentation search tools
-│   └── ...
-└── config.py
-
-vibeteam/
-├── gateway/
-│   ├── __init__.py         # NEW
-│   ├── server.py           # Refactored from webhook (NEW)
-│   └── routes/
-│       ├── __init__.py
-│       ├── github.py       # GitHub webhook handlers
-│       ├── slack.py        # Slack event handlers
-│       └── api.py          # REST API
-├── webhook/                # DEPRECATED -> gateway
-└── ...
-
-k8s/
-├── base/
-│   ├── kustomization.yaml  # Updated
-│   ├── postgres.yaml       # NEW
-│   ├── autogen-svc.yaml    # NEW
-│   ├── crewai-svc.yaml     # NEW
-│   ├── scheduler-svc.yaml  # NEW
-│   ├── vibeteam-gateway.yaml # Renamed from webhook
-│   └── ...
-└── overlays/
-    └── prod/
-        └── kustomization.yaml
-```
-
----
-
-## Implementation Phases
-
-### Phase 1: Infrastructure (PostgreSQL) ✅
-- [x] Create `k8s/base/postgres.yaml` with StatefulSet
-- [x] Create `k8s/base/postgres-secret.yaml` template
-- [x] Apply to cluster and verify
-
-### Phase 2: Agent Microservices ✅
-- [x] Create `agents/autogen/server.py` with FastAPI
-- [x] Create `agents/crewai/server.py` with FastAPI
-- [x] Create `agents/openhands/server.py` with FastAPI
-- [x] Create `agents/shared/db.py` for PostgreSQL sessions
-- [x] Update Dockerfiles to run server
-- [x] Build and push Docker images
-- [x] Create k8s deployments
-- [x] Test agent services independently
-
-### Phase 3: Scheduler Service ✅
-- [x] Create `agents/scheduler/` module
-- [x] Create `agents/scheduler/server.py` with APScheduler
-- [x] Create `agents/scheduler/Dockerfile`
-- [x] Create `agents/shared/scheduler_tools.py`
-- [x] Add `schedule_task` tool to agent toolsets
-- [x] Build and push scheduler image
-- [x] Create k8s deployment
-- [x] Test scheduling workflow
-
-### Phase 4: Gateway Refactor ✅
-- [x] Create `vibeteam/gateway/` module
-- [x] Move webhook logic to `vibeteam/gateway/server.py`
-- [x] Update routing to call agent services via HTTP
-- [x] Update main Dockerfile
-- [x] Build and push gateway image
-- [x] Create k8s deployment (rename webhook)
-- [x] Test end-to-end webhooks
-
-### Phase 5: Migration ✅
-- [x] Deploy new architecture alongside old
-- [x] Create scheduled tasks for periodic jobs:
-  - Support emails: every 15 minutes
-  - PM analysis: every 2 hours
-  - Release check: daily at 9am UTC
-  - SRE health: every 5 minutes
-  - SWE issues: every 4 hours
-- [x] Verify scheduled tasks execute correctly
-- [x] Remove old CronJobs
-- [x] Update documentation
-
-### Phase 6: CI/CD ✅
-- [x] Update `.github/workflows/deploy.yml` for new images
-- [x] Add build steps for autogen-svc, crewai-svc, openhands-svc, scheduler-svc
-- [x] Test CI pipeline
-
----
-
-## Dependencies
-
-```toml
-# pyproject.toml additions
-dependencies = [
-    # API server
-    "fastapi>=0.109.0",
-    "uvicorn[standard]>=0.27.0",
-    # HTTP client
-    "httpx>=0.26.0",
-    # Database
-    "sqlalchemy>=2.0.0",
-    "asyncpg>=0.29.0",
-    # Scheduler
-    "apscheduler>=4.0.0a4",
-]
+│   ├── connectors/
+│   │   ├── sentry.py           # SentryConnector
+│   │   ├── langfuse.py         # LangfuseConnector
+│   │   ├── github.py           # GitHubConnector
+│   │   ├── gmail.py            # GmailConnector
+│   │   └── health.py           # HealthConnector
+│   └── gateway/
+│       ├── server.py           # Gateway FastAPI app
+│       └── routes/
+│           ├── github.py       # /webhook
+│           ├── slack.py        # /slack/events
+│           ├── sentry.py       # /sentry/webhook
+│           └── api.py          # /api/*
+├── k8s/
+│   ├── base/
+│   │   ├── kustomization.yaml
+│   │   ├── postgres.yaml
+│   │   ├── vibeteam-gateway.yaml
+│   │   ├── autogen-svc.yaml
+│   │   ├── crewai-svc.yaml
+│   │   ├── openhands-svc.yaml
+│   │   └── scheduler-svc.yaml
+│   └── overlays/prod/
+├── tests/
+│   └── e2e/
+│       ├── test_support_agent_sentry.py  # Framework comparison test
+│       └── test_benchmark.py             # Benchmark test suite
+├── docs/
+│   ├── design.md               # This document
+│   ├── research.md             # Framework research
+│   └── FRAMEWORK_COMPARISON.md # E2E test results
+├── .github/workflows/
+│   ├── deploy.yml              # Build and deploy
+│   └── ci.yml                  # Tests and linting
+└── readiness/
+    ├── check.py                # Automated readiness checks
+    └── playbook.md             # Manual evaluation playbook
 ```
 
 ---
 
 ## Environment Variables
 
-### All Services
+### All Agent Services
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `AZURE_API_KEY` | Azure OpenAI API key |
-| `AZURE_API_BASE` | Azure OpenAI endpoint |
-| `AZURE_API_VERSION` | Azure API version |
-| `GITHUB_TOKEN` | GitHub access token |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABASE_URL` | PostgreSQL connection string | Yes |
+| `AZURE_API_KEY` | Azure OpenAI API key | Yes |
+| `AZURE_API_BASE` | Azure OpenAI endpoint | Yes |
+| `AZURE_API_VERSION` | API version (2024-08-01-preview) | No |
+| `GITHUB_TOKEN` | GitHub personal access token | Yes |
+| `SENTRY_AUTH_TOKEN` | Sentry API token | No |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse observability | No |
+| `LANGFUSE_SECRET_KEY` | Langfuse observability | No |
 
 ### Gateway Only
 
 | Variable | Description |
 |----------|-------------|
-| `AUTOGEN_SERVICE_URL` | URL to autogen-svc |
-| `CREWAI_SERVICE_URL` | URL to crewai-svc |
-| `OPENHANDS_SERVICE_URL` | URL to openhands-svc |
-| `SCHEDULER_SERVICE_URL` | URL to scheduler-svc |
+| `AUTOGEN_SERVICE_URL` | http://autogen-svc:8080 |
+| `CREWAI_SERVICE_URL` | http://crewai-svc:8080 |
+| `OPENHANDS_SERVICE_URL` | http://openhands-svc:8080 |
+| `SCHEDULER_SERVICE_URL` | http://scheduler-svc:8080 |
 | `DEFAULT_FRAMEWORK` | Default agent framework |
-| `GITHUB_WEBHOOK_SECRET` | GitHub webhook signature secret |
-| `SLACK_SIGNING_SECRET` | Slack request signature secret |
+| `GITHUB_WEBHOOK_SECRET` | Webhook signature verification |
+| `SLACK_SIGNING_SECRET` | Slack request signing |
 | `SLACK_BOT_TOKEN` | Slack bot OAuth token |
 
 ---
 
-## Migration from CronJobs
+## Dependencies
 
-Current CronJobs to migrate:
+```toml
+# Agent services (requirements.txt)
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+httpx>=0.26.0
+sqlalchemy>=2.0.0
+asyncpg>=0.29.0
+pydantic>=2.0.0
 
-| CronJob | Schedule | New Scheduled Task |
-|---------|----------|-------------------|
-| `support-engineer` | `*/15 * * * *` | Every 15 minutes |
-| `product-manager` | `0 */2 * * *` | Every 2 hours |
-| `release-engineer` | `0 9 * * *` | Daily at 9am UTC |
-| `reliability-engineer` | `*/5 * * * *` | Every 5 minutes |
-| `software-engineer` | `0 */4 * * *` | Every 4 hours |
+# AutoGen specific
+autogen-agentchat>=0.4.0
 
-These will be registered in the scheduler database on first deployment.
+# CrewAI specific  
+crewai>=0.30.0
+
+# OpenHands specific
+openhands>=0.5.0
+
+# Scheduler specific
+apscheduler>=4.0.0a4
+```
+
+---
+
+## Agent Benchmarking
+
+VibeTeam includes a comprehensive benchmarking system to evaluate agent performance across frameworks.
+
+### Metrics Collected
+
+| Category | Metrics |
+|----------|---------|
+| **Speed** | Latency (ms), Time-to-first-token |
+| **Quality** | Accuracy, Completeness, Actionability, Clarity, Relevance, Efficiency |
+| **Tool Usage** | Tools called, Tool call count, Tool accuracy |
+| **Cost** | Input tokens, Output tokens, Total tokens |
+
+### Composite Score
+
+Each benchmark result generates a composite score (0-1) combining:
+- **Quality (60%)**: LLM-as-judge evaluation across 6 dimensions
+- **Speed (25%)**: Normalized latency (faster = higher score)
+- **Efficiency (15%)**: Token usage (fewer = higher score)
+
+### Running Benchmarks
+
+```bash
+# Run benchmark via pytest
+pytest tests/e2e/test_benchmark.py -v -s
+
+# Run specific task
+pytest tests/e2e/test_benchmark.py -v -s -k "sentry"
+
+# Run from CLI
+python -m agents.benchmark \
+    --frameworks autogen crewai openhands \
+    --tasks sentry-weekly-summary \
+    --output results/benchmark.json
+```
+
+### Predefined Benchmark Tasks
+
+| Task ID | Description | Role |
+|---------|-------------|------|
+| `sentry-weekly-summary` | Summarize Sentry issues | support_engineer |
+| `github-issue-triage` | Triage open GitHub issues | software_engineer |
+| `release-notes` | Generate release notes | release_engineer |
+
+### Quality Evaluation (LLM-as-Judge)
+
+The `QualityEvaluator` uses a separate LLM call to score responses:
+
+```python
+from agents.benchmark import Benchmark, SENTRY_SUMMARY_TASK
+
+benchmark = Benchmark(
+    frameworks=["autogen", "crewai", "openhands"],
+    evaluate_quality=True,  # Enable LLM-as-judge
+)
+
+results = await benchmark.run([SENTRY_SUMMARY_TASK])
+report = benchmark.generate_report(results)
+```
+
+### Example Benchmark Report
+
+```
+======================================================================
+AGENT BENCHMARK REPORT
+Generated: 2026-01-28T06:45:00+00:00
+======================================================================
+
+TASK: sentry-weekly-summary
+--------------------------------------------------
+  OPENHANDS:
+    Status:     [PASS]
+    Latency:    5858ms
+    Tokens:     1500
+    Quality:    0.85
+    Composite:  0.72
+  
+  CREWAI:
+    Status:     [PASS]
+    Latency:    5196ms
+    Tokens:     1200
+    Quality:    0.80
+    Composite:  0.68
+
+======================================================================
+SUMMARY BY FRAMEWORK
+======================================================================
+OPENHANDS:
+  Success Rate:    1/1 (100%)
+  Avg Latency:     5858ms
+  Avg Quality:     0.85
+  Avg Composite:   0.72
+
+--------------------------------------------------
+WINNER: OPENHANDS (composite score: 0.72)
+--------------------------------------------------
+```
+
+### Integration with CI
+
+Benchmarks can run in CI to detect performance regressions:
+
+```yaml
+# In .github/workflows/ci.yml
+- name: Run Benchmarks
+  run: |
+    pytest tests/e2e/test_benchmark.py \
+      -v --export-benchmark=results/benchmark.json
+    
+- name: Upload Benchmark Results
+  uses: actions/upload-artifact@v4
+  with:
+    name: benchmark-results
+    path: results/benchmark.json
+```
 
 ---
 
@@ -415,3 +604,4 @@ These will be registered in the scheduler database on first deployment.
 - [Research Design](research.md)
 - [Progress Tracking](progress.md)
 - [Requirements](requirements.md)
+- [Readiness Playbook](../readiness/playbook.md)
