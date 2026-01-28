@@ -35,6 +35,8 @@ spec:
               value: "http://autogen-svc:8080"
             - name: CREWAI_SERVICE_URL
               value: "http://crewai-svc:8080"
+            - name: OPENHANDS_SERVICE_URL
+              value: "http://openhands-svc:8080"
             - name: SCHEDULER_SERVICE_URL
               value: "http://scheduler-svc:8080"
             - name: DEFAULT_FRAMEWORK
