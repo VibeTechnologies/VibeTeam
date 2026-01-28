@@ -1,5 +1,5 @@
 # CrewAI Agent Service Dockerfile
-# Python 3.12 with CrewAI framework
+# Python 3.12 with CrewAI framework - FastAPI Server Mode
 
 FROM python:3.12-slim AS builder
 
@@ -29,6 +29,7 @@ COPY agents/__init__.py ./agents/
 COPY agents/config.py ./agents/
 COPY agents/sessions.py ./agents/
 COPY agents/metrics.py ./agents/
+COPY agents/shared/ ./agents/shared/
 COPY agents/crewai/ ./agents/crewai/
 
 # Production stage
@@ -47,6 +48,7 @@ COPY --from=builder /usr/bin/gh /usr/bin/gh
 
 # Copy installed packages
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
 # Copy application code
 COPY --from=builder /app/agents /app/agents
@@ -59,11 +61,17 @@ USER vibeteam
 ENV AZURE_API_KEY=""
 ENV AZURE_API_BASE=""
 ENV AZURE_API_VERSION="2024-08-01-preview"
+ENV DATABASE_URL=""
 ENV PYTHONPATH="/app"
+ENV PORT="8080"
+ENV HOST="0.0.0.0"
+
+# Expose port
+EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "from agents.crewai import CrewAIReleaseEngineer; print('OK')"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 
-# Default command - can be overridden
-CMD ["python", "-c", "print('CrewAI agent service ready')"]
+# Run the FastAPI server
+CMD ["python", "-m", "uvicorn", "agents.crewai.server:app", "--host", "0.0.0.0", "--port", "8080"]
