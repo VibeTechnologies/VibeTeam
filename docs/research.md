@@ -449,3 +449,225 @@ CREATE INDEX idx_metrics_framework ON task_metrics(framework);
 CREATE INDEX idx_metrics_agent ON task_metrics(agent);
 CREATE INDEX idx_metrics_success ON task_metrics(success);
 ```
+
+---
+
+## 11. Product Documentation Search: Research & Implementation
+
+### 11.1 Problem Statement
+
+Agents need access to product documentation (markdown files) to answer questions about:
+- Product features and configuration
+- API documentation
+- Setup guides and playbooks
+- Release notes and changelogs
+
+The challenge is to provide fast, relevant search over local markdown files without requiring external services or API keys.
+
+### 11.2 Solutions Evaluated
+
+#### Option 1: Context7 MCP Server
+
+**Description**: Context7 is an MCP server that provides up-to-date documentation for public libraries/frameworks.
+
+| Pros | Cons |
+|------|------|
+| High-quality indexed docs | Designed for **public** libraries only |
+| Semantic search | Cannot index private/local docs |
+| Version-specific results | Requires API key for higher rate limits |
+| Well-maintained (43k+ stars) | Not suitable for our use case |
+
+**Verdict**: Not applicable - Context7 is for external library documentation (React, Next.js, etc.), not for indexing private repository markdown files.
+
+#### Option 2: LanceDB + Sentence-Transformers (Semantic Search)
+
+**Description**: Embedded vector database with local embedding generation for true semantic understanding.
+
+| Pros | Cons |
+|------|------|
+| True semantic understanding | First-run downloads ~90MB model |
+| Zero external API dependencies | ~200MB disk for index |
+| Fast search (<50ms) | More complex setup |
+| Hybrid search support | Overkill for small doc sets |
+
+**Verdict**: Good for larger documentation sets (100+ files) or when semantic matching is critical.
+
+#### Option 3: BM25 with rank-bm25 (Keyword Search) ✅ SELECTED
+
+**Description**: Proven information retrieval algorithm (TF-IDF variant) that doesn't require embeddings or ML models.
+
+| Pros | Cons |
+|------|------|
+| Zero dependencies (pure Python) | No semantic understanding |
+| Instant indexing | Exact/keyword matching only |
+| Tiny memory footprint | Misses synonyms |
+| Battle-tested algorithm | |
+| Perfect for small doc sets | |
+
+**Verdict**: Selected as primary solution - ideal for 10-100 markdown files with fast, reliable keyword matching.
+
+#### Option 4: Glob + Grep (Simple Fallback)
+
+**Description**: Basic file-based search with no indexing using glob patterns and string matching.
+
+| Pros | Cons |
+|------|------|
+| Zero setup | No ranking/scoring |
+| Works immediately | Slow on large doc sets |
+| Easy to debug | Exact matching only |
+
+**Verdict**: Implemented as fallback when rank-bm25 is not available.
+
+### 11.3 Implementation Decision
+
+**Chosen Approach**: Hybrid BM25 + Grep Fallback
+
+```python
+# Primary: BM25 keyword search (if rank-bm25 installed)
+from rank_bm25 import BM25Okapi
+
+# Fallback: Simple keyword matching (always available)
+def _simple_search(query, content):
+    # Token overlap scoring
+    ...
+```
+
+**Rationale**:
+1. Project has ~12 markdown files - BM25 is perfectly sized
+2. No external API dependencies required
+3. Fast indexing and search (<10ms for our doc set)
+4. Easy to upgrade to semantic search later if needed
+5. Fallback ensures it works even without optional dependencies
+
+### 11.4 API Design
+
+```python
+# agents/shared/docs_tools.py
+
+def search_docs(query: str, max_results: int = 5) -> str:
+    """Search product documentation for relevant information."""
+
+def list_docs() -> str:
+    """List all available documentation files."""
+
+def get_doc_content(filepath: str) -> str:
+    """Get the full content of a documentation file."""
+
+def get_docs_context(query: str, max_results: int = 3) -> str:
+    """Get documentation context for agent prompt injection."""
+
+def rebuild_index() -> str:
+    """Rebuild the documentation index after file changes."""
+```
+
+### 11.5 Integration Patterns
+
+| Framework | Integration Method |
+|-----------|-------------------|
+| **AutoGen** | Direct import as FunctionTool |
+| **CrewAI** | Wrap in BaseTool class |
+| **OpenHands** | Context injection via `get_docs_context()` |
+
+Example usage:
+
+```python
+# AutoGen
+from agents.shared.docs_tools import search_docs, list_docs
+agent = AssistantAgent(tools=[search_docs, list_docs, ...])
+
+# CrewAI
+from agents.shared.docs_tools import search_docs_sync
+class DocsSearchTool(BaseTool):
+    def _run(self, query): return search_docs_sync(query)
+
+# OpenHands (context injection)
+from agents.shared.docs_tools import get_docs_context
+context = get_docs_context("authentication setup")
+# Inject into agent prompt
+```
+
+### 11.6 Future Upgrade Path
+
+If semantic search becomes necessary:
+
+1. **Add sentence-transformers**: `pip install sentence-transformers`
+2. **Add FAISS or LanceDB**: `pip install faiss-cpu` or `pip install lancedb`
+3. **Modify DocsIndex class** to support embedding-based search
+4. **Keep BM25 for hybrid search** (keyword + semantic)
+
+The current architecture supports this upgrade without API changes.
+
+### 11.7 Files Indexed
+
+Current documentation coverage:
+
+```
+docs/
+├── design-openhands-migration.md
+├── multi-framework-agent-comparison.md
+├── productEngineerTest.md
+├── progress.md
+├── requirements.md
+├── research.md (this file)
+└── support-engineer.md
+
+readiness/
+├── README.md
+└── playbook.md
+
+Root:
+├── README.md
+└── AGENTS.md
+```
+
+Total: ~12 markdown files, indexed in <100ms, search in <10ms.
+
+### 11.8 Implementation Results
+
+**Status**: ✅ Complete (Commit fc49544)
+
+**Files Created/Modified**:
+- `agents/shared/docs_tools.py` - Core implementation (495 lines)
+- `agents/shared/__init__.py` - Added docs_tools exports
+- `agents/autogen/support_engineer.py` - Added search_docs, list_docs, get_doc_content tools
+- `agents/crewai/support_engineer.py` - Added DocsSearchTool, DocsListTool, DocsContentTool
+- `agents/openhands/support_engineer.py` - Added docs context injection
+- `tests/test_docs_integration.py` - 7 integration tests
+- `pyproject.toml` - Added rank-bm25 dependency
+
+**Test Results**:
+```
+pytest tests/test_docs_integration.py -v --run-integration -k "TestSharedDocsTools"
+======================= 7 passed in 0.30s =======================
+```
+
+**Performance Metrics**:
+- Index build time: ~47ms for 11 files
+- Search latency: <50ms per query
+- BM25 scoring provides relevance ranking
+
+**Key Implementation Details**:
+
+1. **Path Normalization Fix**: Fixed duplicate file detection by normalizing paths with `os.path.normpath()` before deduplication
+
+2. **BM25 Scoring**: Uses `rank_bm25.BM25Okapi` for keyword-based relevance scoring with stopword removal and tokenization
+
+3. **Context Injection Keywords**: OpenHands triggers docs search on: "doc", "documentation", "how to", "setup", "configure", "install", "api", "feature"
+
+4. **Snippet Extraction**: Extracts relevant snippets with 3 lines of context around best matching line
+
+**Example Output**:
+```
+=== Documentation Search: authentication ===
+
+Found 3 relevant documents:
+
+**1. VibeTeam Multi-Agent System - Product Requirements**
+   File: docs/requirements.md (line 407)
+   Score: 0.98
+   ---
+   ### 7.2 Authentication Methods
+   | Service | Method | Storage |
+   |---------|--------|---------|
+```
+
