@@ -289,5 +289,5 @@ pytest tests/test_sentry_integration.py -v --run-integration -k "CrossFramework"
 |-----|-------------|---------------|----------|
 | Gmail/Calendar | Real Gmail MCP integration | Simulated | High |
 | Browser Automation | Chrome DevTools MCP for posting | Draft only | High |
-| Product Docs Search | RAG-based documentation search | Not implemented | Medium |
+| ~~Product Docs Search~~ | ~~Keyword search tool~~ | ✅ Implemented (BM25) | ~~Done~~ |
 | Langfuse | Real trace analysis API | Simulated | Medium |
