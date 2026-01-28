@@ -10,6 +10,7 @@ from vibeteam.tools.gmail import GmailTool
 from vibeteam.tools.health import HealthCheckTool
 from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.sentry import SentryTool
+from vibeteam.tools.slack import SlackTool
 from vibeteam.tools.transfer import (
     TRANSFER_TOOLS,
     HandoffResult,
@@ -32,6 +33,7 @@ __all__ = [
     "HealthCheckTool",
     "LangfuseTool",
     "SentryTool",
+    "SlackTool",
     # Transfer tools for Swarm pattern
     "TRANSFER_TOOLS",
     "HandoffResult",

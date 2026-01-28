@@ -39,6 +39,8 @@ dependencies = [
     # GitHub App authentication
     "PyJWT>=2.8.0",
     "cryptography>=41.0.0",
+    # Slack integration
+    "slack-sdk>=3.27.0",
     # Observability
     "sentry-sdk>=1.0.0",
     # Core agent framework (AutoGen - Python 3.10+ compatible)
