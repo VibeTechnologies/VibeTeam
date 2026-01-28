@@ -118,7 +118,7 @@ VibeTeam is a multi-agent system where autonomous AI agents collaborate to manag
 | Langfuse API | Trace analysis, latency stats, error rates, token usage |
 | Gmail API | Read support emails, send replies, manage labels |
 | GitHub API (read-only) | Search code, read issues, reference documentation |
-| Product Docs Search | RAG-based search over VibeBrowser documentation |
+| Product Docs Search | Keyword search tool - agent calls when it needs documentation |
 
 **Escalation Paths:**
 - Complex bugs → @SoftwareEngineer (creates GitHub issue)
