@@ -1,8 +1,8 @@
 # VibeTeam Agent Microservices Architecture
 
-**Version**: 2.0  
+**Version**: 2.1  
 **Date**: January 2026  
-**Status**: Implementation In Progress
+**Status**: Complete
 
 ---
 
@@ -10,7 +10,7 @@
 
 This document describes the architecture for VibeTeam's multi-framework agent microservices, replacing the previous CronJob-based approach with long-running services that support:
 
-1. **Separate agent microservices** - Each framework (AutoGen, CrewAI) runs in its own container
+1. **Separate agent microservices** - Each framework (AutoGen, CrewAI, OpenHands) runs in its own container
 2. **Dynamic task scheduling** - Agents can schedule future tasks (e.g., "message customer in 1 hour")
 3. **Human-in-the-loop** - Agents can wait for human input without consuming idle resources
 
@@ -19,30 +19,30 @@ This document describes the architecture for VibeTeam's multi-framework agent mi
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     External Events                              │
-│  GitHub Webhooks │ Slack Events │ API Requests │ Scheduled      │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  vibeteam-gateway (FastAPI)                      │
-│  - Routes to agent services   - WebSocket streaming              │
-│  - GitHub/Slack webhooks      - REST API                         │
-└──────────┬───────────────────────────────┬──────────────────────┘
-           │                               │
-     ┌─────┴─────┐                   ┌─────┴─────┐
-     ▼           ▼                   ▼           ▼
-┌─────────┐ ┌─────────┐       ┌───────────┐ ┌──────────┐
-│ autogen │ │ crewai  │       │ scheduler │ │ postgres │
-│  -svc   │ │  -svc   │       │   -svc    │ │          │
-│ :8080   │ │ :8080   │       │  :8080    │ │  :5432   │
-└─────────┘ └─────────┘       └───────────┘ └──────────┘
-     │           │                   │           ▲
-     └───────────┴───────────────────┴───────────┘
-                         │
-                    PostgreSQL
-                 (sessions + tasks)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     External Events                                          │
+│  GitHub Webhooks │ Slack Events │ API Requests │ Scheduled                   │
+└──────────────────────────────────┬──────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  vibeteam-gateway (FastAPI)                                  │
+│  - Routes to agent services   - WebSocket streaming                          │
+│  - GitHub/Slack webhooks      - REST API                                     │
+└──────────┬───────────────────────┬───────────────────────┬──────────────────┘
+           │                       │                       │
+     ┌─────┴─────┐           ┌─────┴─────┐           ┌─────┴─────┐
+     ▼           ▼           ▼           ▼           ▼           ▼
+┌─────────┐ ┌─────────┐ ┌───────────┐ ┌───────────┐ ┌──────────┐
+│ autogen │ │ crewai  │ │ openhands │ │ scheduler │ │ postgres │
+│  -svc   │ │  -svc   │ │   -svc    │ │   -svc    │ │          │
+│ :8080   │ │ :8080   │ │  :8080    │ │  :8080    │ │  :5432   │
+└─────────┘ └─────────┘ └───────────┘ └───────────┘ └──────────┘
+     │           │            │              │            ▲
+     └───────────┴────────────┴──────────────┴────────────┘
+                              │
+                         PostgreSQL
+                      (sessions + tasks)
 ```
 
 ---
@@ -51,7 +51,7 @@ This document describes the architecture for VibeTeam's multi-framework agent mi
 
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
-| Agent Framework | AutoGen (primary), CrewAI (secondary) | Best Azure OpenAI compatibility |
+| Agent Framework | AutoGen, CrewAI, OpenHands | Multi-framework for different use cases |
 | Scheduler | APScheduler v4 | Simple, async, PostgreSQL backend |
 | Sessions | PostgreSQL | Single database for all state |
 | Database | In-cluster PostgreSQL | Simple, cost-effective for k3s |
@@ -62,7 +62,7 @@ This document describes the architecture for VibeTeam's multi-framework agent mi
 
 ## Components
 
-### 1. Agent Microservices (autogen-svc, crewai-svc)
+### 1. Agent Microservices (autogen-svc, crewai-svc, openhands-svc)
 
 Each agent service is a FastAPI application exposing:
 
@@ -150,6 +150,7 @@ Routes external events to appropriate agent services.
 ```bash
 AUTOGEN_SERVICE_URL=http://autogen-svc:8080
 CREWAI_SERVICE_URL=http://crewai-svc:8080
+OPENHANDS_SERVICE_URL=http://openhands-svc:8080
 SCHEDULER_SERVICE_URL=http://scheduler-svc:8080
 DEFAULT_FRAMEWORK=autogen
 ```
@@ -189,6 +190,7 @@ CREATE TABLE sessions (
 |------|-------|----------|-----------|
 | `autogen-svc` | `vibeteam-autogen:latest` | 1 | 512Mi/1Gi, 250m/500m |
 | `crewai-svc` | `vibeteam-crewai:latest` | 1 | 512Mi/1Gi, 250m/500m |
+| `openhands-svc` | `vibeteam-openhands:latest` | 1 | 512Mi/1Gi, 250m/500m |
 | `scheduler-svc` | `vibeteam-scheduler:latest` | 1 | 256Mi/512Mi, 100m/200m |
 | `vibeteam-gateway` | `vibeteam:latest` | 1 | 256Mi/512Mi, 100m/200m |
 
@@ -204,6 +206,7 @@ CREATE TABLE sessions (
 |------|------|------|--------|
 | `autogen-svc` | ClusterIP | 8080 | autogen-svc:8080 |
 | `crewai-svc` | ClusterIP | 8080 | crewai-svc:8080 |
+| `openhands-svc` | ClusterIP | 8080 | openhands-svc:8080 |
 | `scheduler-svc` | ClusterIP | 8080 | scheduler-svc:8080 |
 | `postgres` | ClusterIP | 5432 | postgres:5432 |
 | `vibeteam-gateway` | ClusterIP | 8080 | vibeteam-gateway:8080 |
@@ -223,7 +226,7 @@ CREATE TABLE sessions (
 agents/
 ├── autogen/
 │   ├── __init__.py
-│   ├── server.py           # FastAPI server (NEW)
+│   ├── server.py           # FastAPI server
 │   ├── team.py             # AutoGenTeam class
 │   ├── release_engineer.py
 │   ├── marketing_manager.py
@@ -232,24 +235,30 @@ agents/
 │   └── requirements.txt    # Updated with fastapi, etc.
 ├── crewai/
 │   ├── __init__.py
-│   ├── server.py           # FastAPI server (NEW)
+│   ├── server.py           # FastAPI server
 │   ├── crew.py
 │   ├── release_engineer.py
 │   ├── marketing_manager.py
 │   ├── support_engineer.py
 │   ├── Dockerfile
 │   └── requirements.txt
+├── openhands/
+│   ├── __init__.py
+│   ├── server.py           # FastAPI server
+│   ├── support_engineer.py
+│   ├── Dockerfile
+│   └── requirements.txt
 ├── scheduler/
-│   ├── __init__.py         # NEW
-│   ├── server.py           # APScheduler + FastAPI (NEW)
-│   ├── models.py           # SQLAlchemy models (NEW)
-│   ├── Dockerfile          # NEW
-│   └── requirements.txt    # NEW
+│   ├── __init__.py
+│   ├── server.py           # APScheduler + FastAPI
+│   ├── models.py           # SQLAlchemy models
+│   ├── Dockerfile
+│   └── requirements.txt
 ├── shared/
 │   ├── __init__.py
-│   ├── db.py               # Database connection (NEW)
-│   ├── scheduler_tools.py  # schedule_task tool (NEW)
-│   ├── docs_tools.py       # Existing
+│   ├── db.py               # Database connection
+│   ├── scheduler_tools.py  # schedule_task tool
+│   ├── docs_tools.py       # Documentation search tools
 │   └── ...
 └── config.py
 
@@ -283,56 +292,56 @@ k8s/
 
 ## Implementation Phases
 
-### Phase 1: Infrastructure (PostgreSQL)
-- [ ] Create `k8s/base/postgres.yaml` with StatefulSet
-- [ ] Create `k8s/base/postgres-secret.yaml` template
-- [ ] Apply to cluster and verify
+### Phase 1: Infrastructure (PostgreSQL) ✅
+- [x] Create `k8s/base/postgres.yaml` with StatefulSet
+- [x] Create `k8s/base/postgres-secret.yaml` template
+- [x] Apply to cluster and verify
 
-### Phase 2: Agent Microservices
-- [ ] Create `agents/autogen/server.py` with FastAPI
-- [ ] Create `agents/crewai/server.py` with FastAPI
-- [ ] Create `agents/shared/db.py` for PostgreSQL sessions
-- [ ] Update `agents/autogen/Dockerfile` to run server
-- [ ] Update `agents/crewai/Dockerfile` to run server
-- [ ] Build and push Docker images
-- [ ] Create k8s deployments
-- [ ] Test agent services independently
+### Phase 2: Agent Microservices ✅
+- [x] Create `agents/autogen/server.py` with FastAPI
+- [x] Create `agents/crewai/server.py` with FastAPI
+- [x] Create `agents/openhands/server.py` with FastAPI
+- [x] Create `agents/shared/db.py` for PostgreSQL sessions
+- [x] Update Dockerfiles to run server
+- [x] Build and push Docker images
+- [x] Create k8s deployments
+- [x] Test agent services independently
 
-### Phase 3: Scheduler Service
-- [ ] Create `agents/scheduler/` module
-- [ ] Create `agents/scheduler/server.py` with APScheduler
-- [ ] Create `agents/scheduler/Dockerfile`
-- [ ] Create `agents/shared/scheduler_tools.py`
-- [ ] Add `schedule_task` tool to agent toolsets
-- [ ] Build and push scheduler image
-- [ ] Create k8s deployment
-- [ ] Test scheduling workflow
+### Phase 3: Scheduler Service ✅
+- [x] Create `agents/scheduler/` module
+- [x] Create `agents/scheduler/server.py` with APScheduler
+- [x] Create `agents/scheduler/Dockerfile`
+- [x] Create `agents/shared/scheduler_tools.py`
+- [x] Add `schedule_task` tool to agent toolsets
+- [x] Build and push scheduler image
+- [x] Create k8s deployment
+- [x] Test scheduling workflow
 
-### Phase 4: Gateway Refactor
-- [ ] Create `vibeteam/gateway/` module
-- [ ] Move webhook logic to `vibeteam/gateway/server.py`
-- [ ] Update routing to call agent services via HTTP
-- [ ] Update main Dockerfile
-- [ ] Build and push gateway image
-- [ ] Create k8s deployment (rename webhook)
-- [ ] Test end-to-end webhooks
+### Phase 4: Gateway Refactor ✅
+- [x] Create `vibeteam/gateway/` module
+- [x] Move webhook logic to `vibeteam/gateway/server.py`
+- [x] Update routing to call agent services via HTTP
+- [x] Update main Dockerfile
+- [x] Build and push gateway image
+- [x] Create k8s deployment (rename webhook)
+- [x] Test end-to-end webhooks
 
-### Phase 5: Migration
-- [ ] Deploy new architecture alongside old
-- [ ] Create scheduled tasks for periodic jobs:
+### Phase 5: Migration ✅
+- [x] Deploy new architecture alongside old
+- [x] Create scheduled tasks for periodic jobs:
   - Support emails: every 15 minutes
   - PM analysis: every 2 hours
   - Release check: daily at 9am UTC
   - SRE health: every 5 minutes
   - SWE issues: every 4 hours
-- [ ] Verify scheduled tasks execute correctly
-- [ ] Remove old CronJobs
-- [ ] Update documentation
+- [x] Verify scheduled tasks execute correctly
+- [x] Remove old CronJobs
+- [x] Update documentation
 
-### Phase 6: CI/CD
-- [ ] Update `.github/workflows/ci.yml` for new images
-- [ ] Add build steps for autogen-svc, crewai-svc, scheduler-svc
-- [ ] Test CI pipeline
+### Phase 6: CI/CD ✅
+- [x] Update `.github/workflows/deploy.yml` for new images
+- [x] Add build steps for autogen-svc, crewai-svc, openhands-svc, scheduler-svc
+- [x] Test CI pipeline
 
 ---
 
@@ -374,6 +383,7 @@ dependencies = [
 |----------|-------------|
 | `AUTOGEN_SERVICE_URL` | URL to autogen-svc |
 | `CREWAI_SERVICE_URL` | URL to crewai-svc |
+| `OPENHANDS_SERVICE_URL` | URL to openhands-svc |
 | `SCHEDULER_SERVICE_URL` | URL to scheduler-svc |
 | `DEFAULT_FRAMEWORK` | Default agent framework |
 | `GITHUB_WEBHOOK_SECRET` | GitHub webhook signature secret |
@@ -400,6 +410,7 @@ These will be registered in the scheduler database on first deployment.
 
 ## Related Documents
 
+- [Framework Comparison (E2E Test Results)](FRAMEWORK_COMPARISON.md)
 - [Multi-Framework Agent Comparison](multi-framework-agent-comparison.md)
 - [Research Design](research.md)
 - [Progress Tracking](progress.md)
