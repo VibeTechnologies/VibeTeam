@@ -49,10 +49,12 @@ class BenchmarkConfig:
     """Benchmark configuration from environment."""
 
     GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
-    AZURE_API_KEY = os.getenv("AZURE_API_KEY", "")
-    AZURE_API_BASE = os.getenv("AZURE_API_BASE", "")
+    AZURE_API_KEY = os.getenv("AZURE_API_KEY", os.getenv("AZURE_OPENAI_API_KEY", ""))
+    AZURE_API_BASE = os.getenv("AZURE_API_BASE", os.getenv("AZURE_OPENAI_ENDPOINT", ""))
     AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2024-08-01-preview")
-    JUDGE_MODEL = os.getenv("BENCHMARK_JUDGE_MODEL", "gpt-5-2")
+    JUDGE_MODEL = os.getenv(
+        "BENCHMARK_JUDGE_MODEL", os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+    )
     REQUEST_TIMEOUT = float(os.getenv("BENCHMARK_TIMEOUT", "180"))
     OUTPUT_DIR = Path(os.getenv("BENCHMARK_OUTPUT_DIR", ".benchmarks"))
 
@@ -366,6 +368,232 @@ Only return the JSON, no other text."""
             efficiency=float(data.get("efficiency", 0)),
             overall=float(data.get("overall", 0)),
             judge_reasoning=data.get("reasoning", ""),
+        )
+
+
+# ==============================================================================
+# Comparative Evaluator (LLM-as-Judge for Multi-Agent Comparison)
+# ==============================================================================
+
+
+@dataclass
+class ComparativeScore:
+    """Score for a single agent from comparative evaluation."""
+
+    framework: str
+    score: int  # 0-5 scale
+    feedback: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ComparativeResult:
+    """Result from comparative LLM-as-judge evaluation."""
+
+    task: str
+    scores: dict[str, ComparativeScore]  # framework -> score
+    winner: str
+    reasoning: str
+    judge_model: str
+    evaluation_time_ms: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "task": self.task[:200],
+            "scores": {k: v.to_dict() for k, v in self.scores.items()},
+            "winner": self.winner,
+            "reasoning": self.reasoning,
+            "judge_model": self.judge_model,
+            "evaluation_time_ms": self.evaluation_time_ms,
+        }
+
+    def __str__(self) -> str:
+        lines = [
+            "=" * 60,
+            "LLM-AS-JUDGE EVALUATION RESULTS",
+            "=" * 60,
+            "",
+        ]
+        for fw, score in sorted(self.scores.items(), key=lambda x: x[1].score, reverse=True):
+            lines.append(f"{fw.upper()}: {score.score}/5")
+            lines.append(f"  Feedback: {score.feedback}")
+            lines.append("")
+
+        lines.extend(
+            [
+                "-" * 60,
+                f"WINNER: {self.winner.upper()}",
+                f"Reasoning: {self.reasoning}",
+                "-" * 60,
+                f"Judge: {self.judge_model} | Time: {self.evaluation_time_ms}ms",
+            ]
+        )
+        return "\n".join(lines)
+
+
+class ComparativeEvaluator:
+    """
+    Evaluates multiple agent responses side-by-side using LLM-as-judge.
+
+    Uses a simple 0-5 scoring scale:
+    - 0: Failed completely or error
+    - 1: Attempted but mostly wrong
+    - 2: Partially correct, missing key elements
+    - 3: Acceptable, addresses main points
+    - 4: Good, comprehensive and accurate
+    - 5: Excellent, exceeds expectations
+
+    Usage:
+        evaluator = ComparativeEvaluator()
+        result = await evaluator.evaluate(
+            task="Summarize Sentry issues",
+            responses={
+                "autogen": "No issues found...",
+                "crewai": "Here are 5 issues...",
+                "openhands": "# Sentry Report\n...",
+            }
+        )
+        print(result)
+    """
+
+    COMPARATIVE_PROMPT = """You are an expert evaluator comparing AI agent responses to the same task.
+
+TASK:
+{task}
+
+AGENT RESPONSES:
+
+=== AUTOGEN ===
+{autogen_response}
+
+=== CREWAI ===
+{crewai_response}
+
+=== OPENHANDS ===
+{openhands_response}
+
+Score each agent from 0-5 based on how well they completed the task:
+- 0: Failed completely, error, or refused to answer
+- 1: Attempted but mostly wrong or unhelpful
+- 2: Partially correct but missing key elements
+- 3: Acceptable, addresses the main points adequately
+- 4: Good, comprehensive and accurate response
+- 5: Excellent, exceeds expectations with actionable insights
+
+Consider:
+- Accuracy: Is the information correct and not hallucinated?
+- Completeness: Does it address all parts of the task?
+- Usefulness: Is the response actionable and helpful?
+- Clarity: Is it well-organized and easy to understand?
+
+Return ONLY valid JSON in this exact format:
+{{
+  "autogen": {{"score": 0, "feedback": "Brief explanation"}},
+  "crewai": {{"score": 0, "feedback": "Brief explanation"}},
+  "openhands": {{"score": 0, "feedback": "Brief explanation"}},
+  "winner": "framework_name",
+  "reasoning": "One sentence explaining why this framework won"
+}}"""
+
+    def __init__(self, config: BenchmarkConfig | None = None):
+        self.config = config or BenchmarkConfig()
+
+    async def evaluate(
+        self,
+        task: str,
+        responses: dict[str, str],
+    ) -> ComparativeResult:
+        """
+        Evaluate multiple agent responses side-by-side.
+
+        Args:
+            task: The original task/prompt given to agents
+            responses: Dict mapping framework name to response text
+
+        Returns:
+            ComparativeResult with scores for each framework
+        """
+        start_time = time.perf_counter()
+
+        # Ensure we have all three frameworks (use empty string if missing)
+        autogen_resp = responses.get("autogen", "(No response)")[:3000]
+        crewai_resp = responses.get("crewai", "(No response)")[:3000]
+        openhands_resp = responses.get("openhands", "(No response)")[:3000]
+
+        prompt = self.COMPARATIVE_PROMPT.format(
+            task=task[:1000],
+            autogen_response=autogen_resp,
+            crewai_response=crewai_resp,
+            openhands_response=openhands_resp,
+        )
+
+        try:
+            result_json = await self._call_llm(prompt)
+            result = self._parse_result(result_json)
+            result.task = task[:200]
+            result.judge_model = self.config.JUDGE_MODEL
+            result.evaluation_time_ms = int((time.perf_counter() - start_time) * 1000)
+            return result
+        except Exception as e:
+            # Return error result
+            return ComparativeResult(
+                task=task[:200],
+                scores={
+                    fw: ComparativeScore(framework=fw, score=0, feedback=f"Evaluation error: {e}")
+                    for fw in ["autogen", "crewai", "openhands"]
+                },
+                winner="none",
+                reasoning=f"Evaluation failed: {e}",
+                judge_model=self.config.JUDGE_MODEL,
+                evaluation_time_ms=int((time.perf_counter() - start_time) * 1000),
+            )
+
+    async def _call_llm(self, prompt: str) -> str:
+        """Call Azure OpenAI for comparative evaluation."""
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            response = await client.post(
+                f"{self.config.AZURE_API_BASE}/openai/deployments/{self.config.JUDGE_MODEL}/chat/completions",
+                headers={
+                    "api-key": self.config.AZURE_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                params={"api-version": self.config.AZURE_API_VERSION},
+                json={
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                    "max_tokens": 800,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
+
+    def _parse_result(self, json_str: str) -> ComparativeResult:
+        """Parse JSON result from LLM response."""
+        # Extract JSON from potential markdown code blocks
+        json_match = re.search(r"\{[\s\S]*\}", json_str)
+        if not json_match:
+            raise ValueError("No JSON found in LLM response")
+
+        data = json.loads(json_match.group())
+
+        scores = {}
+        for framework in ["autogen", "crewai", "openhands"]:
+            fw_data = data.get(framework, {})
+            scores[framework] = ComparativeScore(
+                framework=framework,
+                score=int(fw_data.get("score", 0)),
+                feedback=str(fw_data.get("feedback", "No feedback")),
+            )
+
+        return ComparativeResult(
+            task="",
+            scores=scores,
+            winner=str(data.get("winner", "unknown")),
+            reasoning=str(data.get("reasoning", "No reasoning provided")),
+            judge_model="",
         )
 
 

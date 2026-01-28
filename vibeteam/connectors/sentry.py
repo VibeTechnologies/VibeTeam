@@ -176,11 +176,15 @@ class SentryConnector:
         projects = [project] if project else PROJECTS
         all_issues = []
 
+        # Convert hours to valid statsPeriod format
+        # Sentry only accepts: 1h, 24h, 48h, 7d, 14d, 30d, 90d
+        stats_period = self._hours_to_stats_period(hours)
+
         for proj in projects:
             endpoint = f"/projects/{self.org}/{proj}/issues/"
             params = {
                 "query": "is:unresolved",
-                "statsPeriod": f"{hours}h",
+                "statsPeriod": stats_period,
                 "limit": limit,
             }
 
@@ -194,6 +198,19 @@ class SentryConnector:
         # Sort by count (most frequent first)
         all_issues.sort(key=lambda x: x.count, reverse=True)
         return all_issues[:limit]
+
+    def _hours_to_stats_period(self, hours: int) -> str:
+        """
+        Convert hours to a valid Sentry statsPeriod value.
+
+        Sentry API for project issues only accepts: '', '24h', '14d'
+        (discovered via API error response)
+        """
+        if hours <= 24:
+            return "24h"
+        else:
+            # Use 14d for anything longer than 24h
+            return "14d"
 
     def _parse_issue(self, data: dict, project: str) -> SentryIssue:
         """Parse API response into SentryIssue."""
@@ -323,7 +340,8 @@ class SentryConnector:
     def get_project_stats(self, project: str, hours: int = 24) -> dict:
         """Get error statistics for a project."""
         endpoint = f"/projects/{self.org}/{project}/stats/"
-        params = {"stat": "received", "resolution": "1h", "statsPeriod": f"{hours}h"}
+        stats_period = self._hours_to_stats_period(hours)
+        params = {"stat": "received", "resolution": "1h", "statsPeriod": stats_period}
         return self._get(endpoint, params)
 
 

@@ -1,8 +1,8 @@
 # VibeTeam Agent Microservices Architecture
 
-**Version**: 2.2  
-**Date**: January 2026  
-**Status**: Complete
+**Version**: 2.3  
+**Date**: January 28, 2026  
+**Status**: Production
 
 ---
 
@@ -488,34 +488,220 @@ VibeTeam includes a comprehensive benchmarking system to evaluate agent performa
 | Category | Metrics |
 |----------|---------|
 | **Speed** | Latency (ms), Time-to-first-token |
-| **Quality** | Accuracy, Completeness, Actionability, Clarity, Relevance, Efficiency |
+| **Quality** | LLM-as-judge score (0-5), Feedback |
 | **Tool Usage** | Tools called, Tool call count, Tool accuracy |
 | **Cost** | Input tokens, Output tokens, Total tokens |
 
-### Composite Score
+---
 
-Each benchmark result generates a composite score (0-1) combining:
-- **Quality (60%)**: LLM-as-judge evaluation across 6 dimensions
-- **Speed (25%)**: Normalized latency (faster = higher score)
-- **Efficiency (15%)**: Token usage (fewer = higher score)
+## Evaluation Framework: LLM-as-Judge
 
-### Running Benchmarks
+### Overview
 
-```bash
-# Run benchmark via pytest
-pytest tests/e2e/test_benchmark.py -v -s
+VibeTeam uses **LLM-as-Judge** for objective agent evaluation. This approach:
+- Compares all framework responses **side-by-side** in a single prompt
+- Scores each response on a **0-5 scale**
+- Provides **written feedback** explaining strengths/weaknesses
+- Declares a **winner** with reasoning
 
-# Run specific task
-pytest tests/e2e/test_benchmark.py -v -s -k "sentry"
+### Why LLM-as-Judge?
 
-# Run from CLI
-python -m agents.benchmark \
-    --frameworks autogen crewai openhands \
-    --tasks sentry-weekly-summary \
-    --output results/benchmark.json
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Response length** | Simple | Longer ≠ better |
+| **Latency** | Measurable | Faster ≠ better quality |
+| **Regex patterns** | Deterministic | Misses semantic quality |
+| **LLM-as-Judge** ✅ | Semantic understanding, explains reasoning | Costs extra API call |
+
+### Scoring Rubric (0-5 Scale)
+
+| Score | Meaning |
+|-------|---------|
+| 0 | Failed completely, error, or refused to answer |
+| 1 | Attempted but mostly wrong or unhelpful |
+| 2 | Partially correct but missing key elements |
+| 3 | Acceptable, addresses main points adequately |
+| 4 | Good, comprehensive and accurate |
+| 5 | Excellent, exceeds expectations with actionable insights |
+
+### Evaluation Criteria
+
+The judge evaluates each response on:
+- **Accuracy**: Is the information correct and not hallucinated?
+- **Completeness**: Does it address all parts of the task?
+- **Usefulness**: Is the response actionable and helpful?
+- **Clarity**: Is it well-organized and easy to understand?
+
+### Implementation
+
+```python
+# agents/benchmark.py
+
+@dataclass
+class ComparativeScore:
+    framework: str
+    score: int  # 0-5 scale
+    feedback: str
+
+@dataclass
+class ComparativeResult:
+    task: str
+    scores: dict[str, ComparativeScore]  # framework -> score
+    winner: str
+    reasoning: str
+    judge_model: str
+    evaluation_time_ms: int
+
+class ComparativeEvaluator:
+    """Evaluates multiple agent responses side-by-side using LLM-as-judge."""
+    
+    async def evaluate(
+        self,
+        task: str,
+        responses: dict[str, str],  # framework -> response text
+    ) -> ComparativeResult:
+        # Sends all 3 responses to judge LLM
+        # Returns scores, feedback, winner, and reasoning
 ```
 
-### Predefined Benchmark Tasks
+### Judge Prompt Template
+
+```
+You are an expert evaluator comparing AI agent responses.
+
+TASK:
+{task}
+
+AGENT RESPONSES:
+
+=== AUTOGEN ===
+{autogen_response}
+
+=== CREWAI ===
+{crewai_response}
+
+=== OPENHANDS ===
+{openhands_response}
+
+Score each agent from 0-5. Return JSON:
+{
+  "autogen": {"score": 0, "feedback": "..."},
+  "crewai": {"score": 0, "feedback": "..."},
+  "openhands": {"score": 0, "feedback": "..."},
+  "winner": "framework_name",
+  "reasoning": "Why this framework won"
+}
+```
+
+### Running Evaluation
+
+```bash
+# Run E2E test with LLM-as-judge evaluation
+pytest tests/e2e/test_support_agent_sentry.py -v -s -k "compare_all"
+
+# Run benchmark CLI
+python -m agents.benchmark \
+    --frameworks autogen crewai openhands \
+    --tasks sentry-weekly-summary
+```
+
+### Example Evaluation Report
+
+```
+======================================================================
+CROSS-FRAMEWORK SENTRY SUMMARY COMPARISON
+======================================================================
+
+Task: Provide a summary of Sentry issues for this week...
+
+>>> Testing AUTOGEN...
+    Status: PASS
+    Latency: 1438ms
+    Response length: 49 chars
+
+>>> Testing CREWAI...
+    Status: PASS
+    Latency: 4648ms
+    Response length: 1268 chars
+
+>>> Testing OPENHANDS...
+    Status: PASS
+    Latency: 3537ms
+    Response length: 1235 chars
+
+======================================================================
+LLM-AS-JUDGE EVALUATION
+======================================================================
+
+Judge Model: gpt-4.1-mini
+Evaluation Time: 2135ms
+
+Scores:
+--------------------------------------------------
+  AUTOGEN: 0/5
+    Feedback: Failed to provide relevant information regarding unresolved issues.
+  CREWAI: 4/5 WINNER
+    Feedback: Comprehensive summary with actionable insights, could improve clarity.
+  OPENHANDS: 4/5
+    Feedback: Detailed report with patterns, but lacked specific issue links.
+--------------------------------------------------
+
+WINNER: CREWAI
+Reasoning: CrewAI provided a more detailed and actionable report.
+
+======================================================================
+PERFORMANCE METRICS
+======================================================================
+
+Total frameworks tested: 3
+Passed validation: 3
+Failed validation: 0
+
+Latency:
+  Average: 3208ms
+  Fastest: autogen (1438ms)
+
+Per-Framework Results:
+  [PASS] autogen: 1438ms, 49 chars, Score: 0/5
+  [PASS] crewai: 4648ms, 1268 chars, Score: 4/5
+  [PASS] openhands: 3537ms, 1235 chars, Score: 4/5
+
+======================================================================
+FINAL VERDICT: CREWAI wins with score 4/5
+======================================================================
+```
+
+### Key Findings
+
+Based on LLM-as-judge evaluation:
+
+| Framework | Avg Score | Latency | Best For |
+|-----------|-----------|---------|----------|
+| **AutoGen** | 0-2/5 | ~1.5s | Fast responses, simple queries |
+| **CrewAI** | 4/5 | ~4.5s | Structured workflows, real data |
+| **OpenHands** | 4-5/5 | ~3.5s | Detailed analysis, documentation |
+
+**Key Insight**: Speed and quality are not correlated. AutoGen is 2-3x faster but produces lower quality responses for analysis tasks.
+
+### Alternatives Considered
+
+| Framework | Purpose | Why Not Used |
+|-----------|---------|--------------|
+| **DeepEval** | LLM evaluation | Adds dependency, overkill for comparison |
+| **Ragas** | RAG evaluation | Designed for retrieval, not agents |
+| **LangSmith** | LangChain tracing | Framework-specific |
+| **Braintrust** | Eval platform | SaaS dependency |
+| **Custom regex** | Pattern matching | Misses semantic quality |
+
+We chose **native LLM-as-judge** because:
+1. Zero external dependencies
+2. Uses existing Azure OpenAI infrastructure
+3. Simple 0-5 scoring is easy to interpret
+4. Comparative format reduces position bias
+
+---
+
+## Predefined Benchmark Tasks
 
 | Task ID | Description | Role |
 |---------|-------------|------|
@@ -605,3 +791,137 @@ Benchmarks can run in CI to detect performance regressions:
 - [Progress Tracking](progress.md)
 - [Requirements](requirements.md)
 - [Readiness Playbook](../readiness/playbook.md)
+
+---
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. Azure API Credentials Empty in Pods
+
+**Symptom**: Agents return 500 errors with "Connection error" in logs.
+
+**Diagnosis**:
+```bash
+kubectl exec -n vibeteam deployment/autogen-svc -- \
+  sh -c 'echo "API_KEY length: $(echo -n "$AZURE_API_KEY" | wc -c)"'
+# If returns 0, credentials are empty
+```
+
+**Fix**:
+```bash
+# Patch the secret directly
+source .env
+kubectl patch secret vibeteam-secrets -n vibeteam --type='json' -p="[
+  {\"op\": \"replace\", \"path\": \"/data/AZURE_API_KEY\", \"value\": \"$(echo -n "$AZURE_API_KEY" | base64)\"},
+  {\"op\": \"replace\", \"path\": \"/data/AZURE_API_BASE\", \"value\": \"$(echo -n "$AZURE_API_BASE" | base64)\"}
+]"
+
+# Restart pods to pick up changes
+kubectl rollout restart deployment/autogen-svc deployment/crewai-svc deployment/openhands-svc -n vibeteam
+```
+
+**Root Cause**: GitHub Actions secrets may not be set, causing empty values during deployment.
+
+**Prevention**: Ensure GitHub repository has `AZURE_API_KEY` and `AZURE_API_BASE` secrets configured:
+```bash
+gh secret set AZURE_API_KEY < <(echo -n "$AZURE_API_KEY")
+gh secret set AZURE_API_BASE < <(echo -n "$AZURE_API_BASE")
+```
+
+#### 2. Module Import Error in Docker Containers
+
+**Symptom**: `ModuleNotFoundError: No module named 'vibeteam.agents'`
+
+**Diagnosis**:
+```bash
+kubectl exec -n vibeteam deployment/autogen-svc -- \
+  python -c "from vibeteam.connectors.sentry import SentryConnector; print('OK')"
+```
+
+**Fix**: The `vibeteam/__init__.py` must use conditional imports:
+```python
+# Allow standalone connector usage in Docker containers
+try:
+    from vibeteam.agents import ...
+except ImportError:
+    logger.debug("Running in connector-only mode")
+```
+
+**Root Cause**: Docker images only include `vibeteam/connectors/`, not the full package.
+
+#### 3. SENTRY_AUTH_TOKEN Not Configured
+
+**Symptom**: AutoGen/CrewAI return "SENTRY_AUTH_TOKEN not configured" error.
+
+**Fix**: Add to K8s deployment manifest:
+```yaml
+env:
+  - name: SENTRY_AUTH_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: vibeteam-secrets
+        key: SENTRY_AUTH_TOKEN
+```
+
+Apply and restart:
+```bash
+kubectl apply -k k8s/base/ -n vibeteam
+kubectl rollout restart deployment/autogen-svc deployment/crewai-svc -n vibeteam
+```
+
+#### 4. CI/CD Deploys with Empty Secrets
+
+**Symptom**: After CI/CD deployment, secrets are reset to empty values.
+
+**Cause**: The deploy workflow recreates `vibeteam-secrets` from GitHub Actions secrets on every deployment.
+
+**Fix**: Ensure all required secrets are set in GitHub repository:
+```bash
+# Required secrets
+gh secret set AZURE_API_KEY
+gh secret set AZURE_API_BASE
+gh secret set SENTRY_AUTH_TOKEN
+gh secret set PAT_TOKEN  # GitHub token
+```
+
+### Health Check Commands
+
+```bash
+# All pods running
+kubectl get pods -n vibeteam
+
+# Service health
+curl http://localhost:8080/health  # via port-forward
+
+# Verify env vars in pod
+kubectl exec -n vibeteam deployment/autogen-svc -- env | grep -E "AZURE|SENTRY"
+
+# Check logs
+kubectl logs -n vibeteam deployment/autogen-svc --tail=50
+
+# Test import
+kubectl exec -n vibeteam deployment/autogen-svc -- \
+  python -c "from vibeteam.connectors.sentry import SentryConnector; print('OK')"
+```
+
+---
+
+## Changelog
+
+### v2.3 (January 28, 2026)
+- Added SENTRY_AUTH_TOKEN to all agent K8s manifests
+- Fixed `vibeteam/__init__.py` for standalone connector imports
+- Added troubleshooting section with common issues and solutions
+- Documented GitHub secrets requirements for CI/CD
+
+### v2.2 (January 27, 2026)
+- Added agent benchmarking system documentation
+- Added CI/CD pipeline details
+- Added Dockerfile structure documentation
+
+### v2.1 (January 26, 2026)
+- Initial microservices architecture documentation
+- Three-framework deployment (AutoGen, CrewAI, OpenHands)
+- PostgreSQL session persistence
