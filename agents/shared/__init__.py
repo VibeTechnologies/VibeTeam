@@ -37,6 +37,14 @@ from agents.shared.calendar_tools import (
     get_calendar_context,
     list_calendar_events,
 )
+from agents.shared.docs_tools import (
+    get_doc_content,
+    get_docs_context,
+    list_docs,
+    rebuild_index,
+    search_docs,
+    search_docs_sync,
+)
 from agents.shared.gmail_tools import (
     fetch_unread_emails,
     get_email_context,
@@ -50,14 +58,6 @@ from agents.shared.langfuse_tools import (
     get_langfuse_context,
     get_langfuse_stats,
     get_langfuse_traces,
-)
-from agents.shared.docs_tools import (
-    search_docs,
-    search_docs_sync,
-    list_docs,
-    get_doc_content,
-    get_docs_context,
-    rebuild_index,
 )
 
 __all__ = [
