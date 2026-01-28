@@ -303,10 +303,10 @@ from vibeteam.gateway.routes.github import router as github_router
 from vibeteam.gateway.routes.sentry import router as sentry_router
 from vibeteam.gateway.routes.slack import router as slack_router
 
-app.include_router(github_router)
-app.include_router(slack_router)
-app.include_router(sentry_router)
-app.include_router(api_router, prefix="/api")
+app.include_router(github_router)  # type: ignore[has-type]
+app.include_router(slack_router)  # type: ignore[has-type]
+app.include_router(sentry_router)  # type: ignore[has-type]
+app.include_router(api_router, prefix="/api")  # type: ignore[has-type]
 
 
 # ==============================================================================
