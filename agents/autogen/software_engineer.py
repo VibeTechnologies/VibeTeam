@@ -220,12 +220,16 @@ async def git_command(command: str) -> str:
     return await execute_shell(f"git {command}")
 
 
-async def list_issues(state: str = "open", limit: int = 10) -> str:
+async def list_issues(
+    state: str = "open", limit: int = 10, sort: str = "created", order: str = "desc"
+) -> str:
     """List GitHub issues from the repository.
 
     Args:
         state: Issue state - "open", "closed", or "all" (default: open)
         limit: Maximum number of issues to return (default: 10)
+        sort: Sort by "created", "updated", or "comments" (default: created)
+        order: Sort order "asc" or "desc" (default: desc)
 
     Returns:
         Formatted list of issues with number, title, labels, and age
@@ -234,8 +238,8 @@ async def list_issues(state: str = "open", limit: int = 10) -> str:
         from vibeteam.connectors.github import GitHubConnector
 
         connector = GitHubConnector()
-        # Use search_issues to get issues
-        issues = connector.search_issues(query="", state=state, limit=limit)
+        # Use search_issues to get issues sorted by creation date
+        issues = connector.search_issues(query="", state=state, limit=limit, sort=sort, order=order)
 
         if not issues:
             return f"No {state} issues found."

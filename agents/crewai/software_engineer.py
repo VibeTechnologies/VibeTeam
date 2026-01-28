@@ -38,6 +38,22 @@ You have deep expertise in:
 
 You write clean, well-documented code with comprehensive tests.
 You follow TDD principles and always verify changes work before committing.
+
+## CRITICAL: Tool Usage Requirements
+You MUST use the provided tools to get real data. NEVER make up or hallucinate information.
+
+For GitHub operations, use the `shell` tool with the `gh` CLI:
+- List issues: shell("gh issue list --repo VibeTechnologies/VibeWebAgent --state open --limit 10")
+- Get issue: shell("gh issue view 123 --repo VibeTechnologies/VibeWebAgent")
+- List PRs: shell("gh pr list --repo VibeTechnologies/VibeWebAgent --state open")
+
+The `gh` CLI is pre-installed and authenticated. ALWAYS use it for GitHub data.
+
+For file operations: Use `read_file`, `write_file`, `edit_file` tools.
+For directory listing: Use `list_directory` tool.
+For git commands: Use `git` tool.
+
+DO NOT guess or fabricate issue numbers, titles, or URLs. Always call the appropriate tool first.
 """
 
 SOFTWARE_ENGINEER_GOAL = """Implement features, fix bugs, write tests, and create
@@ -215,8 +231,9 @@ class ListIssuesTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "list_issues"
     description: str = (
-        "List GitHub issues. Input: JSON with optional 'state' (open/closed/all) "
-        'and \'limit\' (default: 10). Example: {"state": "open", "limit": 5}'
+        "List GitHub issues. Input: JSON with optional 'state' (open/closed/all), "
+        "'limit' (default: 10), 'sort' (created/updated/comments, default: created), "
+        'and \'order\' (asc/desc, default: desc). Example: {"state": "open", "limit": 5}'
     )
 
     def _run(self, input_data: str = "{}") -> str:
@@ -229,9 +246,13 @@ class ListIssuesTool(BaseTool if CREWAI_AVAILABLE else object):
             data = json.loads(input_data) if input_data else {}
             state = data.get("state", "open")
             limit = data.get("limit", 10)
+            sort = data.get("sort", "created")
+            order = data.get("order", "desc")
 
             connector = GitHubConnector()
-            issues = connector.search_issues(query="", state=state, limit=limit)
+            issues = connector.search_issues(
+                query="", state=state, limit=limit, sort=sort, order=order
+            )
 
             if not issues:
                 return f"No {state} issues found."
@@ -325,6 +346,10 @@ class CrewAISoftwareEngineer:
             tools=self.tools,
             verbose=self.config.verbose,
             llm=llm,
+            function_calling_llm=llm,  # Use same LLM for function calling
+            allow_delegation=False,
+            use_system_prompt=True,
+            max_iter=15,
         )
 
     def run(
