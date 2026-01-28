@@ -566,9 +566,9 @@ class TestSupportAgentSentryComparison:
         assert len(results) == 3, f"Expected 3 frameworks, got {len(results)}"
 
         # At least 1 framework must succeed to validate the test works
-        assert len(successful) >= 1, (
-            f"No frameworks succeeded! Results: {[f'{r.framework}: {r.response[:100]}' for r in results]}"
-        )
+        assert (
+            len(successful) >= 1
+        ), f"No frameworks succeeded! Results: {[f'{r.framework}: {r.response[:100]}' for r in results]}"
 
         # Winner must have a score > 0
         winner_score = eval_result.scores.get(eval_result.winner)

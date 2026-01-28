@@ -360,9 +360,9 @@ class TestPerformanceRegression:
 
         for r in results:
             if r.success:
-                assert r.latency_ms < self.MAX_LATENCY_MS, (
-                    f"{r.framework} latency {r.latency_ms}ms exceeds {self.MAX_LATENCY_MS}ms"
-                )
+                assert (
+                    r.latency_ms < self.MAX_LATENCY_MS
+                ), f"{r.framework} latency {r.latency_ms}ms exceeds {self.MAX_LATENCY_MS}ms"
 
     @pytest.mark.asyncio
     async def test_success_rate_threshold(self, benchmark, gateway_url):
@@ -372,6 +372,6 @@ class TestPerformanceRegression:
         success_count = sum(1 for r in results if r.success)
         success_rate = success_count / len(results)
 
-        assert success_rate >= self.MIN_SUCCESS_RATE, (
-            f"Success rate {success_rate:.0%} below minimum {self.MIN_SUCCESS_RATE:.0%}"
-        )
+        assert (
+            success_rate >= self.MIN_SUCCESS_RATE
+        ), f"Success rate {success_rate:.0%} below minimum {self.MIN_SUCCESS_RATE:.0%}"
