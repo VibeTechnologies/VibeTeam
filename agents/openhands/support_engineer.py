@@ -80,8 +80,8 @@ def fetch_docs_context_wrapper(query: str) -> str:
 
 try:
     from openhands.sdk import LLM, Agent, LocalConversation, Tool
-    from openhands.tools.terminal import TerminalTool
     from openhands.tools.file_editor import FileEditorTool
+    from openhands.tools.terminal import TerminalTool
 
     OPENHANDS_AVAILABLE = True
 

@@ -24,8 +24,8 @@ from agents.sessions import get_or_create_session, get_session_store
 # OpenHands imports - will fail gracefully if not installed
 try:
     from openhands.sdk import LLM, Agent, LocalConversation, Tool
-    from openhands.tools.terminal import TerminalTool
     from openhands.tools.file_editor import FileEditorTool
+    from openhands.tools.terminal import TerminalTool
 
     OPENHANDS_AVAILABLE = True
 
