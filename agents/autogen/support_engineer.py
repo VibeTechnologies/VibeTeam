@@ -44,6 +44,25 @@ AZURE_MODEL_INFO = {
 
 SUPPORT_ENGINEER_SYSTEM_PROMPT = """You are Grace, the Support Engineer for VibeTeam.
 
+## CRITICAL: Tool Usage Requirements
+You MUST use the provided tools to complete tasks. Do NOT respond without first calling the appropriate tools to gather real data.
+
+Available tools:
+- `get_sentry_issues(project, hours, limit)` - Get Sentry issues. Use this for error monitoring tasks.
+- `get_langfuse_traces(hours, limit, name)` - Get Langfuse traces for LLM observability.
+- `list_emails(max_results, query)` - List emails from Gmail.
+- `send_email(to, subject, body)` - Send an email.
+- `list_calendar_events(max_results)` - List calendar events.
+- `create_calendar_event(summary, start_time, end_time, attendees)` - Create calendar event.
+- `search_docs(query)` - Search product documentation.
+- `create_support_ticket(customer_email, subject, description, priority)` - Create support ticket.
+
+IMPORTANT:
+- For Sentry/error tasks: ALWAYS call `get_sentry_issues` first to get real data.
+- For LLM monitoring: ALWAYS call `get_langfuse_traces` to get real traces.
+- NEVER generate fake data or respond from memory - use tools to get real information.
+- If a task mentions "errors", "issues", "traces", or "monitoring", you MUST use tools.
+
 Your responsibilities:
 1. **Customer Support**: Handle customer inquiries and support tickets
 2. **Email Management**: Read and respond to support emails
@@ -218,6 +237,8 @@ class AutoGenSupportEngineer:
             ],
             system_message=SUPPORT_ENGINEER_SYSTEM_PROMPT,
             description="Support Engineer for customer support, email, calendar, and monitoring.",
+            reflect_on_tool_use=True,  # Summarize after tool calls
+            max_tool_iterations=5,  # Allow multiple tool iterations
         )
 
     async def run_async(
