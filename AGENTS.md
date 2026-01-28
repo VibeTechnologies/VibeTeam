@@ -85,3 +85,8 @@ VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-5-2` (hyphen, no
 
 Feature requests are tracked in GitHub Issue #322 (VibeTechnologies/VibeWebAgent).
 Use `GitHubConnector.get_customer_requests_table()` to read/update.
+
+## Current Work
+
+**Active Issue: #38** - Deploy VibeTeam to Kubernetes and verify integrations
+https://github.com/VibeTechnologies/VibeTeam/issues/38
