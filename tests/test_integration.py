@@ -54,9 +54,7 @@ class TestAutoGenUnitTasks:
         """U1: List files in /tmp directory."""
         task_def = unit_tasks["U1"]
 
-        with track_task(
-            "U1", "autogen", "release_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U1", "autogen", "release_engineer", "unit", task_def["task"]) as ctx:
             result = await release_engineer.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -92,9 +90,7 @@ class TestAutoGenUnitTasks:
         """U3: Execute shell command."""
         task_def = unit_tasks["U3"]
 
-        with track_task(
-            "U3", "autogen", "release_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U3", "autogen", "release_engineer", "unit", task_def["task"]) as ctx:
             result = await release_engineer.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -109,9 +105,7 @@ class TestAutoGenUnitTasks:
         """U4: Analyze sentiment of text."""
         task_def = unit_tasks["U4"]
 
-        with track_task(
-            "U4", "autogen", "marketing_manager", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U4", "autogen", "marketing_manager", "unit", task_def["task"]) as ctx:
             result = await marketing_manager.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -126,9 +120,7 @@ class TestAutoGenUnitTasks:
         """U5: Draft Twitter post."""
         task_def = unit_tasks["U5"]
 
-        with track_task(
-            "U5", "autogen", "marketing_manager", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U5", "autogen", "marketing_manager", "unit", task_def["task"]) as ctx:
             result = await marketing_manager.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -143,9 +135,7 @@ class TestAutoGenUnitTasks:
         """U6: Create support ticket."""
         task_def = unit_tasks["U6"]
 
-        with track_task(
-            "U6", "autogen", "support_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U6", "autogen", "support_engineer", "unit", task_def["task"]) as ctx:
             result = await support_engineer.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -160,9 +150,7 @@ class TestAutoGenUnitTasks:
         """U7: Draft email response."""
         task_def = unit_tasks["U7"]
 
-        with track_task(
-            "U7", "autogen", "support_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U7", "autogen", "support_engineer", "unit", task_def["task"]) as ctx:
             result = await support_engineer.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -190,9 +178,7 @@ class TestAutoGenIntegrationTasks:
         """I1: Deploy and announce (ReleaseEngineer + MarketingManager)."""
         task_def = integration_tasks["I1"]
 
-        with track_task(
-            "I1", "autogen", "team", "integration", task_def["task"]
-        ) as ctx:
+        with track_task("I1", "autogen", "team", "integration", task_def["task"]) as ctx:
             result = await team.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -239,9 +225,7 @@ class TestCrewAIUnitTasks:
         """U1: List files in /tmp directory."""
         task_def = unit_tasks["U1"]
 
-        with track_task(
-            "U1", "crewai", "release_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U1", "crewai", "release_engineer", "unit", task_def["task"]) as ctx:
             # CrewAI uses sync interface
             result = await asyncio.to_thread(release_engineer.run, task_def["task"])
             response = result.get("response", "")
@@ -277,9 +261,7 @@ class TestCrewAIUnitTasks:
         """U3: Execute shell command."""
         task_def = unit_tasks["U3"]
 
-        with track_task(
-            "U3", "crewai", "release_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U3", "crewai", "release_engineer", "unit", task_def["task"]) as ctx:
             result = await asyncio.to_thread(release_engineer.run, task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -294,9 +276,7 @@ class TestCrewAIUnitTasks:
         """U4: Analyze sentiment of text."""
         task_def = unit_tasks["U4"]
 
-        with track_task(
-            "U4", "crewai", "marketing_manager", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U4", "crewai", "marketing_manager", "unit", task_def["task"]) as ctx:
             result = await asyncio.to_thread(marketing_manager.run, task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -311,9 +291,7 @@ class TestCrewAIUnitTasks:
         """U5: Draft Twitter post."""
         task_def = unit_tasks["U5"]
 
-        with track_task(
-            "U5", "crewai", "marketing_manager", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U5", "crewai", "marketing_manager", "unit", task_def["task"]) as ctx:
             result = await asyncio.to_thread(marketing_manager.run, task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -328,9 +306,7 @@ class TestCrewAIUnitTasks:
         """U6: Create support ticket."""
         task_def = unit_tasks["U6"]
 
-        with track_task(
-            "U6", "crewai", "support_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U6", "crewai", "support_engineer", "unit", task_def["task"]) as ctx:
             result = await asyncio.to_thread(support_engineer.run, task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -345,9 +321,7 @@ class TestCrewAIUnitTasks:
         """U7: Draft email response."""
         task_def = unit_tasks["U7"]
 
-        with track_task(
-            "U7", "crewai", "support_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U7", "crewai", "support_engineer", "unit", task_def["task"]) as ctx:
             result = await asyncio.to_thread(support_engineer.run, task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -422,9 +396,7 @@ class TestOpenHandsUnitTasks:
         """U1: List files in /tmp directory."""
         task_def = unit_tasks["U1"]
 
-        with track_task(
-            "U1", "openhands", "release_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U1", "openhands", "release_engineer", "unit", task_def["task"]) as ctx:
             result = await release_engineer.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -459,9 +431,7 @@ class TestOpenHandsUnitTasks:
         """U3: Execute shell command."""
         task_def = unit_tasks["U3"]
 
-        with track_task(
-            "U3", "openhands", "release_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U3", "openhands", "release_engineer", "unit", task_def["task"]) as ctx:
             result = await release_engineer.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -476,9 +446,7 @@ class TestOpenHandsUnitTasks:
         """U4: Analyze sentiment of text."""
         task_def = unit_tasks["U4"]
 
-        with track_task(
-            "U4", "openhands", "marketing_manager", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U4", "openhands", "marketing_manager", "unit", task_def["task"]) as ctx:
             result = await marketing_manager.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -493,9 +461,7 @@ class TestOpenHandsUnitTasks:
         """U5: Draft Twitter post."""
         task_def = unit_tasks["U5"]
 
-        with track_task(
-            "U5", "openhands", "marketing_manager", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U5", "openhands", "marketing_manager", "unit", task_def["task"]) as ctx:
             result = await marketing_manager.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -510,9 +476,7 @@ class TestOpenHandsUnitTasks:
         """U6: Create support ticket."""
         task_def = unit_tasks["U6"]
 
-        with track_task(
-            "U6", "openhands", "support_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U6", "openhands", "support_engineer", "unit", task_def["task"]) as ctx:
             result = await support_engineer.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -527,9 +491,7 @@ class TestOpenHandsUnitTasks:
         """U7: Draft email response."""
         task_def = unit_tasks["U7"]
 
-        with track_task(
-            "U7", "openhands", "support_engineer", "unit", task_def["task"]
-        ) as ctx:
+        with track_task("U7", "openhands", "support_engineer", "unit", task_def["task"]) as ctx:
             result = await support_engineer.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -557,9 +519,7 @@ class TestOpenHandsIntegrationTasks:
         """I1: Deploy and announce (ReleaseEngineer + MarketingManager)."""
         task_def = integration_tasks["I1"]
 
-        with track_task(
-            "I1", "openhands", "team", "integration", task_def["task"]
-        ) as ctx:
+        with track_task("I1", "openhands", "team", "integration", task_def["task"]) as ctx:
             result = await team.run_async(task_def["task"])
             response = result.get("response", "")
             ctx.set_response_preview(response)
@@ -629,9 +589,7 @@ class TestStressTasks:
         marketing = AutoGenMarketingManager()
         support = AutoGenSupportEngineer()
 
-        with track_task(
-            "S2", "autogen", "multiple", "stress", "concurrent execution"
-        ) as ctx:
+        with track_task("S2", "autogen", "multiple", "stress", "concurrent execution") as ctx:
             results = await asyncio.gather(
                 release.run_async("Show current time"),
                 marketing.run_async("Draft a short greeting"),

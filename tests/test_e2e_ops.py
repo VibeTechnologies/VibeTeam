@@ -38,10 +38,7 @@ class TestReliabilityEngineer:
             text=True,
         )
         assert result.returncode == 0
-        assert (
-            "health checks" in result.stdout.lower()
-            or "endpoints" in result.stdout.lower()
-        )
+        assert "health checks" in result.stdout.lower() or "endpoints" in result.stdout.lower()
 
     def test_sre_health_with_test_endpoint(self) -> None:
         """Test health check against a known endpoint."""
@@ -76,9 +73,7 @@ class TestReliabilityEngineer:
         )
         # Should exit with error code when endpoint fails
         assert (
-            result.returncode != 0
-            or "FAIL" in result.stdout
-            or "failed" in result.stdout.lower()
+            result.returncode != 0 or "FAIL" in result.stdout or "failed" in result.stdout.lower()
         )
 
 
@@ -362,10 +357,7 @@ Fix the typo in the test file.
             print(f"SWE agent stderr: {result.stderr}")
 
             assert result.returncode == 0, f"SWE agent failed: {result.stderr}"
-            assert (
-                f"#{issue_number}" in result.stdout
-                or "Processing issue" in result.stdout
-            )
+            assert f"#{issue_number}" in result.stdout or "Processing issue" in result.stdout
 
         finally:
             # 3. Cleanup - close the test issue
@@ -433,13 +425,9 @@ class TestKubernetesManifests:
             for doc in docs:
                 if doc and doc.get("kind") == "CronJob":
                     # Check required fields
-                    assert "schedule" in doc.get(
-                        "spec", {}
-                    ), f"Missing schedule in {manifest.name}"
+                    assert "schedule" in doc.get("spec", {}), f"Missing schedule in {manifest.name}"
                     job_spec = doc["spec"]["jobTemplate"]["spec"]["template"]["spec"]
-                    assert (
-                        "containers" in job_spec
-                    ), f"Missing containers in {manifest.name}"
+                    assert "containers" in job_spec, f"Missing containers in {manifest.name}"
                     assert (
                         "imagePullSecrets" in job_spec
                     ), f"Missing imagePullSecrets in {manifest.name}"

@@ -178,9 +178,7 @@ class AutoGenTeam:
             agents = self._get_agents()
 
             # Termination conditions
-            termination = TextMentionTermination(
-                "TASK_COMPLETE"
-            ) | MaxMessageTermination(20)
+            termination = TextMentionTermination("TASK_COMPLETE") | MaxMessageTermination(20)
 
             self._team = SelectorGroupChat(
                 participants=agents,
@@ -310,9 +308,7 @@ Reply with just the agent name.""",
         # Check for @mention
         role = self.parse_mention(task)
         if role:
-            return await self.run_single_agent_async(
-                task, role, context_type, context_id
-            )
+            return await self.run_single_agent_async(task, role, context_type, context_id)
 
         # Use team for multi-agent coordination
         session = get_or_create_session(

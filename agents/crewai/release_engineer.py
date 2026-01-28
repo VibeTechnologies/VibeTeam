@@ -94,9 +94,7 @@ class FileWriteTool(BaseTool if CREWAI_AVAILABLE else object):
     """Write content to a file."""
 
     name: str = "write_file"
-    description: str = (
-        "Write content to a file. Input: JSON with 'path' and 'content' keys."
-    )
+    description: str = "Write content to a file. Input: JSON with 'path' and 'content' keys."
 
     def _run(self, input_data: str) -> str:
         """Write to the file."""
@@ -221,9 +219,7 @@ class CrewAIReleaseEngineer:
         """Async version of run."""
         import asyncio
 
-        return await asyncio.to_thread(
-            self.run, task, context_type, context_id, **kwargs
-        )
+        return await asyncio.to_thread(self.run, task, context_type, context_id, **kwargs)
 
 
 def create_release_engineer(config: AgentConfig | None = None) -> CrewAIReleaseEngineer:

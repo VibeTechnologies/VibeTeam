@@ -116,9 +116,7 @@ class GmailConnector:
         """
         # Check for existing token
         if self.token_path.exists():
-            self.creds = Credentials.from_authorized_user_file(
-                str(self.token_path), SCOPES
-            )
+            self.creds = Credentials.from_authorized_user_file(str(self.token_path), SCOPES)
 
         # If no valid credentials, authenticate
         if not self.creds or not self.creds.valid:
@@ -133,13 +131,9 @@ class GmailConnector:
                     )
 
                 if not self.credentials_path.exists():
-                    raise FileNotFoundError(
-                        f"Credentials file not found: {self.credentials_path}"
-                    )
+                    raise FileNotFoundError(f"Credentials file not found: {self.credentials_path}")
 
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(self.credentials_path), SCOPES
-                )
+                flow = InstalledAppFlow.from_client_secrets_file(str(self.credentials_path), SCOPES)
                 self.creds = flow.run_local_server(port=0)
 
             # Save token for future use
@@ -256,15 +250,11 @@ class GmailConnector:
             for part in payload["parts"]:
                 if part["mimeType"] == "text/plain":
                     if part["body"].get("data"):
-                        body = base64.urlsafe_b64decode(part["body"]["data"]).decode(
-                            "utf-8"
-                        )
+                        body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
                         break
                 elif part["mimeType"] == "text/html" and not body:
                     if part["body"].get("data"):
-                        body = base64.urlsafe_b64decode(part["body"]["data"]).decode(
-                            "utf-8"
-                        )
+                        body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
                 elif "parts" in part:
                     # Nested multipart
                     body = self._extract_body(part)

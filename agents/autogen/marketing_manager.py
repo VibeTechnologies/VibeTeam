@@ -102,9 +102,7 @@ async def create_social_post(platform: str, content: str, hashtags: str = "") ->
         if hashtags:
             formatted += f"\n\n{hashtags}"
         if len(formatted) > max_length:
-            return (
-                f"Error: Tweet exceeds {max_length} characters ({len(formatted)} chars)"
-            )
+            return f"Error: Tweet exceeds {max_length} characters ({len(formatted)} chars)"
         return f"""
 === Twitter/X Post Draft ===
 {formatted}

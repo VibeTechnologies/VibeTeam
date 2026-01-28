@@ -373,9 +373,7 @@ def list_issues_cli() -> None:
     print(f"\nFound {len(issues)} unresolved issues:\n")
     for issue in issues:
         print(f"[{issue.project}] {issue.short_id}: {issue.title}")
-        print(
-            f"  Count: {issue.count} | Users: {issue.user_count} | Level: {issue.level}"
-        )
+        print(f"  Count: {issue.count} | Users: {issue.user_count} | Level: {issue.level}")
         print(f"  First: {issue.first_seen[:10]} | Last: {issue.last_seen[:10]}")
         print(f"  URL: {issue.permalink}")
         print()

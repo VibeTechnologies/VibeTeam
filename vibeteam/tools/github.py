@@ -125,20 +125,14 @@ class GitHubTool(BaseTool):
             if action == "get_issue":
                 issue_number = kwargs.get("issue_number")
                 if not issue_number:
-                    return ToolResult(
-                        success=False, output="", error="issue_number required"
-                    )
+                    return ToolResult(success=False, output="", error="issue_number required")
                 issue = self.connector.get_issue(issue_number)
-                return ToolResult(
-                    success=True, output=json.dumps(asdict(issue), indent=2)
-                )
+                return ToolResult(success=True, output=json.dumps(asdict(issue), indent=2))
 
             elif action == "update_issue":
                 issue_number = kwargs.get("issue_number")
                 if not issue_number:
-                    return ToolResult(
-                        success=False, output="", error="issue_number required"
-                    )
+                    return ToolResult(success=False, output="", error="issue_number required")
                 issue = self.connector.update_issue(
                     issue_number,
                     title=kwargs.get("title"),
@@ -156,9 +150,7 @@ class GitHubTool(BaseTool):
                         success=False, output="", error="issue_number and body required"
                     )
                 self.connector.add_issue_comment(issue_number, body)
-                return ToolResult(
-                    success=True, output=f"Comment added to issue #{issue_number}"
-                )
+                return ToolResult(success=True, output=f"Comment added to issue #{issue_number}")
 
             elif action == "search_issues":
                 query = kwargs.get("query", "")
@@ -179,9 +171,7 @@ class GitHubTool(BaseTool):
                 priority = kwargs.get("priority", "P2")
                 analysis = kwargs.get("analysis", "")
                 if not request:
-                    return ToolResult(
-                        success=False, output="", error="request required"
-                    )
+                    return ToolResult(success=False, output="", error="request required")
                 self.connector.add_customer_request(
                     request=request,
                     source=source,
@@ -193,9 +183,7 @@ class GitHubTool(BaseTool):
             elif action == "get_pr":
                 pr_number = kwargs.get("pr_number")
                 if not pr_number:
-                    return ToolResult(
-                        success=False, output="", error="pr_number required"
-                    )
+                    return ToolResult(success=False, output="", error="pr_number required")
                 pr = self.connector.get_pr(pr_number)
                 return ToolResult(success=True, output=json.dumps(asdict(pr), indent=2))
 
@@ -211,18 +199,12 @@ class GitHubTool(BaseTool):
                 body = kwargs.get("body")
                 event = kwargs.get("event", "COMMENT")
                 if not pr_number or not body:
-                    return ToolResult(
-                        success=False, output="", error="pr_number and body required"
-                    )
+                    return ToolResult(success=False, output="", error="pr_number and body required")
                 self.connector.create_review(pr_number, body, event)
-                return ToolResult(
-                    success=True, output=f"Review added to PR #{pr_number}"
-                )
+                return ToolResult(success=True, output=f"Review added to PR #{pr_number}")
 
             else:
-                return ToolResult(
-                    success=False, output="", error=f"Unknown action: {action}"
-                )
+                return ToolResult(success=False, output="", error=f"Unknown action: {action}")
 
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

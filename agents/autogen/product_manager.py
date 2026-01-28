@@ -87,9 +87,7 @@ When you complete a task, provide a clear summary and next steps.
 """
 
 
-async def search_github_issues(
-    query: str, repo: str = "VibeTechnologies/VibeTeam"
-) -> str:
+async def search_github_issues(query: str, repo: str = "VibeTechnologies/VibeTeam") -> str:
     """Search GitHub issues.
 
     Args:
