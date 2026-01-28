@@ -16,22 +16,18 @@ Run without quality evaluation (faster):
 
 import subprocess
 import time
-from pathlib import Path
 
 import httpx
 import pytest
 
 from agents.benchmark import (
+    SENTRY_SUMMARY_TASK,
+    STANDARD_TASKS,
     Benchmark,
     BenchmarkResult,
     BenchmarkTask,
-    QualityEvaluator,
     ResponseValidator,
-    SENTRY_SUMMARY_TASK,
-    GITHUB_ISSUE_TRIAGE_TASK,
-    STANDARD_TASKS,
 )
-
 
 # ==============================================================================
 # Configuration
@@ -126,13 +122,13 @@ class TestResponseValidator:
         validator = ResponseValidator()
         response = """
         ## Sentry Issues Summary
-        
+
         Total: 15 unresolved issues this week.
-        
+
         ### Critical Issues
         - Issue #123: Login failure (3 occurrences)
         - Issue #456: Payment timeout (2 occurrences)
-        
+
         ### Recommendations
         1. Prioritize login failure fix
         2. Monitor payment service

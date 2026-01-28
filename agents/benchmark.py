@@ -39,7 +39,6 @@ from typing import Any
 
 import httpx
 
-
 # ==============================================================================
 # Configuration
 # ==============================================================================
@@ -287,7 +286,7 @@ class BenchmarkResult:
 class QualityEvaluator:
     """Evaluates response quality using LLM-as-judge."""
 
-    EVALUATION_PROMPT = """You are an expert evaluator for AI agent responses. 
+    EVALUATION_PROMPT = """You are an expert evaluator for AI agent responses.
 Evaluate the following response on a scale of 0.0 to 1.0 for each dimension.
 
 TASK:
