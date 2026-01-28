@@ -5,13 +5,13 @@ kind: Kustomization
 resources:
   # Infrastructure
   - postgres.yaml
-  # Agent Microservices (long-running servers)
+  # Gateway (routes webhooks to agent microservices)
+  - vibeteam-gateway.yaml
+  # Agent Microservices (long-running servers with APScheduler)
   - autogen-svc.yaml
   - crewai-svc.yaml
   - scheduler-svc.yaml
-  # Agent CronJobs (to be replaced by microservices)
-  - product-manager.yaml
-  - support-engineer.yaml
-  - release-engineer.yaml  # Also contains reliability-engineer
-  - software-engineer.yaml
-  - frameworks/  # Multi-framework agent deployments (AutoGen, CrewAI, OpenHands)
+  # Multi-framework agent deployments (AutoGen, CrewAI, OpenHands)
+  - frameworks/
+  # Note: Old CronJobs (product-manager, support-engineer, release-engineer,
+  # software-engineer) have been replaced by scheduler-svc tasks

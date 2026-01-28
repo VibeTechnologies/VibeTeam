@@ -53,6 +53,10 @@ COPY --from=builder /app/pyproject.toml /app/
 RUN useradd -m -u 1000 vibeteam
 USER vibeteam
 
-# Default command
-ENTRYPOINT ["vibeteam"]
-CMD ["--help"]
+# Expose gateway port
+EXPOSE 8080
+
+# Default command runs the gateway server
+# Override with different commands for CLI usage
+ENTRYPOINT ["python", "-m", "vibeteam.gateway.server"]
+CMD []
