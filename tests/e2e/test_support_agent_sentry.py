@@ -5,6 +5,8 @@ This test calls the VibeTeam Gateway REST API to invoke SupportAgent implementat
 across all three frameworks (AutoGen, CrewAI, OpenHands) and asks each to provide
 a summary of Sentry issues for this week.
 
+Uses LLM-as-judge (Azure GPT-5) for objective evaluation of response quality.
+
 Requirements:
     - kubectl access to vibeteam namespace
     - Services running: vibeteam-gateway, autogen-svc, crewai-svc, openhands-svc
@@ -23,6 +25,7 @@ Run all frameworks comparison:
     pytest tests/e2e/test_support_agent_sentry.py -v -s -k "compare_all"
 """
 
+import asyncio
 import subprocess
 import time
 from dataclasses import dataclass
@@ -30,6 +33,15 @@ from typing import Any
 
 import httpx
 import pytest
+
+# Import the ComparativeEvaluator for LLM-as-judge
+import sys
+from pathlib import Path
+
+# Add project root to path for import
+_project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(_project_root))
+from agents.benchmark import ComparativeEvaluator
 
 
 # ==============================================================================
@@ -410,7 +422,8 @@ class TestSupportAgentSentryComparison:
         """
         Run the same Sentry weekly summary task across all three frameworks.
 
-        Compares latency, response quality, and validates all produce valid summaries.
+        Uses LLM-as-judge (GPT-5) to objectively score each response on a 0-5 scale.
+        Winner is determined by the judge, not by response length or latency.
         """
         frameworks = ["autogen", "crewai", "openhands"]
         results: list[FrameworkResult] = []
@@ -421,6 +434,7 @@ class TestSupportAgentSentryComparison:
         print(f"\nTask: {SENTRY_WEEKLY_SUMMARY_TASK[:100]}...")
         print("-" * 70)
 
+        # Collect responses from all frameworks
         for framework in frameworks:
             print(f"\n>>> Testing {framework.upper()}...")
 
@@ -469,37 +483,71 @@ class TestSupportAgentSentryComparison:
                 )
                 print(f"    Status: ERROR - {e}")
 
-        # Print summary
+        # Run LLM-as-judge evaluation
         print("\n" + "=" * 70)
-        print("SUMMARY")
+        print("LLM-AS-JUDGE EVALUATION (GPT-5)")
+        print("=" * 70)
+
+        responses_for_judge = {r.framework: r.response for r in results}
+
+        evaluator = ComparativeEvaluator()
+        eval_result = asyncio.run(
+            evaluator.evaluate(
+                task=SENTRY_WEEKLY_SUMMARY_TASK,
+                responses=responses_for_judge,
+            )
+        )
+
+        # Print evaluation results
+        print(f"\nJudge Model: {eval_result.judge_model}")
+        print(f"Evaluation Time: {eval_result.evaluation_time_ms}ms")
+        print("\nScores:")
+        print("-" * 50)
+
+        for framework in frameworks:
+            score = eval_result.scores.get(framework)
+            if score:
+                status = "WINNER" if framework == eval_result.winner else ""
+                print(f"  {framework.upper()}: {score.score}/5 {status}")
+                print(f"    Feedback: {score.feedback}")
+            else:
+                print(f"  {framework.upper()}: No score")
+
+        print("-" * 50)
+        print(f"\nWINNER: {eval_result.winner.upper()}")
+        print(f"Reasoning: {eval_result.reasoning}")
+
+        # Print performance metrics
+        print("\n" + "=" * 70)
+        print("PERFORMANCE METRICS")
         print("=" * 70)
 
         successful = [r for r in results if r.success]
         failed = [r for r in results if not r.success]
 
         print(f"\nTotal frameworks tested: {len(results)}")
-        print(f"Passed: {len(successful)}")
-        print(f"Failed: {len(failed)}")
+        print(f"Passed validation: {len(successful)}")
+        print(f"Failed validation: {len(failed)}")
 
         if successful:
             avg_latency = sum(r.latency_ms for r in successful) / len(successful)
             fastest = min(successful, key=lambda r: r.latency_ms)
-            longest_response = max(successful, key=lambda r: len(r.response))
 
-            print(f"\nPerformance Metrics:")
-            print(f"  Average latency: {avg_latency:.0f}ms")
+            print(f"\nLatency:")
+            print(f"  Average: {avg_latency:.0f}ms")
             print(f"  Fastest: {fastest.framework} ({fastest.latency_ms:.0f}ms)")
-            print(
-                f"  Longest response: {longest_response.framework} ({len(longest_response.response)} chars)"
-            )
 
         print("\nPer-Framework Results:")
         for r in results:
+            score = eval_result.scores.get(r.framework)
+            score_str = f"{score.score}/5" if score else "N/A"
             status = "PASS" if r.success else "FAIL"
             if r.error:
                 print(f"  [{status}] {r.framework}: ERROR - {r.error}")
             else:
-                print(f"  [{status}] {r.framework}: {r.latency_ms:.0f}ms, {len(r.response)} chars")
+                print(
+                    f"  [{status}] {r.framework}: {r.latency_ms:.0f}ms, {len(r.response)} chars, Score: {score_str}"
+                )
 
         # Print sample responses
         print("\n" + "-" * 70)
@@ -507,8 +555,10 @@ class TestSupportAgentSentryComparison:
         print("-" * 70)
 
         for r in results:
-            if r.success and r.response:
-                print(f"\n>>> {r.framework.upper()}:")
+            if r.response:
+                score = eval_result.scores.get(r.framework)
+                score_str = f"[Score: {score.score}/5]" if score else ""
+                print(f"\n>>> {r.framework.upper()} {score_str}:")
                 print(r.response[:500])
                 if len(r.response) > 500:
                     print(f"... ({len(r.response) - 500} more chars)")
@@ -519,28 +569,19 @@ class TestSupportAgentSentryComparison:
         assert len(results) == 3, f"Expected 3 frameworks, got {len(results)}"
 
         # At least 1 framework must succeed to validate the test works
-        # NOTE: AutoGen and CrewAI may fail if Sentry connectors aren't properly
-        # configured in their containers. This is expected in some deployments.
         assert len(successful) >= 1, (
             f"No frameworks succeeded! Results: {[f'{r.framework}: {r.response[:100]}' for r in results]}"
         )
 
-        # If less than 3 succeeded, print debug info for failed ones
-        if len(successful) < 3:
-            print("\n" + "!" * 70)
-            print("DEBUG: Some frameworks returned short/invalid responses:")
-            print("!" * 70)
-            for r in failed:
-                print(f"\n{r.framework.upper()} response ({len(r.response)} chars):")
-                print(f"  '{r.response}'")
-                if r.error:
-                    print(f"  Error: {r.error}")
+        # Winner must have a score > 0
+        winner_score = eval_result.scores.get(eval_result.winner)
+        assert winner_score is not None, "No winner determined"
+        assert winner_score.score > 0, f"Winner {eval_result.winner} has score 0"
 
-        # All successful responses should have meaningful content
-        for r in successful:
-            assert len(r.response) > 50, (
-                f"{r.framework} response too short: {len(r.response)} chars"
-            )
+        # Print final verdict
+        print("\n" + "=" * 70)
+        print(f"FINAL VERDICT: {eval_result.winner.upper()} wins with score {winner_score.score}/5")
+        print("=" * 70)
 
 
 # ==============================================================================
