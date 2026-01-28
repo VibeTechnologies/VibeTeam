@@ -69,7 +69,7 @@ def get_installation_token(
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
-    body = {}
+    body: dict = {}
     if permissions:
         body["permissions"] = permissions
     if repositories:
