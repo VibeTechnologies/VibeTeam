@@ -52,6 +52,11 @@ spec:
                 secretKeyRef:
                   name: vibeteam-secrets
                   key: GITHUB_TOKEN
+            - name: SENTRY_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SENTRY_AUTH_TOKEN
           resources:
             requests:
               memory: "512Mi"
@@ -59,6 +64,9 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
+          volumeMounts:
+            - name: sessions-volume
+              mountPath: /app/.sessions
           livenessProbe:
             httpGet:
               path: /health
@@ -75,6 +83,9 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+      volumes:
+        - name: sessions-volume
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

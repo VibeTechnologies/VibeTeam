@@ -55,6 +55,11 @@ spec:
                 secretKeyRef:
                   name: vibeteam-secrets
                   key: GITHUB_TOKEN
+            - name: SENTRY_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SENTRY_AUTH_TOKEN
           resources:
             requests:
               memory: "1Gi"
