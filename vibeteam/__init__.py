@@ -75,7 +75,7 @@ __all__ = [
 # Primary exports - OpenHands-based (v3.x)
 # Agent exports for direct usage - optional import for standalone connector usage
 try:
-    from vibeteam.agents import (
+    from vibeteam.agents import (  # noqa: F401
         BaseVibeAgent,
         MarketerAgent,
         ProductManagerAgent,
@@ -84,7 +84,7 @@ try:
         SoftwareEngineerAgent,
         SupportEngineerAgent,
     )
-    from vibeteam.orchestrator import AgentType, TaskResult, VibeTeam
+    from vibeteam.orchestrator import AgentType, TaskResult, VibeTeam  # noqa: F401
 
     __all__.extend(
         [
