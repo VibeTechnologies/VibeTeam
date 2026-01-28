@@ -179,15 +179,18 @@ def check_llm_availability(report: ReadinessReport) -> None:
     """Test LLM availability with a simple prompt."""
     print_section("LLM AVAILABILITY")
 
-    # Check required env vars
-    api_key = os.environ.get("AZURE_API_KEY")
-    api_base = os.environ.get("AZURE_API_BASE")
+    # Use standard Azure OpenAI environment variables
+    api_key = os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("AZURE_API_KEY")
+    api_base = os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("AZURE_API_BASE")
+    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+
+    model_name = f"azure/{deployment}"
 
     if not api_key or not api_base:
         result = CheckResult(
-            name="azure/gpt-5-2",
+            name=model_name,
             status="WARN",
-            message="AZURE_API_KEY or AZURE_API_BASE not set",
+            message="AZURE_OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT not set",
             critical=False,
         )
         print_check(result)
@@ -197,28 +200,28 @@ def check_llm_availability(report: ReadinessReport) -> None:
     try:
         import litellm
 
-        start = datetime.utcnow()
+        start = datetime.now(timezone.utc)
         response = litellm.completion(
-            model="azure/gpt-5-2",
+            model=model_name,
             messages=[{"role": "user", "content": "Say hello in exactly 5 words."}],
             api_base=api_base,
             api_key=api_key,
             api_version=os.environ.get("AZURE_API_VERSION", "2024-08-01-preview"),
-            max_tokens=50,
+            max_completion_tokens=50,  # GPT-5.2 requires max_completion_tokens
             timeout=120,  # 120 second timeout for LLM
         )
-        elapsed = (datetime.utcnow() - start).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - start).total_seconds()
         tokens = response.usage.total_tokens if response.usage else 0
 
         result = CheckResult(
-            name="azure/gpt-5-2",
+            name=model_name,
             status="OK",
             message=f"Response in {elapsed:.1f}s, {tokens} tokens",
             critical=True,
         )
     except Exception as e:
         result = CheckResult(
-            name="azure/gpt-5-2",
+            name=model_name,
             status="FAIL",
             message=f"LLM error: {str(e)[:80]}",
             critical=True,

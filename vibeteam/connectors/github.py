@@ -230,6 +230,8 @@ class GitHubConnector:
         state: str = "open",
         labels: list[str] | None = None,
         limit: int = 30,
+        sort: str = "created",
+        order: str = "desc",
     ) -> list[GitHubIssue]:
         """
         Search issues in the repository.
@@ -239,13 +241,15 @@ class GitHubConnector:
             state: "open", "closed", or "all"
             labels: Filter by labels
             limit: Max results
+            sort: Sort by "created", "updated", or "comments" (default: created)
+            order: Sort order "asc" or "desc" (default: desc)
         """
         q = f"{query} repo:{self.owner}/{self.repo} is:issue state:{state}"
         if labels:
             q += " " + " ".join(f"label:{lbl}" for lbl in labels)
 
         endpoint = "/search/issues"
-        params = {"q": q, "per_page": limit, "sort": "updated"}
+        params = {"q": q, "per_page": limit, "sort": sort, "order": order}
         data = self._get(endpoint, params)
         return [self._parse_issue(item) for item in data.get("items", [])]
 

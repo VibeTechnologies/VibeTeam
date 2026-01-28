@@ -11,7 +11,7 @@ Monitors:
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -116,15 +116,15 @@ class LangfuseConnector:
             params["name"] = name
 
         # Filter by time
-        from_time = datetime.utcnow() - timedelta(hours=hours)
-        params["fromTimestamp"] = from_time.isoformat() + "Z"
+        from_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        params["fromTimestamp"] = from_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         data = self._request("GET", "/traces", params=params)
         return data.get("data", [])
 
     def get_stats(self, hours: int = 1) -> LangfuseStats:
         """Get aggregated statistics for the specified period."""
-        traces = self.get_traces(hours=hours, limit=500)
+        traces = self.get_traces(hours=hours, limit=100)  # API max is 100
 
         if not traces:
             return LangfuseStats(
@@ -186,7 +186,7 @@ class LangfuseConnector:
         - Token budget usage
         """
         anomalies: list[LangfuseAnomaly] = []
-        traces = self.get_traces(hours=hours, limit=500)
+        traces = self.get_traces(hours=hours, limit=100)  # API max is 100
 
         if not traces:
             logger.info("No traces found in the specified period")
@@ -196,7 +196,7 @@ class LangfuseConnector:
         latencies = []
         errors = []
         total_tokens = 0
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         for trace in traces:
             latency = trace.get("latency", 0) or 0

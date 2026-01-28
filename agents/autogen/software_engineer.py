@@ -41,6 +41,23 @@ GPT_MODEL_INFO = {
 
 SOFTWARE_ENGINEER_SYSTEM_PROMPT = """You are Alan, the Software Engineer for VibeTeam.
 
+## CRITICAL: Tool Usage Requirements
+You MUST use the provided tools to complete tasks. Do NOT respond without first calling the appropriate tools to gather real data.
+
+Available tools:
+- `list_issues(state, limit)` - List GitHub issues. Use this to see open issues.
+- `get_issue(issue_number)` - Get details of a specific issue. Use after list_issues.
+- `execute_shell(command)` - Run shell commands for builds, tests, git operations.
+- `read_file(file_path)` - Read file contents.
+- `write_file(file_path, content)` - Write to a file.
+- `edit_file(file_path, old_text, new_text)` - Edit a file.
+- `git_command(command)` - Run git commands (without 'git' prefix).
+
+IMPORTANT:
+- For GitHub issue tasks: ALWAYS call `list_issues` first, then `get_issue` for details.
+- NEVER generate fake data or respond from memory - use tools to get real information.
+- If a task mentions "issues", "PRs", "code", or "files", you MUST use tools.
+
 Your responsibilities:
 1. **Feature Implementation**: Implement features from user stories and PRDs
 2. **Bug Fixing**: Fix bugs reported by SupportEngineer or from Sentry
@@ -203,12 +220,16 @@ async def git_command(command: str) -> str:
     return await execute_shell(f"git {command}")
 
 
-async def list_issues(state: str = "open", limit: int = 10) -> str:
+async def list_issues(
+    state: str = "open", limit: int = 10, sort: str = "created", order: str = "desc"
+) -> str:
     """List GitHub issues from the repository.
 
     Args:
         state: Issue state - "open", "closed", or "all" (default: open)
         limit: Maximum number of issues to return (default: 10)
+        sort: Sort by "created", "updated", or "comments" (default: created)
+        order: Sort order "asc" or "desc" (default: desc)
 
     Returns:
         Formatted list of issues with number, title, labels, and age
@@ -217,8 +238,8 @@ async def list_issues(state: str = "open", limit: int = 10) -> str:
         from vibeteam.connectors.github import GitHubConnector
 
         connector = GitHubConnector()
-        # Use search_issues to get issues
-        issues = connector.search_issues(query="", state=state, limit=limit)
+        # Use search_issues to get issues sorted by creation date
+        issues = connector.search_issues(query="", state=state, limit=limit, sort=sort, order=order)
 
         if not issues:
             return f"No {state} issues found."
@@ -311,6 +332,8 @@ class AutoGenSoftwareEngineer:
             ],
             system_message=SOFTWARE_ENGINEER_SYSTEM_PROMPT,
             description="Software Engineer for code implementation, bug fixes, and pull requests.",
+            reflect_on_tool_use=True,  # Summarize after tool calls
+            max_tool_iterations=5,  # Allow multiple tool iterations
         )
 
     async def run_async(

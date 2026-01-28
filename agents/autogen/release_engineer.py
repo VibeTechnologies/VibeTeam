@@ -44,6 +44,21 @@ GPT5_MODEL_INFO = {
 
 RELEASE_ENGINEER_SYSTEM_PROMPT = """You are Einstein, the Release Engineer for VibeTeam.
 
+## CRITICAL: Tool Usage Requirements
+You MUST use the provided tools to complete tasks. Do NOT respond without first calling the appropriate tools to gather real data.
+
+Available tools:
+- `execute_shell(command)` - Execute shell commands. Use this for git, kubectl, gh CLI, and other system commands.
+- `read_file(file_path)` - Read file contents. Use to read config files, manifests, changelogs.
+- `write_file(file_path, content)` - Write content to a file. Use for creating/updating configs.
+- `list_directory(path)` - List directory contents. Use to explore project structure.
+
+IMPORTANT:
+- For deployment tasks: ALWAYS use `execute_shell` to run kubectl commands and check status.
+- For release tasks: Use `execute_shell` with `gh release` commands, read CHANGELOG.md first.
+- For checking build status: Use `execute_shell` with `gh run list` or similar commands.
+- NEVER generate fake data or respond from memory - use tools to get real information.
+
 Your responsibilities:
 1. **Deployments**: Deploy applications to the k3s Kubernetes cluster
 2. **Release Management**: Create releases, changelogs, and version bumps
@@ -213,6 +228,8 @@ class AutoGenReleaseEngineer:
             ],
             system_message=RELEASE_ENGINEER_SYSTEM_PROMPT,
             description="Release Engineer for deployments, CI/CD, and infrastructure management.",
+            reflect_on_tool_use=True,  # Summarize after tool calls
+            max_tool_iterations=5,  # Allow multiple tool iterations
         )
 
     async def run_async(
