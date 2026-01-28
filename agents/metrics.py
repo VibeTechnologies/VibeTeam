@@ -191,9 +191,7 @@ class MetricsCollector:
                     "avg_latency_ms": sum(m.latency_ms for m in fw_metrics) / fw_total,
                     "avg_tokens": sum(m.total_tokens for m in fw_metrics) / fw_total,
                     "avg_tool_calls": sum(m.tool_calls for m in fw_metrics) / fw_total,
-                    "p95_latency_ms": _percentile(
-                        [m.latency_ms for m in fw_metrics], 95
-                    ),
+                    "p95_latency_ms": _percentile([m.latency_ms for m in fw_metrics], 95),
                 }
 
         # Stats by agent
@@ -205,8 +203,7 @@ class MetricsCollector:
                 stats["by_agent"][agent] = {
                     "total_tasks": agent_total,
                     "success_rate": agent_successes / agent_total,
-                    "avg_latency_ms": sum(m.latency_ms for m in agent_metrics)
-                    / agent_total,
+                    "avg_latency_ms": sum(m.latency_ms for m in agent_metrics) / agent_total,
                 }
 
         # Stats by category
@@ -218,8 +215,7 @@ class MetricsCollector:
                 stats["by_category"][category] = {
                     "total_tasks": cat_total,
                     "success_rate": cat_successes / cat_total,
-                    "avg_latency_ms": sum(m.latency_ms for m in cat_metrics)
-                    / cat_total,
+                    "avg_latency_ms": sum(m.latency_ms for m in cat_metrics) / cat_total,
                 }
 
         return stats
@@ -527,9 +523,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Agent Metrics Manager")
     parser.add_argument("--export", type=str, help="Export metrics to JSON file")
     parser.add_argument("--import-file", type=str, help="Import metrics from JSON file")
-    parser.add_argument(
-        "--report", action="store_true", help="Generate and print report"
-    )
+    parser.add_argument("--report", action="store_true", help="Generate and print report")
     parser.add_argument("--stats", action="store_true", help="Print statistics as JSON")
 
     args = parser.parse_args()

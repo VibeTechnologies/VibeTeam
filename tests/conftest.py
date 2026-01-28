@@ -39,24 +39,16 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Configure custom markers."""
-    config.addinivalue_line(
-        "markers", "integration: mark test as requiring real LLM API calls"
-    )
-    config.addinivalue_line(
-        "markers", "stress: mark test as a stress test (slow, expensive)"
-    )
+    config.addinivalue_line("markers", "integration: mark test as requiring real LLM API calls")
+    config.addinivalue_line("markers", "stress: mark test as a stress test (slow, expensive)")
     config.addinivalue_line("markers", "unit_task: mark test as a unit task (U1-U7)")
-    config.addinivalue_line(
-        "markers", "integration_task: mark test as an integration task (I1-I3)"
-    )
+    config.addinivalue_line("markers", "integration_task: mark test as an integration task (I1-I3)")
 
 
 def pytest_collection_modifyitems(config, items):
     """Skip integration/stress tests unless explicitly enabled."""
     if not config.getoption("--run-integration"):
-        skip_integration = pytest.mark.skip(
-            reason="need --run-integration option to run"
-        )
+        skip_integration = pytest.mark.skip(reason="need --run-integration option to run")
         for item in items:
             if "integration" in item.keywords:
                 item.add_marker(skip_integration)

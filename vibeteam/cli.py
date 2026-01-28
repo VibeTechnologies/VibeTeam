@@ -54,9 +54,7 @@ def run(task: str, agent: str | None, model: str) -> None:
 
     if result.success:
         console.print("\n[bold green]Task completed![/bold green]")
-        console.print(
-            f"[cyan]Agent: {result.metadata.get('agent_name', 'Unknown')}[/cyan]"
-        )
+        console.print(f"[cyan]Agent: {result.metadata.get('agent_name', 'Unknown')}[/cyan]")
         console.print("\n" + result.response)
     else:
         console.print(f"\n[bold red]Task failed: {result.error}[/bold red]")
@@ -135,9 +133,7 @@ def info(agent_key: str, model: str) -> None:
     if agent.tools:
         console.print("[bold]Tools:[/bold]")
         for tool in agent.tools:
-            console.print(
-                f"  - [yellow]{tool.name}[/yellow]: {tool.description[:60]}..."
-            )
+            console.print(f"  - [yellow]{tool.name}[/yellow]: {tool.description[:60]}...")
 
 
 # =============================================================================
@@ -158,15 +154,11 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
     """Product Manager: Analyze Langfuse conversations for feature requests."""
     import requests
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     langfuse_public = os.environ.get("LANGFUSE_PUBLIC_KEY")
     langfuse_secret = os.environ.get("LANGFUSE_SECRET_KEY")
-    langfuse_url = os.environ.get(
-        "LANGFUSE_BASE_URL", "https://langfuse.vibebrowser.app"
-    )
+    langfuse_url = os.environ.get("LANGFUSE_BASE_URL", "https://langfuse.vibebrowser.app")
     gh_token = os.environ.get("GITHUB_TOKEN")
 
     if not langfuse_public or not langfuse_secret:
@@ -240,9 +232,7 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
 @click.option("--dry-run", is_flag=True, help="Don't send responses")
 def support_emails(max_emails: int, dry_run: bool) -> None:
     """Support Engineer: Process support emails from Gmail."""
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     console.print("[bold]Support Engineer - Email Processing[/bold]")
     console.print(f"Processing up to {max_emails} emails...")
@@ -256,9 +246,7 @@ def support_emails(max_emails: int, dry_run: bool) -> None:
         creds_path = Path(
             os.environ.get("GMAIL_CREDENTIALS_PATH", "/secrets/gmail-credentials.json")
         )
-        token_path = Path(
-            os.environ.get("GMAIL_TOKEN_PATH", "/secrets/gmail-token.json")
-        )
+        token_path = Path(os.environ.get("GMAIL_TOKEN_PATH", "/secrets/gmail-token.json"))
 
         if not creds_path.exists():
             console.print(f"[red]Credentials not found: {creds_path}[/red]")
@@ -295,9 +283,7 @@ Date: {email.date}
             # Check if escalation needed
             if "ESCALATE: Yes" in analysis or "escalat" in analysis.lower():
                 console.print("    [yellow]Flagged for escalation[/yellow]")
-                escalation = asyncio.run(
-                    support_agent.flag_for_escalation(email_content, analysis)
-                )
+                escalation = asyncio.run(support_agent.flag_for_escalation(email_content, analysis))
                 console.print("    Escalation ticket created")
                 # Mark as read but don't respond
                 if not dry_run:
@@ -306,14 +292,10 @@ Date: {email.date}
                 continue
 
             # Generate response
-            response_text = asyncio.run(
-                support_agent.write_response(email_content, analysis)
-            )
+            response_text = asyncio.run(support_agent.write_response(email_content, analysis))
 
             # Validate response security
-            validation = asyncio.run(
-                support_agent.validate_response_security(response_text)
-            )
+            validation = asyncio.run(support_agent.validate_response_security(response_text))
             if "VALIDATION: FAIL" in validation:
                 console.print("    [red]Response failed security validation[/red]")
                 continue
@@ -354,9 +336,7 @@ def sre_health(endpoints: tuple) -> None:
     """Reliability Engineer: Run health checks on endpoints."""
     import requests
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     console.print("[bold]Reliability Engineer - Health Checks[/bold]")
 
@@ -375,9 +355,7 @@ def sre_health(endpoints: tuple) -> None:
             resp = requests.get(endpoint, timeout=10)
             status = "OK" if resp.status_code == 200 else f"ERROR ({resp.status_code})"
             results.append((endpoint, status, resp.elapsed.total_seconds()))
-            console.print(
-                f"  {status}: {endpoint} ({resp.elapsed.total_seconds():.2f}s)"
-            )
+            console.print(f"  {status}: {endpoint} ({resp.elapsed.total_seconds():.2f}s)")
         except Exception as e:
             results.append((endpoint, f"FAIL: {e}", 0))
             console.print(f"  [red]FAIL: {endpoint} - {e}[/red]")
@@ -395,9 +373,7 @@ def release_check() -> None:
     """Release Engineer: Check for pending releases."""
     import subprocess
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     console.print("[bold]Release Engineer - Release Check[/bold]")
 
@@ -456,9 +432,7 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
     import subprocess
     from pathlib import Path
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     console.print("[bold]Software Engineer - Issue Fix & PR Creation[/bold]")
     console.print(f"Checking issues with label: {label}")
@@ -537,9 +511,7 @@ def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
             issue_title = issue["title"]
             branch_name = f"swe-agent/issue-{issue_num}"
 
-            console.print(
-                f"\n[cyan]Processing issue #{issue_num}: {issue_title[:50]}[/cyan]"
-            )
+            console.print(f"\n[cyan]Processing issue #{issue_num}: {issue_title[:50]}[/cyan]")
 
             # Skip if PR already exists
             if branch_name in existing_branches:
@@ -591,17 +563,13 @@ Be precise and provide complete, working code changes.
 
             console.print("  Cloning repository...")
             clone_url = f"https://x-access-token:{gh_token}@github.com/{repo}.git"
-            success, _, stderr = run_cmd(
-                ["git", "clone", "--depth", "1", clone_url, str(repo_dir)]
-            )
+            success, _, stderr = run_cmd(["git", "clone", "--depth", "1", clone_url, str(repo_dir)])
             if not success:
                 console.print(f"  [red]Clone failed: {stderr}[/red]")
                 continue
 
             # Create branch
-            success, _, stderr = run_cmd(
-                ["git", "checkout", "-b", branch_name], cwd=str(repo_dir)
-            )
+            success, _, stderr = run_cmd(["git", "checkout", "-b", branch_name], cwd=str(repo_dir))
             if not success:
                 console.print(f"  [red]Branch creation failed: {stderr}[/red]")
                 continue
@@ -611,7 +579,9 @@ Be precise and provide complete, working code changes.
             import re
 
             # Parse edit blocks from analysis
-            edit_pattern = r"```edit\nFILE:\s*(.+?)\nOLD:\n<<<\n(.*?)\n>>>\nNEW:\n<<<\n(.*?)\n>>>\n```"
+            edit_pattern = (
+                r"```edit\nFILE:\s*(.+?)\nOLD:\n<<<\n(.*?)\n>>>\nNEW:\n<<<\n(.*?)\n>>>\n```"
+            )
             edits = re.findall(edit_pattern, analysis, re.DOTALL)
 
             for file_path, old_code, new_code in edits:
@@ -629,14 +599,10 @@ Be precise and provide complete, working code changes.
                     edits_applied += 1
                     console.print(f"  [green]Applied edit to {file_path}[/green]")
                 else:
-                    console.print(
-                        f"  [yellow]Could not find match in {file_path}[/yellow]"
-                    )
+                    console.print(f"  [yellow]Could not find match in {file_path}[/yellow]")
 
             if edits_applied == 0:
-                console.print(
-                    "  [yellow]No edits applied, skipping PR creation[/yellow]"
-                )
+                console.print("  [yellow]No edits applied, skipping PR creation[/yellow]")
                 # Post analysis as comment instead
                 comment_body = f"""## [SWE-Agent Analysis]
 
@@ -667,15 +633,13 @@ The agent analyzed this issue but could not automatically apply fixes.
                 ["git", "config", "user.email", "swe-agent@vibebrowser.app"],
                 cwd=str(repo_dir),
             )
-            run_cmd(
-                ["git", "config", "user.name", "VibeTeam SWE-Agent"], cwd=str(repo_dir)
-            )
+            run_cmd(["git", "config", "user.name", "VibeTeam SWE-Agent"], cwd=str(repo_dir))
             run_cmd(["git", "add", "-A"], cwd=str(repo_dir))
 
-            commit_msg = f"fix: {issue_title[:50]}\n\nFixes #{issue_num}\n\nGenerated by VibeTeam SWE-Agent"
-            success, _, stderr = run_cmd(
-                ["git", "commit", "-m", commit_msg], cwd=str(repo_dir)
+            commit_msg = (
+                f"fix: {issue_title[:50]}\n\nFixes #{issue_num}\n\nGenerated by VibeTeam SWE-Agent"
             )
+            success, _, stderr = run_cmd(["git", "commit", "-m", commit_msg], cwd=str(repo_dir))
             if not success:
                 console.print(f"  [red]Commit failed: {stderr}[/red]")
                 continue
@@ -745,9 +709,7 @@ Automated fix for #{issue_num}
 @click.option("--investment", "-i", default=10.0, help="(Deprecated) Budget")
 def run_project(requirement: str, rounds: int, investment: float) -> None:
     """[Deprecated] Use 'run' instead."""
-    console.print(
-        "[yellow]Warning: run-project is deprecated, use 'run' instead[/yellow]"
-    )
+    console.print("[yellow]Warning: run-project is deprecated, use 'run' instead[/yellow]")
     console.print("[dim]--rounds and --investment options are no longer used[/dim]\n")
 
     team = VibeTeam()

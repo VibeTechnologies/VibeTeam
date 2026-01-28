@@ -150,9 +150,7 @@ async def detect_langfuse_anomalies(hours: int = 24) -> str:
         for anomaly in anomalies:
             output += f"**[{anomaly.severity.upper()}] {anomaly.type}**\n"
             output += f"  Message: {anomaly.message}\n"
-            output += (
-                f"  Value: {anomaly.value:.2f} (threshold: {anomaly.threshold:.2f})\n"
-            )
+            output += f"  Value: {anomaly.value:.2f} (threshold: {anomaly.threshold:.2f})\n"
             output += f"  Time: {anomaly.timestamp}\n"
             if anomaly.trace_ids:
                 output += f"  Sample traces: {', '.join(anomaly.trace_ids[:5])}\n"
@@ -196,9 +194,7 @@ def get_langfuse_context(hours: int = 6) -> str:
         if anomalies:
             context += f"### Anomalies ({len(anomalies)})\n\n"
             for anomaly in anomalies:
-                context += (
-                    f"- **[{anomaly.severity}]** {anomaly.type}: {anomaly.message}\n"
-                )
+                context += f"- **[{anomaly.severity}]** {anomaly.type}: {anomaly.message}\n"
         else:
             context += "No anomalies detected.\n"
 

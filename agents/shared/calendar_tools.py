@@ -171,13 +171,9 @@ Note: {result[1]}
         }
 
         if attendees:
-            event["attendees"] = [
-                {"email": email.strip()} for email in attendees.split(",")
-            ]
+            event["attendees"] = [{"email": email.strip()} for email in attendees.split(",")]
 
-        created_event = (
-            service.events().insert(calendarId="primary", body=event).execute()
-        )
+        created_event = service.events().insert(calendarId="primary", body=event).execute()
 
         return f"""
 === Calendar Event Created ===

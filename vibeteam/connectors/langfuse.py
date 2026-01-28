@@ -212,9 +212,7 @@ class LangfuseConnector:
         ]
 
         if high_latency_traces:
-            critical = [
-                t for t in high_latency_traces if t[1] > self.LATENCY_CRITICAL_MS
-            ]
+            critical = [t for t in high_latency_traces if t[1] > self.LATENCY_CRITICAL_MS]
             avg_high = sum(t[1] for t in high_latency_traces) / len(high_latency_traces)
 
             anomalies.append(
@@ -236,11 +234,7 @@ class LangfuseConnector:
             anomalies.append(
                 LangfuseAnomaly(
                     type="error_rate",
-                    severity=(
-                        "critical"
-                        if error_rate > self.ERROR_RATE_CRITICAL
-                        else "warning"
-                    ),
+                    severity=("critical" if error_rate > self.ERROR_RATE_CRITICAL else "warning"),
                     message=f"Error rate {error_rate:.1%} ({len(errors)}/{len(traces)} traces)",
                     value=error_rate,
                     threshold=self.ERROR_RATE_WARNING,
@@ -252,18 +246,14 @@ class LangfuseConnector:
         # Check token budget (extrapolate to daily)
         hourly_tokens = total_tokens / hours if hours > 0 else total_tokens
         projected_daily = hourly_tokens * 24
-        budget_usage = (
-            projected_daily / daily_token_budget if daily_token_budget > 0 else 0
-        )
+        budget_usage = projected_daily / daily_token_budget if daily_token_budget > 0 else 0
 
         if budget_usage > self.TOKEN_BUDGET_WARNING:
             anomalies.append(
                 LangfuseAnomaly(
                     type="token_usage",
                     severity=(
-                        "critical"
-                        if budget_usage > self.TOKEN_BUDGET_CRITICAL
-                        else "warning"
+                        "critical" if budget_usage > self.TOKEN_BUDGET_CRITICAL else "warning"
                     ),
                     message=f"Projected daily token usage: {projected_daily:,.0f} ({budget_usage:.0%} of budget)",
                     value=projected_daily,

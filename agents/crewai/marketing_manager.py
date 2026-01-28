@@ -116,9 +116,7 @@ class ContentDraftTool(BaseTool if CREWAI_AVAILABLE else object):
     """Draft social media content."""
 
     name: str = "draft_content"
-    description: str = (
-        "Draft social media content. Input: JSON with 'platform' and 'topic' keys."
-    )
+    description: str = "Draft social media content. Input: JSON with 'platform' and 'topic' keys."
 
     def _run(self, input_data: str) -> str:
         """Draft content."""
@@ -133,9 +131,7 @@ class ContentDraftTool(BaseTool if CREWAI_AVAILABLE else object):
             limits = {"twitter": 280, "linkedin": 3000}
             limit = limits.get(platform.lower(), 280)
 
-            return (
-                f"Draft for {platform} (max {limit} chars):\n[Content about: {topic}]"
-            )
+            return f"Draft for {platform} (max {limit} chars):\n[Content about: {topic}]"
         except Exception as e:
             return f"Error drafting content: {e}"
 
@@ -246,9 +242,7 @@ class CrewAIMarketingManager:
         """Async version of run."""
         import asyncio
 
-        return await asyncio.to_thread(
-            self.run, task, context_type, context_id, **kwargs
-        )
+        return await asyncio.to_thread(self.run, task, context_type, context_id, **kwargs)
 
 
 def create_marketing_manager(

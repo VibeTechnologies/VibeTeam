@@ -97,9 +97,7 @@ class ReleaseEngineerAgent(BaseVibeAgent):
             except Exception:
                 pass
 
-        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get(
-            "LANGFUSE_SECRET_KEY"
-        ):
+        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
             try:
                 tools.append(LangfuseTool())
             except Exception:

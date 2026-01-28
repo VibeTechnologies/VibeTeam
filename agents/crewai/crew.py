@@ -242,9 +242,7 @@ Include any follow-up items or recommendations.""",
         crew_tasks.append(review_task)
 
         # Create and run crew
-        process_type = (
-            Process.hierarchical if process == "hierarchical" else Process.sequential
-        )
+        process_type = Process.hierarchical if process == "hierarchical" else Process.sequential
         crew = Crew(
             agents=agents,
             tasks=crew_tasks,
@@ -314,9 +312,7 @@ Include any follow-up items or recommendations.""",
         """Async version of run."""
         import asyncio
 
-        return await asyncio.to_thread(
-            self.run, task, context_type, context_id, multi_agent
-        )
+        return await asyncio.to_thread(self.run, task, context_type, context_id, multi_agent)
 
 
 def create_team(config: AgentConfig | None = None) -> CrewAITeam:

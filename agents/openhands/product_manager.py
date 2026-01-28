@@ -89,9 +89,7 @@ class OpenHandsProductManager:
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
-            raise ImportError(
-                "OpenHands SDK not installed. Run: pip install openhands-ai"
-            )
+            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
 
         self.config = config or PRODUCT_MANAGER_CONFIG
 

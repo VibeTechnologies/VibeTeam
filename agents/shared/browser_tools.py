@@ -101,8 +101,7 @@ async def _fetch_with_playwright(url: str, timeout_ms: int = 30000) -> str:
             await page.wait_for_timeout(1000)
 
             # Extract text content, removing scripts and styles
-            content = await page.evaluate(
-                """
+            content = await page.evaluate("""
                 () => {
                     // Remove script and style elements
                     const elements = document.querySelectorAll('script, style, nav, footer, header, aside');
@@ -136,8 +135,7 @@ async def _fetch_with_playwright(url: str, timeout_ms: int = 30000) -> str:
 
                     return getText(body);
                 }
-            """
-            )
+            """)
 
             # Clean up and truncate
             content = " ".join(content.split())  # Normalize whitespace
@@ -180,9 +178,7 @@ async def _fetch_with_urllib(url: str) -> str:
                     self.text.append(text)
 
     try:
-        req = urllib.request.Request(
-            url, headers={"User-Agent": "VibeTeam Browser Bot/1.0"}
-        )
+        req = urllib.request.Request(url, headers={"User-Agent": "VibeTeam Browser Bot/1.0"})
         with urllib.request.urlopen(req, timeout=30) as response:
             html = response.read().decode("utf-8", errors="ignore")
 
@@ -225,13 +221,10 @@ async def web_search(query: str, num_results: int = 5) -> str:
             page = await browser.new_page()
 
             try:
-                await page.goto(
-                    search_url, timeout=15000, wait_until="domcontentloaded"
-                )
+                await page.goto(search_url, timeout=15000, wait_until="domcontentloaded")
 
                 # Extract search results
-                results = await page.evaluate(
-                    """
+                results = await page.evaluate("""
                     () => {
                         const results = [];
                         const items = document.querySelectorAll('.result');
@@ -252,8 +245,7 @@ async def web_search(query: str, num_results: int = 5) -> str:
                         }
                         return results;
                     }
-                """
-                )
+                """)
 
                 if not results:
                     return f"No search results found for: {query}"
@@ -372,8 +364,7 @@ async def extract_links(url: str, filter_pattern: str = "") -> str:
         try:
             await page.goto(url, timeout=30000, wait_until="domcontentloaded")
 
-            links = await page.evaluate(
-                """
+            links = await page.evaluate("""
                 () => {
                     const links = [];
                     document.querySelectorAll('a[href]').forEach(a => {
@@ -385,8 +376,7 @@ async def extract_links(url: str, filter_pattern: str = "") -> str:
                     });
                     return links;
                 }
-            """
-            )
+            """)
 
             # Filter if pattern provided
             if filter_pattern:

@@ -96,9 +96,7 @@ class FileWriteTool(BaseTool if CREWAI_AVAILABLE else object):
     """Write content to a file."""
 
     name: str = "write_file"
-    description: str = (
-        "Write content to a file. Input: JSON with 'path' and 'content' keys."
-    )
+    description: str = "Write content to a file. Input: JSON with 'path' and 'content' keys."
 
     def _run(self, input_data: str) -> str:
         """Write to the file."""
@@ -158,9 +156,7 @@ class ListDirectoryTool(BaseTool if CREWAI_AVAILABLE else object):
     """List directory contents."""
 
     name: str = "list_directory"
-    description: str = (
-        "List contents of a directory. Input: directory path (default: current dir)."
-    )
+    description: str = "List contents of a directory. Input: directory path (default: current dir)."
 
     def _run(self, path: str = ".") -> str:
         """List the directory."""
@@ -331,9 +327,7 @@ class CrewAISoftwareEngineer:
         """Async version of run."""
         import asyncio
 
-        return await asyncio.to_thread(
-            self.run, task, context_type, context_id, **kwargs
-        )
+        return await asyncio.to_thread(self.run, task, context_type, context_id, **kwargs)
 
 
 def create_software_engineer(

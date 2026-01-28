@@ -72,9 +72,7 @@ class OpenHandsMarketingManager:
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
-            raise ImportError(
-                "OpenHands SDK not installed. Run: pip install openhands-ai"
-            )
+            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
 
         self.config = config or MARKETING_MANAGER_CONFIG
 
@@ -149,12 +147,8 @@ class OpenHandsMarketingManager:
                             search_term = words[i + 1].strip(".,;:)")
                             if len(search_term) > 2:
                                 try:
-                                    results = web_search_sync(
-                                        f"{search_term} product features"
-                                    )
-                                    context_parts.append(
-                                        f"## Search Results\n{results}"
-                                    )
+                                    results = web_search_sync(f"{search_term} product features")
+                                    context_parts.append(f"## Search Results\n{results}")
                                 except Exception as e:
                                     context_parts.append(f"## Search Error\n{e}")
                                 break
