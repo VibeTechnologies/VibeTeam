@@ -9,7 +9,9 @@ Capabilities:
 """
 
 import os
-from typing import Any
+from typing import Any, Type
+
+from pydantic import BaseModel, Field
 
 from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
@@ -27,6 +29,67 @@ except ImportError:
     Crew = None
     LLM = None
     BaseTool = object
+
+
+# =============================================================================
+# Pydantic Input Schemas for Tools
+# =============================================================================
+
+
+class ShellInput(BaseModel):
+    """Input schema for shell command execution."""
+
+    command: str = Field(..., description="The shell command to execute")
+
+
+class FileReadInput(BaseModel):
+    """Input schema for reading a file."""
+
+    file_path: str = Field(..., description="Path to the file to read")
+
+
+class FileWriteInput(BaseModel):
+    """Input schema for writing to a file."""
+
+    path: str = Field(..., description="Path to the file to write")
+    content: str = Field(..., description="Content to write to the file")
+
+
+class FileEditInput(BaseModel):
+    """Input schema for editing a file."""
+
+    path: str = Field(..., description="Path to the file to edit")
+    old_text: str = Field(..., description="Text to find and replace")
+    new_text: str = Field(..., description="Text to replace with")
+
+
+class ListDirectoryInput(BaseModel):
+    """Input schema for listing directory contents."""
+
+    path: str = Field(
+        default=".", description="Directory path to list (default: current directory)"
+    )
+
+
+class GitInput(BaseModel):
+    """Input schema for git commands."""
+
+    command: str = Field(..., description="Git command to execute (without 'git' prefix)")
+
+
+class ListIssuesInput(BaseModel):
+    """Input schema for listing GitHub issues."""
+
+    state: str = Field(default="open", description="Issue state: open, closed, or all")
+    limit: int = Field(default=10, description="Maximum number of issues to return")
+    sort: str = Field(default="created", description="Sort by: created, updated, or comments")
+    order: str = Field(default="desc", description="Sort order: asc or desc")
+
+
+class GetIssueInput(BaseModel):
+    """Input schema for getting a specific GitHub issue."""
+
+    issue_number: int = Field(..., description="The issue number to retrieve")
 
 
 SOFTWARE_ENGINEER_BACKSTORY = """You are Alan, the Software Engineer for VibeTeam.
@@ -65,9 +128,9 @@ class ShellTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "shell"
     description: str = (
-        "Execute shell commands. Use for builds, tests, git operations, and system tasks. "
-        "Input: the command string to execute."
+        "Execute shell commands. Use for builds, tests, git operations, and system tasks."
     )
+    args_schema: Type[BaseModel] = ShellInput
 
     def _run(self, command: str) -> str:
         """Execute the shell command."""
@@ -97,7 +160,8 @@ class FileReadTool(BaseTool if CREWAI_AVAILABLE else object):
     """Read file contents."""
 
     name: str = "read_file"
-    description: str = "Read the contents of a file. Input: file path."
+    description: str = "Read the contents of a file."
+    args_schema: Type[BaseModel] = FileReadInput
 
     def _run(self, file_path: str) -> str:
         """Read the file."""
@@ -112,18 +176,12 @@ class FileWriteTool(BaseTool if CREWAI_AVAILABLE else object):
     """Write content to a file."""
 
     name: str = "write_file"
-    description: str = "Write content to a file. Input: JSON with 'path' and 'content' keys."
+    description: str = "Write content to a file."
+    args_schema: Type[BaseModel] = FileWriteInput
 
-    def _run(self, input_data: str) -> str:
+    def _run(self, path: str, content: str) -> str:
         """Write to the file."""
-        import json
-
         try:
-            data = json.loads(input_data)
-            path = data.get("path")
-            content = data.get("content")
-            if not path or content is None:
-                return "Error: 'path' and 'content' are required"
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
             with open(path, "w") as f:
                 f.write(content)
@@ -136,22 +194,12 @@ class FileEditTool(BaseTool if CREWAI_AVAILABLE else object):
     """Edit a file by replacing text."""
 
     name: str = "edit_file"
-    description: str = (
-        "Edit a file by replacing text. Input: JSON with 'path', 'old_text', and 'new_text' keys."
-    )
+    description: str = "Edit a file by replacing text."
+    args_schema: Type[BaseModel] = FileEditInput
 
-    def _run(self, input_data: str) -> str:
+    def _run(self, path: str, old_text: str, new_text: str) -> str:
         """Edit the file."""
-        import json
-
         try:
-            data = json.loads(input_data)
-            path = data.get("path")
-            old_text = data.get("old_text")
-            new_text = data.get("new_text")
-            if not path or old_text is None or new_text is None:
-                return "Error: 'path', 'old_text', and 'new_text' are required"
-
             with open(path) as f:
                 content = f.read()
 
@@ -172,7 +220,8 @@ class ListDirectoryTool(BaseTool if CREWAI_AVAILABLE else object):
     """List directory contents."""
 
     name: str = "list_directory"
-    description: str = "List contents of a directory. Input: directory path (default: current dir)."
+    description: str = "List contents of a directory."
+    args_schema: Type[BaseModel] = ListDirectoryInput
 
     def _run(self, path: str = ".") -> str:
         """List the directory."""
@@ -198,9 +247,10 @@ class GitTool(BaseTool if CREWAI_AVAILABLE else object):
 
     name: str = "git"
     description: str = (
-        "Execute git commands. Input: git command without 'git' prefix "
+        "Execute git commands without 'git' prefix "
         "(e.g., 'status', 'log -5', 'checkout -b feature')."
     )
+    args_schema: Type[BaseModel] = GitInput
 
     def _run(self, command: str) -> str:
         """Execute the git command."""
@@ -230,24 +280,15 @@ class ListIssuesTool(BaseTool if CREWAI_AVAILABLE else object):
     """List GitHub issues from the repository."""
 
     name: str = "list_issues"
-    description: str = (
-        "List GitHub issues. Input: JSON with optional 'state' (open/closed/all), "
-        "'limit' (default: 10), 'sort' (created/updated/comments, default: created), "
-        'and \'order\' (asc/desc, default: desc). Example: {"state": "open", "limit": 5}'
-    )
+    description: str = "List GitHub issues from the repository."
+    args_schema: Type[BaseModel] = ListIssuesInput
 
-    def _run(self, input_data: str = "{}") -> str:
+    def _run(
+        self, state: str = "open", limit: int = 10, sort: str = "created", order: str = "desc"
+    ) -> str:
         """List issues from GitHub."""
-        import json
-
         try:
             from vibeteam.connectors.github import GitHubConnector
-
-            data = json.loads(input_data) if input_data else {}
-            state = data.get("state", "open")
-            limit = data.get("limit", 10)
-            sort = data.get("sort", "created")
-            order = data.get("order", "desc")
 
             connector = GitHubConnector()
             issues = connector.search_issues(
@@ -275,15 +316,16 @@ class GetIssueTool(BaseTool if CREWAI_AVAILABLE else object):
     """Get details of a specific GitHub issue."""
 
     name: str = "get_issue"
-    description: str = "Get details of a GitHub issue. Input: issue number as string (e.g., '123')."
+    description: str = "Get details of a specific GitHub issue by number."
+    args_schema: Type[BaseModel] = GetIssueInput
 
-    def _run(self, issue_number: str) -> str:
+    def _run(self, issue_number: int) -> str:
         """Get issue details."""
         try:
             from vibeteam.connectors.github import GitHubConnector
 
             connector = GitHubConnector()
-            issue = connector.get_issue(int(issue_number))
+            issue = connector.get_issue(issue_number)
 
             labels = ", ".join(issue.labels) if issue.labels else "none"
             return (
