@@ -385,11 +385,15 @@ class TestKubernetesManifests:
 
     def test_manifests_exist(self) -> None:
         """Test all required manifests exist."""
+        # Note: Old CronJobs (product-manager, support-engineer, release-engineer,
+        # software-engineer) were replaced by microservices with APScheduler
         required = [
-            "product-manager.yaml",
-            "support-engineer.yaml",
-            "release-engineer.yaml",
-            "software-engineer.yaml",
+            "autogen-svc.yaml",
+            "crewai-svc.yaml",
+            "openhands-svc.yaml",
+            "scheduler-svc.yaml",
+            "vibeteam-gateway.yaml",
+            "postgres.yaml",
             "kustomization.yaml",
         ]
         for manifest in required:
@@ -398,10 +402,10 @@ class TestKubernetesManifests:
     def test_kustomization_includes_all(self) -> None:
         """Test kustomization.yaml includes all resources."""
         kustomization = (self.K8S_DIR / "kustomization.yaml").read_text()
-        assert "product-manager.yaml" in kustomization
-        assert "support-engineer.yaml" in kustomization
-        assert "release-engineer.yaml" in kustomization
-        assert "software-engineer.yaml" in kustomization
+        assert "autogen-svc.yaml" in kustomization
+        assert "crewai-svc.yaml" in kustomization
+        assert "openhands-svc.yaml" in kustomization
+        assert "scheduler-svc.yaml" in kustomization
 
     def test_manifests_are_valid_yaml(self) -> None:
         """Test all manifests are valid YAML."""
@@ -428,9 +432,9 @@ class TestKubernetesManifests:
                     assert "schedule" in doc.get("spec", {}), f"Missing schedule in {manifest.name}"
                     job_spec = doc["spec"]["jobTemplate"]["spec"]["template"]["spec"]
                     assert "containers" in job_spec, f"Missing containers in {manifest.name}"
-                    assert (
-                        "imagePullSecrets" in job_spec
-                    ), f"Missing imagePullSecrets in {manifest.name}"
+                    assert "imagePullSecrets" in job_spec, (
+                        f"Missing imagePullSecrets in {manifest.name}"
+                    )
 
 
 if __name__ == "__main__":
