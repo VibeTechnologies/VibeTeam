@@ -21,17 +21,57 @@ from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 
 try:
-    from openhands.sdk import LLM, Agent, LocalConversation
+    from openhands.sdk import LLM, Agent, LocalConversation, Tool
+    from openhands.tools.terminal import TerminalTool
+    from openhands.tools.file_editor import FileEditorTool
 
     OPENHANDS_AVAILABLE = True
+
+    class AzureLLM(LLM):
+        """LLM subclass that forces completion API for Azure OpenAI.
+
+        Azure OpenAI doesn't support the Responses API endpoint, so we override
+        uses_responses_api() to always return False.
+        """
+
+        def uses_responses_api(self) -> bool:
+            """Azure OpenAI doesn't support the Responses API."""
+            return False
+
 except ImportError:
     OPENHANDS_AVAILABLE = False
     LLM = None
+    AzureLLM = None
     Agent = None
     LocalConversation = None
+    Tool = None
+    TerminalTool = None
+    FileEditorTool = None
 
 
 SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
+
+## CRITICAL: Tool Usage Requirements
+You have access to shell commands. Use the `gh` CLI tool for all GitHub operations.
+The `gh` CLI is pre-installed and authenticated. ALWAYS use shell commands to get real data.
+
+## GitHub CLI Commands (use these!)
+```bash
+# List issues
+gh issue list --repo VibeTechnologies/VibeWebAgent --state open --limit 10
+
+# Get issue details
+gh issue view 123 --repo VibeTechnologies/VibeWebAgent
+
+# List PRs
+gh pr list --repo VibeTechnologies/VibeWebAgent --state open
+
+# Create PR
+gh pr create --title "feat: description" --body "Summary"
+
+# View PR
+gh pr view 123 --repo VibeTechnologies/VibeWebAgent
+```
 
 Your responsibilities:
 1. **Feature Implementation**: Implement features from user stories and PRDs
@@ -81,12 +121,16 @@ class OpenHandsSoftwareEngineer:
         self.config = config or SOFTWARE_ENGINEER_CONFIG
 
     def _create_llm(self) -> "LLM":
-        """Create LLM with Azure configuration."""
+        """Create LLM with Azure configuration.
+
+        Uses AzureLLM which forces completion API since Azure OpenAI
+        doesn't support the Responses API endpoint.
+        """
         model_name = self.config.llm.model or "gpt-4.1-mini"
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 
-        return LLM(
+        return AzureLLM(
             model=model_name,
             api_key=self.config.llm.api_key,
             base_url=self.config.llm.api_base,
@@ -95,9 +139,13 @@ class OpenHandsSoftwareEngineer:
         )
 
     def _create_agent(self, llm: "LLM") -> "Agent":
-        """Create Agent with LLM."""
+        """Create Agent with LLM and tools."""
         return Agent(
             llm=llm,
+            tools=[
+                Tool(name=TerminalTool.name),
+                Tool(name=FileEditorTool.name),
+            ],
             system_prompt_kwargs={
                 "agent_context": SOFTWARE_ENGINEER_CONTEXT,
             },
@@ -152,8 +200,27 @@ class OpenHandsSoftwareEngineer:
                 workspace=workspace_path,
             )
 
+            # Use send_message + run for the full agentic loop with tools
+            # (ask_agent is just a stateless single LLM call without tools)
             full_task = f"{SOFTWARE_ENGINEER_CONTEXT}\n\nTask: {task}"
-            response = conversation.ask_agent(full_task)
+            conversation.send_message(full_task)
+            conversation.run()
+
+            # Get the last assistant message from conversation events
+            response = ""
+            for event in reversed(conversation.state.events):
+                # Check for MessageEvent with agent source
+                if event.kind == "MessageEvent" and getattr(event, "source", None) == "agent":
+                    # MessageEvent has llm_message with content
+                    if hasattr(event, "llm_message") and event.llm_message:
+                        llm_msg = event.llm_message
+                        if hasattr(llm_msg, "content") and llm_msg.content:
+                            # Content is a list of content blocks
+                            for block in llm_msg.content:
+                                if hasattr(block, "text"):
+                                    response = block.text
+                                    break
+                    break
 
             session.add_message("user", task)
             session.add_message("assistant", response)

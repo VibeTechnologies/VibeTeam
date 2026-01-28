@@ -79,14 +79,28 @@ def fetch_docs_context_wrapper(query: str) -> str:
 
 
 try:
-    from openhands.sdk import LLM, Agent, LocalConversation
+    from openhands.sdk import LLM, Agent, LocalConversation, Tool
+    from openhands.tools.terminal import TerminalTool
+    from openhands.tools.file_editor import FileEditorTool
 
     OPENHANDS_AVAILABLE = True
+
+    class AzureLLM(LLM):
+        """LLM subclass that forces completion API for Azure OpenAI."""
+
+        def uses_responses_api(self) -> bool:
+            """Azure OpenAI doesn't support the Responses API."""
+            return False
+
 except ImportError:
     OPENHANDS_AVAILABLE = False
     LLM = None
+    AzureLLM = None
     Agent = None
     LocalConversation = None
+    Tool = None
+    TerminalTool = None
+    FileEditorTool = None
 
 
 SUPPORT_ENGINEER_CONTEXT = """You are Grace, the Support Engineer for VibeTeam.
@@ -131,7 +145,7 @@ class OpenHandsSupportEngineer:
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 
-        return LLM(
+        return AzureLLM(
             model=model_name,
             api_key=self.config.llm.api_key,
             base_url=self.config.llm.api_base,
@@ -140,9 +154,13 @@ class OpenHandsSupportEngineer:
         )
 
     def _create_agent(self, llm: "LLM") -> "Agent":
-        """Create Agent with LLM."""
+        """Create Agent with LLM and tools."""
         return Agent(
             llm=llm,
+            tools=[
+                Tool(name=TerminalTool.name),
+                Tool(name=FileEditorTool.name),
+            ],
             system_prompt_kwargs={
                 "agent_context": SUPPORT_ENGINEER_CONTEXT,
             },
@@ -251,7 +269,22 @@ class OpenHandsSupportEngineer:
             else:
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\nTask: {task}"
 
-            response = conversation.ask_agent(full_task)
+            # Use send_message + run for the full agentic loop with tools
+            conversation.send_message(full_task)
+            conversation.run()
+
+            # Get the last assistant message from conversation events
+            response = ""
+            for event in reversed(conversation.state.events):
+                if event.kind == "MessageEvent" and getattr(event, "source", None) == "agent":
+                    if hasattr(event, "llm_message") and event.llm_message:
+                        llm_msg = event.llm_message
+                        if hasattr(llm_msg, "content") and llm_msg.content:
+                            for block in llm_msg.content:
+                                if hasattr(block, "text"):
+                                    response = block.text
+                                    break
+                    break
 
             session.add_message("user", task)
             session.add_message("assistant", response)
