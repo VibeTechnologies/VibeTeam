@@ -119,7 +119,7 @@ Goal: {self.goal}
 
 {PROD_ENG_PROTOCOL}
 
-Available tools: {', '.join(t.name for t in self.tools) if self.tools else 'None'}
+Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """
 
     async def check_system_health(self) -> str:

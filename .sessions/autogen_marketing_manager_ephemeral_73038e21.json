@@ -1,0 +1,22 @@
+{
+  "session_id": "e1f16725-73b5-4d9e-a579-3e2da71ab5d5",
+  "framework": "autogen",
+  "role": "marketing_manager",
+  "context_type": "ephemeral",
+  "context_id": "73038e21",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Draft a Twitter post announcing a new AI feature release. Keep it under 280 characters.",
+      "timestamp": "2026-01-27T20:15:07.118727+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "\n=== Twitter/X Post Draft ===\n\ud83d\ude80 Exciting news! We\u2019re thrilled to announce the launch of our latest AI feature that will revolutionize the way you work! \ud83c\udf89 Discover enhanced performance, smarter solutions, and an intuitive interface. Check it out now! #AI #Innovation #VibeTeam\n\n#AI #Innovation #VibeTeam\n\nCharacter count: 272/280\nHashtags: #AI #Innovation #VibeTeam\nStatus: Ready for review\n",
+      "timestamp": "2026-01-27T20:15:07.118736+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T20:15:05.844280+00:00",
+  "updated_at": "2026-01-27T20:15:07.118738+00:00"
+}

@@ -1,0 +1,22 @@
+{
+  "session_id": "c7205dde-a7e2-43ca-8135-29377d2d3f95",
+  "framework": "openhands",
+  "role": "support_engineer",
+  "context_type": "ephemeral",
+  "context_id": "851c690e",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Pull Sentry issues and provide a summary of unresolved errors.",
+      "timestamp": "2026-01-27T20:42:26.342994+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Based on the current Sentry issues from the last 24 hours, here is a summary of the unresolved errors:\n\n1. **VIBEBROWSEREXTENSION-8**\n   - **Error**: InsufficientQuotaError: 429 You exceeded your current quota, please check your plan and billing details.\n   - **Level**: Error\n   - **Count**: 9 occurrences\n   - **First Seen**: January 22, 2026\n   - **Last Seen**: January 26, 2026\n   - **URL**: [View Issue](https://vibetechnologies.sentry.io/issues/7210972124/)\n\n2. **VIBEBROWSEREXTENSION-2**\n   - **Error**: GraphRecursionError: Recursion limit of 512 reached without hitting a stop condition. You can increase the limit by setting the \"recursionLimit\" config key.\n   - **Level**: Error\n   - **Count**: 42 occurrences\n   - **First Seen**: November 4, 2025\n   - **Last Seen**: January 27, 2026\n   - **URL**: [View Issue](https://vibetechnologies.sentry.io/issues/6996178791/)\n\nBoth issues are unresolved and require attention. The first issue relates to exceeding the API quota, while the second involves a recursion limit being reached.",
+      "timestamp": "2026-01-27T20:42:26.343013+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T20:42:21.574436+00:00",
+  "updated_at": "2026-01-27T20:42:26.343015+00:00"
+}

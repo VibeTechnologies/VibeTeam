@@ -1,0 +1,22 @@
+{
+  "session_id": "63568975-5d63-451e-b50e-d3b39e50972b",
+  "framework": "crewai",
+  "role": "release_engineer",
+  "context_type": "ephemeral",
+  "context_id": "8c7a1e8b",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Execute the command 'echo Integration Test Passed'",
+      "timestamp": "2026-01-27T20:17:43.538841+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Integration Test Passed",
+      "timestamp": "2026-01-27T20:17:43.538858+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T20:17:42.519072+00:00",
+  "updated_at": "2026-01-27T20:17:43.538861+00:00"
+}

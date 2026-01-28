@@ -1,0 +1,22 @@
+{
+  "session_id": "665b7db0-8633-43d6-b80c-b4007a115f43",
+  "framework": "openhands",
+  "role": "support_engineer",
+  "context_type": "ephemeral",
+  "context_id": "eefdd049",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Query Sentry for unresolved issues and list them with their error counts.",
+      "timestamp": "2026-01-27T21:18:54.131325+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Based on the current Sentry issues from the last 24 hours, the unresolved issues along with their error counts are as follows:\n\n1. **VIBEBROWSEREXTENSION-8**\n   - **Error**: InsufficientQuotaError: 429 You exceeded your current quota, please check your plan and billing details.\n   - **Count**: 9\n   - **URL**: [View Issue](https://vibetechnologies.sentry.io/issues/7210972124/)\n\n2. **VIBEBROWSEREXTENSION-2**\n   - **Error**: GraphRecursionError: Recursion limit of 512 reached without hitting a stop condition. You can increase the limit by setting the \"recursionLimit\" config key.\n   - **Count**: 42\n   - **URL**: [View Issue](https://vibetechnologies.sentry.io/issues/6996178791/)\n\nThese issues need to be monitored and addressed accordingly.",
+      "timestamp": "2026-01-27T21:18:54.131336+00:00"
+    }
+  ],
+  "metadata": {},
+  "created_at": "2026-01-27T21:18:51.098436+00:00",
+  "updated_at": "2026-01-27T21:18:54.131337+00:00"
+}

@@ -1,0 +1,13 @@
+# Kustomization for multi-framework agents
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - autogen.yaml
+  - crewai.yaml
+  - openhands.yaml
+
+labels:
+  - pairs:
+      experiment: multi-framework-agents
+    includeSelectors: true
