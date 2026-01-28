@@ -3,11 +3,9 @@ Scheduler tools for agents to schedule future tasks.
 """
 
 import os
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-
 
 SCHEDULER_URL = os.getenv("SCHEDULER_SERVICE_URL", "http://scheduler-svc:8080")
 
