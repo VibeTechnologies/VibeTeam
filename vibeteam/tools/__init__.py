@@ -10,6 +10,21 @@ from vibeteam.tools.gmail import GmailTool
 from vibeteam.tools.health import HealthCheckTool
 from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.sentry import SentryTool
+from vibeteam.tools.transfer import (
+    TRANSFER_TOOLS,
+    HandoffResult,
+    TransferToMarketerTool,
+    TransferToPMTool,
+    TransferToReleaseTool,
+    TransferToSRETool,
+    TransferToSupervisorTool,
+    TransferToSupportTool,
+    TransferToSWETool,
+    get_all_transfer_tools,
+    get_transfer_tools_for_agent,
+    is_handoff_result,
+    parse_handoff,
+)
 
 __all__ = [
     "GitHubTool",
@@ -17,4 +32,18 @@ __all__ = [
     "HealthCheckTool",
     "LangfuseTool",
     "SentryTool",
+    # Transfer tools for Swarm pattern
+    "TRANSFER_TOOLS",
+    "HandoffResult",
+    "TransferToMarketerTool",
+    "TransferToPMTool",
+    "TransferToReleaseTool",
+    "TransferToSRETool",
+    "TransferToSupervisorTool",
+    "TransferToSupportTool",
+    "TransferToSWETool",
+    "get_all_transfer_tools",
+    "get_transfer_tools_for_agent",
+    "is_handoff_result",
+    "parse_handoff",
 ]

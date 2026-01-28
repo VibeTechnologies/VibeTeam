@@ -210,6 +210,74 @@ class GitTool(BaseTool if CREWAI_AVAILABLE else object):
             return f"Error executing git command: {e}"
 
 
+class ListIssuesTool(BaseTool if CREWAI_AVAILABLE else object):
+    """List GitHub issues from the repository."""
+
+    name: str = "list_issues"
+    description: str = (
+        "List GitHub issues. Input: JSON with optional 'state' (open/closed/all) "
+        'and \'limit\' (default: 10). Example: {"state": "open", "limit": 5}'
+    )
+
+    def _run(self, input_data: str = "{}") -> str:
+        """List issues from GitHub."""
+        import json
+
+        try:
+            from vibeteam.connectors.github import GitHubConnector
+
+            data = json.loads(input_data) if input_data else {}
+            state = data.get("state", "open")
+            limit = data.get("limit", 10)
+
+            connector = GitHubConnector()
+            issues = connector.search_issues(query="", state=state, limit=limit)
+
+            if not issues:
+                return f"No {state} issues found."
+
+            result = [f"Found {len(issues)} {state} issues:\n"]
+            for issue in issues:
+                labels = ", ".join(issue.labels) if issue.labels else "none"
+                result.append(
+                    f"#{issue.number}: {issue.title}\n"
+                    f"  Labels: {labels}\n"
+                    f"  Age: {issue.age_days:.1f} days\n"
+                    f"  URL: {issue.html_url}\n"
+                )
+            return "\n".join(result)
+        except Exception as e:
+            return f"Error listing issues: {e}"
+
+
+class GetIssueTool(BaseTool if CREWAI_AVAILABLE else object):
+    """Get details of a specific GitHub issue."""
+
+    name: str = "get_issue"
+    description: str = "Get details of a GitHub issue. Input: issue number as string (e.g., '123')."
+
+    def _run(self, issue_number: str) -> str:
+        """Get issue details."""
+        try:
+            from vibeteam.connectors.github import GitHubConnector
+
+            connector = GitHubConnector()
+            issue = connector.get_issue(int(issue_number))
+
+            labels = ", ".join(issue.labels) if issue.labels else "none"
+            return (
+                f"Issue #{issue.number}: {issue.title}\n"
+                f"State: {issue.state}\n"
+                f"Labels: {labels}\n"
+                f"Created: {issue.created_at} ({issue.age_days:.1f} days ago)\n"
+                f"Author: {issue.user}\n"
+                f"URL: {issue.html_url}\n\n"
+                f"Body:\n{issue.body}"
+            )
+        except Exception as e:
+            return f"Error getting issue: {e}"
+
+
 class CrewAISoftwareEngineer:
     """Software Engineer agent using CrewAI."""
 
@@ -230,6 +298,8 @@ class CrewAISoftwareEngineer:
             FileEditTool(),
             ListDirectoryTool(),
             GitTool(),
+            ListIssuesTool(),
+            GetIssueTool(),
         ]
 
     def _create_agent(self) -> "Agent":

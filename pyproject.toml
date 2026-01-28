@@ -113,4 +113,5 @@ markers = [
     "e2e: end-to-end tests",
     "integration: integration tests",
     "unit: unit tests",
+    "slow: tests that take a long time to run",
 ]

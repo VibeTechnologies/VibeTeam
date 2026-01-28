@@ -27,22 +27,19 @@ Run all frameworks comparison:
 
 import asyncio
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
-# Import the ComparativeEvaluator for LLM-as-judge
-import sys
-from pathlib import Path
-
 # Add project root to path for import
 _project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_project_root))
-from agents.benchmark import ComparativeEvaluator
-
+from agents.benchmark import ComparativeEvaluator  # noqa: E402
 
 # ==============================================================================
 # Configuration
@@ -533,7 +530,7 @@ class TestSupportAgentSentryComparison:
             avg_latency = sum(r.latency_ms for r in successful) / len(successful)
             fastest = min(successful, key=lambda r: r.latency_ms)
 
-            print(f"\nLatency:")
+            print("\nLatency:")
             print(f"  Average: {avg_latency:.0f}ms")
             print(f"  Fastest: {fastest.framework} ({fastest.latency_ms:.0f}ms)")
 
@@ -569,9 +566,9 @@ class TestSupportAgentSentryComparison:
         assert len(results) == 3, f"Expected 3 frameworks, got {len(results)}"
 
         # At least 1 framework must succeed to validate the test works
-        assert len(successful) >= 1, (
-            f"No frameworks succeeded! Results: {[f'{r.framework}: {r.response[:100]}' for r in results]}"
-        )
+        assert (
+            len(successful) >= 1
+        ), f"No frameworks succeeded! Results: {[f'{r.framework}: {r.response[:100]}' for r in results]}"
 
         # Winner must have a score > 0
         winner_score = eval_result.scores.get(eval_result.winner)

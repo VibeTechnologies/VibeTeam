@@ -4,6 +4,7 @@ Tests for multi-framework agent implementations.
 Tests the agents/ package with OpenHands, CrewAI, and AutoGen frameworks.
 """
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -67,7 +68,8 @@ class TestConfig:
         """Test session config has correct defaults."""
         config = SessionConfig()
         assert config.storage_type == "local"
-        assert config.storage_path == "./.sessions"
+        # Default is /tmp/.sessions if SESSION_STORAGE_PATH not set
+        assert config.storage_path == os.getenv("SESSION_STORAGE_PATH", "/tmp/.sessions")
         assert config.ttl_seconds == 86400 * 7
 
     def test_mcp_server_config(self):

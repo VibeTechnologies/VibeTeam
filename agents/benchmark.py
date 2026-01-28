@@ -39,7 +39,6 @@ from typing import Any
 
 import httpx
 
-
 # ==============================================================================
 # Configuration
 # ==============================================================================
@@ -57,6 +56,29 @@ class BenchmarkConfig:
     )
     REQUEST_TIMEOUT = float(os.getenv("BENCHMARK_TIMEOUT", "180"))
     OUTPUT_DIR = Path(os.getenv("BENCHMARK_OUTPUT_DIR", ".benchmarks"))
+
+    @classmethod
+    def reload_from_env(cls) -> None:
+        """Reload configuration from environment variables."""
+        cls.GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
+        cls.AZURE_API_KEY = os.getenv("AZURE_API_KEY", os.getenv("AZURE_OPENAI_API_KEY", ""))
+        cls.AZURE_API_BASE = os.getenv("AZURE_API_BASE", os.getenv("AZURE_OPENAI_ENDPOINT", ""))
+        cls.AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2024-08-01-preview")
+        cls.JUDGE_MODEL = os.getenv(
+            "BENCHMARK_JUDGE_MODEL", os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+        )
+
+    @classmethod
+    def get_azure_api_base(cls) -> str:
+        """Get AZURE_API_BASE with protocol validation."""
+        base = cls.AZURE_API_BASE
+        if not base:
+            raise ValueError("AZURE_API_BASE environment variable not set")
+        if not base.startswith(("http://", "https://")):
+            raise ValueError(
+                f"AZURE_API_BASE must start with 'http://' or 'https://'. Got: '{base}'"
+            )
+        return base.rstrip("/")
 
 
 # ==============================================================================
@@ -264,7 +286,7 @@ class BenchmarkResult:
 class QualityEvaluator:
     """Evaluates response quality using LLM-as-judge."""
 
-    EVALUATION_PROMPT = """You are an expert evaluator for AI agent responses. 
+    EVALUATION_PROMPT = """You are an expert evaluator for AI agent responses.
 Evaluate the following response on a scale of 0.0 to 1.0 for each dimension.
 
 TASK:
@@ -332,9 +354,10 @@ Only return the JSON, no other text."""
 
     async def _call_llm(self, prompt: str) -> str:
         """Call Azure OpenAI for evaluation."""
+        api_base = self.config.get_azure_api_base()
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                f"{self.config.AZURE_API_BASE}/openai/deployments/{self.config.JUDGE_MODEL}/chat/completions",
+                f"{api_base}/openai/deployments/{self.config.JUDGE_MODEL}/chat/completions",
                 headers={
                     "api-key": self.config.AZURE_API_KEY,
                     "Content-Type": "application/json",
@@ -552,9 +575,10 @@ Return ONLY valid JSON in this exact format:
 
     async def _call_llm(self, prompt: str) -> str:
         """Call Azure OpenAI for comparative evaluation."""
+        api_base = self.config.get_azure_api_base()
         async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(
-                f"{self.config.AZURE_API_BASE}/openai/deployments/{self.config.JUDGE_MODEL}/chat/completions",
+                f"{api_base}/openai/deployments/{self.config.JUDGE_MODEL}/chat/completions",
                 headers={
                     "api-key": self.config.AZURE_API_KEY,
                     "Content-Type": "application/json",
