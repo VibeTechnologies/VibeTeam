@@ -39,7 +39,9 @@ class DocsTestResult:
         return f"[{status}] {self.framework}/{self.operation}: {self.latency_ms:.0f}ms"
 
 
-def validate_docs_response(response: str, expected_content: list[str] | None = None) -> bool:
+def validate_docs_response(
+    response: str, expected_content: list[str] | None = None
+) -> bool:
     """
     Validate that the response contains valid documentation search results.
 
@@ -215,7 +217,9 @@ class TestAutoGenDocsIntegration:
             from agents.autogen.support_engineer import AutoGenSupportEngineer
 
             agent = AutoGenSupportEngineer()
-            tool_names = [t.__name__ for t in agent.agent._tools if hasattr(t, "__name__")]
+            tool_names = [
+                t.__name__ for t in agent.agent._tools if hasattr(t, "__name__")
+            ]
 
             print("\n=== AutoGen SupportEngineer Tools ===")
             print(f"Tools: {tool_names}")

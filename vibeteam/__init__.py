@@ -38,7 +38,9 @@ def _init_langfuse() -> bool:
     secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
 
     if not public_key or not secret_key:
-        logger.debug("Langfuse not configured (LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY not set)")
+        logger.debug(
+            "Langfuse not configured (LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY not set)"
+        )
         return False
 
     # Set base URL if not already set

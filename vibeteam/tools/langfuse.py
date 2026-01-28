@@ -104,7 +104,9 @@ class LangfuseTool(BaseTool):
             elif action == "detect_anomalies":
                 hours = kwargs.get("hours", 1)
                 budget = kwargs.get("daily_token_budget", 1_000_000)
-                anomalies = self.connector.detect_anomalies(hours=hours, daily_token_budget=budget)
+                anomalies = self.connector.detect_anomalies(
+                    hours=hours, daily_token_budget=budget
+                )
                 output = json.dumps([asdict(a) for a in anomalies], indent=2)
                 return ToolResult(
                     success=True,
@@ -120,12 +122,18 @@ class LangfuseTool(BaseTool):
                 healthy = self.connector.health_check()
                 return ToolResult(
                     success=True,
-                    output="Langfuse is healthy" if healthy else "Langfuse is not responding",
+                    output=(
+                        "Langfuse is healthy"
+                        if healthy
+                        else "Langfuse is not responding"
+                    ),
                     metadata={"healthy": healthy},
                 )
 
             else:
-                return ToolResult(success=False, output="", error=f"Unknown action: {action}")
+                return ToolResult(
+                    success=False, output="", error=f"Unknown action: {action}"
+                )
 
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))

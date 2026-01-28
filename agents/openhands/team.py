@@ -231,7 +231,9 @@ class OpenHandsTeam:
         """Async version of run."""
         import asyncio
 
-        return await asyncio.to_thread(self.run, task, context_type, context_id, workspace)
+        return await asyncio.to_thread(
+            self.run, task, context_type, context_id, workspace
+        )
 
 
 def create_team(config: AgentConfig | None = None) -> OpenHandsTeam:

@@ -315,6 +315,8 @@ class AutoGenSoftwareEngineer:
             await self.model_client.close()
 
 
-def create_software_engineer(config: AgentConfig | None = None) -> AutoGenSoftwareEngineer:
+def create_software_engineer(
+    config: AgentConfig | None = None,
+) -> AutoGenSoftwareEngineer:
     """Factory function to create Software Engineer agent."""
     return AutoGenSoftwareEngineer(config)

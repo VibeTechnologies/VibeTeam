@@ -218,7 +218,9 @@ class HealthConnector:
                 alerts.append(
                     {
                         "type": "service_down",
-                        "severity": "critical" if endpoint.get("critical") else "warning",
+                        "severity": (
+                            "critical" if endpoint.get("critical") else "warning"
+                        ),
                         "service": endpoint.get("name", check.url),
                         "message": f"{endpoint.get('name', check.url)} is DOWN: {check.error or 'No response'}",
                         "url": check.url,

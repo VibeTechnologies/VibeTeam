@@ -89,7 +89,9 @@ class OpenHandsProductManager:
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
-            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
+            raise ImportError(
+                "OpenHands SDK not installed. Run: pip install openhands-ai"
+            )
 
         self.config = config or PRODUCT_MANAGER_CONFIG
 
@@ -204,6 +206,8 @@ class OpenHandsProductManager:
         )
 
 
-def create_product_manager(config: AgentConfig | None = None) -> OpenHandsProductManager:
+def create_product_manager(
+    config: AgentConfig | None = None,
+) -> OpenHandsProductManager:
     """Factory function to create Product Manager agent."""
     return OpenHandsProductManager(config)

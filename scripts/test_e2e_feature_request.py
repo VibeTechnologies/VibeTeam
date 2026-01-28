@@ -126,7 +126,9 @@ Respond in this exact JSON format:
     print("Step 3: Updating GitHub Customer Requests issue...")
 
     # Load GitHub connector without importing full package
-    github_spec = importlib.util.spec_from_file_location("github", "vibeteam/connectors/github.py")
+    github_spec = importlib.util.spec_from_file_location(
+        "github", "vibeteam/connectors/github.py"
+    )
     github = importlib.util.module_from_spec(github_spec)
     github_spec.loader.exec_module(github)
 

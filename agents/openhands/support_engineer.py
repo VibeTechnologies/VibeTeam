@@ -121,7 +121,9 @@ class OpenHandsSupportEngineer:
 
     def __init__(self, config: AgentConfig | None = None):
         if not OPENHANDS_AVAILABLE:
-            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
+            raise ImportError(
+                "OpenHands SDK not installed. Run: pip install openhands-ai"
+            )
 
         self.config = config or SUPPORT_ENGINEER_CONFIG
 
@@ -202,21 +204,35 @@ class OpenHandsSupportEngineer:
             injected_context = []
 
             # Sentry context for error-related tasks
-            if any(kw in task_lower for kw in ["sentry", "error", "issue", "bug", "crash"]):
+            if any(
+                kw in task_lower for kw in ["sentry", "error", "issue", "bug", "crash"]
+            ):
                 injected_context.append(fetch_sentry_context())
 
             # Gmail context for email-related tasks
-            if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
+            if any(
+                kw in task_lower
+                for kw in ["email", "gmail", "inbox", "message", "mail"]
+            ):
                 injected_context.append(fetch_gmail_context())
 
             # Calendar context for scheduling-related tasks
-            if any(kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]):
+            if any(
+                kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]
+            ):
                 injected_context.append(fetch_calendar_context_wrapper())
 
             # Langfuse context for LLM observability tasks
             if any(
                 kw in task_lower
-                for kw in ["langfuse", "trace", "llm", "observability", "latency", "token"]
+                for kw in [
+                    "langfuse",
+                    "trace",
+                    "llm",
+                    "observability",
+                    "latency",
+                    "token",
+                ]
             ):
                 injected_context.append(fetch_langfuse_context_wrapper())
 
@@ -240,7 +256,9 @@ class OpenHandsSupportEngineer:
             # Build full task with context
             context_str = "\n\n".join(injected_context) if injected_context else ""
             if context_str:
-                full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\n{context_str}\n\nTask: {task}"
+                full_task = (
+                    f"{SUPPORT_ENGINEER_CONTEXT}\n\n{context_str}\n\nTask: {task}"
+                )
             else:
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\nTask: {task}"
 

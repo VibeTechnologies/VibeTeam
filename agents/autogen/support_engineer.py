@@ -90,7 +90,9 @@ from agents.shared.langfuse_tools import (
 )
 
 
-async def get_sentry_issues(project: str | None = None, hours: int = 24, limit: int = 10) -> str:
+async def get_sentry_issues(
+    project: str | None = None, hours: int = 24, limit: int = 10
+) -> str:
     """Get unresolved issues from Sentry.
 
     Args:
@@ -111,20 +113,18 @@ async def get_sentry_issues(project: str | None = None, hours: int = 24, limit: 
             return "Error: SENTRY_AUTH_TOKEN not configured. Please set this environment variable."
 
         connector = SentryConnector(auth_token=auth_token)
-        issues = connector.fetch_unresolved_issues(project=project, hours=hours, limit=limit)
+        issues = connector.fetch_unresolved_issues(
+            project=project, hours=hours, limit=limit
+        )
 
         if not issues:
             return f"No unresolved issues found in the last {hours} hours."
 
-        result = (
-            f"=== Sentry Issues (last {hours}h) ===\nFound {len(issues)} unresolved issues:\n\n"
-        )
+        result = f"=== Sentry Issues (last {hours}h) ===\nFound {len(issues)} unresolved issues:\n\n"
         for issue in issues:
             result += f"**[{issue.project}] {issue.short_id}**: {issue.title}\n"
             result += f"  - Level: {issue.level} | Count: {issue.count} | Users affected: {issue.user_count}\n"
-            result += (
-                f"  - First seen: {issue.first_seen[:10]} | Last seen: {issue.last_seen[:10]}\n"
-            )
+            result += f"  - First seen: {issue.first_seen[:10]} | Last seen: {issue.last_seen[:10]}\n"
             result += f"  - URL: {issue.permalink}\n\n"
 
         return result
@@ -290,6 +290,8 @@ class AutoGenSupportEngineer:
             await self.model_client.close()
 
 
-def create_support_engineer(config: AgentConfig | None = None) -> AutoGenSupportEngineer:
+def create_support_engineer(
+    config: AgentConfig | None = None,
+) -> AutoGenSupportEngineer:
     """Factory function to create Support Engineer agent."""
     return AutoGenSupportEngineer(config)

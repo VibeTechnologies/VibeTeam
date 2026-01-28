@@ -26,13 +26,21 @@ MCP_SERVERS = {
     "gmail": MCPServerConfig(
         command="npx",
         args=["-y", "@anthropic/mcp-server-gmail"],
-        env={"GMAIL_CREDENTIALS_PATH": os.getenv("GMAIL_CREDENTIALS_PATH", "credentials.json")},
+        env={
+            "GMAIL_CREDENTIALS_PATH": os.getenv(
+                "GMAIL_CREDENTIALS_PATH", "credentials.json"
+            )
+        },
     ),
     # Google Calendar - for SupportEngineer
     "gcalendar": MCPServerConfig(
         command="npx",
         args=["-y", "@anthropic/mcp-server-google-calendar"],
-        env={"GCAL_CREDENTIALS_PATH": os.getenv("GCAL_CREDENTIALS_PATH", "credentials.json")},
+        env={
+            "GCAL_CREDENTIALS_PATH": os.getenv(
+                "GCAL_CREDENTIALS_PATH", "credentials.json"
+            )
+        },
     ),
     # Chrome DevTools - for MarketingManager
     "chrome": MCPServerConfig(
@@ -86,10 +94,14 @@ class LLMConfig:
             self.model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
         # Use AZURE_OPENAI_ENDPOINT/API_KEY first, then fall back to AZURE_API_BASE/KEY
         self.api_base = (
-            self.api_base or os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_API_BASE")
+            self.api_base
+            or os.getenv("AZURE_OPENAI_ENDPOINT")
+            or os.getenv("AZURE_API_BASE")
         )
         self.api_key = (
-            self.api_key or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
+            self.api_key
+            or os.getenv("AZURE_OPENAI_API_KEY")
+            or os.getenv("AZURE_API_KEY")
         )
 
 

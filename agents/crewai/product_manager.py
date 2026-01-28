@@ -59,7 +59,11 @@ class SearchGitHubIssuesTool(BaseTool if CREWAI_AVAILABLE else object):
         import subprocess
 
         try:
-            data = json.loads(input_data) if input_data.startswith("{") else {"query": input_data}
+            data = (
+                json.loads(input_data)
+                if input_data.startswith("{")
+                else {"query": input_data}
+            )
             query = data.get("query", "")
             repo = data.get("repo", "VibeTechnologies/VibeTeam")
 
@@ -196,7 +200,9 @@ class WriteDocumentTool(BaseTool if CREWAI_AVAILABLE else object):
     """Write a document (PRD, user story, etc.) to a file."""
 
     name: str = "write_document"
-    description: str = "Write a document to a file. Input: JSON with 'path' and 'content' keys."
+    description: str = (
+        "Write a document to a file. Input: JSON with 'path' and 'content' keys."
+    )
 
     def _run(self, input_data: str) -> str:
         """Write document."""
@@ -350,7 +356,9 @@ class CrewAIProductManager:
         """Async version of run."""
         import asyncio
 
-        return await asyncio.to_thread(self.run, task, context_type, context_id, **kwargs)
+        return await asyncio.to_thread(
+            self.run, task, context_type, context_id, **kwargs
+        )
 
 
 def create_product_manager(config: AgentConfig | None = None) -> CrewAIProductManager:

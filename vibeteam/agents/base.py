@@ -179,8 +179,12 @@ actionable outputs.{tool_descriptions}"""
         # Add Azure-specific configuration
         if self.model.startswith("azure/"):
             # LiteLLM Azure config - check both possible env var names
-            api_base = os.environ.get("AZURE_API_BASE") or os.environ.get("AZURE_OPENAI_ENDPOINT")
-            api_key = os.environ.get("AZURE_API_KEY") or os.environ.get("AZURE_OPENAI_API_KEY")
+            api_base = os.environ.get("AZURE_API_BASE") or os.environ.get(
+                "AZURE_OPENAI_ENDPOINT"
+            )
+            api_key = os.environ.get("AZURE_API_KEY") or os.environ.get(
+                "AZURE_OPENAI_API_KEY"
+            )
             api_version = os.environ.get("AZURE_API_VERSION", "2024-08-01-preview")
 
             if api_base:
@@ -273,7 +277,10 @@ actionable outputs.{tool_descriptions}"""
             assistant_message = choice.message
 
             # Check for tool calls
-            if hasattr(assistant_message, "tool_calls") and assistant_message.tool_calls:
+            if (
+                hasattr(assistant_message, "tool_calls")
+                and assistant_message.tool_calls
+            ):
                 # Add assistant message with tool calls
                 self.conversation.append(
                     Message(
@@ -312,7 +319,9 @@ actionable outputs.{tool_descriptions}"""
             else:
                 # No tool calls - final response
                 final_content = assistant_message.content or ""
-                self.conversation.append(Message(role="assistant", content=final_content))
+                self.conversation.append(
+                    Message(role="assistant", content=final_content)
+                )
                 return final_content
 
         # Max iterations reached
@@ -325,4 +334,7 @@ actionable outputs.{tool_descriptions}"""
 
     def get_conversation_history(self) -> list[dict]:
         """Get the full conversation history."""
-        return [{"role": m.role, "content": m.content, "name": m.name} for m in self.conversation]
+        return [
+            {"role": m.role, "content": m.content, "name": m.name}
+            for m in self.conversation
+        ]

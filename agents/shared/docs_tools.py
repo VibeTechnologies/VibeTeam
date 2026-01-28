@@ -191,7 +191,9 @@ def _extract_title(content: str, filepath: str) -> str:
     return Path(filepath).stem.replace("-", " ").replace("_", " ").title()
 
 
-def _extract_snippet(content: str, query: str, context_lines: int = 3) -> tuple[str, int]:
+def _extract_snippet(
+    content: str, query: str, context_lines: int = 3
+) -> tuple[str, int]:
     """Extract a relevant snippet from the content around the query match."""
     lines = content.split("\n")
     query_lower = query.lower()
@@ -285,9 +287,9 @@ class DocsIndex:
             scores = self.bm25.get_scores(query_tokens)
 
             # Get top results
-            scored_indices = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[
-                :max_results
-            ]
+            scored_indices = sorted(
+                enumerate(scores), key=lambda x: x[1], reverse=True
+            )[:max_results]
 
             for idx, score in scored_indices:
                 if score > 0:  # Only include if there's some relevance
@@ -313,7 +315,9 @@ class DocsIndex:
         query_lower = query.lower()
         query_tokens = set(_preprocess_text(query))
 
-        for filepath, content, title in zip(self.files, self.contents, self.titles, strict=False):
+        for filepath, content, title in zip(
+            self.files, self.contents, self.titles, strict=False
+        ):
             content_lower = content.lower()
 
             # Calculate simple score
@@ -389,7 +393,9 @@ def search_docs(query: str, max_results: int = 5) -> str:
         output += f"   Score: {result.score:.2f}\n"
         output += "   ---\n"
         # Indent snippet
-        indented_snippet = "\n".join(f"   {line}" for line in result.snippet.split("\n"))
+        indented_snippet = "\n".join(
+            f"   {line}" for line in result.snippet.split("\n")
+        )
         output += f"{indented_snippet}\n\n"
 
     return output

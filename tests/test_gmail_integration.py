@@ -122,7 +122,14 @@ def validate_langfuse_response(response: str) -> bool:
     # Check for Langfuse indicators
     return any(
         indicator in response_lower
-        for indicator in ["trace", "latency", "token", "cost", "observability", "anomal"]
+        for indicator in [
+            "trace",
+            "latency",
+            "token",
+            "cost",
+            "observability",
+            "anomal",
+        ]
     )
 
 
@@ -278,7 +285,9 @@ class TestAutoGenGmailIntegration:
         return AutoGenSupportEngineer()
 
     @pytest.mark.asyncio
-    async def test_autogen_list_emails(self, support_engineer, verify_gmail_connectivity):
+    async def test_autogen_list_emails(
+        self, support_engineer, verify_gmail_connectivity
+    ):
         """Test AutoGen SupportEngineer lists emails."""
         task = "List my unread emails and summarize them."
 
@@ -301,7 +310,9 @@ class TestAutoGenGmailIntegration:
         assert is_valid, f"Response does not contain valid email data: {response[:300]}"
 
     @pytest.mark.asyncio
-    async def test_autogen_calendar_query(self, support_engineer, verify_gmail_connectivity):
+    async def test_autogen_calendar_query(
+        self, support_engineer, verify_gmail_connectivity
+    ):
         """Test AutoGen SupportEngineer queries calendar."""
         task = "What meetings do I have scheduled for the next few days?"
 
@@ -338,7 +349,9 @@ class TestCrewAIGmailIntegration:
         return CrewAISupportEngineer()
 
     @pytest.mark.asyncio
-    async def test_crewai_search_emails(self, support_engineer, verify_gmail_connectivity):
+    async def test_crewai_search_emails(
+        self, support_engineer, verify_gmail_connectivity
+    ):
         """Test CrewAI SupportEngineer searches emails."""
         task = "Search my inbox for unread emails and give me a summary."
 
@@ -472,7 +485,9 @@ class TestOpenHandsGmailIntegration:
             or "issue" in response.lower()
         )
 
-        assert has_email or has_sentry, f"Multi-context injection failed: {response[:300]}"
+        assert (
+            has_email or has_sentry
+        ), f"Multi-context injection failed: {response[:300]}"
 
 
 # =============================================================================
