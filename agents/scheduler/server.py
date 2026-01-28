@@ -155,20 +155,18 @@ async def lifespan(app: FastAPI):
     # Create data store
     data_store = SQLAlchemyDataStore(engine)
 
-    # Create and start scheduler
+    # Create scheduler and use as context manager
     _scheduler = AsyncScheduler(data_store=data_store)
-    await _scheduler.start_in_background()
-    logger.info("Scheduler started")
+    async with _scheduler:
+        logger.info("Scheduler started")
 
-    # Register initial recurring tasks (CronJob replacements)
-    await register_default_tasks()
+        # Register initial recurring tasks (CronJob replacements)
+        await register_default_tasks()
 
-    yield
+        yield
 
     # Cleanup
     logger.info("Shutting down Scheduler service...")
-    if _scheduler:
-        await _scheduler.stop()
 
 
 async def register_default_tasks() -> None:
