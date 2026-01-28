@@ -8,6 +8,7 @@ resources:
   # Agent Microservices (long-running servers)
   - autogen-svc.yaml
   - crewai-svc.yaml
+  - scheduler-svc.yaml
   # Agent CronJobs (to be replaced by microservices)
   - product-manager.yaml
   - support-engineer.yaml
