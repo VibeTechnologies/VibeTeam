@@ -11,6 +11,13 @@ import os
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
+
+# Load .env file from project root before any tests run
+_project_root = Path(__file__).parent.parent
+_env_file = _project_root / ".env"
+if _env_file.exists():
+    load_dotenv(_env_file)
 
 from agents.metrics import reset_collector
 
@@ -34,6 +41,12 @@ def pytest_addoption(parser):
         type=str,
         default=None,
         help="Export metrics to specified JSON file after tests",
+    )
+    parser.addoption(
+        "--export-benchmark",
+        type=str,
+        default=None,
+        help="Export benchmark results to specified JSON file",
     )
 
 
