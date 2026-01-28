@@ -14,6 +14,7 @@ from typing import Any
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
 from agents.shared.calendar_tools import create_calendar_event, list_calendar_events
+from agents.shared.docs_tools import get_doc_content, list_docs, search_docs_sync
 
 # Import shared tools for real API integration
 from agents.shared.gmail_tools import fetch_unread_emails
@@ -235,6 +236,47 @@ class LangfuseTool(BaseTool if CREWAI_AVAILABLE else object):
             return f"Error fetching Langfuse data: {e}"
 
 
+class DocsSearchTool(BaseTool if CREWAI_AVAILABLE else object):
+    """Search product documentation using BM25."""
+
+    name: str = "search_docs"
+    description: str = (
+        "Search product documentation for relevant information. Input: search query string."
+    )
+
+    def _run(self, query: str = "") -> str:
+        """Search documentation using real BM25 search."""
+        if not query:
+            return "Error: Please provide a search query."
+        return search_docs_sync(query, max_results=5)
+
+
+class DocsListTool(BaseTool if CREWAI_AVAILABLE else object):
+    """List available documentation files."""
+
+    name: str = "list_docs"
+    description: str = "List all available product documentation files."
+
+    def _run(self, query: str = "") -> str:
+        """List documentation files."""
+        return list_docs()
+
+
+class DocsContentTool(BaseTool if CREWAI_AVAILABLE else object):
+    """Get full content of a documentation file."""
+
+    name: str = "get_doc_content"
+    description: str = (
+        "Get the full content of a documentation file. Input: file path (relative to repo root)."
+    )
+
+    def _run(self, filepath: str = "") -> str:
+        """Get documentation file content."""
+        if not filepath:
+            return "Error: Please provide a file path."
+        return get_doc_content(filepath)
+
+
 class CrewAISupportEngineer:
     """Support Engineer agent using CrewAI."""
 
@@ -254,6 +296,9 @@ class CrewAISupportEngineer:
             CalendarTool(),
             SentryTool(),
             LangfuseTool(),
+            DocsSearchTool(),
+            DocsListTool(),
+            DocsContentTool(),
         ]
 
     def _create_agent(self) -> "Agent":
