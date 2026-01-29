@@ -14,6 +14,7 @@ Note: OpenHands SDK v1.2.1 uses:
 """
 
 import os
+import re
 import tempfile
 from typing import Any
 
@@ -78,6 +79,25 @@ def fetch_docs_context_wrapper(query: str) -> str:
     return get_docs_context(query=query, max_results=3)
 
 
+def convert_numbered_lists_to_bullets(text: str) -> str:
+    """Convert numbered lists to bullet points in task text.
+
+    OpenHands interprets numbered lists (1. 2. 3.) as action steps to execute,
+    causing empty LLM responses when tools are disabled. Converting to bullet
+    points (-) allows OpenHands to treat them as items to discuss/answer instead.
+
+    Args:
+        text: The task text that may contain numbered lists
+
+    Returns:
+        Text with numbered lists converted to bullet points
+    """
+    # Pattern matches lines starting with optional whitespace, then number, period, space
+    # Examples: "1. First item", "  2. Second item", "10. Tenth item"
+    pattern = r"^(\s*)(\d+)\.\s+"
+    return re.sub(pattern, r"\1- ", text, flags=re.MULTILINE)
+
+
 try:
     from openhands.sdk import LLM, Agent, LocalConversation, Tool
     from openhands.tools.file_editor import FileEditorTool
@@ -106,10 +126,10 @@ except ImportError:
 SUPPORT_ENGINEER_CONTEXT = """You are Grace, the Support Engineer for VibeTeam.
 
 Your responsibilities:
-1. **Email Support**: Read, triage, and respond to customer emails
-2. **Scheduling**: Manage calendar events and meeting requests
-3. **Issue Tracking**: Monitor Sentry for errors and create GitHub issues
-4. **LLM Observability**: Review Langfuse traces for quality issues
+- **Email Support**: Read, triage, and respond to customer emails
+- **Scheduling**: Manage calendar events and meeting requests
+- **Issue Tracking**: Monitor Sentry for errors and create GitHub issues
+- **LLM Observability**: Review Langfuse traces for quality issues
 
 ## Tools Available
 - Gmail MCP: Read and send emails
@@ -151,6 +171,9 @@ class OpenHandsSupportEngineer:
             base_url=self.config.llm.api_base,
             api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
             max_output_tokens=4096,
+            # Reduce reasoning overhead for faster responses in benchmark scenarios
+            reasoning_effort="medium",
+            extended_thinking_budget=10000,
         )
 
     def _create_agent(self, llm: "LLM", use_tools: bool = True) -> "Agent":
@@ -281,6 +304,12 @@ class OpenHandsSupportEngineer:
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\n{context_str}\n\nTask: {task}"
             else:
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\nTask: {task}"
+
+            # When tools are disabled, convert numbered lists to bullet points.
+            # OpenHands interprets numbered lists as action steps to execute,
+            # causing empty LLM responses. Bullet points work correctly.
+            if not use_tools:
+                full_task = convert_numbered_lists_to_bullets(full_task)
 
             # Use send_message + run for the full agentic loop with tools
             conversation.send_message(full_task)
