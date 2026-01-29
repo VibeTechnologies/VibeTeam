@@ -1254,3 +1254,275 @@ gh secret set AZURE_API_BASE
 # ... etc
 ```
 
+---
+
+## 17. Slack-Based Autonomous Agent Communication
+
+### 17.1 Problem Statement
+
+The current `SwarmOrchestrator` uses a **centralized orchestration** pattern where:
+1. A supervisor explicitly routes tasks to agents via `transfer_to_*` tools
+2. Agents hand back to supervisor when done via `transfer_to_supervisor`
+3. Communication is synchronous within a single Python process
+4. Handoff detection requires special handling in the agent run loop
+
+**Limitations**:
+- Doesn't match how real teams operate
+- Agents cannot independently decide task ownership
+- No natural human-in-the-loop integration
+- Single point of failure (supervisor)
+
+**Desired Behavior**: Agents should operate like a real Slack-based team:
+- Support Engineer reads Sentry, sees a bug, posts to `#ai-team`: "Found GraphRecursionError in background.js. @SWE can you look?"
+- Software Engineer sees the mention, responds: "Ack, I'll take this"
+- SWE investigates, creates a GitHub issue/PR, posts updates to the thread
+
+### 17.2 Desired Architecture: Slack as Communication Bus
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ SupportEngineer │     │ SoftwareEngineer│     │ Slack #ai-team  │
+│   (session 1)   │     │   (session 2)   │     │                 │
+└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
+         │                       │                       │
+         │ 1. Poll Sentry        │                       │
+         │                       │                       │
+         │ 2. "Found bug in      │                       │
+         │    background.js      │                       │
+         │    @SWE can you look?"│──────────────────────>│
+         │                       │                       │
+         │                       │ 3. See @mention       │
+         │                       │<──────────────────────│
+         │                       │                       │
+         │                       │ 4. "Ack, I'll take it"│
+         │                       │──────────────────────>│
+         │                       │                       │
+         │                       │ 5. Create GitHub PR   │
+         │                       │                       │
+         │                       │ 6. "Created PR #123"  │
+         │                       │──────────────────────>│
+```
+
+**Key Differences from SwarmOrchestrator**:
+- Each agent runs as an **independent session/process**
+- Slack is the **shared communication channel** (not SharedMessageState)
+- Agents **self-select** tasks based on @mentions (not supervisor routing)
+- Truly **asynchronous** - agents don't block each other
+
+### 17.3 Frameworks Supporting This Pattern
+
+| Framework | Multi-Session | @Mention Routing | Event-Driven | Verdict |
+|-----------|--------------|------------------|--------------|---------|
+| **AutoGen GroupChat** | ✅ Native | ✅ Native | ✅ | Best fit for multi-agent |
+| **OpenHands** | ✅ Via sessions | ⚠️ Custom integration | ⚠️ Polling | Good with SlackConnector |
+| **CrewAI** | ❌ Single process | ❌ | ❌ | Not suitable |
+| **LangGraph** | ✅ Via nodes | ⚠️ Custom | ✅ | Possible but complex |
+
+### 17.4 AutoGen GroupChat Pattern
+
+AutoGen's `GroupChat` natively supports:
+- **Multiple agents** in a shared conversation
+- **@mention routing** - agents can address each other by name
+- **Selector function** - LLM or custom function picks next speaker
+- **Termination conditions** - end when task complete
+
+```python
+from autogen_agentchat.teams import SelectorGroupChat
+from autogen_agentchat.base import TerminationCondition
+
+# Create agents
+support = SupportEngineerAgent(name="Support")
+swe = SoftwareEngineerAgent(name="SWE")
+sre = ReliabilityEngineerAgent(name="SRE")
+
+# Custom selector that routes by @mention
+async def slack_mention_selector(messages):
+    last_msg = messages[-1].content
+    if "@SWE" in last_msg:
+        return "SWE"
+    elif "@SRE" in last_msg:
+        return "SRE"
+    elif "@Support" in last_msg:
+        return "Support"
+    return None  # Let LLM decide
+
+chat = SelectorGroupChat(
+    participants=[support, swe, sre],
+    model_client=azure_client,
+    selector_func=slack_mention_selector,
+    termination_condition=TerminationCondition(max_messages=20),
+)
+
+# Run with Slack as external channel
+result = await chat.run(task="Triage Sentry error GraphRecursionError")
+```
+
+### 17.5 Slack Integration Points
+
+The existing `SlackConnector` (`vibeteam/connectors/slack.py`) provides all necessary primitives:
+
+| Method | Purpose | Agent Use Case |
+|--------|---------|----------------|
+| `post_message(channel, text, thread_ts)` | Post/reply to Slack | Share findings, updates |
+| `mention_agent(channel, agent_key, message)` | @mention another agent | Delegate task |
+| `is_mention_for_agent(message, agent_key)` | Check if you're mentioned | Determine ownership |
+| `extract_mentioned_agents(message)` | Parse all @mentions | Multi-agent routing |
+| `get_channel_history(channel, limit)` | Read recent messages | Context gathering |
+| `get_thread_replies(channel, thread_ts)` | Read thread | Follow conversation |
+
+### 17.6 Implementation Approaches
+
+#### Option A: Polling Loop (Simple, MVP)
+
+Each agent runs as an independent async loop, polling Slack for mentions:
+
+```python
+# scripts/run_agent_session.py
+async def agent_session(agent_key: str, channel: str = "#ai-team"):
+    """Run an agent as an independent Slack-connected session."""
+    slack = SlackConnector()
+    agent = create_agent(agent_key)
+    processed_ts = set()
+    
+    logger.info(f"Agent {agent_key} listening on {channel}")
+    
+    while True:
+        messages = slack.get_channel_history(channel, limit=20)
+        
+        for msg in messages:
+            if msg.ts in processed_ts:
+                continue
+            
+            # Check if this agent is mentioned
+            if slack.is_mention_for_agent(msg, agent_key):
+                logger.info(f"Agent {agent_key} handling message: {msg.text[:50]}...")
+                
+                # Run agent on the task
+                response = await agent.run(msg.text)
+                
+                # Post response in thread
+                slack.post_message(
+                    channel=channel,
+                    text=slack.format_agent_message(agent.name, response),
+                    thread_ts=msg.ts,
+                )
+                
+                processed_ts.add(msg.ts)
+        
+        await asyncio.sleep(5)  # Poll interval
+
+# Run multiple agents in parallel
+async def main():
+    await asyncio.gather(
+        agent_session("support"),
+        agent_session("swe"),
+        agent_session("sre"),
+    )
+```
+
+**Pros**: Simple, works today, no infrastructure changes
+**Cons**: 5-second latency, constant API calls
+
+#### Option B: Slack Events API (Production)
+
+Use `slack-bolt` for webhook-based event handling:
+
+```python
+# agents/slack_bot/app.py
+from slack_bolt.async_app import AsyncApp
+
+app = AsyncApp(token=os.environ["SLACK_BOT_TOKEN"])
+
+@app.event("app_mention")
+async def handle_mention(event, say):
+    """Handle @mentions to route to appropriate agent."""
+    text = event["text"]
+    mentioned_agents = extract_mentioned_agents(text)
+    
+    for agent_key in mentioned_agents:
+        agent = get_agent(agent_key)
+        response = await agent.run(text)
+        await say(
+            text=format_agent_message(agent.name, response),
+            thread_ts=event["ts"],
+        )
+
+@app.event("message")
+async def handle_message(event, say):
+    """Handle channel messages for proactive monitoring."""
+    # Agents can decide to respond based on content
+    pass
+```
+
+**Pros**: Real-time, efficient, production-ready
+**Cons**: Requires public endpoint (ngrok for dev, ingress for prod)
+
+#### Option C: Hybrid with AutoGen GroupChat
+
+Use AutoGen's GroupChat internally, with Slack as the external interface:
+
+```python
+# Bridge between Slack and AutoGen GroupChat
+async def slack_to_groupchat(channel: str):
+    """Bridge Slack messages to AutoGen GroupChat."""
+    slack = SlackConnector()
+    chat = create_agent_groupchat()
+    
+    while True:
+        messages = slack.get_channel_history(channel, limit=5)
+        for msg in messages:
+            if not msg.is_bot:  # Human message
+                # Run GroupChat
+                result = await chat.run(msg.text)
+                
+                # Post all agent messages to Slack thread
+                for agent_msg in result.messages:
+                    slack.post_message(
+                        channel=channel,
+                        text=format_agent_message(agent_msg.source, agent_msg.content),
+                        thread_ts=msg.ts,
+                    )
+        
+        await asyncio.sleep(5)
+```
+
+### 17.7 Comparison with Current Architecture
+
+| Aspect | SwarmOrchestrator | Slack-Based Agents |
+|--------|-------------------|---------------------|
+| **Communication** | In-process (SharedMessageState) | Slack channel |
+| **Routing** | Supervisor decides via transfer tools | Agent self-selects via @mentions |
+| **Concurrency** | Sequential (one agent at a time) | Truly parallel (independent sessions) |
+| **Visibility** | SharedMessageState (internal) | Slack thread (human-visible) |
+| **Persistence** | Python object (session lifetime) | Slack history (permanent) |
+| **Human-in-loop** | Not built-in | Natural (@human, reactions) |
+| **Debugging** | Logs, Langfuse traces | Slack conversation history |
+| **Scalability** | Single process | Multiple pods/processes |
+
+### 17.8 Recommended Implementation Path
+
+1. **Phase 1 (MVP)**: Polling loop with existing SlackConnector
+   - Create `scripts/run_slack_agent.py`
+   - Test with Support → SWE handoff for Sentry errors
+   - Validate @mention routing works
+
+2. **Phase 2 (Production)**: Slack Events API
+   - Add `slack-bolt` to dependencies
+   - Create Kubernetes deployment for Slack bot
+   - Add Ingress for webhook endpoint
+
+3. **Phase 3 (Optimization)**: AutoGen GroupChat integration
+   - Use GroupChat for complex multi-agent reasoning
+   - Bridge to Slack for human visibility
+   - Add human approval workflows
+
+### 17.9 Open Questions
+
+1. **Thread vs Channel**: Should each task be a new thread, or use channels for topics?
+2. **Rate Limits**: How to handle Slack API rate limits with multiple agents?
+3. **State Persistence**: Should agents maintain state across Slack messages?
+4. **Error Handling**: How should agents signal failure to humans?
+5. **Approval Workflows**: How to implement "human must approve before merge"?
+
+---
+

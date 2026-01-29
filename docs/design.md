@@ -838,6 +838,186 @@ Benchmarks can run in CI to detect performance regressions:
 
 ---
 
+## Slack-Based Agent Communication
+
+### Overview
+
+In addition to the centralized gateway architecture, VibeTeam supports **decentralized agent communication via Slack**. This enables agents to coordinate autonomously like a real team - posting updates, @mentioning each other, and responding to requests without human orchestration.
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Slack Workspace                                      │
+│                         #ai-team channel                                     │
+└──────────────────────────────────┬──────────────────────────────────────────┘
+                                   │
+          ┌────────────────────────┼────────────────────────┐
+          │                        │                        │
+          ▼                        ▼                        ▼
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│  Support Agent   │    │   SWE Agent      │    │  Release Agent   │
+│  (Polling loop)  │    │  (Polling loop)  │    │  (Polling loop)  │
+│                  │    │                  │    │                  │
+│  Watches:        │    │  Watches:        │    │  Watches:        │
+│  - Sentry alerts │    │  - @swe mentions │    │  - @release      │
+│  - @support      │    │  - Bug reports   │    │  - Version bumps │
+└────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     External Services                                        │
+│  Sentry API  │  GitHub API  │  Gmail API  │  Langfuse                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why Slack-Based Communication?
+
+| Aspect | Centralized (SwarmOrchestrator) | Decentralized (Slack) |
+|--------|--------------------------------|----------------------|
+| **Control** | Supervisor routes all messages | Agents decide autonomously |
+| **Visibility** | Internal memory only | Human-readable Slack thread |
+| **Scaling** | Single process | Multiple independent pods |
+| **Debugging** | Logs only | Visible conversation history |
+| **Human-in-loop** | Requires API call | Natural @mention in Slack |
+
+### SlackConnector Integration
+
+The `SlackConnector` (`vibeteam/connectors/slack.py`) provides all primitives needed for agent communication:
+
+```python
+from vibeteam.connectors.slack import SlackConnector
+
+slack = SlackConnector()
+
+# Post message
+slack.post_message("#ai-team", "Found 3 critical errors in Sentry")
+
+# @mention another agent
+slack.mention_agent("#ai-team", "swe", "Can you investigate GraphRecursionError?")
+
+# Check if message is for this agent
+if slack.is_mention_for_agent(message, "swe"):
+    # Handle the request
+    response = await agent.run(message.text)
+    slack.post_message("#ai-team", response, thread_ts=message.ts)
+
+# Get channel history
+messages = slack.get_channel_history("#ai-team", limit=20)
+```
+
+### Agent Polling Pattern
+
+Each agent runs as an independent service with a polling loop:
+
+```python
+# scripts/run_slack_agent.py
+async def agent_session(agent_key: str, channel: str = "#ai-team"):
+    """Run an agent that polls Slack for messages."""
+    slack = SlackConnector()
+    agent = create_agent(agent_key)
+    processed_ts = set()
+
+    while True:
+        messages = slack.get_channel_history(channel, limit=20)
+        
+        for msg in messages:
+            # Skip already processed or own messages
+            if msg.ts in processed_ts or msg.is_bot:
+                continue
+            
+            # Check if this message is for us
+            if slack.is_mention_for_agent(msg, agent_key):
+                response = await agent.run(msg.text)
+                slack.post_message(channel, response, thread_ts=msg.ts)
+                processed_ts.add(msg.ts)
+        
+        await asyncio.sleep(5)  # Poll every 5 seconds
+```
+
+### Kubernetes Deployment for Slack Agents
+
+Each Slack-connected agent runs as a separate deployment:
+
+```yaml
+# k8s/base/slack-agents.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slack-support-agent
+  namespace: vibeteam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slack-support-agent
+  template:
+    spec:
+      containers:
+      - name: agent
+        image: ghcr.io/vibetechnologies/vibeteam:latest
+        command: ["python", "scripts/run_slack_agent.py"]
+        args: ["--agent", "support", "--channel", "#ai-team"]
+        env:
+        - name: SLACK_BOT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: vibeteam-secrets
+              key: SLACK_BOT_TOKEN
+        - name: AZURE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vibeteam-secrets
+              key: AZURE_API_KEY
+```
+
+### Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SLACK_BOT_TOKEN` | Bot OAuth token (xoxb-...) | Yes |
+| `SLACK_DEFAULT_CHANNEL` | Default channel for messages | No (#ai-team) |
+| `SLACK_AGENT_SWE` | Slack user ID for SWE agent | No |
+| `SLACK_AGENT_SUPPORT` | Slack user ID for Support agent | No |
+| `SLACK_AGENT_RELEASE` | Slack user ID for Release agent | No |
+
+### Example Workflow: Sentry Error → Slack → GitHub Issue
+
+```
+1. Support Agent polls Sentry, finds critical error
+   └─→ Posts to #ai-team: "Found GraphRecursionError affecting 50 users. @swe"
+
+2. SWE Agent sees @swe mention
+   └─→ Reads error details, creates GitHub issue
+   └─→ Replies in thread: "Created issue #456. Will investigate root cause."
+
+3. Support Agent sees reply
+   └─→ Updates Sentry issue with GitHub link
+   └─→ Posts: "Linked to GitHub. Monitoring for resolution."
+```
+
+### Comparison: Current vs Slack-Based Architecture
+
+| Feature | Current (Gateway) | Slack-Based |
+|---------|------------------|-------------|
+| Entry point | REST API / Webhooks | Slack channel |
+| Agent discovery | Hardcoded services | @mention routing |
+| State sharing | PostgreSQL + SharedState | Slack thread context |
+| Human oversight | Logs / Metrics | Live Slack channel |
+| Deployment | Gateway + 3 services | N independent agents |
+
+### Implementation Status
+
+| Component | Status |
+|-----------|--------|
+| `SlackConnector` | ✅ Complete |
+| `mention_agent()` / `is_mention_for_agent()` | ✅ Complete |
+| `scripts/run_slack_agent.py` | 🔄 In Progress |
+| K8s Slack agent deployments | ⏳ Planned |
+| Events API (push vs polling) | ⏳ Planned |
+
+---
+
 ## Related Documents
 
 - [Framework Comparison (E2E Test Results)](FRAMEWORK_COMPARISON.md)
