@@ -51,6 +51,8 @@ dependencies = [
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "httpx>=0.26.0",
+    # Slack integration
+    "slack-sdk>=3.21.0",
 ]
 
 [project.optional-dependencies]

@@ -14,6 +14,7 @@ Note: OpenHands SDK v1.2.1 uses:
 """
 
 import os
+import re
 import tempfile
 from typing import Any
 
@@ -78,6 +79,25 @@ def fetch_docs_context_wrapper(query: str) -> str:
     return get_docs_context(query=query, max_results=3)
 
 
+def convert_numbered_lists_to_bullets(text: str) -> str:
+    """Convert numbered lists to bullet points in task text.
+
+    OpenHands interprets numbered lists (1. 2. 3.) as action steps to execute,
+    causing empty LLM responses when tools are disabled. Converting to bullet
+    points (-) allows OpenHands to treat them as items to discuss/answer instead.
+
+    Args:
+        text: The task text that may contain numbered lists
+
+    Returns:
+        Text with numbered lists converted to bullet points
+    """
+    # Pattern matches lines starting with optional whitespace, then number, period, space
+    # Examples: "1. First item", "  2. Second item", "10. Tenth item"
+    pattern = r"^(\s*)(\d+)\.\s+"
+    return re.sub(pattern, r"\1- ", text, flags=re.MULTILINE)
+
+
 try:
     from openhands.sdk import LLM, Agent, LocalConversation, Tool
     from openhands.tools.file_editor import FileEditorTool
@@ -106,10 +126,10 @@ except ImportError:
 SUPPORT_ENGINEER_CONTEXT = """You are Grace, the Support Engineer for VibeTeam.
 
 Your responsibilities:
-1. **Email Support**: Read, triage, and respond to customer emails
-2. **Scheduling**: Manage calendar events and meeting requests
-3. **Issue Tracking**: Monitor Sentry for errors and create GitHub issues
-4. **LLM Observability**: Review Langfuse traces for quality issues
+- **Email Support**: Read, triage, and respond to customer emails
+- **Scheduling**: Manage calendar events and meeting requests
+- **Issue Tracking**: Monitor Sentry for errors and create GitHub issues
+- **LLM Observability**: Review Langfuse traces for quality issues
 
 ## Tools Available
 - Gmail MCP: Read and send emails
@@ -151,16 +171,29 @@ class OpenHandsSupportEngineer:
             base_url=self.config.llm.api_base,
             api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
             max_output_tokens=4096,
+            # Reduce reasoning overhead for faster responses in benchmark scenarios
+            reasoning_effort="medium",
+            extended_thinking_budget=10000,
         )
 
-    def _create_agent(self, llm: "LLM") -> "Agent":
-        """Create Agent with LLM and tools."""
-        return Agent(
-            llm=llm,
-            tools=[
+    def _create_agent(self, llm: "LLM", use_tools: bool = True) -> "Agent":
+        """Create Agent with LLM and optionally tools.
+
+        Args:
+            llm: The LLM instance to use
+            use_tools: If True, include TerminalTool and FileEditorTool.
+                      If False, create agent without tools for direct responses.
+        """
+        tools = []
+        if use_tools:
+            tools = [
                 Tool(name=TerminalTool.name),
                 Tool(name=FileEditorTool.name),
-            ],
+            ]
+
+        return Agent(
+            llm=llm,
+            tools=tools,
             system_prompt_kwargs={
                 "agent_context": SUPPORT_ENGINEER_CONTEXT,
             },
@@ -172,6 +205,8 @@ class OpenHandsSupportEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
+        use_tools: bool = True,
+        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -182,6 +217,10 @@ class OpenHandsSupportEngineer:
             context_type: Type of context (issue, pr, slack, ephemeral)
             context_id: ID for the context
             workspace: Working directory for the agent
+            use_tools: If True, enable TerminalTool and FileEditorTool for agentic exploration.
+                      If False, disable tools for direct LLM responses (faster for analysis tasks).
+            skip_context_injection: If True, don't automatically inject Sentry/Gmail/etc context.
+                      Useful for benchmarks where you want the agent to only use provided task content.
 
         Returns:
             dict with response, session_key, and metadata
@@ -199,7 +238,7 @@ class OpenHandsSupportEngineer:
         )
 
         llm = self._create_llm()
-        agent = self._create_agent(llm)
+        agent = self._create_agent(llm, use_tools=use_tools)
 
         # Use provided workspace or create temporary one
         temp_dir = None
@@ -215,52 +254,54 @@ class OpenHandsSupportEngineer:
                 workspace=workspace_path,
             )
 
-            # Inject relevant context based on task keywords
-            task_lower = task.lower()
+            # Inject relevant context based on task keywords (unless skipped)
             injected_context = []
 
-            # Sentry context for error-related tasks
-            if any(kw in task_lower for kw in ["sentry", "error", "issue", "bug", "crash"]):
-                injected_context.append(fetch_sentry_context())
+            if not skip_context_injection:
+                task_lower = task.lower()
 
-            # Gmail context for email-related tasks
-            if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
-                injected_context.append(fetch_gmail_context())
+                # Sentry context for error-related tasks
+                if any(kw in task_lower for kw in ["sentry", "error", "issue", "bug", "crash"]):
+                    injected_context.append(fetch_sentry_context())
 
-            # Calendar context for scheduling-related tasks
-            if any(kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]):
-                injected_context.append(fetch_calendar_context_wrapper())
+                # Gmail context for email-related tasks
+                if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
+                    injected_context.append(fetch_gmail_context())
 
-            # Langfuse context for LLM observability tasks
-            if any(
-                kw in task_lower
-                for kw in [
-                    "langfuse",
-                    "trace",
-                    "llm",
-                    "observability",
-                    "latency",
-                    "token",
-                ]
-            ):
-                injected_context.append(fetch_langfuse_context_wrapper())
+                # Calendar context for scheduling-related tasks
+                if any(kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]):
+                    injected_context.append(fetch_calendar_context_wrapper())
 
-            # Documentation context for product/feature/setup questions
-            if any(
-                kw in task_lower
-                for kw in [
-                    "doc",
-                    "documentation",
-                    "how to",
-                    "setup",
-                    "configure",
-                    "install",
-                    "api",
-                    "feature",
-                ]
-            ):
-                # Use the task itself as the search query
-                injected_context.append(fetch_docs_context_wrapper(task))
+                # Langfuse context for LLM observability tasks
+                if any(
+                    kw in task_lower
+                    for kw in [
+                        "langfuse",
+                        "trace",
+                        "llm",
+                        "observability",
+                        "latency",
+                        "token",
+                    ]
+                ):
+                    injected_context.append(fetch_langfuse_context_wrapper())
+
+                # Documentation context for product/feature/setup questions
+                if any(
+                    kw in task_lower
+                    for kw in [
+                        "doc",
+                        "documentation",
+                        "how to",
+                        "setup",
+                        "configure",
+                        "install",
+                        "api",
+                        "feature",
+                    ]
+                ):
+                    # Use the task itself as the search query
+                    injected_context.append(fetch_docs_context_wrapper(task))
 
             # Build full task with context
             context_str = "\n\n".join(injected_context) if injected_context else ""
@@ -269,22 +310,50 @@ class OpenHandsSupportEngineer:
             else:
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\nTask: {task}"
 
+            # When tools are disabled, convert numbered lists to bullet points.
+            # OpenHands interprets numbered lists as action steps to execute,
+            # causing empty LLM responses. Bullet points work correctly.
+            if not use_tools:
+                full_task = convert_numbered_lists_to_bullets(full_task)
+
             # Use send_message + run for the full agentic loop with tools
             conversation.send_message(full_task)
             conversation.run()
 
-            # Get the last assistant message from conversation events
+            # Get the response from conversation events
+            # Check event type by class name since different events have different structures
             response = ""
+
             for event in reversed(conversation.state.events):
-                if event.kind == "MessageEvent" and getattr(event, "source", None) == "agent":
+                event_type = type(event).__name__
+
+                # Check for ActionEvent containing FinishAction or AgentFinishAction
+                if event_type == "ActionEvent":
+                    action = getattr(event, "action", None)
+                    action_name = type(action).__name__ if action else ""
+                    if action and action_name in ("FinishAction", "AgentFinishAction"):
+                        # Get message from the action
+                        message = getattr(action, "message", "")
+                        if message:
+                            response = message
+                            break
+                        # Fallback to thought
+                        thought = getattr(action, "thought", "")
+                        if thought:
+                            response = thought
+                            break
+
+                # Check for MessageEvent (direct response without finish tool)
+                elif event_type == "MessageEvent" and getattr(event, "source", None) == "agent":
                     if hasattr(event, "llm_message") and event.llm_message:
                         llm_msg = event.llm_message
                         if hasattr(llm_msg, "content") and llm_msg.content:
                             for block in llm_msg.content:
-                                if hasattr(block, "text"):
+                                if hasattr(block, "text") and block.text:
                                     response = block.text
                                     break
-                    break
+                    if response:
+                        break
 
             session.add_message("user", task)
             session.add_message("assistant", response)
@@ -312,13 +381,32 @@ class OpenHandsSupportEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
+        use_tools: bool = True,
+        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Async version of run."""
+        """Async version of run.
+
+        Args:
+            task: The task description
+            context_type: Type of context (issue, pr, slack, ephemeral)
+            context_id: ID for the context
+            workspace: Working directory for the agent
+            use_tools: If True, enable tools for agentic exploration.
+                      If False, disable tools for direct LLM responses.
+            skip_context_injection: If True, don't automatically inject context.
+        """
         import asyncio
 
         return await asyncio.to_thread(
-            self.run, task, context_type, context_id, workspace, **kwargs
+            self.run,
+            task,
+            context_type,
+            context_id,
+            workspace,
+            use_tools,
+            skip_context_injection,
+            **kwargs,
         )
 
 
