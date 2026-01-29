@@ -52,7 +52,7 @@ class BenchmarkConfig:
     AZURE_API_BASE = os.getenv("AZURE_OPENAI_ENDPOINT", os.getenv("AZURE_API_BASE", ""))
     AZURE_API_VERSION = os.getenv("AZURE_API_VERSION", "2024-08-01-preview")
     JUDGE_MODEL = os.getenv(
-        "BENCHMARK_JUDGE_MODEL", os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+        "BENCHMARK_JUDGE_MODEL", os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-2")
     )
     REQUEST_TIMEOUT = float(os.getenv("BENCHMARK_TIMEOUT", "180"))
     OUTPUT_DIR = Path(os.getenv("BENCHMARK_OUTPUT_DIR", ".benchmarks"))
