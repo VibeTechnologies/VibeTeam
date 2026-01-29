@@ -245,6 +245,75 @@ OpenHands defaults to `reasoning_effort='high'` and `extended_thinking_budget=20
 - [x] 3. Root cause: missing slack-sdk dependency
 - [x] 4. Fix: add slack-sdk>=3.21.0 to pyproject.toml
 - [x] 5. Verify CI passes
-- [ ] 6. Merge PR #43
-- [ ] 7. Test Slack @mention workflow
+- [x] 6. Merge PR #43 (merged at 2026-01-29T21:26:32Z)
+- [x] 7. Test Slack @mention workflow - WORKING!
 - [ ] 8. Deploy Slack agents to K8s
+
+---
+
+# Session 5: Model Fix and Slack Agent Testing (2026-01-29)
+
+## Goal
+Test the Slack @mention workflow and fix any issues preventing agents from responding.
+
+## Status: COMPLETED
+
+## Key Fixes
+
+### 1. Model Deployment Name (FIXED)
+**Problem**: All agents were configured to use `azure/gpt-4.1` but Azure deployment is named `gpt-5-2`
+
+**Fix**: Updated default model to `azure/gpt-5-2` across:
+- `vibeteam/agents/base.py`
+- All agent subclasses (7 files)
+- `vibeteam/swarm.py` (2 locations)
+- `vibeteam/api/main.py`
+- Tests (2 files)
+
+### 2. Slack Mention Detection (FIXED)
+**Problem**: Single-bot deployment couldn't detect mentions - agents looked for `SLACK_AGENT_SUPPORT` env var or `@support` text pattern
+
+**Fix**: Updated `is_mention_for_agent()` to fall back to detecting bot user ID mentions when no agent-specific user is configured:
+```python
+# Fallback 2: if no agent-specific user configured, respond to bot mentions
+if self.bot_user_id in message.mentions:
+    return True
+```
+
+### 3. Dotenv Loading (FIXED)
+**Problem**: `run_slack_agent.py` didn't load `.env` file, causing `SLACK_BOT_TOKEN` error
+
+**Fix**: Added `from dotenv import load_dotenv; load_dotenv()` at script start
+
+### 4. Testing Flag (ADDED)
+**Feature**: Added `--allow-bot` flag to `run_slack_agent.py` for testing bot-posted messages
+
+## Test Results
+
+Slack agent successfully:
+1. ✅ Polls channel for messages
+2. ✅ Detects bot mentions
+3. ✅ Processes messages with LLM (azure/gpt-5-2)
+4. ✅ Uses tools (Gmail tool for support context)
+5. ✅ Posts responses in threads with agent identity
+
+**Sample Response** (from Support Engineer Nightingale):
+```
+:robot_face: *[Nightingale]* Yes—I'm here and working.
+
+I can help with:
+- Setting up Vibe Browser (install/login, syncing, BYOK setup)
+- Troubleshooting issues (crashes, blank pages, slow performance)
+- Subscription questions (Free/Pro/Max/BYOK plan differences)
+...
+```
+
+## Commits
+
+- `d777beb` - fix(agents): use gpt-5-2 model and improve Slack mention detection
+
+## Next Steps
+
+1. **Deploy Slack agents to K8s** - Create deployments for polling agents
+2. **Set up nightly benchmarks** - CI/CD for quality regression
+3. **Documentation KB** - Add runbooks for agents
