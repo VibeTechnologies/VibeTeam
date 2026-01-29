@@ -59,6 +59,7 @@ VibeTeam/
 | `LangfuseConnector` | LLM observability |
 | `HealthConnector` | Endpoint monitoring |
 | `GmailConnector` | Email processing |
+| `SlackConnector` | Slack messaging |
 
 ## Environment Variables
 
@@ -88,5 +89,12 @@ Use `GitHubConnector.get_customer_requests_table()` to read/update.
 
 ## Current Work
 
-**Active Issue: #38** - Deploy VibeTeam to Kubernetes and verify integrations
-https://github.com/VibeTechnologies/VibeTeam/issues/38
+**Active Issue: #39** - CrewAI tool calling hallucinates outputs with Azure GPT-5
+https://github.com/VibeTechnologies/VibeTeam/issues/39
+
+**Active PR: #41** - SlackConnector and E2E integration tests
+https://github.com/VibeTechnologies/VibeTeam/pull/41
+
+### Recently Closed
+- #38 - Deploy VibeTeam to Kubernetes (completed)
+- #40 - SlackConnector feature (PR #41 in review)
