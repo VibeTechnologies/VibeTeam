@@ -206,6 +206,7 @@ class OpenHandsSupportEngineer:
         context_id: str | None = None,
         workspace: str | None = None,
         use_tools: bool = True,
+        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -218,6 +219,8 @@ class OpenHandsSupportEngineer:
             workspace: Working directory for the agent
             use_tools: If True, enable TerminalTool and FileEditorTool for agentic exploration.
                       If False, disable tools for direct LLM responses (faster for analysis tasks).
+            skip_context_injection: If True, don't automatically inject Sentry/Gmail/etc context.
+                      Useful for benchmarks where you want the agent to only use provided task content.
 
         Returns:
             dict with response, session_key, and metadata
@@ -251,52 +254,54 @@ class OpenHandsSupportEngineer:
                 workspace=workspace_path,
             )
 
-            # Inject relevant context based on task keywords
-            task_lower = task.lower()
+            # Inject relevant context based on task keywords (unless skipped)
             injected_context = []
 
-            # Sentry context for error-related tasks
-            if any(kw in task_lower for kw in ["sentry", "error", "issue", "bug", "crash"]):
-                injected_context.append(fetch_sentry_context())
+            if not skip_context_injection:
+                task_lower = task.lower()
 
-            # Gmail context for email-related tasks
-            if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
-                injected_context.append(fetch_gmail_context())
+                # Sentry context for error-related tasks
+                if any(kw in task_lower for kw in ["sentry", "error", "issue", "bug", "crash"]):
+                    injected_context.append(fetch_sentry_context())
 
-            # Calendar context for scheduling-related tasks
-            if any(kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]):
-                injected_context.append(fetch_calendar_context_wrapper())
+                # Gmail context for email-related tasks
+                if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
+                    injected_context.append(fetch_gmail_context())
 
-            # Langfuse context for LLM observability tasks
-            if any(
-                kw in task_lower
-                for kw in [
-                    "langfuse",
-                    "trace",
-                    "llm",
-                    "observability",
-                    "latency",
-                    "token",
-                ]
-            ):
-                injected_context.append(fetch_langfuse_context_wrapper())
+                # Calendar context for scheduling-related tasks
+                if any(kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]):
+                    injected_context.append(fetch_calendar_context_wrapper())
 
-            # Documentation context for product/feature/setup questions
-            if any(
-                kw in task_lower
-                for kw in [
-                    "doc",
-                    "documentation",
-                    "how to",
-                    "setup",
-                    "configure",
-                    "install",
-                    "api",
-                    "feature",
-                ]
-            ):
-                # Use the task itself as the search query
-                injected_context.append(fetch_docs_context_wrapper(task))
+                # Langfuse context for LLM observability tasks
+                if any(
+                    kw in task_lower
+                    for kw in [
+                        "langfuse",
+                        "trace",
+                        "llm",
+                        "observability",
+                        "latency",
+                        "token",
+                    ]
+                ):
+                    injected_context.append(fetch_langfuse_context_wrapper())
+
+                # Documentation context for product/feature/setup questions
+                if any(
+                    kw in task_lower
+                    for kw in [
+                        "doc",
+                        "documentation",
+                        "how to",
+                        "setup",
+                        "configure",
+                        "install",
+                        "api",
+                        "feature",
+                    ]
+                ):
+                    # Use the task itself as the search query
+                    injected_context.append(fetch_docs_context_wrapper(task))
 
             # Build full task with context
             context_str = "\n\n".join(injected_context) if injected_context else ""
@@ -377,6 +382,7 @@ class OpenHandsSupportEngineer:
         context_id: str | None = None,
         workspace: str | None = None,
         use_tools: bool = True,
+        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Async version of run.
@@ -388,11 +394,19 @@ class OpenHandsSupportEngineer:
             workspace: Working directory for the agent
             use_tools: If True, enable tools for agentic exploration.
                       If False, disable tools for direct LLM responses.
+            skip_context_injection: If True, don't automatically inject context.
         """
         import asyncio
 
         return await asyncio.to_thread(
-            self.run, task, context_type, context_id, workspace, use_tools, **kwargs
+            self.run,
+            task,
+            context_type,
+            context_id,
+            workspace,
+            use_tools,
+            skip_context_injection,
+            **kwargs,
         )
 
 

@@ -485,9 +485,12 @@ async def run_agent(framework: str, role: str, task: str, timeout: float) -> Fra
 
         # For OpenHands, disable tools to prevent agentic exploration loop
         # that causes timeouts. This makes it respond directly like other frameworks.
+        # Also skip context injection to prevent real Sentry data from being mixed
+        # into benchmark responses (causes judge to penalize as "hallucination").
         run_kwargs: dict[str, Any] = {"task": task}
         if framework == "openhands":
             run_kwargs["use_tools"] = False
+            run_kwargs["skip_context_injection"] = True
 
         # Run with timeout
         result = await asyncio.wait_for(agent.run_async(**run_kwargs), timeout=timeout)
