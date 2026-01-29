@@ -35,6 +35,12 @@ except ImportError:
     LLM = None
     BaseTool = object
 
+# Import custom LLM wrapper for Azure GPT-5 function calling support
+if CREWAI_AVAILABLE:
+    from agents.crewai.llm import AzureFunctionCallingLLM
+else:
+    AzureFunctionCallingLLM = None
+
 
 SUPPORT_ENGINEER_BACKSTORY = """You are Grace, the Support Engineer for VibeTeam.
 You have deep expertise in:
@@ -145,9 +151,7 @@ class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
     """Query Sentry for errors using real API."""
 
     name: str = "sentry"
-    description: str = (
-        "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
-    )
+    description: str = "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
 
     def _run(self, query: str = "") -> str:
         """Query Sentry for unresolved issues."""
@@ -202,9 +206,7 @@ class LangfuseTool(BaseTool if CREWAI_AVAILABLE else object):
     """Query Langfuse for LLM observability data using real API."""
 
     name: str = "langfuse"
-    description: str = (
-        "Query Langfuse for LLM traces and detect anomalies. Input: optional JSON with 'action' (traces/anomalies), 'hours', 'limit' keys."
-    )
+    description: str = "Query Langfuse for LLM traces and detect anomalies. Input: optional JSON with 'action' (traces/anomalies), 'hours', 'limit' keys."
 
     def _run(self, query: str = "") -> str:
         """Query Langfuse for traces and anomalies."""
@@ -309,7 +311,8 @@ class CrewAISupportEngineer:
             model_name = f"azure/{model_name}"
 
         # Create LLM with explicit Azure configuration
-        llm = LLM(
+        # Use AzureFunctionCallingLLM to force native function calling mode.
+        llm = AzureFunctionCallingLLM(
             model=model_name,
             provider="litellm",
             api_base=self.config.llm.api_base,

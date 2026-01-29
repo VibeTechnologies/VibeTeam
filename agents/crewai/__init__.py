@@ -9,6 +9,7 @@ CrewAI provides:
 """
 
 from agents.crewai.crew import CrewAITeam, create_team
+from agents.crewai.llm import AzureFunctionCallingLLM
 from agents.crewai.marketing_manager import (
     CrewAIMarketingManager,
     create_marketing_manager,
@@ -31,6 +32,7 @@ from agents.crewai.support_engineer import (
 )
 
 __all__ = [
+    "AzureFunctionCallingLLM",
     "CrewAIProductManager",
     "CrewAIReleaseEngineer",
     "CrewAIMarketingManager",
