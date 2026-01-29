@@ -173,3 +173,78 @@ OpenHands defaults to `reasoning_effort='high'` and `extended_thinking_budget=20
 2. OpenHands' default reasoning settings (`high`, 200k budget) are too slow for benchmarks
 3. Reducing reasoning overhead improves response time without significantly impacting quality (3/5 vs potential 4/5)
 4. The `use_tools=False` fix from Session 1 was necessary but not sufficient
+
+---
+
+# Session 4: Fix CI and Plan Long-Term Goal (2026-01-29)
+
+## Goal
+1. Fix CI test failures on PR #43
+2. Plan next steps for long-term goal: autonomous AI team for 24/7 SaaS operations
+
+## Status: IN PROGRESS
+
+## CI Fix
+
+**Problem**: PR #43 tests failing with `ImportError: cannot import name 'AgentType' from 'vibeteam'`
+
+**Root Cause**: The `SlackConnector` imports `slack-sdk` but it wasn't in the `pyproject.toml` dependencies. The exception was silently caught in `vibeteam/__init__.py` as an `ImportError`, causing agent exports to be skipped.
+
+**Fix**: Added `slack-sdk>=3.21.0` to dependencies in `pyproject.toml`.
+
+**Commit**: `02ddbf6`
+
+**Result**: CI now passes (lint: pass, test: pass)
+
+---
+
+## Long-Term Goal: Autonomous AI Team for 24/7 SaaS Operations
+
+### What's Been Completed (70-80%)
+
+| Category | Status | Details |
+|----------|--------|---------|
+| **Multi-Framework Agents** | ✅ Complete | AutoGen, CrewAI, OpenHands - all 5 agent types |
+| **Gateway Service** | ✅ Complete | Webhook routing to agent services |
+| **PostgreSQL Sessions** | ✅ Complete | Conversation persistence |
+| **APScheduler Service** | ✅ Complete | Dynamic task scheduling |
+| **K8s Deployment** | ✅ Complete | Full manifests with Kustomize |
+| **Agent Benchmarking** | ✅ Complete | LLM-as-judge evaluation |
+| **Connectors** | ✅ Partial | GitHub, Sentry, Langfuse, Gmail, Health, Slack |
+
+### What's Still Needed (20-30%)
+
+| Priority | Feature | Gap |
+|----------|---------|-----|
+| **HIGH** | Slack Agent Integration | Agents can't communicate via Slack autonomously |
+| **HIGH** | Integration Verification | Several integrations partially configured |
+| **MEDIUM** | Benchmark CI/CD | No nightly quality regression checks |
+| **MEDIUM** | Documentation KB | Agents lack org knowledge/runbooks |
+
+### Recommended Next Steps
+
+1. **Merge PR #43** - Slack connector and agent improvements now passing CI
+2. **Test Slack @mention workflow** - Verify agents can respond to Slack mentions
+3. **Deploy Slack polling agents to K8s** - Each agent as independent pod
+4. **Run full readiness check** - `python readiness/check.py --full`
+5. **Set up nightly benchmarks** - Detect quality regressions
+
+### Open Issues
+
+- **Issue #40**: Slack-based autonomous agent communication
+- **Issue #24**: Documentation Knowledge Base
+- **Issue #44**: DeepEval integration for robust benchmarking
+- **Issue #31**: Multi-agent system product requirements
+
+---
+
+## Tasks
+
+- [x] 1. Push 8 local commits to update PR #43
+- [x] 2. Debug CI failure (ImportError for AgentType)
+- [x] 3. Root cause: missing slack-sdk dependency
+- [x] 4. Fix: add slack-sdk>=3.21.0 to pyproject.toml
+- [x] 5. Verify CI passes
+- [ ] 6. Merge PR #43
+- [ ] 7. Test Slack @mention workflow
+- [ ] 8. Deploy Slack agents to K8s
