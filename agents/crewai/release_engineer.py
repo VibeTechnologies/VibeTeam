@@ -27,6 +27,12 @@ except ImportError:
     Crew = None
     LLM = None
 
+# Import custom LLM wrapper for Azure GPT-5 function calling support
+if CREWAI_AVAILABLE:
+    from agents.crewai.llm import AzureFunctionCallingLLM
+else:
+    AzureFunctionCallingLLM = None
+
 
 RELEASE_ENGINEER_BACKSTORY = """You are Einstein, the Release Engineer for VibeTeam.
 You have deep expertise in:
@@ -140,7 +146,8 @@ class CrewAIReleaseEngineer:
             model_name = f"azure/{model_name}"
 
         # Create LLM with explicit Azure configuration
-        llm = LLM(
+        # Use AzureFunctionCallingLLM to force native function calling mode.
+        llm = AzureFunctionCallingLLM(
             model=model_name,
             provider="litellm",
             api_base=self.config.llm.api_base,
