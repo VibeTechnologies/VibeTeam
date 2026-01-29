@@ -153,14 +153,24 @@ class OpenHandsSupportEngineer:
             max_output_tokens=4096,
         )
 
-    def _create_agent(self, llm: "LLM") -> "Agent":
-        """Create Agent with LLM and tools."""
-        return Agent(
-            llm=llm,
-            tools=[
+    def _create_agent(self, llm: "LLM", use_tools: bool = True) -> "Agent":
+        """Create Agent with LLM and optionally tools.
+
+        Args:
+            llm: The LLM instance to use
+            use_tools: If True, include TerminalTool and FileEditorTool.
+                      If False, create agent without tools for direct responses.
+        """
+        tools = []
+        if use_tools:
+            tools = [
                 Tool(name=TerminalTool.name),
                 Tool(name=FileEditorTool.name),
-            ],
+            ]
+
+        return Agent(
+            llm=llm,
+            tools=tools,
             system_prompt_kwargs={
                 "agent_context": SUPPORT_ENGINEER_CONTEXT,
             },
@@ -172,6 +182,7 @@ class OpenHandsSupportEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
+        use_tools: bool = True,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -182,6 +193,8 @@ class OpenHandsSupportEngineer:
             context_type: Type of context (issue, pr, slack, ephemeral)
             context_id: ID for the context
             workspace: Working directory for the agent
+            use_tools: If True, enable TerminalTool and FileEditorTool for agentic exploration.
+                      If False, disable tools for direct LLM responses (faster for analysis tasks).
 
         Returns:
             dict with response, session_key, and metadata
@@ -199,7 +212,7 @@ class OpenHandsSupportEngineer:
         )
 
         llm = self._create_llm()
-        agent = self._create_agent(llm)
+        agent = self._create_agent(llm, use_tools=use_tools)
 
         # Use provided workspace or create temporary one
         temp_dir = None
@@ -273,18 +286,40 @@ class OpenHandsSupportEngineer:
             conversation.send_message(full_task)
             conversation.run()
 
-            # Get the last assistant message from conversation events
+            # Get the response from conversation events
+            # Check event type by class name since different events have different structures
             response = ""
+
             for event in reversed(conversation.state.events):
-                if event.kind == "MessageEvent" and getattr(event, "source", None) == "agent":
+                event_type = type(event).__name__
+
+                # Check for ActionEvent containing FinishAction or AgentFinishAction
+                if event_type == "ActionEvent":
+                    action = getattr(event, "action", None)
+                    action_name = type(action).__name__ if action else ""
+                    if action and action_name in ("FinishAction", "AgentFinishAction"):
+                        # Get message from the action
+                        message = getattr(action, "message", "")
+                        if message:
+                            response = message
+                            break
+                        # Fallback to thought
+                        thought = getattr(action, "thought", "")
+                        if thought:
+                            response = thought
+                            break
+
+                # Check for MessageEvent (direct response without finish tool)
+                elif event_type == "MessageEvent" and getattr(event, "source", None) == "agent":
                     if hasattr(event, "llm_message") and event.llm_message:
                         llm_msg = event.llm_message
                         if hasattr(llm_msg, "content") and llm_msg.content:
                             for block in llm_msg.content:
-                                if hasattr(block, "text"):
+                                if hasattr(block, "text") and block.text:
                                     response = block.text
                                     break
-                    break
+                    if response:
+                        break
 
             session.add_message("user", task)
             session.add_message("assistant", response)
@@ -312,13 +347,23 @@ class OpenHandsSupportEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
+        use_tools: bool = True,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Async version of run."""
+        """Async version of run.
+
+        Args:
+            task: The task description
+            context_type: Type of context (issue, pr, slack, ephemeral)
+            context_id: ID for the context
+            workspace: Working directory for the agent
+            use_tools: If True, enable tools for agentic exploration.
+                      If False, disable tools for direct LLM responses.
+        """
         import asyncio
 
         return await asyncio.to_thread(
-            self.run, task, context_type, context_id, workspace, **kwargs
+            self.run, task, context_type, context_id, workspace, use_tools, **kwargs
         )
 
 

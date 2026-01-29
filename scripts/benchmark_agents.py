@@ -479,8 +479,14 @@ async def run_agent(framework: str, role: str, task: str, timeout: float) -> Fra
         agent_class = get_agent_class(framework, role)
         agent = agent_class()
 
+        # For OpenHands, disable tools to prevent agentic exploration loop
+        # that causes timeouts. This makes it respond directly like other frameworks.
+        run_kwargs: dict[str, Any] = {"task": task}
+        if framework == "openhands":
+            run_kwargs["use_tools"] = False
+
         # Run with timeout
-        result = await asyncio.wait_for(agent.run_async(task=task), timeout=timeout)
+        result = await asyncio.wait_for(agent.run_async(**run_kwargs), timeout=timeout)
 
         latency_ms = int((time.perf_counter() - start_time) * 1000)
 
