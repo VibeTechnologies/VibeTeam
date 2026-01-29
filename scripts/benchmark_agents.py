@@ -35,6 +35,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
+
+# Load .env file before reading configuration
+load_dotenv()
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -608,8 +612,8 @@ def generate_markdown_report(
         "",
         "## Summary",
         "",
-        "| Framework | Status | Latency | Score | Response Length |",
-        "|-----------|--------|---------|-------|-----------------|",
+        "| Framework | Status | Latency | Score | Feedback |",
+        "|-----------|--------|---------|-------|----------|",
     ]
 
     for r in sorted(
@@ -620,8 +624,11 @@ def generate_markdown_report(
     ):
         score = eval_result.scores.get(r.framework, ComparativeScore(r.framework, 0, "N/A"))
         status = "PASS" if r.success else "FAIL"
+        # Truncate feedback for table, escape pipes
+        feedback_short = score.feedback[:80] + "..." if len(score.feedback) > 80 else score.feedback
+        feedback_short = feedback_short.replace("|", "\\|").replace("\n", " ")
         lines.append(
-            f"| {r.framework.upper()} | {status} | {r.latency_ms}ms | {score.score}/5 | {len(r.response)} chars |"
+            f"| {r.framework.upper()} | {status} | {r.latency_ms}ms | {score.score}/5 | {feedback_short} |"
         )
 
     lines.extend(
