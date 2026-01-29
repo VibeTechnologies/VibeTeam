@@ -330,6 +330,10 @@ class SlackConnector:
         """
         Check if a message mentions a specific agent.
 
+        When a specific agent Slack user ID is configured via SLACK_AGENT_{KEY},
+        it checks for that user. Otherwise, it checks if the bot itself is mentioned
+        (for single-bot deployments where one bot handles all agents).
+
         Args:
             message: The message to check
             agent_key: Agent key to check for
@@ -341,8 +345,16 @@ class SlackConnector:
         if agent_id:
             return agent_id in message.mentions
 
-        # Fallback: check for @agent_key pattern
-        return f"@{agent_key}" in message.text.lower()
+        # Fallback 1: check for @agent_key pattern (e.g., "@support help me")
+        if f"@{agent_key}" in message.text.lower():
+            return True
+
+        # Fallback 2: if no agent-specific user configured, respond to bot mentions
+        # This enables single-bot deployments where all agents share one bot user
+        if self.bot_user_id in message.mentions:
+            return True
+
+        return False
 
     def extract_mentioned_agents(self, message: SlackMessage) -> list[str]:
         """

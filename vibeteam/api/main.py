@@ -121,7 +121,7 @@ def get_or_create_orchestrator(session_id: str | None = None) -> SwarmOrchestrat
         return _sessions[session_id]
 
     # Create new orchestrator
-    model = os.environ.get("LLM_MODEL", "azure/gpt-4.1")
+    model = os.environ.get("LLM_MODEL", "azure/gpt-5-2")
     orchestrator = create_swarm_orchestrator(model=model)
 
     # Store in sessions

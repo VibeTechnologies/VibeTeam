@@ -69,7 +69,7 @@ class SwarmOrchestrator:
     def __init__(
         self,
         shared_state: SharedMessageState | None = None,
-        model: str = "azure/gpt-4.1",
+        model: str = "azure/gpt-5-2",
         max_iterations: int = 20,
         enable_tracing: bool = True,
     ):
@@ -359,7 +359,7 @@ class SwarmOrchestrator:
 
 
 def create_swarm_orchestrator(
-    model: str = "azure/gpt-4.1",
+    model: str = "azure/gpt-5-2",
     max_iterations: int = 20,
 ) -> SwarmOrchestrator:
     """

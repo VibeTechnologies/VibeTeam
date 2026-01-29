@@ -77,7 +77,7 @@ class BaseVibeAgent:
     goal: str = "Contribute to team success"
 
     # Model configuration
-    model: str = "azure/gpt-4.1"
+    model: str = "azure/gpt-5-2"
     temperature: float = 0.3
     max_tokens: int = 4096
 

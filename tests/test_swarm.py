@@ -453,7 +453,7 @@ class TestCreateSwarmOrchestrator:
 
         orch = create_swarm_orchestrator()
 
-        assert orch.model == "azure/gpt-4.1"
+        assert orch.model == "azure/gpt-5-2"
         assert orch.max_iterations == 20
 
     def test_create_with_custom_model(self):

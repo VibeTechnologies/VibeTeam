@@ -30,6 +30,11 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -126,6 +131,7 @@ async def run_agent_loop(
     poll_interval: int = 5,
     lookback_minutes: int = 5,
     once: bool = False,
+    allow_bot: bool = False,
 ) -> None:
     """
     Run the agent polling loop.
@@ -136,6 +142,7 @@ async def run_agent_loop(
         poll_interval: Seconds between polls
         lookback_minutes: How far back to look for messages on startup
         once: If True, run once and exit
+        allow_bot: If True, process bot messages (for testing only)
     """
     global shutdown_requested
 
@@ -171,8 +178,8 @@ async def run_agent_loop(
                 if msg.ts in processed_ts:
                     continue
 
-                # Skip bot messages (including our own)
-                if msg.is_bot:
+                # Skip bot messages (including our own) unless allow_bot is set
+                if msg.is_bot and not allow_bot:
                     processed_ts.add(msg.ts)
                     continue
 
@@ -280,6 +287,11 @@ Available agents:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--allow-bot",
+        action="store_true",
+        help="Process bot messages (for testing only)",
+    )
 
     args = parser.parse_args()
 
@@ -306,6 +318,7 @@ Available agents:
         poll_interval=args.poll_interval,
         lookback_minutes=args.lookback,
         once=args.once,
+        allow_bot=args.allow_bot,
     )
 
     return 0

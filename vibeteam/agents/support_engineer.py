@@ -88,7 +88,7 @@ class SupportEngineerAgent(BaseVibeAgent):
     name = "Nightingale"
     profile = "Support Engineer"
     goal = "Provide helpful, secure support responses and escalate appropriately"
-    model = "azure/gpt-4.1"
+    model = "azure/gpt-5-2"
     temperature = 0.3
 
     def __init__(self, **kwargs: Any):
