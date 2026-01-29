@@ -151,7 +151,9 @@ class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
     """Query Sentry for errors using real API."""
 
     name: str = "sentry"
-    description: str = "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
+    description: str = (
+        "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
+    )
 
     def _run(self, query: str = "") -> str:
         """Query Sentry for unresolved issues."""
@@ -206,7 +208,9 @@ class LangfuseTool(BaseTool if CREWAI_AVAILABLE else object):
     """Query Langfuse for LLM observability data using real API."""
 
     name: str = "langfuse"
-    description: str = "Query Langfuse for LLM traces and detect anomalies. Input: optional JSON with 'action' (traces/anomalies), 'hours', 'limit' keys."
+    description: str = (
+        "Query Langfuse for LLM traces and detect anomalies. Input: optional JSON with 'action' (traces/anomalies), 'hours', 'limit' keys."
+    )
 
     def _run(self, query: str = "") -> str:
         """Query Langfuse for traces and anomalies."""

@@ -87,7 +87,9 @@ class CreateGitHubIssueTool(BaseTool if CREWAI_AVAILABLE else object):
     """Create a GitHub issue."""
 
     name: str = "create_github_issue"
-    description: str = "Create a GitHub issue. Input: JSON with 'title', 'body', optional 'labels' and 'repo' keys."
+    description: str = (
+        "Create a GitHub issue. Input: JSON with 'title', 'body', optional 'labels' and 'repo' keys."
+    )
 
     def _run(self, input_data: str) -> str:
         """Create issue."""
