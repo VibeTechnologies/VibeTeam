@@ -30,6 +30,12 @@ except ImportError:
     LLM = None
     BaseTool = object
 
+# Import custom LLM wrapper for Azure GPT-5 function calling support
+if CREWAI_AVAILABLE:
+    from agents.crewai.llm import AzureFunctionCallingLLM
+else:
+    AzureFunctionCallingLLM = None
+
 
 # =============================================================================
 # Pydantic Input Schemas for Tools
@@ -373,7 +379,11 @@ class CrewAISoftwareEngineer:
             model_name = f"azure/{model_name}"
 
         # Create LLM with explicit Azure configuration
-        llm = LLM(
+        # Use AzureFunctionCallingLLM to force native function calling mode.
+        # LiteLLM's registry doesn't include 'gpt-5-2', so the default LLM
+        # class returns False for supports_function_calling(), causing CrewAI
+        # to use ReAct prompting where the model hallucinates tool outputs.
+        llm = AzureFunctionCallingLLM(
             model=model_name,
             provider="litellm",
             api_base=self.config.llm.api_base,
