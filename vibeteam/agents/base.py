@@ -14,6 +14,9 @@ from typing import Any
 import litellm
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+# Handoff prefix for swarm pattern detection (matches vibeteam.tools.transfer.HANDOFF_PREFIX)
+HANDOFF_PREFIX = "HANDOFF:"
+
 logger = logging.getLogger(__name__)
 
 
@@ -196,6 +199,8 @@ actionable outputs.{tool_descriptions}"""
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
+        # Drop unsupported params (e.g., tool_choice for Azure GPT-5)
+        litellm.drop_params = True
         response = await litellm.acompletion(**kwargs)
         return response
 
@@ -306,6 +311,15 @@ actionable outputs.{tool_descriptions}"""
                         for tc in assistant_message.tool_calls
                     ]
                 )
+
+                # Check for handoff results - return immediately for swarm pattern
+                for result in tool_results:
+                    if result.content.startswith(HANDOFF_PREFIX):
+                        logger.info(f"Handoff detected: {result.content}")
+                        # Add tool results to conversation for context
+                        self.conversation.extend(tool_results)
+                        # Return the handoff signal directly
+                        return result.content
 
                 # Add tool results to conversation
                 self.conversation.extend(tool_results)

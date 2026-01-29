@@ -7,6 +7,7 @@ from vibeteam.connectors.gmail import GmailConnector
 from vibeteam.connectors.health import HealthConnector
 from vibeteam.connectors.langfuse import LangfuseConnector
 from vibeteam.connectors.sentry import SentryConnector
+from vibeteam.connectors.slack import SlackConnector
 
 __all__ = [
     "GitHubConnector",
@@ -14,4 +15,5 @@ __all__ = [
     "HealthConnector",
     "LangfuseConnector",
     "SentryConnector",
+    "SlackConnector",
 ]
