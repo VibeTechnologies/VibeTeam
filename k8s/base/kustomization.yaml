@@ -14,5 +14,7 @@ resources:
   - scheduler-svc.yaml
   # Multi-framework agent deployments (AutoGen, CrewAI, OpenHands)
   - frameworks/
+  # Slack polling agents (inter-agent communication via Slack)
+  - slack-agents/
   # Note: Old CronJobs (product-manager, support-engineer, release-engineer,
   # software-engineer) have been replaced by scheduler-svc tasks

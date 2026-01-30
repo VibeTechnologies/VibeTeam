@@ -1,0 +1,67 @@
+# Product Manager / Supervisor Slack Agent Deployment
+# Polls Slack for @mentions and coordinates team tasks
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slack-agent-pm
+  labels:
+    app: slack-agent-pm
+    team: vibeteam
+    component: slack-agent
+    agent-type: pm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slack-agent-pm
+  template:
+    metadata:
+      labels:
+        app: slack-agent-pm
+        team: vibeteam
+        component: slack-agent
+        agent-type: pm
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: pm-agent
+          image: ghcr.io/vibetechnologies/vibeteam:latest
+          command: ["python", "scripts/run_slack_agent.py"]
+          args:
+            - "--agent=pm"
+            - "--channel=#all-vibetechnologies"
+            - "--poll-interval=5"
+          env:
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_BOT_TOKEN
+            - name: AZURE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_KEY
+            - name: AZURE_API_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_BASE
+            - name: AZURE_API_VERSION
+              value: "2024-08-01-preview"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: GITHUB_TOKEN
+            - name: VIBETEAM_MODEL
+              value: "azure/gpt-5-2"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"

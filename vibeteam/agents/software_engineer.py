@@ -9,6 +9,7 @@ from typing import Any
 
 from vibeteam.agents.base import BaseVibeAgent
 from vibeteam.tools.github import GitHubTool
+from vibeteam.tools.transfer import get_transfer_tools_for_agent
 
 # The Torvalds Protocol - embedded in all SWE actions
 TORVALDS_PROTOCOL = """
@@ -95,6 +96,9 @@ class SoftwareEngineerAgent(BaseVibeAgent):
             except Exception:
                 pass
 
+        # Transfer tools for handoffs to other agents
+        tools.extend(get_transfer_tools_for_agent("swe"))
+
         super().__init__(
             name=kwargs.get("name", self.name),
             profile=self.profile,
@@ -110,6 +114,18 @@ class SoftwareEngineerAgent(BaseVibeAgent):
 Goal: {self.goal}
 
 {TORVALDS_PROTOCOL}
+
+## TEAM COLLABORATION
+
+When you complete a task or need help from another team member, use the transfer tools:
+- **transfer_to_supervisor**: Report completion, ask for next steps, or request prioritization
+- **transfer_to_release**: Request deployment after code is merged
+- **transfer_to_support**: Notify about fixes that affect customer-facing issues
+
+When you transfer, include:
+1. What you completed/implemented
+2. PR/commit references
+3. Any testing notes
 
 Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """

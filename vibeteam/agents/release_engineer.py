@@ -19,6 +19,7 @@ from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.health import HealthCheckTool
 from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.sentry import SentryTool
+from vibeteam.tools.transfer import get_transfer_tools_for_agent
 
 # Release Engineer Protocol
 RELEASE_ENGINEER_PROTOCOL = """
@@ -104,6 +105,9 @@ class ReleaseEngineerAgent(BaseVibeAgent):
         # Health check tool doesn't need env vars
         tools.append(HealthCheckTool())
 
+        # Transfer tools for handoffs to other agents
+        tools.extend(get_transfer_tools_for_agent("release"))
+
         super().__init__(
             name=kwargs.get("name", self.name),
             profile=self.profile,
@@ -120,6 +124,18 @@ class ReleaseEngineerAgent(BaseVibeAgent):
 Goal: {self.goal}
 
 {RELEASE_ENGINEER_PROTOCOL}
+
+## TEAM COLLABORATION
+
+When you need help or have completed a deployment, use the transfer tools:
+- **transfer_to_supervisor**: Report deployment status, ask for prioritization
+- **transfer_to_swe**: Request bug fixes before deployment, escalate code issues
+- **transfer_to_support**: Notify about deployments that affect customers
+
+When you transfer, include:
+1. Deployment/release details
+2. Any issues or risks identified
+3. Health check results
 
 Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """

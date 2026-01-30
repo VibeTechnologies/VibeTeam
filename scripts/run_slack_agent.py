@@ -46,6 +46,10 @@ from vibeteam.agents import (
     SupervisorAgent,
 )
 from vibeteam.connectors.slack import SlackConnector, SlackMessage
+from vibeteam.tools.transfer import (
+    clear_slack_handoff_context,
+    set_slack_handoff_context,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -89,6 +93,7 @@ async def process_message(
     slack: SlackConnector,
     message: SlackMessage,
     agent_key: str,
+    channel: str,
 ) -> str | None:
     """
     Process a single message and return the response.
@@ -98,6 +103,7 @@ async def process_message(
         slack: Slack connector
         message: The message to process
         agent_key: The agent's key (for formatting)
+        channel: The channel being monitored
 
     Returns:
         The response text, or None if no response
@@ -117,12 +123,24 @@ async def process_message(
 
     logger.info(f"Processing task: {task[:100]}...")
 
+    # Set Slack context for handoffs - so transfer_to_* tools post to Slack
+    thread_ts = message.thread_ts or message.ts
+    set_slack_handoff_context(
+        slack_connector=slack,
+        channel=channel,
+        thread_ts=thread_ts,
+        from_agent=agent.name,
+    )
+
     try:
         response = await agent.run(task)
         return response
     except Exception as e:
         logger.exception(f"Error processing message: {e}")
         return f"Error processing request: {str(e)}"
+    finally:
+        # Clear context after processing
+        clear_slack_handoff_context()
 
 
 async def run_agent_loop(
@@ -192,7 +210,7 @@ async def run_agent_loop(
                 logger.info(f"Found message for {agent_key}: {msg.text[:50]}...")
 
                 # Process the message
-                response = await process_message(agent, slack, msg, agent_key)
+                response = await process_message(agent, slack, msg, agent_key, channel)
 
                 if response:
                     # Format response with agent identity

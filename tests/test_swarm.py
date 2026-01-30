@@ -224,8 +224,12 @@ class TestTransferTools:
         tool_names = [t.name for t in tools]
         # SWE should have transfer to supervisor
         assert "transfer_to_supervisor" in tool_names
-        # But not other agent transfers (those go through supervisor)
-        assert "transfer_to_sre" not in tool_names
+        # SWE can transfer to any other agent for inter-agent communication
+        assert "transfer_to_sre" in tool_names
+        assert "transfer_to_release" in tool_names
+        assert "transfer_to_support" in tool_names
+        # But not to self
+        assert "transfer_to_swe" not in tool_names
 
 
 class TestSwarmMessage:
