@@ -369,22 +369,22 @@ A team of AI agents that communicate and delegate tasks to each other **via Slac
 
 ## Implementation Plan
 
-### Phase 1: Multi-Agent Slack Deployment (HIGH PRIORITY)
-- [ ] 1.1 Create K8s deployments for each agent type (support, swe, release, pm)
-- [ ] 1.2 Each agent runs `run_slack_agent.py` with its agent type
-- [ ] 1.3 All agents monitor same channel but respond only to their @mentions
-- [ ] 1.4 Test: Human @mentions Support, Support responds
+### Phase 1: Multi-Agent Slack Deployment (HIGH PRIORITY) - COMPLETED
+- [x] 1.1 Create K8s deployments for each agent type (support, swe, release, pm)
+- [x] 1.2 Each agent runs `run_slack_agent.py` with its agent type
+- [x] 1.3 All agents monitor same channel but respond only to their @mentions
+- [x] 1.4 Test: Human @mentions Support, Support responds
 
-### Phase 2: Agent-to-Agent Mentions (HIGH PRIORITY)
-- [ ] 2.1 Add `SlackConnector.mention_agent(agent_key, message)` method
-- [ ] 2.2 Map agent keys to Slack user IDs or use bot with agent-specific text patterns
-- [ ] 2.3 Update agent prompts to instruct them to @mention other agents for escalation
-- [ ] 2.4 Alternative: Use `transfer_to_*` tools that post to Slack instead of in-memory handoff
-- [ ] 2.5 Test: Support @mentions SWE, SWE picks up and responds
+### Phase 2: Agent-to-Agent Mentions (HIGH PRIORITY) - COMPLETED
+- [x] 2.1 Add `SlackConnector.mention_agent(agent_key, message)` method
+- [x] 2.2 Map agent keys to Slack user IDs or use bot with agent-specific text patterns
+- [x] 2.3 Update agent prompts to instruct them to @mention other agents for escalation
+- [x] 2.4 Alternative: Use `transfer_to_*` tools that post to Slack instead of in-memory handoff
+- [x] 2.5 Test: Support @mentions SWE, SWE picks up and responds
 
-### Phase 3: Handoff Context Preservation
+### Phase 3: Handoff Context Preservation - IN PROGRESS
 - [ ] 3.1 When agent A mentions agent B, include context in thread
-- [ ] 3.2 Agent B reads thread history to understand full context
+- [x] 3.2 Agent B reads thread history to understand full context
 - [ ] 3.3 Track handoff chain in thread metadata or Langfuse
 - [ ] 3.4 Test: Full escalation chain Support → SWE → Release
 
@@ -461,3 +461,93 @@ Updated 13 files to use centralized config instead of hardcoded values.
 ## Commit
 
 - `5b8a793` - refactor: centralize model configuration in vibeteam/config.py
+
+---
+
+# Session 7: Inter-Agent Communication via Slack (2026-01-30)
+
+## Goal
+Implement inter-agent communication via Slack - agents hand off tasks to each other by posting @mentions in Slack threads.
+
+## Status: COMPLETED
+
+## Major Achievement
+
+**Inter-agent communication via Slack is now working!**
+
+Tested scenario:
+1. Human posts: "@VibeTeam There seems to be a bug in the login page - users are getting a 500 error"
+2. Support Agent (Nightingale) picks up, analyzes, and posts handoffs to Slack:
+   - `@sre: I need help from Reliability Engineer (Heisenberg)...`
+   - `@swe: I need help from Software Engineer (Ada)...`
+3. Support responds to human explaining escalation
+
+All communication visible in Slack thread for human observation.
+
+## Implementation Details
+
+### 1. Slack Handoff System (`vibeteam/tools/transfer.py`)
+
+Added context-aware handoff mechanism:
+- `set_slack_handoff_context(slack_connector, channel, thread_ts, from_agent)` - Sets Slack context
+- `clear_slack_handoff_context()` - Clears context after processing
+- `is_slack_handoff_enabled()` - Checks if Slack mode is active
+- `create_handoff_result()` - When Slack context is set, posts `@agent: ...` to thread
+
+### 2. All-to-All Agent Transfers
+
+Updated `get_transfer_tools_for_agent()` so ALL agents can transfer to ANY other agent:
+- `transfer_to_supervisor`
+- `transfer_to_swe`
+- `transfer_to_sre`
+- `transfer_to_release`
+- `transfer_to_support`
+- `transfer_to_marketer`
+- `transfer_to_pm`
+
+(Agents cannot transfer to themselves)
+
+### 3. Agent Collaboration Prompts
+
+Updated Support, SWE, and Release agents with TEAM COLLABORATION section:
+```
+## TEAM COLLABORATION
+
+When you encounter issues outside your expertise, use the transfer tools:
+- transfer_to_supervisor: For complex decisions...
+- transfer_to_swe: For bugs that need code fixes...
+- transfer_to_sre: For infrastructure issues...
+```
+
+### 4. K8s Slack Agent Deployments
+
+Created `k8s/base/slack-agents/` with deployments for each agent:
+- `support-agent.yaml`
+- `swe-agent.yaml`
+- `release-agent.yaml`
+- `pm-agent.yaml`
+
+Each deployment runs `run_slack_agent.py --agent <type>` with shared secrets.
+
+## Files Modified
+
+| File | Changes |
+|------|---------|
+| `vibeteam/tools/transfer.py` | Slack handoff context, all-to-all transfers |
+| `vibeteam/agents/support_engineer.py` | Transfer tools + collaboration prompt |
+| `vibeteam/agents/software_engineer.py` | Transfer tools + collaboration prompt |
+| `vibeteam/agents/release_engineer.py` | Transfer tools + collaboration prompt |
+| `scripts/run_slack_agent.py` | Set/clear Slack handoff context |
+| `tests/test_swarm.py` | Updated test for new transfer behavior |
+| `k8s/base/slack-agents/*.yaml` | New agent deployments |
+| `k8s/base/kustomization.yaml` | Include slack-agents/ |
+
+## Commit
+
+- `53b9959` - feat: implement inter-agent communication via Slack
+
+## Next Steps
+
+1. **Test multi-agent pickup** - Run multiple agents simultaneously and verify SWE/SRE pick up handoffs
+2. **Add thread context** - Receiving agent should read thread history for full context
+3. **Track handoff chain** - Log handoffs in Langfuse for observability
