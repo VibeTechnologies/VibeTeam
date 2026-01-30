@@ -190,8 +190,27 @@ async def run_agent_loop(
                 oldest=oldest_ts if iteration == 1 else None,
             )
 
-            # Process messages (newest first, so reverse for chronological order)
-            for msg in reversed(messages):
+            # Collect all messages to process (top-level + thread replies)
+            all_messages: list[SlackMessage] = []
+
+            # Process top-level messages and collect thread replies
+            for msg in messages:
+                all_messages.append(msg)
+
+                # If this message has a thread, get replies too
+                # thread_ts == ts means this is a thread parent
+                if msg.thread_ts and msg.thread_ts == msg.ts:
+                    try:
+                        thread_replies = slack.get_thread_replies(channel, msg.ts)
+                        # Add replies (skip the parent which is already in all_messages)
+                        for reply in thread_replies:
+                            if reply.ts != msg.ts:
+                                all_messages.append(reply)
+                    except Exception as e:
+                        logger.warning(f"Failed to get thread replies for {msg.ts}: {e}")
+
+            # Process all messages (newest first, so reverse for chronological order)
+            for msg in reversed(all_messages):
                 # Skip already processed
                 if msg.ts in processed_ts:
                     continue
