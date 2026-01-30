@@ -12,6 +12,7 @@ from datetime import datetime
 
 import pytest
 
+from vibeteam.config import DEFAULT_MODEL
 from vibeteam.state import SharedMessageState, SwarmMessage
 from vibeteam.tools.transfer import (
     HANDOFF_PREFIX,
@@ -453,7 +454,7 @@ class TestCreateSwarmOrchestrator:
 
         orch = create_swarm_orchestrator()
 
-        assert orch.model == "azure/gpt-5-2"
+        assert orch.model == DEFAULT_MODEL
         assert orch.max_iterations == 20
 
     def test_create_with_custom_model(self):

@@ -92,7 +92,6 @@ class MarketerAgent(BaseVibeAgent):
     name = "Feynman"
     profile = "Marketer"
     goal = "Create engaging, story-driven content that resonates with developers"
-    model = "azure/gpt-5-2"
     temperature = 0.7  # Higher temp for creativity
 
     def __init__(self, **kwargs: Any):
@@ -100,7 +99,6 @@ class MarketerAgent(BaseVibeAgent):
             name=kwargs.get("name", self.name),
             profile=self.profile,
             goal=self.goal,
-            model=kwargs.get("model", self.model),
             temperature=kwargs.get("temperature", self.temperature),
             tools=[],  # Marketer doesn't need external tools
         )

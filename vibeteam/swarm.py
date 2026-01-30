@@ -25,6 +25,7 @@ from vibeteam.agents import (
     SupportEngineerAgent,
 )
 from vibeteam.agents.supervisor import SupervisorAgent
+from vibeteam.config import DEFAULT_MODEL
 from vibeteam.state import SharedMessageState
 from vibeteam.tools.transfer import (
     TransferToSupervisorTool,
@@ -69,7 +70,7 @@ class SwarmOrchestrator:
     def __init__(
         self,
         shared_state: SharedMessageState | None = None,
-        model: str = "azure/gpt-5-2",
+        model: str = DEFAULT_MODEL,
         max_iterations: int = 20,
         enable_tracing: bool = True,
     ):
@@ -359,7 +360,7 @@ class SwarmOrchestrator:
 
 
 def create_swarm_orchestrator(
-    model: str = "azure/gpt-5-2",
+    model: str = DEFAULT_MODEL,
     max_iterations: int = 20,
 ) -> SwarmOrchestrator:
     """

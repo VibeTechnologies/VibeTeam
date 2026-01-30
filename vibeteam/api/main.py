@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from vibeteam.config import DEFAULT_MODEL
 from vibeteam.swarm import SwarmOrchestrator, create_swarm_orchestrator
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ def get_or_create_orchestrator(session_id: str | None = None) -> SwarmOrchestrat
         return _sessions[session_id]
 
     # Create new orchestrator
-    model = os.environ.get("LLM_MODEL", "azure/gpt-5-2")
+    model = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
     orchestrator = create_swarm_orchestrator(model=model)
 
     # Store in sessions

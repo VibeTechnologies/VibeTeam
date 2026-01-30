@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from vibeteam.agents.base import BaseTool, BaseVibeAgent, Message, ToolResult
+from vibeteam.config import DEFAULT_MODEL, DEFAULT_TEMPERATURE
 
 
 class MockTool(BaseTool):
@@ -53,8 +54,8 @@ class TestBaseVibeAgent:
         assert agent.name == "VibeAgent"
         assert agent.profile == "Team Member"
         assert agent.goal == "Contribute to team success"
-        assert agent.model == "azure/gpt-5-2"
-        assert agent.temperature == 0.3
+        assert agent.model == DEFAULT_MODEL
+        assert agent.temperature == DEFAULT_TEMPERATURE
         assert agent.tools == []
 
     def test_custom_initialization(self) -> None:

@@ -41,8 +41,6 @@ class SupervisorAgent(ProductManagerAgent):
     name = "Curie (Supervisor)"
     profile = "Product Manager & Team Supervisor"
     goal = "Orchestrate the VibeTeam to accomplish user goals effectively"
-    model = "azure/gpt-5-2"
-    temperature = 0.3  # Slightly lower for more consistent routing decisions
 
     def __init__(
         self,

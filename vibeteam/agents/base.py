@@ -14,6 +14,8 @@ from typing import Any
 import litellm
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from vibeteam.config import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, DEFAULT_TEMPERATURE
+
 # Handoff prefix for swarm pattern detection (matches vibeteam.tools.transfer.HANDOFF_PREFIX)
 HANDOFF_PREFIX = "HANDOFF:"
 
@@ -76,10 +78,10 @@ class BaseVibeAgent:
     profile: str = "Team Member"
     goal: str = "Contribute to team success"
 
-    # Model configuration
-    model: str = "azure/gpt-5-2"
-    temperature: float = 0.3
-    max_tokens: int = 4096
+    # Model configuration - uses centralized defaults from vibeteam.config
+    model: str = DEFAULT_MODEL
+    temperature: float = DEFAULT_TEMPERATURE
+    max_tokens: int = DEFAULT_MAX_TOKENS
 
     def __init__(
         self,

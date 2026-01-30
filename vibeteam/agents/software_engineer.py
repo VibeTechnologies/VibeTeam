@@ -81,7 +81,6 @@ class SoftwareEngineerAgent(BaseVibeAgent):
     name = "Turing"
     profile = "Software Engineer"
     goal = "Write high-quality, maintainable code through a rigorous 17-step workflow"
-    model = "azure/gpt-5-2"
     temperature = 0.2  # Low temp for precise code
 
     def __init__(self, **kwargs: Any):
@@ -100,7 +99,6 @@ class SoftwareEngineerAgent(BaseVibeAgent):
             name=kwargs.get("name", self.name),
             profile=self.profile,
             goal=self.goal,
-            model=kwargs.get("model", self.model),
             temperature=kwargs.get("temperature", self.temperature),
             tools=tools,
         )
