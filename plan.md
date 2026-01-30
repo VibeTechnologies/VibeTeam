@@ -317,3 +317,147 @@ I can help with:
 1. **Deploy Slack agents to K8s** - Create deployments for polling agents
 2. **Set up nightly benchmarks** - CI/CD for quality regression
 3. **Documentation KB** - Add runbooks for agents
+
+---
+
+# LONG-TERM GOAL: Inter-Agent Communication Over Slack
+
+## Vision
+
+A team of AI agents that communicate and delegate tasks to each other **via Slack**, so humans can observe all coordination in real-time. When Support Engineer encounters a bug, it @mentions Software Engineer in Slack. The SWE agent picks it up, fixes it, and reports back.
+
+## Current State vs Target State
+
+| Capability | Current | Target |
+|------------|---------|--------|
+| Agent responds to human in Slack | ✅ Working | ✅ |
+| Agent @mentions another agent | ❌ Missing | Agent posts `@SoftwareEngineer please fix...` |
+| Agent picks up @mention from another agent | ❌ Missing | SWE agent sees mention, processes task |
+| Handoff tracking | ✅ In-memory only | Visible in Slack threads |
+| Multi-agent deployment | ❌ Single agent | Multiple agents running in parallel |
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Slack Channel                            │
+│  #ai-team                                                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Human: @VibeTeam there's a bug in login                       │
+│      │                                                          │
+│      └──► Support Engineer (Nightingale) picks up               │
+│              │                                                  │
+│              ▼                                                  │
+│  [Nightingale]: I've analyzed this. It's a code issue.         │
+│                 @SoftwareEngineer please fix the login          │
+│                 validation in auth.py:42                        │
+│              │                                                  │
+│              └──► Software Engineer (Ada) picks up              │
+│                      │                                          │
+│                      ▼                                          │
+│  [Ada]: I've fixed the validation bug. PR #156 created.        │
+│         @ReleaseEngineer please deploy when ready.              │
+│              │                                                  │
+│              └──► Release Engineer (Jenkins) picks up           │
+│                      │                                          │
+│                      ▼                                          │
+│  [Jenkins]: Deployed to production. Issue resolved.             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Implementation Plan
+
+### Phase 1: Multi-Agent Slack Deployment (HIGH PRIORITY)
+- [ ] 1.1 Create K8s deployments for each agent type (support, swe, release, pm)
+- [ ] 1.2 Each agent runs `run_slack_agent.py` with its agent type
+- [ ] 1.3 All agents monitor same channel but respond only to their @mentions
+- [ ] 1.4 Test: Human @mentions Support, Support responds
+
+### Phase 2: Agent-to-Agent Mentions (HIGH PRIORITY)
+- [ ] 2.1 Add `SlackConnector.mention_agent(agent_key, message)` method
+- [ ] 2.2 Map agent keys to Slack user IDs or use bot with agent-specific text patterns
+- [ ] 2.3 Update agent prompts to instruct them to @mention other agents for escalation
+- [ ] 2.4 Alternative: Use `transfer_to_*` tools that post to Slack instead of in-memory handoff
+- [ ] 2.5 Test: Support @mentions SWE, SWE picks up and responds
+
+### Phase 3: Handoff Context Preservation
+- [ ] 3.1 When agent A mentions agent B, include context in thread
+- [ ] 3.2 Agent B reads thread history to understand full context
+- [ ] 3.3 Track handoff chain in thread metadata or Langfuse
+- [ ] 3.4 Test: Full escalation chain Support → SWE → Release
+
+### Phase 4: Human Override & Visibility
+- [ ] 4.1 Human can intervene at any point in thread
+- [ ] 4.2 Human can redirect: "No, @ReleaseEngineer handle this instead"
+- [ ] 4.3 Agents respect human override and adjust
+- [ ] 4.4 Dashboard or Langfuse trace shows full handoff history
+
+## Key Decisions Needed
+
+1. **Single bot vs multiple bots?**
+   - Single bot (current): All agents share one Slack bot, differentiate by text patterns
+   - Multiple bots: Each agent has its own Slack app/bot user ID
+   - Recommendation: Start with single bot + text patterns (`@VibeTeam-SWE`), migrate later
+
+2. **How to trigger handoffs?**
+   - Option A: Agent explicitly writes `@AgentName` in response (prompt engineering)
+   - Option B: `transfer_to_*` tools post to Slack automatically
+   - Recommendation: Option B - more reliable, agents already use these tools
+
+3. **Thread vs new message?**
+   - Handoffs should stay in same thread for context continuity
+   - New top-level message only for truly new issues
+
+## Success Criteria
+
+1. **Demo scenario works end-to-end:**
+   - Human posts bug report to Slack
+   - Support analyzes and escalates to SWE
+   - SWE fixes and notifies Release
+   - Release deploys and confirms
+   - All visible in one Slack thread
+
+2. **Metrics:**
+   - Average handoff latency < 30 seconds
+   - Human can follow entire conversation in Slack
+   - No "lost" handoffs (every escalation gets picked up)
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `vibeteam/connectors/slack.py` | Add `mention_agent()`, `get_agent_mention_text()` |
+| `vibeteam/tools/transfer.py` | Option to post to Slack instead of in-memory handoff |
+| `vibeteam/agents/*.py` | Update prompts to guide escalation behavior |
+| `scripts/run_slack_agent.py` | Support multiple agent instances |
+| `k8s/agents/` | Deployment manifests for each agent |
+
+## Related Issues
+
+- #31: Multi-Agent System Product Requirements
+- #40: SlackConnector and E2E Slack integration tests (CLOSED)
+- #38: Deploy VibeTeam to Kubernetes
+
+---
+
+# Session 6: Config Centralization (2026-01-29)
+
+## Goal
+Centralize hardcoded model configuration into `vibeteam/config.py`.
+
+## Status: COMPLETED
+
+## Changes
+
+Created `vibeteam/config.py` with:
+- `DEFAULT_MODEL = "azure/gpt-5-2"` (env: `VIBETEAM_MODEL`)
+- `DEFAULT_TEMPERATURE = 0.3` (env: `VIBETEAM_TEMPERATURE`)
+- `DEFAULT_MAX_TOKENS = 4096` (env: `VIBETEAM_MAX_TOKENS`)
+
+Updated 13 files to use centralized config instead of hardcoded values.
+
+## Commit
+
+- `5b8a793` - refactor: centralize model configuration in vibeteam/config.py
