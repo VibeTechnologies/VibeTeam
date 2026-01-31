@@ -551,3 +551,68 @@ Each deployment runs `run_slack_agent.py --agent <type>` with shared secrets.
 1. **Test multi-agent pickup** - Run multiple agents simultaneously and verify SWE/SRE pick up handoffs
 2. **Add thread context** - Receiving agent should read thread history for full context
 3. **Track handoff chain** - Log handoffs in Langfuse for observability
+
+---
+
+# Session 8: Cross-Agent Communication Evaluation (2026-01-30)
+
+## Goal
+1. Remove confusing persona names (Nightingale, Turing, etc.) - use role names only
+2. Create evaluation test for cross-agent communication across frameworks (OpenHands, CrewAI, AutoGen)
+
+## Status: COMPLETED
+
+## Tasks
+
+- [x] Update transfer.py display names to use role names (SoftwareEngineer, ProductManager, etc.)
+- [x] Update transfer tool descriptions to remove persona names
+- [x] Update agent prompts to use role names instead of personas
+- [x] Create cross-agent communication benchmark (`scripts/benchmark_handoffs.py`)
+- [x] Test handoff evaluation with all 3 frameworks
+- [x] Commit changes: `4fb692c`
+
+## Role Name Mapping
+
+| Old (Persona) | New (Role) |
+|---------------|------------|
+| Nightingale | SupportEngineer |
+| Turing / Ada | SoftwareEngineer |
+| Curie | ProductManager |
+| Heisenberg | SiteReliabilityEngineer |
+| Jenkins | ReleaseEngineer |
+| Bernays | MarketingManager |
+
+## Benchmark Created
+
+Created `scripts/benchmark_handoffs.py` with 4 handoff scenarios:
+1. **support-to-swe**: Bug report that needs code fix
+2. **support-to-sre**: Infrastructure/monitoring issue  
+3. **swe-to-release**: Code merged, needs deployment
+4. **pm-to-swe**: Feature request needs implementation
+
+## Key Finding: Architectural Distinction
+
+**Framework-specific agents (agents/autogen/, agents/crewai/, agents/openhands/) do NOT have transfer tools.**
+
+Only the **Swarm agents** in `vibeteam/agents/` have `transfer_to_*` tools for cross-agent handoff.
+
+| Agent Location | Has Transfer Tools | Purpose |
+|----------------|-------------------|---------|
+| `vibeteam/agents/*.py` | **YES** | Swarm multi-agent orchestration |
+| `agents/autogen/*.py` | **NO** | Standalone framework benchmarks |
+| `agents/crewai/*.py` | **NO** | Standalone framework benchmarks |
+| `agents/openhands/*.py` | **NO** | Standalone framework benchmarks |
+
+This means:
+- **Swarm agents** = collaborative, can hand off to each other
+- **Framework agents** = standalone, designed for single-agent benchmarks
+
+The handoff benchmark evaluates how well agents **recognize** when handoff is needed and **describe** the task, even if they can't execute the tool.
+
+## Files Modified
+
+- `vibeteam/agents/*.py` - All 7 agents now use role names
+- `vibeteam/agents/supervisor.py` - Team member list uses role names
+- `vibeteam/tools/transfer.py` - Display names mapping
+- `tests/test_swarm.py` - Updated for new names
+- `scripts/benchmark_handoffs.py` - NEW benchmark script
