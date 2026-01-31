@@ -86,7 +86,7 @@ class SupportEngineerAgent(BaseVibeAgent):
     > "Empathy first, solution second."
     """
 
-    name = "Nightingale"
+    name = "SupportEngineer"
     profile = "Support Engineer"
     goal = "Provide helpful, secure support responses and escalate appropriately"
 

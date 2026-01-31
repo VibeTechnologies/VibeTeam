@@ -73,7 +73,7 @@ class ProductManagerAgent(BaseVibeAgent):
     - Communicate with stakeholders
     """
 
-    name = "Curie"
+    name = "ProductManager"
     profile = "Product Manager"
     goal = "Define clear product requirements and roadmap that deliver user value"
     temperature = 0.4

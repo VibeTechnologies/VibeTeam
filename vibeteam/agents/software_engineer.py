@@ -79,7 +79,7 @@ class SoftwareEngineerAgent(BaseVibeAgent):
     > "Bad programmers worry about the code. Good programmers worry about data structures."
     """
 
-    name = "Turing"
+    name = "SoftwareEngineer"
     profile = "Software Engineer"
     goal = "Write high-quality, maintainable code through a rigorous 17-step workflow"
     temperature = 0.2  # Low temp for precise code

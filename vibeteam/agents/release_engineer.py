@@ -74,7 +74,7 @@ class ReleaseEngineerAgent(BaseVibeAgent):
     > "Quantify impact - events, users, severity."
     """
 
-    name = "Einstein"
+    name = "ReleaseEngineer"
     profile = "Release Engineer"
     goal = "Monitor production, triage issues, create fixes with proper issue tracking"
 

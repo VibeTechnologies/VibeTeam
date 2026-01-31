@@ -77,13 +77,13 @@ class HandoffResult(ToolResult):
 
 # Agent key to display name mapping
 AGENT_DISPLAY_NAMES: dict[str, str] = {
-    "supervisor": "Supervisor (Curie)",
-    "pm": "Product Manager (Curie)",
-    "swe": "Software Engineer (Ada)",
-    "sre": "Reliability Engineer (Heisenberg)",
-    "release": "Release Engineer (Jenkins)",
-    "support": "Support Engineer (Nightingale)",
-    "marketer": "Marketer (Bernays)",
+    "supervisor": "ProductManager",
+    "pm": "ProductManager",
+    "swe": "SoftwareEngineer",
+    "sre": "SiteReliabilityEngineer",
+    "release": "ReleaseEngineer",
+    "support": "SupportEngineer",
+    "marketer": "MarketingManager",
 }
 
 
@@ -160,11 +160,11 @@ def parse_handoff(output: str) -> tuple[str, str] | None:
 
 
 class TransferToSupervisorTool(BaseTool):
-    """Transfer control back to the Supervisor/PM for synthesis or re-routing."""
+    """Transfer control back to the ProductManager for synthesis or re-routing."""
 
     name = "transfer_to_supervisor"
     description = (
-        "Transfer back to the Supervisor (Product Manager) when your task is complete, "
+        "Transfer back to the ProductManager when your task is complete, "
         "or when you need the supervisor to synthesize results, make decisions, or route to another agent."
     )
 
@@ -200,11 +200,11 @@ class TransferToSupervisorTool(BaseTool):
 
 
 class TransferToSWETool(BaseTool):
-    """Transfer task to Software Engineer for implementation."""
+    """Transfer task to SoftwareEngineer for implementation."""
 
     name = "transfer_to_swe"
     description = (
-        "Transfer to Software Engineer (Ada) for code implementation, bug fixes, "
+        "Transfer to SoftwareEngineer for code implementation, bug fixes, "
         "code review, pull requests, or any coding-related tasks."
     )
 
@@ -245,11 +245,11 @@ class TransferToSWETool(BaseTool):
 
 
 class TransferToSRETool(BaseTool):
-    """Transfer task to Reliability Engineer for infrastructure/monitoring."""
+    """Transfer task to SiteReliabilityEngineer for infrastructure/monitoring."""
 
     name = "transfer_to_sre"
     description = (
-        "Transfer to Reliability Engineer (Heisenberg) for monitoring, Sentry errors, "
+        "Transfer to SiteReliabilityEngineer for monitoring, Sentry errors, "
         "incidents, production health, observability, and infrastructure issues."
     )
 
@@ -284,11 +284,11 @@ class TransferToSRETool(BaseTool):
 
 
 class TransferToReleaseTool(BaseTool):
-    """Transfer task to Release Engineer for deployments and versioning."""
+    """Transfer task to ReleaseEngineer for deployments and versioning."""
 
     name = "transfer_to_release"
     description = (
-        "Transfer to Release Engineer (Jenkins) for deployments, releases, "
+        "Transfer to ReleaseEngineer for deployments, releases, "
         "versioning, changelogs, and publishing."
     )
 
@@ -323,11 +323,11 @@ class TransferToReleaseTool(BaseTool):
 
 
 class TransferToSupportTool(BaseTool):
-    """Transfer task to Support Engineer for customer issues."""
+    """Transfer task to SupportEngineer for customer issues."""
 
     name = "transfer_to_support"
     description = (
-        "Transfer to Support Engineer (Watson) for customer issues, support tickets, "
+        "Transfer to SupportEngineer for customer issues, support tickets, "
         "documentation, FAQs, and user assistance."
     )
 
@@ -364,11 +364,11 @@ class TransferToSupportTool(BaseTool):
 
 
 class TransferToMarketerTool(BaseTool):
-    """Transfer task to Marketer for content and announcements."""
+    """Transfer task to MarketingManager for content and announcements."""
 
     name = "transfer_to_marketer"
     description = (
-        "Transfer to Marketer (Bernays) for social media posts, announcements, "
+        "Transfer to MarketingManager for social media posts, announcements, "
         "content creation, and marketing activities."
     )
 
@@ -404,11 +404,11 @@ class TransferToMarketerTool(BaseTool):
 
 
 class TransferToPMTool(BaseTool):
-    """Transfer task to Product Manager for requirements and prioritization."""
+    """Transfer task to ProductManager for requirements and prioritization."""
 
     name = "transfer_to_pm"
     description = (
-        "Transfer to Product Manager (Curie) for requirements gathering, prioritization, "
+        "Transfer to ProductManager for requirements gathering, prioritization, "
         "user stories, roadmap decisions, and product strategy."
     )
 

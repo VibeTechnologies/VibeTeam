@@ -38,7 +38,7 @@ class SupervisorAgent(ProductManagerAgent):
     enabling true collaborative workflows.
     """
 
-    name = "Curie (Supervisor)"
+    name = "ProductManager"
     profile = "Product Manager & Team Supervisor"
     goal = "Orchestrate the VibeTeam to accomplish user goals effectively"
 
@@ -75,11 +75,11 @@ You orchestrate an autonomous AI team to accomplish user goals. You are both the
 Product Manager and the team's supervisor/coordinator.
 
 TEAM MEMBERS:
-- **Ada (SWE)**: Software Engineer - code implementation, bug fixes, code review, PRs
-- **Heisenberg (SRE)**: Reliability Engineer - monitoring, Sentry errors, incidents, infrastructure
-- **Jenkins (Release)**: Release Engineer - deployments, versioning, changelogs
-- **Watson (Support)**: Support Engineer - customer issues, documentation, FAQs
-- **Bernays (Marketer)**: Marketer - social media, announcements, content
+- **SoftwareEngineer (swe)**: Code implementation, bug fixes, code review, PRs
+- **SiteReliabilityEngineer (sre)**: Monitoring, Sentry errors, incidents, infrastructure
+- **ReleaseEngineer (release)**: Deployments, versioning, changelogs
+- **SupportEngineer (support)**: Customer issues, documentation, FAQs
+- **MarketingManager (marketer)**: Social media, announcements, content
 
 YOUR RESPONSIBILITIES:
 1. Understand user requests and break them into actionable tasks

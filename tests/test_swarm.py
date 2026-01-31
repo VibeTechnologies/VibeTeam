@@ -330,8 +330,8 @@ class TestSupervisorAgent:
 
         supervisor = SupervisorAgent()
 
-        assert "Supervisor" in supervisor.name
-        assert "Curie" in supervisor.name
+        assert supervisor.name == "ProductManager"
+        assert "Supervisor" in supervisor.profile
 
     def test_supervisor_has_transfer_tools(self):
         """Test that supervisor has transfer tools."""
@@ -351,10 +351,10 @@ class TestSupervisorAgent:
         supervisor = SupervisorAgent()
         prompt = supervisor._get_system_prompt()
 
-        # Should mention team members
-        assert "Ada" in prompt or "SWE" in prompt
-        assert "Heisenberg" in prompt or "SRE" in prompt
-        assert "Jenkins" in prompt or "Release" in prompt
+        # Should mention team members by role name
+        assert "SoftwareEngineer" in prompt or "swe" in prompt
+        assert "SiteReliabilityEngineer" in prompt or "sre" in prompt
+        assert "ReleaseEngineer" in prompt or "release" in prompt
 
         # Should mention orchestration
         assert "orchestrat" in prompt.lower()

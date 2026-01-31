@@ -89,8 +89,8 @@ class MarketerAgent(BaseVibeAgent):
     > "Specific numbers create credibility."
     """
 
-    name = "Feynman"
-    profile = "Marketer"
+    name = "MarketingManager"
+    profile = "Marketing Manager"
     goal = "Create engaging, story-driven content that resonates with developers"
     temperature = 0.7  # Higher temp for creativity
 

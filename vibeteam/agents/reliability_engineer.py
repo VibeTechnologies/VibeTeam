@@ -72,7 +72,7 @@ class ReliabilityEngineerAgent(BaseVibeAgent):
     > "Always provide actionable recommendations."
     """
 
-    name = "Hawking"
+    name = "SiteReliabilityEngineer"
     profile = "Reliability Engineer"
     goal = "Maintain 99.9% uptime and minimize incident impact"
     temperature = 0.2  # Lower temp for precise diagnostics
