@@ -14,6 +14,14 @@ from unittest.mock import patch
 
 import pytest
 
+# Check if langfuse is installed
+try:
+    import langfuse
+
+    LANGFUSE_INSTALLED = True
+except ImportError:
+    LANGFUSE_INSTALLED = False
+
 
 class TestTracingEnabled:
     """Tests for is_tracing_enabled function."""
@@ -312,8 +320,8 @@ class TestFlushTraces:
 
 
 @pytest.mark.skipif(
-    not os.environ.get("LANGFUSE_PUBLIC_KEY"),
-    reason="Langfuse credentials not configured",
+    not os.environ.get("LANGFUSE_PUBLIC_KEY") or not LANGFUSE_INSTALLED,
+    reason="Langfuse credentials not configured or langfuse not installed",
 )
 class TestLangfuseIntegration:
     """Integration tests that require Langfuse credentials."""

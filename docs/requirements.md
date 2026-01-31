@@ -158,8 +158,8 @@ VibeTeam currently supports OpenHands framework:
 | Framework | Status | Notes |
 |-----------|--------|-------|
 | **OpenHands** | Active | Full tool support, session persistence |
-| CrewAI | Deprecated | Legacy support only |
-| AutoGen | Deprecated | Legacy support only |
+| CrewAI | Planned | Multi-agent orchestration |
+| AutoGen | Planned | Conversational agents |
 | OpenCode | Experimental | CLI-based, limited tool injection |
 
 ## Environment Variables

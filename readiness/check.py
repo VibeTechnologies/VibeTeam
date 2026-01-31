@@ -5,9 +5,9 @@ VibeTeam Readiness Check Script
 Validates all infrastructure is operational before running VibeTeam agents.
 
 Usage:
-    python scripts/check_readiness.py           # Standard checks
-    python scripts/check_readiness.py --quick   # Health endpoints only
-    python scripts/check_readiness.py --full    # Everything including k8s, Sentry, Langfuse
+    python readiness/check.py           # Standard checks
+    python readiness/check.py --quick   # Health endpoints only
+    python readiness/check.py --full    # Everything including k8s, Sentry, Langfuse
 
 Exit codes:
     0 = GREEN (all systems go)

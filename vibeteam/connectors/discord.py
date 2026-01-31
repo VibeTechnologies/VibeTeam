@@ -331,6 +331,41 @@ class DiscordConnector:
 
         return self._parse_message(response.json())
 
+    def add_reaction(
+        self,
+        channel_id: str,
+        message_id: str,
+        emoji: str = "👀",
+    ) -> bool:
+        """
+        Add a reaction emoji to a message.
+
+        Args:
+            channel_id: Channel ID where the message is
+            message_id: Message ID to react to
+            emoji: Emoji character or custom emoji format (default: "👀")
+
+        Returns:
+            True if reaction was added successfully
+        """
+        if not self.bot_token:
+            logger.warning("Bot token required for adding reactions")
+            return False
+
+        try:
+            # URL-encode the emoji for the API path
+            import urllib.parse
+
+            encoded_emoji = urllib.parse.quote(emoji)
+            response = self.http_client.put(
+                f"/channels/{channel_id}/messages/{message_id}/reactions/{encoded_emoji}/@me"
+            )
+            # Discord returns 204 No Content on success
+            return response.status_code == 204
+        except Exception as e:
+            logger.warning(f"Failed to add reaction: {e}")
+            return False
+
     # =====================
     # Webhook Operations (Custom Identity)
     # =====================

@@ -2,24 +2,17 @@
 
 Instructions for AI agents working on the VibeTeam repository.
 
-## Readiness Check
+## System Readiness
 
 Before running VibeTeam agents or after infrastructure changes, verify system readiness.
 
-### Option 1: Run Script (Fast)
+### Option 1: Run Script (Quick)
 
 ```bash
-cd ~/workspace/vibebrowser/VibeTeam
-source .env
-python readiness/check.py
+python readiness/check.py           # Standard checks
+python readiness/check.py --quick   # Health endpoints only
+python readiness/check.py --full    # Everything including k8s, Sentry, Langfuse
 ```
-
-| Flag | Use Case |
-|------|----------|
-| (none) | Standard checks: endpoints, LLM, GitHub |
-| `--quick` | Endpoints only (for cron) |
-| `--full` | Everything including k8s, Sentry, Langfuse |
-| `--json` | Machine-readable output |
 
 Exit codes: 0=GREEN, 1=YELLOW, 2=RED
 
@@ -39,10 +32,10 @@ The playbook allows for intelligent judgment on ambiguous cases.
 ```
 VibeTeam/
   agents/              # Multi-framework agent implementations
-    autogen/           # AutoGen agents
-    crewai/            # CrewAI agents
-    openhands/         # OpenHands agents
-    opencode/          # OpenCode agents (CLI-based)
+    autogen/           # AutoGen agents (planned)
+    crewai/            # CrewAI agents (planned)
+    openhands/         # OpenHands agents (active)
+    opencode/          # OpenCode agents (experimental)
   vibeteam/            # Main package
     connectors/        # External service integrations
     team/              # Team orchestration and test harness
@@ -67,6 +60,8 @@ VibeTeam/
 | Connector | Purpose |
 |-----------|---------|
 | `GitHubConnector` | Issues, PRs, code review |
+| `SlackConnector` | Slack messaging and threads |
+| `DiscordConnector` | Discord messaging and threads |
 | `SentryConnector` | Error tracking |
 | `LangfuseConnector` | LLM observability |
 | `HealthConnector` | Endpoint monitoring |
@@ -76,14 +71,28 @@ VibeTeam/
 
 Required in `.env`:
 ```
+# LLM
 AZURE_API_KEY=
-AZURE_API_BASE=https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/
+AZURE_API_BASE=
 AZURE_API_VERSION=2024-08-01-preview
+
+# GitHub
 GITHUB_TOKEN=
 ```
 
 Optional:
 ```
+# Slack
+SLACK_BOT_TOKEN=
+SLACK_SIGNING_SECRET=
+
+# Discord
+DISCORD_BOT_TOKEN=
+
+# Database
+DATABASE_URL=postgresql://...
+
+# Monitoring
 SENTRY_AUTH_TOKEN=
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=

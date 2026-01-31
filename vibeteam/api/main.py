@@ -1,20 +1,16 @@
 """
 Supervisor Chat API - FastAPI application for VibeTeam chat interface.
 
-Provides a ChatGPT-like API that routes requests through the Supervisor Agent
-with Swarm orchestration. Compatible with LibreChat and other OpenAI-compatible clients.
+NOTE: This API is currently deprecated pending migration to the new
+router-based architecture. See vibeteam/router/ for the new system.
 """
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
-from vibeteam.config import DEFAULT_MODEL
-from vibeteam.swarm import SwarmOrchestrator, create_swarm_orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -100,59 +96,11 @@ class SessionHistoryResponse(BaseModel):
 
 
 # ============================================================================
-# Session Management
+# Session Management (Stubbed)
 # ============================================================================
 
 
-# In-memory session storage (use Redis in production)
-_sessions: dict[str, SwarmOrchestrator] = {}
-
-
-def get_or_create_orchestrator(session_id: str | None = None) -> SwarmOrchestrator:
-    """
-    Get or create an orchestrator for a session.
-
-    Args:
-        session_id: Optional session ID to resume
-
-    Returns:
-        SwarmOrchestrator instance
-    """
-    if session_id and session_id in _sessions:
-        return _sessions[session_id]
-
-    # Create new orchestrator
-    model = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
-    orchestrator = create_swarm_orchestrator(model=model)
-
-    # Store in sessions
-    _sessions[orchestrator.shared_state.session_id] = orchestrator
-
-    return orchestrator
-
-
-def cleanup_old_sessions(max_age_hours: int = 24) -> int:
-    """
-    Clean up old sessions to prevent memory leaks.
-
-    Args:
-        max_age_hours: Maximum session age in hours
-
-    Returns:
-        Number of sessions cleaned up
-    """
-    now = datetime.now(timezone.utc)
-    to_remove = []
-
-    for session_id, orchestrator in _sessions.items():
-        age = (now - orchestrator.shared_state.created_at).total_seconds() / 3600
-        if age > max_age_hours:
-            to_remove.append(session_id)
-
-    for session_id in to_remove:
-        del _sessions[session_id]
-
-    return len(to_remove)
+_sessions: dict[str, Any] = {}
 
 
 # ============================================================================
@@ -162,7 +110,7 @@ def cleanup_old_sessions(max_age_hours: int = 24) -> int:
 
 app = FastAPI(
     title="VibeTeam Supervisor API",
-    description="Chat API for VibeTeam with Swarm-pattern orchestration",
+    description="Chat API for VibeTeam (deprecated - migrating to router-based architecture)",
     version="1.0.0",
 )
 
@@ -183,26 +131,13 @@ async def chat(request: ChatRequest) -> ChatResponse:
     """
     Chat with the VibeTeam Supervisor.
 
-    The supervisor will route your request to appropriate team members
-    and synthesize their responses.
+    NOTE: This endpoint is deprecated. Use Discord/Slack bots with the new
+    router-based architecture instead.
     """
-    try:
-        # Get or create orchestrator
-        orchestrator = get_or_create_orchestrator(request.session_id)
-
-        # Run the swarm
-        response = await orchestrator.run(request.message)
-
-        return ChatResponse(
-            response=response,
-            session_id=orchestrator.shared_state.session_id,
-            agents_used=orchestrator.get_agents_used(),
-            iteration_count=orchestrator.iteration_count,
-        )
-
-    except Exception as e:
-        logger.exception("Chat error")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    raise HTTPException(
+        status_code=501,
+        detail="This API is deprecated. Use Discord/Slack bots with @RoleName mentions instead.",
+    )
 
 
 @app.post("/v1/chat/completions", response_model=OpenAIChatResponse)
@@ -210,86 +145,30 @@ async def chat_completions(request: OpenAIChatRequest) -> OpenAIChatResponse:
     """
     OpenAI-compatible chat completions endpoint.
 
-    This endpoint is compatible with LibreChat and other OpenAI clients.
+    NOTE: This endpoint is deprecated.
     """
-    try:
-        # Extract the last user message
-        user_message = ""
-        session_id = None
-
-        for msg in reversed(request.messages):
-            if msg.role == "user":
-                user_message = msg.content
-                break
-
-        if not user_message:
-            raise HTTPException(status_code=400, detail="No user message found")
-
-        # Get or create orchestrator
-        orchestrator = get_or_create_orchestrator(session_id)
-
-        # Add previous context from messages
-        for msg in request.messages[:-1]:  # Exclude last message
-            if msg.role in ("user", "assistant"):
-                orchestrator.shared_state.add_message(
-                    role=msg.role,
-                    content=msg.content,
-                    agent_name=msg.name,
-                )
-
-        # Run the swarm
-        response = await orchestrator.run(user_message)
-
-        return OpenAIChatResponse(
-            id=f"chatcmpl-{orchestrator.shared_state.session_id[:8]}",
-            created=int(datetime.now(timezone.utc).timestamp()),
-            model=request.model,
-            choices=[
-                OpenAIChatChoice(
-                    index=0,
-                    message=OpenAIChatMessage(
-                        role="assistant",
-                        content=response,
-                        name="supervisor",
-                    ),
-                    finish_reason="stop",
-                )
-            ],
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Chat completions error")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    raise HTTPException(
+        status_code=501,
+        detail="This API is deprecated. Use Discord/Slack bots with @RoleName mentions instead.",
+    )
 
 
 @app.get("/v1/sessions/{session_id}/history", response_model=SessionHistoryResponse)
 async def get_session_history(session_id: str) -> SessionHistoryResponse:
     """Get conversation history for a session."""
-    if session_id not in _sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    orchestrator = _sessions[session_id]
-    state = orchestrator.shared_state
-
-    return SessionHistoryResponse(
-        session_id=session_id,
-        messages=[m.to_dict() for m in state.messages],
-        agents_used=state.agents_used,
-        iteration_count=state.iteration_count,
-        created_at=state.created_at.isoformat(),
+    raise HTTPException(
+        status_code=501,
+        detail="This API is deprecated. Session history is now managed per-platform.",
     )
 
 
 @app.delete("/v1/sessions/{session_id}")
 async def delete_session(session_id: str) -> dict[str, str]:
     """Delete a session."""
-    if session_id not in _sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    del _sessions[session_id]
-    return {"status": "deleted", "session_id": session_id}
+    raise HTTPException(
+        status_code=501,
+        detail="This API is deprecated.",
+    )
 
 
 @app.get("/v1/models")

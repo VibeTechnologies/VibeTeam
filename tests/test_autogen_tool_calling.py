@@ -14,6 +14,7 @@ import pytest
 
 # Skip if AutoGen not available
 autogen_agentchat = pytest.importorskip("autogen_agentchat")
+autogen_ext = pytest.importorskip("autogen_ext")
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import AzureOpenAIChatCompletionClient

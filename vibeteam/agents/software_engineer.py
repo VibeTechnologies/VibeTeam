@@ -114,6 +114,7 @@ class SoftwareEngineerAgent(BaseVibeAgent):
             name=kwargs.get("name", self.name),
             profile=self.profile,
             goal=self.goal,
+            model=kwargs.get("model", self.model),
             temperature=kwargs.get("temperature", self.temperature),
             tools=tools,
         )

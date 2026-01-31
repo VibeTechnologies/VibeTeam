@@ -228,6 +228,35 @@ class SlackConnector:
             mentions=[],
         )
 
+    def add_reaction(
+        self,
+        channel: str,
+        timestamp: str,
+        emoji: str = "eyes",
+    ) -> bool:
+        """
+        Add a reaction emoji to a message.
+
+        Args:
+            channel: Channel ID where the message is
+            timestamp: Message timestamp (ts)
+            emoji: Emoji name without colons (default: "eyes")
+
+        Returns:
+            True if reaction was added successfully
+        """
+        try:
+            self.client.reactions_add(
+                channel=channel,
+                timestamp=timestamp,
+                name=emoji,
+            )
+            return True
+        except Exception as e:
+            # Reaction might already exist or message not found
+            logger.warning(f"Failed to add reaction: {e}")
+            return False
+
     def get_channel_history(
         self,
         channel: str | None = None,
