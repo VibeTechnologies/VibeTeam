@@ -950,7 +950,314 @@ def list_scenarios() -> None:
     print("  python scripts/benchmark_handoffs.py --scenario support-to-swe")
     print("  python scripts/benchmark_handoffs.py --all")
     print("  python scripts/benchmark_handoffs.py --frameworks autogen crewai")
+    print("  python scripts/benchmark_handoffs.py --slack --scenario support-to-swe")
     print("  python scripts/benchmark_handoffs.py --e2e --scenario support-to-swe")
+
+
+# ==============================================================================
+# Slack Visualization Mode
+# ==============================================================================
+
+
+class SlackVisualizer:
+    """
+    Posts simulated benchmark results to Slack for visualization.
+    
+    This runs the same simulated benchmark but posts the task and responses
+    to a Slack channel as a threaded conversation, so you can see the
+    handoff flow in your Slack workspace.
+    """
+
+    # Agent role to display name and emoji
+    AGENT_DISPLAY = {
+        "support_engineer": (":headphones: Support Engineer", "Grace"),
+        "software_engineer": (":computer: Software Engineer", "Alan"),
+        "release_engineer": (":rocket: Release Engineer", "Einstein"),
+        "product_manager": (":clipboard: Product Manager", "Maya"),
+        "site_reliability_engineer": (":gear: SRE", "Atlas"),
+        "marketing_manager": (":megaphone: Marketing", "Madison"),
+    }
+
+    def __init__(self, channel: str | None = None):
+        self.channel = channel or os.getenv("SLACK_CHANNEL", "#ai-team-test")
+        self.connector = None
+
+    def setup(self):
+        """Set up Slack connector."""
+        from vibeteam.connectors.slack import SlackConnector
+
+        self.connector = SlackConnector()
+        print(f"[Slack] Connected, channel: {self.channel}")
+
+    def post_scenario_header(self, scenario: dict[str, Any]) -> str:
+        """Post the scenario header and return thread_ts."""
+        if self.connector is None:
+            raise RuntimeError("Slack connector not initialized")
+
+        header = (
+            f":test_tube: *Handoff Benchmark: {scenario['name']}*\n\n"
+            f"*Source:* `{scenario['source_role']}` → *Target:* `{scenario['expected_target']}`\n"
+            f"*Description:* {scenario['description']}\n\n"
+            f"---"
+        )
+        result = self.connector.post_message(channel=self.channel, text=header)
+        return result.ts
+
+    def post_task(self, thread_ts: str, scenario: dict[str, Any]) -> None:
+        """Post the task as a customer message."""
+        if self.connector is None:
+            raise RuntimeError("Slack connector not initialized")
+
+        task_text = (
+            f":speech_balloon: *Customer Request:*\n"
+            f"```{scenario['task'][:1500]}```"
+        )
+        self.connector.post_message(
+            channel=self.channel,
+            text=task_text,
+            thread_ts=thread_ts,
+        )
+
+    def post_agent_response(
+        self,
+        thread_ts: str,
+        framework: str,
+        role: str,
+        response: str,
+        latency_ms: int,
+        score: "HandoffScore | None" = None,
+    ) -> None:
+        """Post an agent's response to the thread."""
+        if self.connector is None:
+            raise RuntimeError("Slack connector not initialized")
+
+        display_name, persona = self.AGENT_DISPLAY.get(role, (f":robot_face: {role}", "Agent"))
+        
+        # Truncate response for Slack (max ~3000 chars to be safe)
+        response_truncated = response[:2500] if response else "(No response)"
+        if len(response) > 2500:
+            response_truncated += "\n\n_(truncated)_"
+
+        # Build message
+        score_text = ""
+        if score:
+            score_text = (
+                f"\n*Evaluation:* {score.score}/5 | "
+                f"Context: {score.context_quality}/5 | "
+                f"Tool: {'✓' if score.used_correct_tool else '✗'} | "
+                f"Target: {'✓' if score.target_correct else '✗'}"
+            )
+
+        message = (
+            f"{display_name} ({persona}) - *{framework.upper()}*\n"
+            f"_Latency: {latency_ms}ms_{score_text}\n\n"
+            f"{response_truncated}"
+        )
+
+        self.connector.post_message(
+            channel=self.channel,
+            text=message,
+            thread_ts=thread_ts,
+        )
+
+    def post_evaluation_summary(
+        self,
+        thread_ts: str,
+        eval_result: "HandoffEvalResult",
+    ) -> None:
+        """Post the evaluation summary."""
+        if self.connector is None:
+            raise RuntimeError("Slack connector not initialized")
+
+        # Build score table
+        rows = []
+        for fw, score in sorted(eval_result.scores.items(), key=lambda x: -x[1].score):
+            tool_icon = ":white_check_mark:" if score.used_correct_tool else ":x:"
+            target_icon = ":white_check_mark:" if score.target_correct else ":x:"
+            rows.append(
+                f"• *{fw.upper()}*: {score.score}/5 | Context: {score.context_quality}/5 | "
+                f"Tool: {tool_icon} | Target: {target_icon}"
+            )
+
+        summary = (
+            f":trophy: *Evaluation Results*\n\n"
+            f"{chr(10).join(rows)}\n\n"
+            f"*Winner:* :star: *{eval_result.winner.upper()}*\n"
+            f"*Reasoning:* {eval_result.reasoning}\n\n"
+            f"_Judge: {eval_result.judge_model} | Eval time: {eval_result.evaluation_time_ms}ms_"
+        )
+
+        self.connector.post_message(
+            channel=self.channel,
+            text=summary,
+            thread_ts=thread_ts,
+        )
+
+    def post_error(self, thread_ts: str, framework: str, error: str) -> None:
+        """Post an error message."""
+        if self.connector is None:
+            raise RuntimeError("Slack connector not initialized")
+
+        self.connector.post_message(
+            channel=self.channel,
+            text=f":warning: *{framework.upper()}* failed: `{error}`",
+            thread_ts=thread_ts,
+        )
+
+
+async def run_scenario_with_slack(
+    scenario_id: str,
+    frameworks: list[str],
+    timeout: float,
+    channel: str | None = None,
+    output_json: bool = False,
+    save_report: bool = True,
+) -> dict[str, Any]:
+    """
+    Run a handoff scenario and post results to Slack.
+    
+    This is the same as run_scenario but also visualizes the handoff
+    flow in a Slack thread.
+    """
+    scenario = HANDOFF_SCENARIOS[scenario_id]
+
+    # Set up Slack visualizer
+    visualizer = SlackVisualizer(channel=channel)
+    visualizer.setup()
+
+    print_header(f"HANDOFF SCENARIO (Slack): {scenario['name']}")
+    print(f"Description: {scenario['description']}")
+    print(f"Source: {scenario['source_role']} -> Expected Target: {scenario['expected_target']}")
+    print(f"Slack Channel: {visualizer.channel}")
+    print(f"Timeout: {timeout}s per framework")
+    print(f"Frameworks: {', '.join(frameworks)}")
+
+    # Post scenario header to Slack
+    thread_ts = visualizer.post_scenario_header(scenario)
+    print(f"\n>>> Posted to Slack (thread_ts={thread_ts})")
+
+    # Post task
+    visualizer.post_task(thread_ts, scenario)
+
+    results: list[HandoffResult] = []
+    responses: dict[str, str] = {}
+
+    for framework in frameworks:
+        print(f"\n>>> Running {framework.upper()} {scenario['source_role']}...")
+        result = await run_agent(framework, scenario["source_role"], scenario["task"], timeout)
+        results.append(result)
+        responses[framework] = result.response
+
+        if result.error:
+            visualizer.post_error(thread_ts, framework, result.error)
+        else:
+            # Post response to Slack (score will be added after evaluation)
+            visualizer.post_agent_response(
+                thread_ts=thread_ts,
+                framework=framework,
+                role=scenario["source_role"],
+                response=result.response,
+                latency_ms=result.latency_ms,
+            )
+
+        if not output_json:
+            print_handoff_result(result, scenario["expected_target"])
+
+    # Run LLM-as-judge evaluation
+    print("\n>>> Running LLM-as-Judge Handoff Evaluation...")
+    evaluator = HandoffEvaluator()
+    eval_result = await evaluator.evaluate(scenario_id, scenario, responses)
+
+    # Post evaluation summary to Slack
+    visualizer.post_evaluation_summary(thread_ts, eval_result)
+    print(f">>> Evaluation posted to Slack")
+
+    if not output_json:
+        print_header("HANDOFF EVALUATION RESULTS")
+        for fw, score in sorted(eval_result.scores.items(), key=lambda x: -x[1].score):
+            print(f"{fw.upper()}: {score.score}/5")
+            print(
+                f"  Tool Correct: {score.used_correct_tool} | Target Correct: {score.target_correct}"
+            )
+            print(f"  Context Quality: {score.context_quality}/5")
+            print(f"  Feedback: {score.feedback}")
+            print()
+        print(f"WINNER: {eval_result.winner.upper()}")
+        print(f"Reasoning: {eval_result.reasoning}")
+
+    # Save report
+    if save_report:
+        report = generate_markdown_report(scenario_id, scenario, results, eval_result)
+        report_path = save_markdown_report(report, scenario_id)
+        print(f"\n>>> Report saved: {report_path}")
+
+    output = {
+        "scenario": scenario_id,
+        "scenario_name": scenario["name"],
+        "source_role": scenario["source_role"],
+        "expected_target": scenario["expected_target"],
+        "slack_thread": f"{visualizer.channel}/{thread_ts}",
+        "results": [
+            {
+                "framework": r.framework,
+                "success": r.success,
+                "latency_ms": r.latency_ms,
+                "used_transfer_tool": r.used_transfer_tool,
+                "target_agent": r.target_agent,
+                "target_correct": r.target_agent == scenario["expected_target"],
+                "error": r.error,
+            }
+            for r in results
+        ],
+        "evaluation": eval_result.to_dict(),
+        "winner": eval_result.winner,
+    }
+
+    if output_json:
+        print(json.dumps(output, indent=2))
+
+    return output
+
+
+async def run_all_scenarios_with_slack(
+    frameworks: list[str],
+    timeout: float,
+    channel: str | None = None,
+    output_json: bool = False,
+    save_report: bool = True,
+) -> dict[str, Any]:
+    """Run all handoff scenarios with Slack visualization."""
+    all_results = {}
+    winners = {}
+
+    for scenario_id in HANDOFF_SCENARIOS:
+        result = await run_scenario_with_slack(
+            scenario_id, frameworks, timeout, channel, output_json, save_report
+        )
+        all_results[scenario_id] = result
+        winners[scenario_id] = result["winner"]
+
+    if not output_json:
+        print_header("AGGREGATE HANDOFF RESULTS")
+        print(f"{'Scenario':<20} {'Winner':<15}")
+        print("-" * 40)
+        for scenario_id, winner in winners.items():
+            print(f"{scenario_id:<20} {winner.upper():<15}")
+
+        win_counts: dict[str, int] = {}
+        for winner in winners.values():
+            win_counts[winner] = win_counts.get(winner, 0) + 1
+
+        print("-" * 40)
+        print("Win counts:")
+        for fw, count in sorted(win_counts.items(), key=lambda x: -x[1]):
+            print(f"  {fw.upper()}: {count} wins")
+
+    return {
+        "scenarios": all_results,
+        "winners": winners,
+        "summary": {fw: list(winners.values()).count(fw) for fw in set(winners.values())},
+    }
 
 
 # ==============================================================================
@@ -1291,13 +1598,17 @@ async def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Unit testing (simulated handoffs)
+  # Unit testing (simulated handoffs, console only)
   python scripts/benchmark_handoffs.py --list
   python scripts/benchmark_handoffs.py --scenario support-to-swe
   python scripts/benchmark_handoffs.py --all
   python scripts/benchmark_handoffs.py --frameworks autogen crewai --timeout 120
 
-  # E2E testing (real Slack)
+  # Slack visualization (simulated + posts to Slack)
+  python scripts/benchmark_handoffs.py --slack --scenario support-to-swe
+  python scripts/benchmark_handoffs.py --slack --all --channel "#ai-team-test"
+
+  # E2E testing (real Slack with live agents)
   python scripts/benchmark_handoffs.py --e2e --scenario support-to-swe --framework autogen
   python scripts/benchmark_handoffs.py --e2e --all --framework autogen --channel "#ai-team-test"
         """,
@@ -1312,9 +1623,12 @@ Examples:
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--no-report", action="store_true", help="Skip markdown report")
-    # E2E testing options
-    parser.add_argument("--e2e", action="store_true", help="Run E2E tests via real Slack")
-    parser.add_argument("--channel", type=str, default=None, help="Slack channel for E2E tests")
+    # Slack modes
+    parser.add_argument(
+        "--slack", action="store_true", help="Post simulated results to Slack for visualization"
+    )
+    parser.add_argument("--e2e", action="store_true", help="Run E2E tests via real Slack agents")
+    parser.add_argument("--channel", type=str, default=None, help="Slack channel for --slack or --e2e")
 
     args = parser.parse_args()
 
@@ -1322,7 +1636,7 @@ Examples:
         list_scenarios()
         return
 
-    # E2E testing mode
+    # E2E testing mode (live agents)
     if args.e2e:
         framework = args.framework or args.frameworks[0]
         if args.all:
@@ -1347,7 +1661,33 @@ Examples:
             parser.print_help()
             return
 
-    # Standard (simulated) testing mode
+    # Slack visualization mode (simulated + post to Slack)
+    if args.slack:
+        if args.all:
+            await run_all_scenarios_with_slack(
+                frameworks=args.frameworks,
+                timeout=args.timeout,
+                channel=args.channel,
+                output_json=args.json,
+                save_report=not args.no_report,
+            )
+            return
+        elif args.scenario:
+            await run_scenario_with_slack(
+                scenario_id=args.scenario,
+                frameworks=args.frameworks,
+                timeout=args.timeout,
+                channel=args.channel,
+                output_json=args.json,
+                save_report=not args.no_report,
+            )
+            return
+        else:
+            print("Slack mode requires --scenario or --all")
+            parser.print_help()
+            return
+
+    # Standard (simulated) testing mode - console only
     if args.all:
         await run_all_scenarios(args.frameworks, args.timeout, args.json, not args.no_report)
         return
