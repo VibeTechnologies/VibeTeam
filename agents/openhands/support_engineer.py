@@ -137,15 +137,14 @@ Your responsibilities:
 - Sentry API: Query errors and issues
 - Langfuse API: Review LLM traces
 
-## TEAM COLLABORATION (via Slack)
+## TEAM COLLABORATION
 
-When you need help from other team members, use @mentions in your response:
-- @swe - For code bugs or feature requests
-- @sre - For infrastructure/monitoring issues
-- @pm - For product decisions or prioritization
+When you complete a task or need help from another team member, @mention them in your response:
+- @SoftwareEngineer - for code bugs or feature requests
+- @ReleaseEngineer - for deployment issues
+- @ProductManager - for product decisions or prioritization
 
-When handing off to another agent, clearly explain the task and context.
-The system will detect your @mentions and route to the appropriate agent.
+Example: "Customer reported login failures. Created issue #345. @SoftwareEngineer please investigate."
 
 When you complete a task, summarize what was done and any next steps.
 """

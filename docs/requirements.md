@@ -2,119 +2,205 @@
 
 ## Overview
 
-VibeTeam is a multi-agent AI system that automates VibeBrowser SaaS operations. Agents collaborate via natural @mentions in Discord/Slack channels, ensuring human visibility into all activities.
+VibeTeam is a multi-agent AI system that automates VibeBrowser SaaS operations. Agents collaborate via `/RoleName` mentions in Discord/Slack channels, ensuring human visibility into all activities.
 
 ## Agents
 
-| Role | Function | Tools |
-|------|----------|-------|
-| **SoftwareEngineer** | Code implementation, bug fixes, tests, PRs | Shell, Git, GitHub |
-| **ReleaseEngineer** | Deployments, releases, k3s/k8s, CI/CD | kubectl, GitHub |
-| **SupportEngineer** | Customer support, error analysis | Sentry, Gmail, Langfuse |
-| **ProductManager** | PRDs, backlog prioritization, user stories | GitHub |
-| **MarketingManager** | Social media, announcements, content | Chrome DevTools MCP |
+| Role | Mention | Function | Tools |
+|------|---------|----------|-------|
+| **SoftwareEngineer** | `/SoftwareEngineer` | Code implementation, bug fixes, tests, PRs | Shell, Git, GitHub |
+| **ReleaseEngineer** | `/ReleaseEngineer` | Deployments, releases, k3s/k8s, CI/CD | kubectl, GitHub |
+| **SupportEngineer** | `/SupportEngineer` | Customer support, error analysis | Sentry, Gmail, Langfuse |
+| **ProductManager** | `/ProductManager` | PRDs, backlog prioritization, user stories | GitHub |
+| **MarketingManager** | `/MarketingManager` | Social media, announcements, content | Chrome DevTools MCP |
 
-## Message Processing
+## Message Routing
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Discord   │     │   Webhook   │     │   Agents    │     │  Response   │
-│   Slack     │────▶│   Router    │────▶│  Evaluate   │────▶│   Posted    │
-│   GitHub    │     │             │     │  & Claim    │     │   Back      │
-│   Gmail     │     │             │     │             │     │             │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-```
+### Thread-Based Subscription Model
 
-1. **Webhook receives** message from Discord/Slack/GitHub/Gmail
-2. **Normalize** to UnifiedMessage format
-3. **Broadcast** to all agents simultaneously
-4. **Each agent evaluates**: "Is this my responsibility?"
-5. **Claiming agents** begin working and respond via platform
-
-## Handoff Protocol
-
-Agents use natural @mentions in their responses to hand off tasks:
+When `@VibeTeam` is mentioned in a message, the router tracks that thread and routes to agents based on `/RoleName` mentions.
 
 ```
-SoftwareEngineer: Fixed login bug in PR #457.
-                  @ReleaseEngineer ready for staging deployment.
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              MESSAGE FLOW                                    │
+│                                                                              │
+│  User: "@VibeTeam /SoftwareEngineer fix bug #345"                           │
+│       │                                                                      │
+│       ▼                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  ROUTER                                                              │    │
+│  │  1. Detect @VibeTeam → track this thread                            │    │
+│  │  2. Parse /SoftwareEngineer → subscribe agent to thread             │    │
+│  │  3. React with :eyes: emoji (acknowledged)                          │    │
+│  │  4. Forward to Agent Service with context                           │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│       │                                                                      │
+│       ▼                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  AGENT SERVICE                                                       │    │
+│  │  1. Get or create session for (slack, thread_id, software_engineer) │    │
+│  │  2. Create agent with pre-configured send_message tool              │    │
+│  │  3. Agent processes message and responds                            │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│       │                                                                      │
+│       ▼                                                                      │
+│  Agent calls send_message("/ReleaseEngineer please deploy PR #457")         │
+│       │                                                                      │
+│       ▼                                                                      │
+│  Posted to Slack: "[SoftwareEngineer] /ReleaseEngineer please deploy..."    │
+│       │                                                                      │
+│       ▼                                                                      │
+│  Router sees /ReleaseEngineer in bot message → subscribes ReleaseEngineer   │
+│  Router forwards to ReleaseEngineer agent                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The system detects the @mention and routes to ReleaseEngineer.
+### Routing Rules
 
-**Handoff Rules:**
-- Direct @mention = immediate routing to target agent
-- Keyword matching = proactive responsibility detection
-- Multiple agents can claim related tasks (e.g., Support + Release for outage)
+1. **Thread Activation**: A thread becomes "active" when `@VibeTeam` is mentioned
+2. **Agent Subscription**: `/RoleName` mentions subscribe that agent to the thread
+3. **Persistent Subscription**: Once subscribed, agent receives ALL subsequent messages in that thread
+4. **Handoffs**: Agents mention `/OtherAgent` in responses to bring them into the thread
+5. **Bot Messages**: Router processes bot's own messages to detect handoffs
+
+### Thread Subscription Table
+
+```sql
+CREATE TABLE thread_subscriptions (
+    id SERIAL PRIMARY KEY,
+    source VARCHAR(50) NOT NULL,        -- slack, discord, github_issue, github_pr
+    thread_id VARCHAR(255) NOT NULL,    -- thread_ts, message_id, issue_number
+    agent_role VARCHAR(50) NOT NULL,    -- software_engineer, release_engineer, etc.
+    session_id UUID NOT NULL,           -- link to agent session
+    subscribed_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (source, thread_id, agent_role)
+);
+```
+
+### Thread ID Formats
+
+| Source | Thread ID Format | Example |
+|--------|------------------|---------|
+| Slack | `{thread_ts}` | `1234567890.123456` |
+| Discord | `{channel_id}:{message_id}` | `123456789:987654321` |
+| GitHub Issue | `{repo}:{issue_number}` | `VibeTechnologies/VibeWebAgent:345` |
+| GitHub PR | `{repo}:pr:{pr_number}` | `VibeTechnologies/VibeWebAgent:pr:123` |
+
+## Agent Sessions
+
+Each agent maintains a session per thread with:
+
+- **Conversation history**: All messages in the thread
+- **Workspace**: Persistent directory for file operations (7-day TTL)
+- **Tools**: Pre-configured `send_message` tool for responding
+
+### Session Key Format
+
+```
+{framework}:{role}:{source}:{thread_id}
+```
+
+Example: `openhands:software_engineer:slack:1234567890.123456`
+
+### send_message Tool
+
+Every agent receives a pre-configured `send_message` tool that:
+
+1. Prefixes messages with `[RoleName]` for identification
+2. Posts to the correct thread using stored tokens
+3. Triggers router to process any `/RoleName` mentions in the response
+
+```python
+# Agent's perspective
+send_message("Fixed the bug in PR #457. /ReleaseEngineer ready for staging.")
+
+# Posted to Slack as:
+# [SoftwareEngineer] Fixed the bug in PR #457. /ReleaseEngineer ready for staging.
+```
 
 ## Integrations
 
-### Discord (Primary)
+### Slack
 
-- **Role-based mentions**: Single bot with 5 roles (`@SoftwareEngineer`, etc.)
-- **Webhooks**: Each agent responds with distinct identity (name/avatar)
-- **Threading**: Conversations preserved in threads
+- **Single app**: `@VibeTeam` bot handles all agent roles
+- **Role identification**: `[RoleName]` prefix in messages
+- **Threading**: All agent responses go to the original thread
+- **Acknowledgment**: :eyes: emoji reaction when message is received
 
-### Slack (Secondary)
+### Discord
 
-- **Multi-app architecture**: 5 separate Slack apps
-- **Channel-based**: Agents communicate in `#ai-team` channel
+- **Single bot**: `@VibeTeam` bot handles all agent roles
+- **Role identification**: `[RoleName]` prefix in messages
+- **Threading**: Responses in the same thread/channel
+- **Acknowledgment**: :eyes: emoji reaction when message is received
 
 ### GitHub
 
-- **Issue comments**: Agents discuss in issue threads
-- **PRs**: SoftwareEngineer creates, ReleaseEngineer merges
-- **Webhooks**: Trigger agents on issue/PR events
+- **Issue comments**: Agents respond in issue threads
+- **PR comments**: Agents respond in PR threads
+- **Webhooks**: Issue/PR events trigger agent processing
 
 ### Sentry
 
-- **Error monitoring**: SupportEngineer receives alerts
-- **Weekly digests**: Automated error summaries
-- **Root cause analysis**: Agent investigates stack traces
+- **Error alerts**: Webhook triggers `/SupportEngineer` or `/ReleaseEngineer`
+- **Auto-routing**: Based on error severity and type
 
 ### Gmail
 
-- **Customer support**: SupportEngineer reads/responds to emails
-- **Push notifications**: Real-time email processing
+- **Customer emails**: Processed by `/SupportEngineer`
+- **Push notifications**: Real-time email handling
 
-## Evaluation
+## Agent Frameworks
 
-Agents are evaluated using DeepEval with G-Eval metrics:
+VibeTeam currently supports OpenHands framework:
 
-| Metric | Description |
-|--------|-------------|
-| TeamCoordination | How well agents work together |
-| ResponsibilityDetection | Correct task ownership claims |
-| HandoffQuality | Context preservation in handoffs |
-| TaskCompletion | Was the request fully addressed |
-| Professionalism | Clear, concise communication |
-
-Run tests:
-```bash
-pytest tests/e2e/test_team_eval.py -v -s
-```
+| Framework | Status | Notes |
+|-----------|--------|-------|
+| **OpenHands** | Active | Full tool support, session persistence |
+| CrewAI | Deprecated | Legacy support only |
+| AutoGen | Deprecated | Legacy support only |
+| OpenCode | Experimental | CLI-based, limited tool injection |
 
 ## Environment Variables
 
 ```bash
-# Required
+# Required - LLM
 AZURE_API_KEY=
 AZURE_API_BASE=
+AZURE_API_VERSION=2024-08-01-preview
+
+# Required - GitHub
 GITHUB_TOKEN=
+
+# Slack
+SLACK_BOT_TOKEN=
+SLACK_SIGNING_SECRET=
 
 # Discord
 DISCORD_BOT_TOKEN=
-DISCORD_GUILD_ID=
-DISCORD_CHANNEL_ID=
-DISCORD_WEBHOOK_SWE=
-DISCORD_WEBHOOK_RELEASE=
-DISCORD_WEBHOOK_SUPPORT=
-DISCORD_WEBHOOK_PM=
-DISCORD_WEBHOOK_MARKETING=
+
+# Database
+DATABASE_URL=postgresql://...
 
 # Optional
 SENTRY_AUTH_TOKEN=
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
-SLACK_BOT_TOKEN=
+```
+
+## Evaluation
+
+Agents are evaluated using DeepEval with G-Eval metrics:
+
+| Metric | Threshold | Description |
+|--------|-----------|-------------|
+| TaskCompletion | 0.7 | Was the request fully addressed |
+| HandoffQuality | 0.7 | Context preservation in handoffs |
+| ResponseTime | < 60s | Time to first response |
+| Professionalism | 0.7 | Clear, concise communication |
+
+Run tests:
+```bash
+pytest tests/e2e/test_team_eval.py -v -s
 ```

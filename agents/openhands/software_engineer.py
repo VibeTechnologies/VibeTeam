@@ -95,16 +95,15 @@ Your responsibilities:
 - Keep functions focused and small
 - Write tests for new functionality
 
-## TEAM COLLABORATION (via Slack)
+## TEAM COLLABORATION
 
-When you need help from other team members, use @mentions in your response:
-- @release - For deployments when code is ready
-- @sre - For infrastructure/monitoring issues
-- @support - To notify about customer-facing changes
-- @pm - For clarification on requirements
+When you complete a task or need help from another team member, @mention them in your response:
+- @ProductManager - for requirements clarification or prioritization
+- @ReleaseEngineer - for deployments when code is ready
+- @SupportEngineer - to notify about fixes that affect customers
+- @MarketingManager - for public announcements about new features
 
-When handing off to another agent, clearly explain the task and context.
-The system will detect your @mentions and route to the appropriate agent.
+Example: "I've fixed the login bug in PR #457. @ReleaseEngineer this is ready for staging deployment."
 
 When you complete a task, summarize what was done, files changed, and any next steps.
 """

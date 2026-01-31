@@ -151,32 +151,24 @@ Update these files:
 - [x] `agents/crewai/support_engineer.py` - update backstory
 - [x] `agents/crewai/product_manager.py` - update backstory
 - [x] `agents/autogen/*` - similar updates
-- [ ] `agents/openhands/*` - similar updates
+- [x] `agents/openhands/*` - updated all 5 agents with @RoleName mentions
 
 ### Phase 4: Multi-Session Bot Architecture
 
-- [ ] Refactor `scripts/run_discord_agent.py`:
-  ```python
-  class VibeTeamBot:
-      def __init__(self, framework: str = "crewai"):
-          self.framework = framework
-          self.sessions = {}  # agent_key -> AgentSession
-      
-      async def get_or_create_session(self, agent_key: str):
-          if agent_key not in self.sessions:
-              self.sessions[agent_key] = self._create_agent(agent_key)
-          return self.sessions[agent_key]
-      
-      async def on_message(self, message):
-          # Detect which roles are mentioned
-          mentioned = self.extract_mentioned_agents(message)
-          for agent_key in mentioned:
-              session = await self.get_or_create_session(agent_key)
-              response = await session.run(message.content)
-              await self.post_response(agent_key, response)
-  ```
-
-- [ ] Refactor `scripts/run_slack_agent.py` - same pattern
+- [x] Created `vibeteam/router/` package:
+  - `models.py` - UnifiedMessage, ThreadSubscription dataclasses
+  - `db.py` - PostgreSQL subscription storage (SQLAlchemy)
+  - `router.py` - Router class with /RoleName parsing
+- [x] Created `scripts/run_discord_bot.py`:
+  - Multi-session routing with Router
+  - AgentSessionManager for lazy agent creation
+  - Supports all frameworks (crewai, autogen, openhands, vibeteam)
+  - Eyes emoji reaction on message receipt
+  - Handoff detection from bot messages
+- [x] Created `scripts/run_slack_bot.py`:
+  - Same pattern as Discord bot
+  - Thread-based responses
+  - Multi-framework support
 
 ### Phase 5: Tests
 
