@@ -179,6 +179,116 @@ class ResponsibilityDetector:
 - Each agent works on their aspect (Support handles customer, Release handles infra)
 - Agents coordinate via shared channel with @mentions
 
+## Structured Agent Decisions
+
+Based on research from multi-agent systems (OpenAI Swarm, AutoGen, CrewAI, and academic
+papers like TS-Debate and CodeDelegator), VibeTeam uses a **hybrid approach**:
+
+- **Structured Output (JSON Schema)**: For claim detection and routing decisions
+- **Tool Calls**: For discrete actions (handoffs, external API calls)
+
+### Phase 1: Claim Detection
+
+Each agent evaluates incoming messages using structured output:
+
+```python
+from pydantic import BaseModel
+from typing import Literal, Optional, List
+
+class ClaimDecision(BaseModel):
+    """Produced by each agent when evaluating a broadcast message."""
+    
+    # Core decision
+    should_claim: bool                    # Take ownership of this task?
+    confidence: float                     # 0.0 to 1.0
+    
+    # Reasoning (for observability)
+    relevance_signals: List[str]          # ["mentions error", "customer issue"]
+    reasoning: str                        # Brief explanation
+    
+    # Collaboration support
+    can_assist: bool                      # Can help even if not claiming?
+    assistance_type: Optional[str]        # "research", "review", "execute"
+    
+    # Effort estimation
+    estimated_effort: Literal["trivial", "moderate", "complex"]
+```
+
+### Phase 2: Response Decision
+
+After claiming, agents decide how to respond:
+
+```python
+class AgentResponse(BaseModel):
+    """Structured response from an agent."""
+    
+    response_type: Literal["respond", "handoff", "ignore", "escalate"]
+    
+    # Content (for respond/handoff)
+    content: Optional[str]                # The message to send
+    
+    # Handoff details
+    handoff_to: Optional[str]             # Agent role to hand off to
+    handoff_context: Optional[str]        # Context for receiving agent
+    
+    # Actions taken
+    actions_taken: List[str]              # ["created_issue", "sent_email"]
+    
+    # For escalation
+    escalation_reason: Optional[str]      # Why human needed
+```
+
+### Phase 3: Arbitration
+
+When multiple agents claim a message, the arbitrator resolves:
+
+```python
+def resolve_claims(claims: List[ClaimDecision]) -> ArbitrationResult:
+    """Determine which agents should act."""
+    
+    claimers = [c for c in claims if c.should_claim]
+    
+    # Case 1: Single high-confidence claim
+    high_conf = [c for c in claimers if c.confidence > 0.8]
+    if len(high_conf) == 1:
+        return ArbitrationResult(
+            primary=high_conf[0].agent_id,
+            assistants=[],
+            mode="single"
+        )
+    
+    # Case 2: Multiple claims - collaborative mode
+    if len(claimers) > 1:
+        primary = max(claimers, key=lambda c: c.confidence)
+        assistants = [c for c in claims if c.can_assist and c != primary]
+        return ArbitrationResult(
+            primary=primary.agent_id,
+            assistants=[a.agent_id for a in assistants],
+            mode="collaborative"
+        )
+    
+    # Case 3: No claims - escalate
+    return ArbitrationResult(
+        primary=None,
+        assistants=[],
+        mode="escalate_to_human"
+    )
+```
+
+### Why Structured Output vs Tool Calls?
+
+| Use Case | Mechanism | Rationale |
+|----------|-----------|-----------|
+| Claim detection | Structured Output | Need reasoning + confidence alongside decision |
+| Handoffs | Tool Calls | Clear action semantics, explicit control transfer |
+| External APIs | Tool Calls | Native support, automatic validation |
+| Response formatting | Structured Output | Flexible schema, includes metadata |
+
+**Academic Support:**
+- OpenAI Swarm uses function returns for handoffs (explicit, traceable)
+- TS-Debate paper: "verification-conflict-calibration mechanism" for multi-agent claims
+- CodeDelegator: Clean context isolation between Delegator and Coder roles
+
 ## Discord Integration
 
 ### Role-Based Architecture

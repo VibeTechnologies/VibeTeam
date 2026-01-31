@@ -2,16 +2,21 @@
 
 This module provides the ResponsibilityDetector class which determines
 whether an agent should claim responsibility for a given task.
+
+Two modes of operation:
+1. Legacy mode: Returns ResponsibilityClaim (dataclass) - for backward compatibility
+2. Structured mode: Returns ClaimDecision (Pydantic) - for multi-agent arbitration
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from vibeteam.team.channel import ChannelMessage
+    from vibeteam.team.schemas import ClaimDecision
 
 
 # Role-specific keywords for fast-path matching
@@ -221,6 +226,63 @@ class ResponsibilityDetector:
             should_claim=False,
             confidence=1.0,
             reasoning="No relevant keywords found",
+        )
+
+    async def evaluate(self, message: ChannelMessage | str) -> ClaimDecision:
+        """Evaluate if this agent should claim responsibility (structured output).
+
+        This method returns a ClaimDecision (Pydantic model) suitable for
+        multi-agent arbitration. Use this instead of should_claim() when
+        you need to compare decisions across multiple agents.
+
+        Args:
+            message: The message to evaluate (ChannelMessage or string content)
+
+        Returns:
+            ClaimDecision with full structured decision data
+        """
+        # Import here to avoid circular imports
+        from vibeteam.team.schemas import ClaimDecision
+
+        # Get the legacy claim result
+        claim = await self.should_claim(message)
+
+        # Extract content for signal detection
+        if isinstance(message, str):
+            content = message
+        else:
+            content = message.content
+        content_lower = content.lower()
+
+        # Find matching keywords as relevance signals
+        relevance_signals = []
+        for keyword in self.keywords:
+            pattern = r"\b" + re.escape(keyword) + r"\b"
+            if re.search(pattern, content_lower):
+                relevance_signals.append(f"contains '{keyword}'")
+
+        # Map effort to new schema values
+        effort_map = {
+            "small": "trivial",
+            "medium": "moderate",
+            "large": "complex",
+            "unknown": "unknown",
+        }
+        estimated_effort = effort_map.get(claim.estimated_effort, "unknown")
+
+        # Determine if can assist (for collaborative mode)
+        # Agent can assist if there's some keyword relevance but not claiming
+        can_assist = not claim.should_claim and len(relevance_signals) > 0
+
+        return ClaimDecision(
+            agent_id=self.agent_role,
+            should_claim=claim.should_claim,
+            confidence=claim.confidence,
+            relevance_signals=relevance_signals,
+            reasoning=claim.reasoning,
+            can_assist=can_assist,
+            assistance_type="advise" if can_assist else None,
+            estimated_effort=estimated_effort,  # type: ignore[arg-type]
         )
 
     def _is_directly_mentioned(self, mentions: list[str], content_lower: str) -> bool:
