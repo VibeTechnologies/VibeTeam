@@ -19,7 +19,22 @@ from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.health import HealthCheckTool
 from vibeteam.tools.langfuse import LangfuseTool
 from vibeteam.tools.sentry import SentryTool
-from vibeteam.tools.transfer import get_transfer_tools_for_agent
+
+# Natural @mention instructions for agent handoffs
+HANDOFF_INSTRUCTIONS = """
+## Team Collaboration
+
+When you complete a task or need help from another team member, @mention them in your response:
+- @ProductManager - for release scope decisions, feature prioritization
+- @SoftwareEngineer - for code bugs that need fixes before deployment
+- @SupportEngineer - to notify about deployments affecting customers
+- @SiteReliabilityEngineer - for infrastructure or monitoring issues
+- @MarketingManager - for public release announcements
+
+Example: "Deployment to staging complete. CI passed. @ProductManager ready for production release approval."
+
+Include: deployment status, health check results, any issues or risks identified.
+"""
 
 # Release Engineer Protocol
 RELEASE_ENGINEER_PROTOCOL = """
@@ -105,9 +120,6 @@ class ReleaseEngineerAgent(BaseVibeAgent):
         # Health check tool doesn't need env vars
         tools.append(HealthCheckTool())
 
-        # Transfer tools for handoffs to other agents
-        tools.extend(get_transfer_tools_for_agent("release"))
-
         super().__init__(
             name=kwargs.get("name", self.name),
             profile=self.profile,
@@ -125,17 +137,7 @@ Goal: {self.goal}
 
 {RELEASE_ENGINEER_PROTOCOL}
 
-## TEAM COLLABORATION
-
-When you need help or have completed a deployment, use the transfer tools:
-- **transfer_to_supervisor**: Report deployment status, ask for prioritization
-- **transfer_to_swe**: Request bug fixes before deployment, escalate code issues
-- **transfer_to_support**: Notify about deployments that affect customers
-
-When you transfer, include:
-1. Deployment/release details
-2. Any issues or risks identified
-3. Health check results
+{HANDOFF_INSTRUCTIONS}
 
 Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """

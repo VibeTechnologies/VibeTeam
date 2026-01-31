@@ -8,19 +8,19 @@ and OpenHands (for context injection or post-processing).
 All functions are async-compatible for AutoGen and can be called synchronously
 for other frameworks.
 
-Key Concept - Slack-based Handoffs:
-    All agents subscribe to a Slack channel as message listeners. When an agent
-    needs to delegate work, it @mentions another agent in Slack. The receiving
-    agent's listener picks up the message and processes it.
-
+Key Concept - Natural @Mentions:
+    Agents write natural @mentions in their responses (e.g., "@SoftwareEngineer 
+    please fix the login bug"). The bot parses these mentions and routes the
+    conversation to the appropriate agent's session.
+    
     This makes all inter-agent communication visible to humans in Slack.
 """
 
 import os
 from typing import Any
 
-# Thread-local context for Slack handoffs
-_slack_handoff_context: dict[str, Any] = {}
+# Thread-local context for Slack operations
+_slack_context: dict[str, Any] = {}
 
 
 def _get_slack_connector():
@@ -34,7 +34,7 @@ def _get_slack_connector():
 
 
 # ==============================================================================
-# Slack Handoff Context Management
+# Slack Context Management
 # ==============================================================================
 
 
@@ -45,19 +45,18 @@ def set_slack_context(
     from_agent: str | None = None,
 ) -> None:
     """
-    Set Slack context for handoffs.
+    Set Slack context for operations.
 
     Called by the Slack agent runner before processing a message.
-    This enables transfer tools to post @mentions to Slack.
 
     Args:
         connector: SlackConnector instance
         channel: Channel ID or name
-        thread_ts: Thread timestamp (to keep handoffs in same thread)
+        thread_ts: Thread timestamp (to keep responses in same thread)
         from_agent: Name of the agent setting context
     """
-    global _slack_handoff_context
-    _slack_handoff_context = {
+    global _slack_context
+    _slack_context = {
         "connector": connector,
         "channel": channel,
         "thread_ts": thread_ts,
@@ -66,19 +65,19 @@ def set_slack_context(
 
 
 def get_slack_context() -> dict[str, Any]:
-    """Get current Slack handoff context."""
-    return _slack_handoff_context
+    """Get current Slack context."""
+    return _slack_context
 
 
 def clear_slack_context() -> None:
-    """Clear Slack handoff context after processing."""
-    global _slack_handoff_context
-    _slack_handoff_context = {}
+    """Clear Slack context after processing."""
+    global _slack_context
+    _slack_context = {}
 
 
 def is_slack_context_set() -> bool:
-    """Check if Slack context is set for handoffs."""
-    return bool(_slack_handoff_context.get("connector"))
+    """Check if Slack context is set."""
+    return bool(_slack_context.get("connector"))
 
 
 # ==============================================================================
@@ -128,10 +127,10 @@ async def mention_agent(
     thread_ts: str | None = None,
 ) -> str:
     """
-    Mention another agent in Slack to hand off a task.
+    Mention another agent in Slack.
 
-    This is the primary method for inter-agent communication. The receiving
-    agent's Slack listener will pick up this @mention and process the task.
+    This posts a message with an @mention that another agent's session
+    will pick up.
 
     Args:
         agent_key: Agent to mention (swe, sre, release, support, pm, marketer)
@@ -140,11 +139,11 @@ async def mention_agent(
         thread_ts: Thread timestamp (uses context if None)
 
     Returns:
-        Confirmation that handoff was posted
+        Confirmation that message was posted
 
     Example:
         >>> await mention_agent("swe", "Please fix the login validation bug in auth.py")
-        "Handed off to @swe in #ai-team"
+        "Posted mention to @SoftwareEngineer in #ai-team"
     """
     ctx = get_slack_context()
     connector = ctx.get("connector")
@@ -160,20 +159,19 @@ async def mention_agent(
     from_agent = ctx.get("from_agent", "Unknown")
 
     try:
-        # Format handoff message
-        handoff_message = (
-            f"I need help from {_get_agent_display_name(agent_key)}.\n\n**Task:** {message}"
-        )
+        # Format message with agent mention
+        agent_name = _get_agent_display_name(agent_key)
+        mention_message = f"@{agent_name} {message}"
         if from_agent:
-            handoff_message = f"[From {from_agent}] {handoff_message}"
+            mention_message = f"[From {from_agent}] {mention_message}"
 
         connector.mention_agent(
             channel=ch,
             agent_key=agent_key,
-            message=handoff_message,
+            message=mention_message,
             thread_ts=ts,
         )
-        return f"Handed off to @{agent_key} in {ch}"
+        return f"Posted mention to @{agent_name} in {ch}"
     except Exception as e:
         return f"Error mentioning agent: {e}"
 
@@ -228,8 +226,7 @@ async def read_slack_thread(
     """
     Read messages from a Slack thread.
 
-    Useful for understanding the full context of a conversation before
-    responding or handing off to another agent.
+    Useful for understanding the full context of a conversation.
 
     Args:
         thread_ts: Thread parent timestamp
@@ -265,131 +262,6 @@ async def read_slack_thread(
         return result
     except Exception as e:
         return f"Error reading thread: {e}"
-
-
-# ==============================================================================
-# Transfer Tools (Convenience wrappers for specific agents)
-# ==============================================================================
-
-
-async def transfer_to_swe(task: str, context: str = "") -> str:
-    """
-    Transfer a task to SoftwareEngineer for code implementation or bug fixes.
-
-    Use this when you identify issues that require code changes, new features,
-    or debugging.
-
-    Args:
-        task: Description of the coding task
-        context: Additional context (error logs, requirements, etc.)
-
-    Returns:
-        Confirmation that handoff was posted to Slack
-    """
-    message = task
-    if context:
-        message += f"\n\n**Context:** {context}"
-    return await mention_agent("swe", message)
-
-
-async def transfer_to_sre(task: str, context: str = "") -> str:
-    """
-    Transfer a task to SiteReliabilityEngineer for infrastructure issues.
-
-    Use this for monitoring alerts, Sentry errors, latency issues,
-    deployment problems, or infrastructure investigations.
-
-    Args:
-        task: Description of the infrastructure issue
-        context: Additional context (error messages, metrics, etc.)
-
-    Returns:
-        Confirmation that handoff was posted to Slack
-    """
-    message = task
-    if context:
-        message += f"\n\n**Context:** {context}"
-    return await mention_agent("sre", message)
-
-
-async def transfer_to_release(task: str, context: str = "") -> str:
-    """
-    Transfer a task to ReleaseEngineer for deployments and releases.
-
-    Use this when code is ready for deployment, releases need to be
-    created, or deployment issues need investigation.
-
-    Args:
-        task: Description of the release/deployment task
-        context: Additional context (PR numbers, version, etc.)
-
-    Returns:
-        Confirmation that handoff was posted to Slack
-    """
-    message = task
-    if context:
-        message += f"\n\n**Context:** {context}"
-    return await mention_agent("release", message)
-
-
-async def transfer_to_support(task: str, context: str = "") -> str:
-    """
-    Transfer a task to SupportEngineer for customer issues.
-
-    Use this for customer-facing issues, support tickets, or when
-    customer communication is needed.
-
-    Args:
-        task: Description of the support task
-        context: Additional context (customer info, ticket details, etc.)
-
-    Returns:
-        Confirmation that handoff was posted to Slack
-    """
-    message = task
-    if context:
-        message += f"\n\n**Context:** {context}"
-    return await mention_agent("support", message)
-
-
-async def transfer_to_pm(task: str, context: str = "") -> str:
-    """
-    Transfer a task to ProductManager for prioritization or requirements.
-
-    Use this for feature requests, product decisions, or when
-    prioritization/roadmap input is needed.
-
-    Args:
-        task: Description of the product/prioritization task
-        context: Additional context (customer feedback, requirements, etc.)
-
-    Returns:
-        Confirmation that handoff was posted to Slack
-    """
-    message = task
-    if context:
-        message += f"\n\n**Context:** {context}"
-    return await mention_agent("pm", message)
-
-
-async def transfer_to_marketer(task: str, context: str = "") -> str:
-    """
-    Transfer a task to MarketingManager for announcements or social media.
-
-    Use this when releases need to be announced, social media posts
-    are needed, or marketing communication is required.
-
-    Args:
-        task: Description of the marketing task
-        context: Additional context (release notes, timing, etc.)
-
-    Returns:
-        Confirmation that handoff was posted to Slack
-    """
-    message = task
-    if context:
-        message += f"\n\n**Context:** {context}"
-    return await mention_agent("marketer", message)
 
 
 # ==============================================================================
@@ -442,49 +314,6 @@ def read_slack_thread_sync(
     return asyncio.get_event_loop().run_until_complete(read_slack_thread(thread_ts, channel, limit))
 
 
-# Transfer tool sync versions
-def transfer_to_swe_sync(task: str, context: str = "") -> str:
-    """Synchronous version of transfer_to_swe."""
-    import asyncio
-
-    return asyncio.get_event_loop().run_until_complete(transfer_to_swe(task, context))
-
-
-def transfer_to_sre_sync(task: str, context: str = "") -> str:
-    """Synchronous version of transfer_to_sre."""
-    import asyncio
-
-    return asyncio.get_event_loop().run_until_complete(transfer_to_sre(task, context))
-
-
-def transfer_to_release_sync(task: str, context: str = "") -> str:
-    """Synchronous version of transfer_to_release."""
-    import asyncio
-
-    return asyncio.get_event_loop().run_until_complete(transfer_to_release(task, context))
-
-
-def transfer_to_support_sync(task: str, context: str = "") -> str:
-    """Synchronous version of transfer_to_support."""
-    import asyncio
-
-    return asyncio.get_event_loop().run_until_complete(transfer_to_support(task, context))
-
-
-def transfer_to_pm_sync(task: str, context: str = "") -> str:
-    """Synchronous version of transfer_to_pm."""
-    import asyncio
-
-    return asyncio.get_event_loop().run_until_complete(transfer_to_pm(task, context))
-
-
-def transfer_to_marketer_sync(task: str, context: str = "") -> str:
-    """Synchronous version of transfer_to_marketer."""
-    import asyncio
-
-    return asyncio.get_event_loop().run_until_complete(transfer_to_marketer(task, context))
-
-
 # ==============================================================================
 # Context Injection (for OpenHands)
 # ==============================================================================
@@ -525,25 +354,25 @@ def get_slack_context_for_injection(channel: str | None = None, limit: int = 5) 
 
 def get_slack_handoff_instructions() -> str:
     """
-    Get instructions for Slack-based handoffs (for agent system prompts).
+    Get instructions for agent handoffs (for agent system prompts).
 
     Returns:
         Instructions string to include in agent prompts
     """
     return """
-## TEAM HANDOFFS (via Slack)
+## TEAM COLLABORATION
 
-When you need help from another team member, use the transfer tools to post
-@mentions in Slack. The receiving agent will pick up your message and work on it.
+When you need help from another team member, @mention them naturally in your response:
+- @SoftwareEngineer - for code implementation, bug fixes, PRs
+- @ReleaseEngineer - for deployments and releases
+- @SupportEngineer - for customer communication
+- @SiteReliabilityEngineer - for monitoring, Sentry errors, infrastructure
+- @MarketingManager - for announcements and content
+- @ProductManager - for requirements and prioritization
 
-Available transfer tools:
-- transfer_to_swe(task, context): For code bugs, features, PRs
-- transfer_to_sre(task, context): For monitoring, Sentry, infrastructure
-- transfer_to_release(task, context): For deployments, releases
-- transfer_to_support(task, context): For customer issues, tickets
-- transfer_to_pm(task, context): For prioritization, requirements
-- transfer_to_marketer(task, context): For announcements, social media
+Example: "I've analyzed the request. @SoftwareEngineer please implement the login validation fix."
 
+The mentioned agent will automatically pick up the conversation.
 Always provide clear context when handing off so the receiving agent
 can understand and work on the task effectively.
 """

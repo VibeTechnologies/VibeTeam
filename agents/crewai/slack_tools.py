@@ -3,6 +3,10 @@ CrewAI-specific Slack tool wrappers using BaseTool.
 
 These wrap the shared async slack_tools functions for use with CrewAI agents.
 All tools use the sync versions since CrewAI runs synchronously.
+
+Note: Transfer tools have been removed. Agents now use natural @mentions
+in their responses for handoffs (e.g., "@SoftwareEngineer please fix this bug").
+The bot parses these mentions and routes to the appropriate agent session.
 """
 
 from pydantic import BaseModel, Field
@@ -48,15 +52,6 @@ class MentionAgentInput(BaseModel):
         ..., description="Agent to mention: swe, sre, release, support, pm, marketer"
     )
     message: str = Field(..., description="Message explaining the task")
-
-
-class TransferInput(BaseModel):
-    """Input schema for transfer tools."""
-
-    task: str = Field(..., description="Description of the task to hand off")
-    context: str = Field(
-        default="", description="Additional context (error logs, requirements, etc.)"
-    )
 
 
 # =============================================================================
@@ -120,107 +115,6 @@ class MentionAgentTool(BaseTool if CREWAI_AVAILABLE else object):
 
 
 # =============================================================================
-# Transfer Tools
-# =============================================================================
-
-
-class TransferToSWETool(BaseTool if CREWAI_AVAILABLE else object):
-    """Transfer a task to SoftwareEngineer."""
-
-    name: str = "transfer_to_swe"
-    description: str = (
-        "Transfer a coding task to SoftwareEngineer. "
-        "Use for bugs, feature implementation, PRs, or code reviews."
-    )
-    args_schema: type[BaseModel] = TransferInput
-
-    def _run(self, task: str, context: str = "") -> str:
-        from agents.shared.slack_tools import transfer_to_swe_sync
-
-        return transfer_to_swe_sync(task, context)
-
-
-class TransferToSRETool(BaseTool if CREWAI_AVAILABLE else object):
-    """Transfer a task to SiteReliabilityEngineer."""
-
-    name: str = "transfer_to_sre"
-    description: str = (
-        "Transfer an infrastructure task to SiteReliabilityEngineer. "
-        "Use for monitoring, Sentry errors, latency, or deployment issues."
-    )
-    args_schema: type[BaseModel] = TransferInput
-
-    def _run(self, task: str, context: str = "") -> str:
-        from agents.shared.slack_tools import transfer_to_sre_sync
-
-        return transfer_to_sre_sync(task, context)
-
-
-class TransferToReleaseTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Transfer a task to ReleaseEngineer."""
-
-    name: str = "transfer_to_release"
-    description: str = (
-        "Transfer a deployment task to ReleaseEngineer. "
-        "Use when code is ready for deployment or releases need to be created."
-    )
-    args_schema: type[BaseModel] = TransferInput
-
-    def _run(self, task: str, context: str = "") -> str:
-        from agents.shared.slack_tools import transfer_to_release_sync
-
-        return transfer_to_release_sync(task, context)
-
-
-class TransferToSupportTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Transfer a task to SupportEngineer."""
-
-    name: str = "transfer_to_support"
-    description: str = (
-        "Transfer a customer task to SupportEngineer. "
-        "Use for customer issues, tickets, or customer communication."
-    )
-    args_schema: type[BaseModel] = TransferInput
-
-    def _run(self, task: str, context: str = "") -> str:
-        from agents.shared.slack_tools import transfer_to_support_sync
-
-        return transfer_to_support_sync(task, context)
-
-
-class TransferToPMTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Transfer a task to ProductManager."""
-
-    name: str = "transfer_to_pm"
-    description: str = (
-        "Transfer a product task to ProductManager. "
-        "Use for prioritization, requirements, or feature decisions."
-    )
-    args_schema: type[BaseModel] = TransferInput
-
-    def _run(self, task: str, context: str = "") -> str:
-        from agents.shared.slack_tools import transfer_to_pm_sync
-
-        return transfer_to_pm_sync(task, context)
-
-
-class TransferToMarketerTool(BaseTool if CREWAI_AVAILABLE else object):
-    """Transfer a task to MarketingManager."""
-
-    name: str = "transfer_to_marketer"
-    description: str = (
-        "Transfer a marketing task to MarketingManager. "
-        "Use for release announcements, social media, or marketing communication."
-    )
-    args_schema: type[BaseModel] = TransferInput
-
-    def _run(self, task: str, context: str = "") -> str:
-        from agents.shared.slack_tools import transfer_to_marketer_sync
-
-        return transfer_to_marketer_sync(task, context)
-
-
-# =============================================================================
 # Factory Functions
 # =============================================================================
 
@@ -232,63 +126,4 @@ def get_slack_tools() -> list:
         ReadSlackChannelTool(),
         ReadSlackThreadTool(),
         MentionAgentTool(),
-    ]
-
-
-def get_swe_transfer_tools() -> list:
-    """Get transfer tools for SoftwareEngineer (can't transfer to self)."""
-    return [
-        TransferToSRETool(),
-        TransferToReleaseTool(),
-        TransferToSupportTool(),
-        TransferToPMTool(),
-    ]
-
-
-def get_sre_transfer_tools() -> list:
-    """Get transfer tools for SiteReliabilityEngineer (can't transfer to self)."""
-    return [
-        TransferToSWETool(),
-        TransferToReleaseTool(),
-        TransferToSupportTool(),
-        TransferToPMTool(),
-    ]
-
-
-def get_release_transfer_tools() -> list:
-    """Get transfer tools for ReleaseEngineer (can't transfer to self)."""
-    return [
-        TransferToSWETool(),
-        TransferToSRETool(),
-        TransferToSupportTool(),
-        TransferToPMTool(),
-        TransferToMarketerTool(),
-    ]
-
-
-def get_support_transfer_tools() -> list:
-    """Get transfer tools for SupportEngineer (can't transfer to self)."""
-    return [
-        TransferToSWETool(),
-        TransferToSRETool(),
-        TransferToPMTool(),
-    ]
-
-
-def get_pm_transfer_tools() -> list:
-    """Get transfer tools for ProductManager (can delegate to all)."""
-    return [
-        TransferToSWETool(),
-        TransferToSRETool(),
-        TransferToReleaseTool(),
-        TransferToSupportTool(),
-        TransferToMarketerTool(),
-    ]
-
-
-def get_marketer_transfer_tools() -> list:
-    """Get transfer tools for MarketingManager (limited transfers)."""
-    return [
-        TransferToReleaseTool(),
-        TransferToPMTool(),
     ]

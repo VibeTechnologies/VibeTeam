@@ -15,7 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
-from agents.crewai.slack_tools import get_slack_tools, get_swe_transfer_tools
+from agents.crewai.slack_tools import get_slack_tools
 from agents.sessions import get_or_create_session, get_session_store
 
 try:
@@ -126,13 +126,15 @@ For git commands: Use `git` tool.
 
 DO NOT guess or fabricate issue numbers, titles, or URLs. Always call the appropriate tool first.
 
-## TEAM COLLABORATION (via Slack)
+## TEAM COLLABORATION
 
-When you need help from other team members, use the transfer tools:
-- transfer_to_release(task, context): For deployments when code is ready
-- transfer_to_sre(task, context): For infrastructure/monitoring issues
-- transfer_to_support(task, context): To notify about customer-facing changes
-- transfer_to_pm(task, context): For clarification on requirements
+When you complete a task or need help from another team member, @mention them in your response:
+- @ProductManager - for requirements clarification or prioritization
+- @ReleaseEngineer - for deployments when code is ready
+- @SupportEngineer - to notify about fixes that affect customers
+- @SiteReliabilityEngineer - for infrastructure or monitoring issues
+
+Example: "I've fixed the login bug in PR #457. @ReleaseEngineer this is ready for staging deployment."
 
 You can also use:
 - post_slack_message(message): Post updates to Slack
@@ -385,9 +387,8 @@ class CrewAISoftwareEngineer:
             GitTool(),
             ListIssuesTool(),
             GetIssueTool(),
-            # Slack communication and handoffs
+            # Slack communication
             *get_slack_tools(),
-            *get_swe_transfer_tools(),
         ]
 
     def _create_agent(self) -> "Agent":

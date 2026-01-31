@@ -13,7 +13,7 @@ import os
 from typing import Any
 
 from agents.config import PRODUCT_MANAGER_CONFIG, AgentConfig
-from agents.crewai.slack_tools import get_pm_transfer_tools, get_slack_tools
+from agents.crewai.slack_tools import get_slack_tools
 from agents.sessions import get_or_create_session, get_session_store
 
 try:
@@ -47,19 +47,20 @@ You have deep expertise in:
 You make data-driven decisions and prioritize using RICE scoring.
 You communicate clearly and ensure all stakeholders are aligned.
 
-## TEAM COLLABORATION (via Slack)
+## TEAM COLLABORATION
 
-As the supervisor agent, you can delegate work using transfer tools:
-- transfer_to_swe(task, context): For implementation tasks
-- transfer_to_release(task, context): For deployments and releases
-- transfer_to_sre(task, context): For infrastructure issues
-- transfer_to_support(task, context): For customer communication
-- transfer_to_marketer(task, context): For announcements and marketing
+When you complete a task or need help from another team member, @mention them in your response:
+- @SoftwareEngineer - for implementation tasks
+- @ReleaseEngineer - for deployments and releases
+- @SiteReliabilityEngineer - for infrastructure issues
+- @SupportEngineer - for customer communication
+- @Marketer - for announcements and marketing
 
-You can also use:
+Example: "I've finalized the PRD for the new dashboard feature. @SoftwareEngineer please review and begin implementation."
+
+You can also use Slack tools:
 - post_slack_message(message): Post updates to Slack
 - read_slack_channel(): Read recent Slack messages
-- mention_agent(agent_key, message): @mention a specific agent
 """
 
 PRODUCT_MANAGER_GOAL = """Define product requirements, prioritize features,
@@ -274,9 +275,8 @@ class CrewAIProductManager:
             ListProjectBoardTool(),
             WriteDocumentTool(),
             ReadFileTool(),
-            # Slack communication and handoffs
+            # Slack communication
             *get_slack_tools(),
-            *get_pm_transfer_tools(),
         ]
 
     def _create_agent(self) -> "Agent":

@@ -11,7 +11,21 @@ from typing import Any
 from vibeteam.agents.base import BaseVibeAgent
 from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.gmail import GmailTool
-from vibeteam.tools.transfer import get_transfer_tools_for_agent
+
+# Natural @mention instructions for agent handoffs
+HANDOFF_INSTRUCTIONS = """
+## Team Collaboration
+
+When you encounter issues outside your expertise, @mention the right team member in your response:
+- @ProductManager - for product decisions, prioritization, or unclear requirements
+- @SoftwareEngineer - for bugs that need code fixes, implementation issues
+- @ReleaseEngineer - for deployment issues or release questions
+- @SiteReliabilityEngineer - for infrastructure issues, monitoring alerts
+
+Example: "Customer reported login failures. Confirmed it's a bug in the OAuth flow. @SoftwareEngineer this needs investigation - see thread for repro steps."
+
+Include: clear description of the issue, what you've already tried/analyzed, customer context if relevant.
+"""
 
 # The Support Protocol
 SUPPORT_PROTOCOL = """
@@ -110,9 +124,6 @@ class SupportEngineerAgent(BaseVibeAgent):
             except Exception:
                 pass
 
-        # Transfer tools for escalating to other agents
-        tools.extend(get_transfer_tools_for_agent("support"))
-
         super().__init__(
             name=kwargs.get("name", self.name),
             profile=self.profile,
@@ -130,17 +141,7 @@ Goal: {self.goal}
 
 {SUPPORT_PROTOCOL}
 
-## TEAM COLLABORATION
-
-When you encounter issues outside your expertise, use the transfer tools to hand off to the right team member:
-- **transfer_to_supervisor**: For complex decisions, prioritization, or unclear next steps
-- **transfer_to_swe**: For bugs that need code fixes, implementation issues
-- **transfer_to_sre**: For infrastructure issues, monitoring alerts, production incidents
-
-When you transfer, include:
-1. Clear description of the issue
-2. What you've already tried/analyzed
-3. Customer context if relevant
+{HANDOFF_INSTRUCTIONS}
 
 Available tools: {", ".join(t.name for t in self.tools) if self.tools else "None"}
 """

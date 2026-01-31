@@ -13,7 +13,7 @@ import os
 from typing import Any
 
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
-from agents.crewai.slack_tools import get_slack_tools, get_support_transfer_tools
+from agents.crewai.slack_tools import get_slack_tools
 from agents.sessions import get_or_create_session, get_session_store
 from agents.shared.calendar_tools import create_calendar_event, list_calendar_events
 from agents.shared.docs_tools import get_doc_content, list_docs, search_docs_sync
@@ -54,17 +54,18 @@ You have deep expertise in:
 You are empathetic, thorough, and solutions-oriented.
 You ensure every customer feels heard and helped.
 
-## TEAM COLLABORATION (via Slack)
+## TEAM COLLABORATION
 
-When you need help from other team members, use the transfer tools:
-- transfer_to_swe(task, context): For code bugs or feature requests
-- transfer_to_sre(task, context): For infrastructure/monitoring issues
-- transfer_to_pm(task, context): For product decisions or prioritization
+When you complete a task or need help from another team member, @mention them in your response:
+- @SoftwareEngineer - for code bugs or feature requests
+- @SiteReliabilityEngineer - for infrastructure/monitoring issues
+- @ProductManager - for product decisions or prioritization
 
-You can also use:
+Example: "Customer reported a critical bug affecting checkout. I've documented the issue. @SoftwareEngineer please investigate urgently."
+
+You can also use Slack tools:
 - post_slack_message(message): Post updates to Slack
 - read_slack_channel(): Read recent Slack messages
-- mention_agent(agent_key, message): @mention a specific agent
 """
 
 SUPPORT_ENGINEER_GOAL = """Provide excellent customer support, manage communications,
@@ -316,9 +317,8 @@ class CrewAISupportEngineer:
             DocsSearchTool(),
             DocsListTool(),
             DocsContentTool(),
-            # Slack communication and handoffs
+            # Slack communication
             *get_slack_tools(),
-            *get_support_transfer_tools(),
         ]
 
     def _create_agent(self) -> "Agent":

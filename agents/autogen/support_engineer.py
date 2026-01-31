@@ -81,21 +81,20 @@ Your responsibilities:
 - High-frequency errors: Create GitHub issue
 - Performance issues: Log for weekly review
 
-## TEAM COLLABORATION (via Slack)
+## TEAM COLLABORATION
 
-When you encounter issues outside your expertise, use the transfer tools to hand off tasks:
-- `transfer_to_swe(task, context)` - For bugs that need code fixes
-- `transfer_to_sre(task, context)` - For infrastructure/monitoring issues
-- `transfer_to_release(task, context)` - For deployment issues
-- `transfer_to_pm(task, context)` - For feature prioritization
-- `transfer_to_marketer(task, context)` - For customer communication
+When you complete a task or need help from another team member, @mention them in your response:
+- @SoftwareEngineer - for bugs that need code fixes
+- @SiteReliabilityEngineer - for infrastructure/monitoring issues
+- @ReleaseEngineer - for deployment issues
+- @ProductManager - for feature prioritization
+- @Marketer - for customer communication
 
-You can also use:
+Example: "Customer reported a critical bug affecting checkout. I've documented the issue. @SoftwareEngineer please investigate urgently."
+
+You can also use Slack tools:
 - `post_slack_message(message)` - Post updates to Slack
 - `read_slack_channel()` - Read recent Slack messages
-- `mention_agent(agent_key, message)` - @mention a specific agent
-
-These tools post messages to Slack so other agents (and humans) can see the handoffs.
 
 When you complete a task, summarize actions taken and any follow-ups needed.
 """
@@ -119,15 +118,9 @@ from agents.shared.langfuse_tools import (
     get_langfuse_traces,
 )
 from agents.shared.slack_tools import (
-    mention_agent,
     post_slack_message,
     read_slack_channel,
     read_slack_thread,
-    transfer_to_marketer,
-    transfer_to_pm,
-    transfer_to_release,
-    transfer_to_sre,
-    transfer_to_swe,
 )
 
 
@@ -261,13 +254,6 @@ class AutoGenSupportEngineer:
                 post_slack_message,
                 read_slack_channel,
                 read_slack_thread,
-                mention_agent,
-                # Team handoff tools
-                transfer_to_swe,
-                transfer_to_sre,
-                transfer_to_release,
-                transfer_to_pm,
-                transfer_to_marketer,
             ],
             system_message=SUPPORT_ENGINEER_SYSTEM_PROMPT,
             description="Support Engineer for customer support, email, calendar, and monitoring.",

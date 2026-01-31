@@ -1,22 +1,40 @@
 #!/usr/bin/env python3
 """
-Run a VibeTeam agent in Slack polling mode.
+Run a VibeTeam agent in Discord polling mode.
 
 This script runs an agent that:
-1. Polls a Slack channel for new messages
-2. Responds to @mentions directed at the agent
-3. Posts responses in threads for context
+1. Polls a Discord channel for new messages
+2. Responds to @role mentions directed at the agent
+3. Posts responses via webhooks for custom agent identity
+
+Key difference from Slack: Discord uses role-based mentions. A single bot
+can have multiple roles assigned. Users mention @SoftwareEngineer (role),
+and the bot routes to the appropriate agent logic.
 
 Usage:
-    python scripts/run_slack_agent.py --agent support --channel "#ai-team"
-    python scripts/run_slack_agent.py --agent swe --poll-interval 10
-    python scripts/run_slack_agent.py --agent release --once  # Single poll, then exit
+    python scripts/run_discord_agent.py --agent swe
+    python scripts/run_discord_agent.py --agent support --poll-interval 10
+    python scripts/run_discord_agent.py --agent release --once  # Single poll, then exit
 
 Environment Variables:
-    SLACK_BOT_TOKEN: Slack bot OAuth token (required)
-    SLACK_AGENT_SWE: Slack user ID for SWE agent
-    SLACK_AGENT_SUPPORT: Slack user ID for Support agent
-    SLACK_AGENT_RELEASE: Slack user ID for Release agent
+    DISCORD_BOT_TOKEN: Discord bot token (required for reading messages)
+    DISCORD_GUILD_ID: Discord server/guild ID
+    DISCORD_CHANNEL_ID: Default channel ID to monitor
+
+    # Role IDs (created in server, assigned to bot)
+    DISCORD_ROLE_SWE: Role ID for SoftwareEngineer
+    DISCORD_ROLE_RELEASE: Role ID for ReleaseEngineer
+    DISCORD_ROLE_SUPPORT: Role ID for SupportEngineer
+    DISCORD_ROLE_PM: Role ID for ProductManager
+    DISCORD_ROLE_MARKETING: Role ID for MarketingManager
+
+    # Webhook URLs (for custom agent identities)
+    DISCORD_WEBHOOK_SWE: Webhook URL for SWE responses
+    DISCORD_WEBHOOK_RELEASE: Webhook URL for Release responses
+    DISCORD_WEBHOOK_SUPPORT: Webhook URL for Support responses
+    DISCORD_WEBHOOK_PM: Webhook URL for PM responses
+    DISCORD_WEBHOOK_MARKETING: Webhook URL for Marketing responses
+
     AZURE_API_KEY: Azure OpenAI API key
     AZURE_API_BASE: Azure OpenAI endpoint
 """
@@ -45,14 +63,14 @@ from vibeteam.agents import (
     SupportEngineerAgent,
     SupervisorAgent,
 )
-from vibeteam.connectors.slack import SlackConnector, SlackMessage
+from vibeteam.connectors.discord import DiscordConnector, DiscordMessage
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger("slack_agent")
+logger = logging.getLogger("discord_agent")
 
 # Agent key to class mapping
 AGENT_CLASSES = {
@@ -86,35 +104,28 @@ def create_agent(agent_key: str):
 
 async def process_message(
     agent,
-    slack: SlackConnector,
-    message: SlackMessage,
+    discord: DiscordConnector,
+    message: DiscordMessage,
     agent_key: str,
-    channel: str,
 ) -> str | None:
     """
     Process a single message and return the response.
 
     Args:
         agent: The agent instance
-        slack: Slack connector
+        discord: Discord connector
         message: The message to process
-        agent_key: The agent's key (for formatting)
-        channel: The channel being monitored
+        agent_key: The agent's key (for formatting and webhook)
 
     Returns:
         The response text, or None if no response
     """
     # Extract the actual task from the message
-    # Remove the @mention prefix if present
-    task = message.text
-
-    # Strip any <@USER_ID> mentions from the beginning
-    import re
-
-    task = re.sub(r"^<@[A-Z0-9]+>\s*", "", task).strip()
+    # Remove role and user mentions from the beginning
+    task = discord.strip_mentions(message.content)
 
     if not task:
-        logger.warning(f"Empty task after stripping mentions: {message.text}")
+        logger.warning(f"Empty task after stripping mentions: {message.content}")
         return None
 
     logger.info(f"Processing task: {task[:100]}...")
@@ -129,7 +140,7 @@ async def process_message(
 
 async def run_agent_loop(
     agent_key: str,
-    channel: str,
+    channel_id: str | None = None,
     poll_interval: int = 5,
     lookback_minutes: int = 5,
     once: bool = False,
@@ -140,7 +151,7 @@ async def run_agent_loop(
 
     Args:
         agent_key: Agent key (pm, swe, support, release, supervisor)
-        channel: Slack channel to monitor
+        channel_id: Discord channel ID to monitor (uses default if None)
         poll_interval: Seconds between polls
         lookback_minutes: How far back to look for messages on startup
         once: If True, run once and exit
@@ -149,17 +160,22 @@ async def run_agent_loop(
     global shutdown_requested
 
     # Initialize
-    slack = SlackConnector()
+    discord = DiscordConnector()
     agent = create_agent(agent_key)
-    processed_ts: set[str] = set()
+    processed_ids: set[str] = set()
 
-    # Calculate initial lookback timestamp
-    lookback_time = datetime.now() - timedelta(minutes=lookback_minutes)
-    oldest_ts = str(lookback_time.timestamp())
+    # Use default channel if not specified
+    channel_id = channel_id or discord.default_channel_id
+    if not channel_id:
+        logger.error("Channel ID required. Set DISCORD_CHANNEL_ID or use --channel")
+        return
 
-    logger.info(f"Starting {agent_key.upper()} agent on {channel}")
+    logger.info(f"Starting {agent_key.upper()} agent on channel {channel_id}")
     logger.info(f"Poll interval: {poll_interval}s, Lookback: {lookback_minutes}min")
     logger.info(f"Agent model: {agent.model}")
+
+    # Track the last message ID we've seen for pagination
+    last_seen_id: str | None = None
 
     iteration = 0
     while not shutdown_requested:
@@ -168,71 +184,66 @@ async def run_agent_loop(
 
         try:
             # Get recent messages
-            messages = slack.get_channel_history(
-                channel=channel,
+            # On first iteration, get all recent messages
+            # On subsequent iterations, only get messages after the last one we processed
+            messages = discord.get_channel_history(
+                channel_id=channel_id,
                 limit=20,
-                oldest=oldest_ts if iteration == 1 else None,
+                after=last_seen_id if iteration > 1 else None,
             )
 
-            # Collect all messages to process (top-level + thread replies)
-            all_messages: list[SlackMessage] = []
+            # Process messages (oldest first for chronological order)
+            for msg in reversed(messages):
+                # Update last seen ID
+                if not last_seen_id or msg.id > last_seen_id:
+                    last_seen_id = msg.id
 
-            # Process top-level messages and collect thread replies
-            for msg in messages:
-                all_messages.append(msg)
-
-                # If this message has a thread, get replies too
-                # thread_ts == ts means this is a thread parent
-                if msg.thread_ts and msg.thread_ts == msg.ts:
-                    try:
-                        thread_replies = slack.get_thread_replies(channel, msg.ts)
-                        # Add replies (skip the parent which is already in all_messages)
-                        for reply in thread_replies:
-                            if reply.ts != msg.ts:
-                                all_messages.append(reply)
-                    except Exception as e:
-                        logger.warning(f"Failed to get thread replies for {msg.ts}: {e}")
-
-            # Process all messages (newest first, so reverse for chronological order)
-            for msg in reversed(all_messages):
                 # Skip already processed
-                if msg.ts in processed_ts:
+                if msg.id in processed_ids:
                     continue
 
                 # Skip bot messages (including our own) unless allow_bot is set
                 if msg.is_bot and not allow_bot:
-                    processed_ts.add(msg.ts)
+                    processed_ids.add(msg.id)
                     continue
 
-                # Check if this message is for us
-                if not slack.is_mention_for_agent(msg, agent_key):
+                # Check if this message is for us (mentions our role)
+                if not discord.is_mention_for_agent(msg, agent_key):
                     # Not for us, but still mark as seen
-                    processed_ts.add(msg.ts)
+                    processed_ids.add(msg.id)
                     continue
 
-                logger.info(f"Found message for {agent_key}: {msg.text[:50]}...")
+                logger.info(f"Found message for {agent_key}: {msg.content[:50]}...")
 
                 # Process the message
-                response = await process_message(agent, slack, msg, agent_key, channel)
+                response = await process_message(agent, discord, msg, agent_key)
 
                 if response:
                     # Format response with agent identity
-                    formatted = slack.format_agent_message(
+                    formatted = discord.format_agent_message(
                         agent_name=agent.name,
                         message=response,
                     )
 
-                    # Post in thread
-                    thread_ts = msg.thread_ts or msg.ts
-                    slack.post_message(
-                        channel=channel,
-                        text=formatted,
-                        thread_ts=thread_ts,
+                    # Post via webhook (preferred for custom identity)
+                    result = discord.post_webhook_message(
+                        agent_key=agent_key,
+                        content=formatted,
                     )
-                    logger.info(f"Posted response in thread {thread_ts}")
+
+                    if result:
+                        logger.info(f"Posted response via webhook for {agent_key}")
+                    else:
+                        # Fallback to bot API
+                        discord.post_message(
+                            channel_id=channel_id,
+                            content=formatted,
+                            reply_to=msg.id,
+                        )
+                        logger.info(f"Posted response via bot API (webhook not configured)")
 
                 # Mark as processed
-                processed_ts.add(msg.ts)
+                processed_ids.add(msg.id)
 
                 # Reset agent for next task
                 agent.reset()
@@ -248,24 +259,29 @@ async def run_agent_loop(
         # Wait before next poll
         await asyncio.sleep(poll_interval)
 
+    # Cleanup
+    discord.close()
     logger.info("Agent loop stopped")
 
 
 async def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Run a VibeTeam agent in Slack polling mode",
+        description="Run a VibeTeam agent in Discord polling mode",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Run support agent on #ai-team
-    python scripts/run_slack_agent.py --agent support --channel "#ai-team"
+    # Run support agent on default channel
+    python scripts/run_discord_agent.py --agent support
 
     # Run SWE agent with 10s poll interval
-    python scripts/run_slack_agent.py --agent swe --poll-interval 10
+    python scripts/run_discord_agent.py --agent swe --poll-interval 10
+
+    # Run on specific channel
+    python scripts/run_discord_agent.py --agent pm --channel 1234567890
 
     # Single poll for testing
-    python scripts/run_slack_agent.py --agent pm --once
+    python scripts/run_discord_agent.py --agent release --once
 
 Available agents:
     pm        - Product Manager (Curie)
@@ -273,6 +289,12 @@ Available agents:
     support   - Support Engineer (Darwin)
     release   - Release Engineer (Einstein)
     supervisor - Supervisor (Planck)
+
+Required Environment Variables:
+    DISCORD_BOT_TOKEN    - Bot token from Developer Portal
+    DISCORD_CHANNEL_ID   - Default channel to monitor
+    DISCORD_ROLE_<AGENT> - Role IDs for each agent (e.g., DISCORD_ROLE_SWE)
+    DISCORD_WEBHOOK_<AGENT> - Webhook URLs for responses (e.g., DISCORD_WEBHOOK_SWE)
         """,
     )
     parser.add_argument(
@@ -283,8 +305,8 @@ Available agents:
     )
     parser.add_argument(
         "--channel",
-        default="#ai-team",
-        help="Slack channel to monitor (default: #ai-team)",
+        default=None,
+        help="Discord channel ID to monitor (default: DISCORD_CHANNEL_ID env var)",
     )
     parser.add_argument(
         "--poll-interval",
@@ -320,13 +342,20 @@ Available agents:
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Validate environment
-    if not os.environ.get("SLACK_BOT_TOKEN"):
-        logger.error("SLACK_BOT_TOKEN environment variable required")
+    if not os.environ.get("DISCORD_BOT_TOKEN"):
+        logger.error("DISCORD_BOT_TOKEN environment variable required")
         return 1
 
     if not os.environ.get("AZURE_API_KEY"):
         logger.error("AZURE_API_KEY environment variable required")
         return 1
+
+    # Check for role and webhook config (warning only)
+    agent_upper = args.agent.upper()
+    if not os.environ.get(f"DISCORD_ROLE_{agent_upper}"):
+        logger.warning(f"DISCORD_ROLE_{agent_upper} not set - text-based mentions will be used")
+    if not os.environ.get(f"DISCORD_WEBHOOK_{agent_upper}"):
+        logger.warning(f"DISCORD_WEBHOOK_{agent_upper} not set - bot API will be used for responses")
 
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
@@ -335,7 +364,7 @@ Available agents:
     # Run the agent loop
     await run_agent_loop(
         agent_key=args.agent,
-        channel=args.channel,
+        channel_id=args.channel,
         poll_interval=args.poll_interval,
         lookback_minutes=args.lookback,
         once=args.once,

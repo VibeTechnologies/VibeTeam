@@ -1,28 +1,17 @@
 """
-Tests for SwarmOrchestrator and Supervisor Agent.
+Tests for SharedMessageState and SwarmMessage.
 
 These tests verify:
 1. SharedMessageState functionality
-2. Transfer tools work correctly
-3. SupervisorAgent initialization and handoff handling
-4. SwarmOrchestrator routing and iteration
+2. SwarmMessage creation and serialization
+3. Context retrieval for agents
 """
 
 from datetime import datetime
 
 import pytest
 
-from vibeteam.config import DEFAULT_MODEL
 from vibeteam.state import SharedMessageState, SwarmMessage
-from vibeteam.tools.transfer import (
-    HANDOFF_PREFIX,
-    TransferToSRETool,
-    TransferToSupervisorTool,
-    TransferToSWETool,
-    get_transfer_tools_for_agent,
-    is_handoff_result,
-    parse_handoff,
-)
 
 
 class TestSharedMessageState:
@@ -144,92 +133,44 @@ class TestSharedMessageState:
         assert state.iteration_count == 0
         assert state.current_agent == "supervisor"
 
+    def test_get_recent_messages(self):
+        """Test getting recent messages."""
+        state = SharedMessageState()
+        for i in range(15):
+            state.add_message("user", f"Message {i}")
 
-class TestTransferTools:
-    """Tests for transfer tools."""
+        recent = state.get_recent_messages(5)
 
-    @pytest.mark.asyncio
-    async def test_transfer_to_swe(self):
-        """Test TransferToSWETool."""
-        tool = TransferToSWETool()
+        assert len(recent) == 5
+        assert recent[0].content == "Message 10"
+        assert recent[-1].content == "Message 14"
 
-        result = await tool.execute(task="Fix the login bug", priority="high")
+    def test_get_messages_by_agent(self):
+        """Test getting messages by agent."""
+        state = SharedMessageState()
+        state.add_message("assistant", "Supervisor says", agent_name="supervisor")
+        state.add_message("assistant", "SWE says", agent_name="swe")
+        state.add_message("assistant", "More from supervisor", agent_name="supervisor")
 
-        assert result.success
-        assert result.output.startswith(HANDOFF_PREFIX)
-        assert "swe" in result.output
-        assert result.target_agent == "swe"
-        assert result.task == "Fix the login bug"
+        supervisor_msgs = state.get_messages_by_agent("supervisor")
 
-    @pytest.mark.asyncio
-    async def test_transfer_to_sre(self):
-        """Test TransferToSRETool."""
-        tool = TransferToSRETool()
+        assert len(supervisor_msgs) == 2
+        assert all(m.name == "supervisor" for m in supervisor_msgs)
 
-        result = await tool.execute(task="Check Sentry errors", context="High priority")
+    def test_get_summary(self):
+        """Test getting state summary."""
+        state = SharedMessageState()
+        state.add_message("user", "Test")
+        state.add_message("assistant", "Response", agent_name="swe")
+        state.iteration_count = 3
 
-        assert result.success
-        assert result.target_agent == "sre"
-        assert "Check Sentry" in result.task
+        summary = state.get_summary()
 
-    @pytest.mark.asyncio
-    async def test_transfer_to_supervisor(self):
-        """Test TransferToSupervisorTool."""
-        tool = TransferToSupervisorTool()
-
-        result = await tool.execute(result="Completed the code fix", needs_followup=True)
-
-        assert result.success
-        assert result.target_agent == "supervisor"
-        assert "Completed the code fix" in result.task
-
-    def test_is_handoff_result(self):
-        """Test handoff detection."""
-        assert is_handoff_result(f"{HANDOFF_PREFIX}swe:task")
-        assert is_handoff_result(f"{HANDOFF_PREFIX}supervisor:done")
-        assert not is_handoff_result("Regular response")
-        assert not is_handoff_result("")
-
-    def test_parse_handoff(self):
-        """Test handoff parsing."""
-        # Valid handoff
-        result = parse_handoff(f"{HANDOFF_PREFIX}swe:Fix the bug")
-        assert result == ("swe", "Fix the bug")
-
-        # Handoff without task
-        result = parse_handoff(f"{HANDOFF_PREFIX}sre")
-        assert result == ("sre", "")
-
-        # Not a handoff
-        result = parse_handoff("Regular message")
-        assert result is None
-
-    def test_get_transfer_tools_for_supervisor(self):
-        """Test getting transfer tools for supervisor."""
-        tools = get_transfer_tools_for_agent("supervisor")
-
-        tool_names = [t.name for t in tools]
-        assert "transfer_to_swe" in tool_names
-        assert "transfer_to_sre" in tool_names
-        assert "transfer_to_release" in tool_names
-        assert "transfer_to_support" in tool_names
-        assert "transfer_to_marketer" in tool_names
-        # Supervisor shouldn't have transfer to supervisor or PM
-        assert "transfer_to_supervisor" not in tool_names
-
-    def test_get_transfer_tools_for_swe(self):
-        """Test getting transfer tools for SWE."""
-        tools = get_transfer_tools_for_agent("swe")
-
-        tool_names = [t.name for t in tools]
-        # SWE should have transfer to supervisor
-        assert "transfer_to_supervisor" in tool_names
-        # SWE can transfer to any other agent for inter-agent communication
-        assert "transfer_to_sre" in tool_names
-        assert "transfer_to_release" in tool_names
-        assert "transfer_to_support" in tool_names
-        # But not to self
-        assert "transfer_to_swe" not in tool_names
+        assert summary["session_id"] == state.session_id
+        assert summary["current_agent"] == "supervisor"
+        assert summary["message_count"] == 2
+        assert summary["agents_used"] == ["swe"]
+        assert summary["iteration_count"] == 3
 
 
 class TestSwarmMessage:
@@ -291,34 +232,35 @@ class TestSwarmMessage:
         # Name is only included for tool role
         assert "name" not in llm_msg
 
+    def test_to_llm_message_with_tool_role(self):
+        """Test tool role includes name."""
+        msg = SwarmMessage(
+            role="tool",
+            content="Result",
+            name="github",
+            tool_call_id="call_123",
+        )
 
-class TestToolSchema:
-    """Tests for tool schemas."""
+        llm_msg = msg.to_llm_message()
 
-    def test_transfer_to_swe_schema(self):
-        """Test SWE transfer tool schema."""
-        tool = TransferToSWETool()
-        schema = tool.get_schema()
+        assert llm_msg["role"] == "tool"
+        assert llm_msg["name"] == "github"
+        assert llm_msg["tool_call_id"] == "call_123"
 
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "transfer_to_swe"
+    def test_message_with_tool_calls(self):
+        """Test message with tool calls."""
+        tool_calls = [
+            {"id": "call_1", "function": {"name": "search", "arguments": "{}"}}
+        ]
+        msg = SwarmMessage(
+            role="assistant",
+            content="Let me search",
+            tool_calls=tool_calls,
+        )
 
-        params = schema["function"]["parameters"]["properties"]
-        assert "task" in params
-        assert "priority" in params
-        assert "context" in params
-
-    def test_transfer_to_supervisor_schema(self):
-        """Test supervisor transfer tool schema."""
-        tool = TransferToSupervisorTool()
-        schema = tool.get_schema()
-
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "transfer_to_supervisor"
-
-        params = schema["function"]["parameters"]["properties"]
-        assert "result" in params
-        assert "needs_followup" in params
+        assert msg.tool_calls == tool_calls
+        llm_msg = msg.to_llm_message()
+        assert llm_msg["tool_calls"] == tool_calls
 
 
 class TestSupervisorAgent:
@@ -333,17 +275,6 @@ class TestSupervisorAgent:
         assert supervisor.name == "ProductManager"
         assert "Supervisor" in supervisor.profile
 
-    def test_supervisor_has_transfer_tools(self):
-        """Test that supervisor has transfer tools."""
-        from vibeteam.agents.supervisor import SupervisorAgent
-
-        supervisor = SupervisorAgent()
-
-        tool_names = [t.name for t in supervisor.tools]
-        assert "transfer_to_swe" in tool_names
-        assert "transfer_to_sre" in tool_names
-        assert "transfer_to_release" in tool_names
-
     def test_supervisor_system_prompt(self):
         """Test supervisor system prompt includes team info."""
         from vibeteam.agents.supervisor import SupervisorAgent
@@ -352,122 +283,32 @@ class TestSupervisorAgent:
         prompt = supervisor._get_system_prompt()
 
         # Should mention team members by role name
-        assert "SoftwareEngineer" in prompt or "swe" in prompt
-        assert "SiteReliabilityEngineer" in prompt or "sre" in prompt
-        assert "ReleaseEngineer" in prompt or "release" in prompt
+        assert "SoftwareEngineer" in prompt
+        assert "ReleaseEngineer" in prompt
+        assert "SupportEngineer" in prompt
 
-        # Should mention orchestration
+        # Should mention orchestration and @mentions
         assert "orchestrat" in prompt.lower()
+        assert "@" in prompt  # Should have @mention examples
 
-    def test_delegate_to_method(self):
-        """Test delegate_to convenience method."""
+    def test_supervisor_with_shared_state(self):
+        """Test supervisor with shared state."""
+        from vibeteam.agents.supervisor import SupervisorAgent
+
+        state = SharedMessageState()
+        state.add_message("user", "Hello")
+
+        supervisor = SupervisorAgent(shared_state=state)
+
+        assert supervisor.shared_state is state
+        assert len(supervisor.shared_state.messages) == 1
+
+    def test_supervisor_run_with_state_method_exists(self):
+        """Test run_with_state method exists."""
         from vibeteam.agents.supervisor import SupervisorAgent
 
         supervisor = SupervisorAgent()
-        result = supervisor.delegate_to("swe", "Fix the bug")
-
-        assert is_handoff_result(result)
-        parsed = parse_handoff(result)
-        assert parsed == ("swe", "Fix the bug")
-
-
-class TestSwarmOrchestratorUnit:
-    """Unit tests for SwarmOrchestrator (without LLM calls)."""
-
-    def test_create_orchestrator(self):
-        """Test creating an orchestrator."""
-        from vibeteam.swarm import SwarmOrchestrator
-
-        orch = SwarmOrchestrator()
-
-        assert orch.supervisor is not None
-        assert "swe" in orch.agents
-        assert "sre" in orch.agents
-        assert orch.max_iterations == 20
-
-    def test_orchestrator_with_custom_state(self):
-        """Test orchestrator with custom shared state."""
-        from vibeteam.swarm import SwarmOrchestrator
-
-        state = SharedMessageState()
-        state.session_id = "custom-session"
-
-        orch = SwarmOrchestrator(shared_state=state)
-
-        assert orch.shared_state.session_id == "custom-session"
-
-    def test_get_agent(self):
-        """Test getting agents by key."""
-        from vibeteam.swarm import SwarmOrchestrator
-
-        orch = SwarmOrchestrator()
-
-        swe = orch.get_agent("swe")
-        assert swe is not None
-        assert "Ada" in swe.name or "Software" in swe.profile
-
-        supervisor = orch.get_agent("supervisor")
-        assert supervisor == orch.supervisor
-
-        # PM should return supervisor
-        pm = orch.get_agent("pm")
-        assert pm == orch.supervisor
-
-    def test_get_unknown_agent_returns_supervisor(self):
-        """Test that unknown agent keys return supervisor."""
-        from vibeteam.swarm import SwarmOrchestrator
-
-        orch = SwarmOrchestrator()
-
-        unknown = orch.get_agent("unknown_agent")
-        assert unknown == orch.supervisor
-
-    def test_get_summary(self):
-        """Test getting orchestrator summary."""
-        from vibeteam.swarm import SwarmOrchestrator
-
-        orch = SwarmOrchestrator()
-        summary = orch.get_summary()
-
-        assert "session_id" in summary
-        assert "current_agent" in summary
-        assert "iteration_count" in summary
-        assert "max_iterations" in summary
-        assert summary["current_agent"] == "supervisor"
-
-    def test_reset(self):
-        """Test resetting the orchestrator."""
-        from vibeteam.swarm import SwarmOrchestrator
-
-        orch = SwarmOrchestrator()
-        orch.iteration_count = 5
-        orch.shared_state.add_message("user", "Test")
-
-        orch.reset()
-
-        assert orch.iteration_count == 0
-        assert len(orch.shared_state.messages) == 0
-
-
-class TestCreateSwarmOrchestrator:
-    """Tests for the factory function."""
-
-    def test_create_default(self):
-        """Test creating with defaults."""
-        from vibeteam.swarm import create_swarm_orchestrator
-
-        orch = create_swarm_orchestrator()
-
-        assert orch.model == DEFAULT_MODEL
-        assert orch.max_iterations == 20
-
-    def test_create_with_custom_model(self):
-        """Test creating with custom model."""
-        from vibeteam.swarm import create_swarm_orchestrator
-
-        orch = create_swarm_orchestrator(model="openai/gpt-4o")
-
-        assert orch.model == "openai/gpt-4o"
+        assert hasattr(supervisor, "run_with_state")
 
 
 if __name__ == "__main__":

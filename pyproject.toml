@@ -53,6 +53,8 @@ dependencies = [
     "httpx>=0.26.0",
     # Slack integration
     "slack-sdk>=3.21.0",
+    # Discord integration
+    "discord.py>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -76,6 +78,10 @@ dev = [
     "black>=24.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+]
+# Agent evaluation with DeepEval
+eval = [
+    "deepeval>=1.0.0",
 ]
 
 [project.scripts]

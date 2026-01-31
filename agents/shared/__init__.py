@@ -74,18 +74,6 @@ from agents.shared.slack_tools import (
     read_slack_thread,
     read_slack_thread_sync,
     set_slack_context,
-    transfer_to_marketer,
-    transfer_to_marketer_sync,
-    transfer_to_pm,
-    transfer_to_pm_sync,
-    transfer_to_release,
-    transfer_to_release_sync,
-    transfer_to_sre,
-    transfer_to_sre_sync,
-    transfer_to_support,
-    transfer_to_support_sync,
-    transfer_to_swe,
-    transfer_to_swe_sync,
 )
 
 __all__ = [
@@ -139,17 +127,4 @@ __all__ = [
     "is_slack_context_set",
     "get_slack_context_for_injection",
     "get_slack_handoff_instructions",
-    # Slack transfer tools
-    "transfer_to_swe",
-    "transfer_to_swe_sync",
-    "transfer_to_sre",
-    "transfer_to_sre_sync",
-    "transfer_to_release",
-    "transfer_to_release_sync",
-    "transfer_to_support",
-    "transfer_to_support_sync",
-    "transfer_to_pm",
-    "transfer_to_pm_sync",
-    "transfer_to_marketer",
-    "transfer_to_marketer_sync",
 ]
