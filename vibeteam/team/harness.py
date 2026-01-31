@@ -170,7 +170,7 @@ class TeamTestHarness:
     5. Task completes
 
     Attributes:
-        framework: Agent framework to use ("autogen", "crewai", "openhands", "mock")
+        framework: Agent framework to use ("autogen", "crewai", "openhands", "opencode", "mock")
         channel: Simulated channel for messages
         agents: Dict of agent role to agent instance
     """
@@ -226,6 +226,8 @@ class TeamTestHarness:
             return self._create_autogen_agent(role)
         elif self.framework == "openhands":
             return self._create_openhands_agent(role)
+        elif self.framework == "opencode":
+            return self._create_opencode_agent(role)
         else:
             # Default to mock
             return MockAgent(role)
@@ -273,8 +275,49 @@ class TeamTestHarness:
 
     def _create_openhands_agent(self, role: str) -> Any:
         """Create an OpenHands agent."""
-        # OpenHands integration - fall back to mock for now
-        return MockAgent(role)
+        try:
+            if role == "software_engineer":
+                from agents.openhands.software_engineer import create_software_engineer
+                return create_software_engineer()
+            elif role == "release_engineer":
+                from agents.openhands.release_engineer import create_release_engineer
+                return create_release_engineer()
+            elif role == "support_engineer":
+                from agents.openhands.support_engineer import create_support_engineer
+                return create_support_engineer()
+            elif role == "product_manager":
+                from agents.openhands.product_manager import create_product_manager
+                return create_product_manager()
+            elif role == "marketing_manager":
+                from agents.openhands.marketing_manager import create_marketing_manager
+                return create_marketing_manager()
+            else:
+                return MockAgent(role)
+        except ImportError:
+            return MockAgent(role)
+
+    def _create_opencode_agent(self, role: str) -> Any:
+        """Create an OpenCode agent."""
+        try:
+            if role == "software_engineer":
+                from agents.opencode.software_engineer import create_software_engineer
+                return create_software_engineer()
+            elif role == "release_engineer":
+                from agents.opencode.release_engineer import create_release_engineer
+                return create_release_engineer()
+            elif role == "support_engineer":
+                from agents.opencode.support_engineer import create_support_engineer
+                return create_support_engineer()
+            elif role == "product_manager":
+                from agents.opencode.product_manager import create_product_manager
+                return create_product_manager()
+            elif role == "marketing_manager":
+                from agents.opencode.marketing_manager import create_marketing_manager
+                return create_marketing_manager()
+            else:
+                return MockAgent(role)
+        except ImportError:
+            return MockAgent(role)
 
     async def _on_message(
         self, agent: Any, role: str, message: ChannelMessage

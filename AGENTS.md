@@ -38,17 +38,29 @@ The playbook allows for intelligent judgment on ambiguous cases.
 
 ```
 VibeTeam/
-  vibeteam/           # Main package
-    connectors/       # External service integrations
-    roles/            # Agent roles (ProductManager, ReleaseEngineer, etc.)
-    team.py           # Team orchestration
-  readiness/          # System readiness checks
-    check.py          # Automated script
-    playbook.md       # GenAI evaluation playbook
-  scripts/            # Utility scripts
-  tests/              # Test files
-  config/             # Configuration files
+  agents/              # Multi-framework agent implementations
+    autogen/           # AutoGen agents
+    crewai/            # CrewAI agents
+    openhands/         # OpenHands agents
+    opencode/          # OpenCode agents (CLI-based)
+  vibeteam/            # Main package
+    connectors/        # External service integrations
+    team/              # Team orchestration and test harness
+  readiness/           # System readiness checks
+    check.py           # Automated script
+    playbook.md        # GenAI evaluation playbook
+  docs/                # Documentation
+    requirements.md    # System requirements and agent roles
+    design.md          # Architecture and design decisions
+  scripts/             # Utility scripts
+  tests/               # Test files
+  config/              # Configuration files
 ```
+
+## Documentation
+
+- **[docs/requirements.md](docs/requirements.md)** - System requirements, agent roles, and responsibilities
+- **[docs/design.md](docs/design.md)** - Architecture, routing logic, and design decisions
 
 ## Key Connectors
 

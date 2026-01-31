@@ -9,7 +9,7 @@ It tests:
 4. Task completion - Was the task fully completed?
 5. Professionalism - Communication quality
 
-Runs across frameworks: mock (fast), autogen, crewai, openhands (when available)
+Runs across frameworks: mock (fast), autogen, crewai, openhands, opencode (when available)
 
 Usage:
     # Run with mock agents (fast, no LLM calls)
