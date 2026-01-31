@@ -336,6 +336,31 @@ Examples:
 | Unclear which agent needed | ProductManager triages |
 | Human escalation | Any agent can flag for human |
 
+
+Benchmark Model/Framework
+From scripts/benchmark_handoffs.py:
+- Judge Model: Azure OpenAI gpt-5-2 (line 58-59)
+- Frameworks tested: AutoGen, CrewAI, OpenHands (line 184)
+- Evaluation: LLM-as-judge using the same Azure endpoint
+The Key Issue You're Raising
+The current benchmark tests internal handoff (transfer tools) but your architecture uses Slack-based message handoff:
+1. Current approach: Agents have transfer_to_* tools that return HANDOFF:agent:context strings internally
+2. Your desired approach: Agents post messages to Slack mentioning other agents (e.g., @SoftwareEngineer please fix...), and those agents pick up the messages via their Slack listeners
+How Slack-Based Handoff Should Work
+From docs/requirements.md and the plan:
+┌─────────────────────────────────────────────────────────────────┐
+│  Human: @VibeTeam there's a bug in login                       │
+│      │                                                          │
+│      └──► SupportEngineer picks up (via Slack listener)         │
+│              │                                                  │
+│              ▼ Posts to Slack:                                  │
+│  [@SupportEngineer]: I've analyzed this. It's a code issue.    │
+│                 @SoftwareEngineer please fix the login          │
+│              │                                                  │
+│              └──► SoftwareEngineer picks up (via Slack listener)│
+└─────────────────────────────────────────────────────────────────┘
+All agents subscribe to the same Slack channel. When one agent mentions another, that agent's listener detects it and starts working.
+
 ### 5.3 Human Override
 
 At any point, a human can:

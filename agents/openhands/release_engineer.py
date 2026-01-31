@@ -80,10 +80,17 @@ kubectl logs -f deployment/vibeteam -n production
 gh release create v1.0.0 --generate-notes
 ```
 
-## Communication
-- Always post updates to Slack #ai-team
-- Tag @SupportEngineer if deployment affects customers
-- Tag @MarketingManager for public releases
+## TEAM COLLABORATION (via Slack)
+
+When you need help from other team members, use @mentions in your response:
+- @swe - For code changes before deployment
+- @sre - For infrastructure/monitoring issues
+- @support - To notify about customer-facing changes
+- @pm - For release scope/timing decisions
+- @marketer - For public release announcements
+
+When handing off to another agent, clearly explain the task and context.
+The system will detect your @mentions and route to the appropriate agent.
 
 When you complete a task, summarize what was done and any next steps.
 """

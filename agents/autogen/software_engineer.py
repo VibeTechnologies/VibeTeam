@@ -15,6 +15,16 @@ from typing import Any
 
 from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.slack_tools import (
+    mention_agent,
+    post_slack_message,
+    read_slack_channel,
+    read_slack_thread,
+    transfer_to_pm,
+    transfer_to_release,
+    transfer_to_sre,
+    transfer_to_support,
+)
 
 # AutoGen imports - will fail gracefully if not installed
 try:
@@ -80,10 +90,18 @@ Your responsibilities:
 - Keep functions focused and small
 - Write tests for new functionality
 
-## Communication
-- Post updates to Slack #ai-team
-- Tag @ReleaseEngineer when ready for deployment
-- Tag @SupportEngineer if changes affect customer-facing features
+## TEAM COLLABORATION (via Slack)
+
+When you need help from other team members, use the transfer tools:
+- `transfer_to_release(task, context)` - For deployments when code is ready
+- `transfer_to_sre(task, context)` - For infrastructure/monitoring issues
+- `transfer_to_support(task, context)` - To notify about customer-facing changes
+- `transfer_to_pm(task, context)` - For clarification on requirements
+
+You can also use:
+- `post_slack_message(message)` - Post updates to Slack
+- `read_slack_channel()` - Read recent Slack messages
+- `mention_agent(agent_key, message)` - @mention a specific agent
 
 When you complete a task, summarize what was done, files changed, and any next steps.
 """
@@ -321,6 +339,7 @@ class AutoGenSoftwareEngineer:
             name="SoftwareEngineer",
             model_client=self.model_client,
             tools=[
+                # Core dev tools
                 execute_shell,
                 read_file,
                 write_file,
@@ -329,6 +348,16 @@ class AutoGenSoftwareEngineer:
                 git_command,
                 list_issues,
                 get_issue,
+                # Slack communication
+                post_slack_message,
+                read_slack_channel,
+                read_slack_thread,
+                mention_agent,
+                # Team handoffs
+                transfer_to_release,
+                transfer_to_sre,
+                transfer_to_support,
+                transfer_to_pm,
             ],
             system_message=SOFTWARE_ENGINEER_SYSTEM_PROMPT,
             description="Software Engineer for code implementation, bug fixes, and pull requests.",

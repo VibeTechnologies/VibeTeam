@@ -6,12 +6,14 @@ Capabilities:
 - Calendar scheduling (Google Calendar via shared tools)
 - Error tracking (Sentry via real SentryConnector)
 - LLM observability (Langfuse via shared tools)
+- Slack communication and team handoffs
 """
 
 import os
 from typing import Any
 
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
+from agents.crewai.slack_tools import get_slack_tools, get_support_transfer_tools
 from agents.sessions import get_or_create_session, get_session_store
 from agents.shared.calendar_tools import create_calendar_event, list_calendar_events
 from agents.shared.docs_tools import get_doc_content, list_docs, search_docs_sync
@@ -51,6 +53,18 @@ You have deep expertise in:
 
 You are empathetic, thorough, and solutions-oriented.
 You ensure every customer feels heard and helped.
+
+## TEAM COLLABORATION (via Slack)
+
+When you need help from other team members, use the transfer tools:
+- transfer_to_swe(task, context): For code bugs or feature requests
+- transfer_to_sre(task, context): For infrastructure/monitoring issues
+- transfer_to_pm(task, context): For product decisions or prioritization
+
+You can also use:
+- post_slack_message(message): Post updates to Slack
+- read_slack_channel(): Read recent Slack messages
+- mention_agent(agent_key, message): @mention a specific agent
 """
 
 SUPPORT_ENGINEER_GOAL = """Provide excellent customer support, manage communications,
@@ -151,9 +165,7 @@ class SentryTool(BaseTool if CREWAI_AVAILABLE else object):
     """Query Sentry for errors using real API."""
 
     name: str = "sentry"
-    description: str = (
-        "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
-    )
+    description: str = "Query Sentry for unresolved errors. Input: optional JSON with 'project', 'hours', 'limit' keys."
 
     def _run(self, query: str = "") -> str:
         """Query Sentry for unresolved issues."""
@@ -208,9 +220,7 @@ class LangfuseTool(BaseTool if CREWAI_AVAILABLE else object):
     """Query Langfuse for LLM observability data using real API."""
 
     name: str = "langfuse"
-    description: str = (
-        "Query Langfuse for LLM traces and detect anomalies. Input: optional JSON with 'action' (traces/anomalies), 'hours', 'limit' keys."
-    )
+    description: str = "Query Langfuse for LLM traces and detect anomalies. Input: optional JSON with 'action' (traces/anomalies), 'hours', 'limit' keys."
 
     def _run(self, query: str = "") -> str:
         """Query Langfuse for traces and anomalies."""
@@ -297,6 +307,7 @@ class CrewAISupportEngineer:
     def _create_tools(self) -> list:
         """Create tools for the agent."""
         return [
+            # Core support tools
             EmailSearchTool(),
             SendEmailTool(),
             CalendarTool(),
@@ -305,6 +316,9 @@ class CrewAISupportEngineer:
             DocsSearchTool(),
             DocsListTool(),
             DocsContentTool(),
+            # Slack communication and handoffs
+            *get_slack_tools(),
+            *get_support_transfer_tools(),
         ]
 
     def _create_agent(self) -> "Agent":

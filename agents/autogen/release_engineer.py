@@ -16,6 +16,17 @@ from typing import Any
 
 from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.slack_tools import (
+    mention_agent,
+    post_slack_message,
+    read_slack_channel,
+    read_slack_thread,
+    transfer_to_marketer,
+    transfer_to_pm,
+    transfer_to_sre,
+    transfer_to_support,
+    transfer_to_swe,
+)
 
 # AutoGen imports - will fail gracefully if not installed
 try:
@@ -86,10 +97,19 @@ kubectl logs -f deployment/vibeteam -n production
 gh release create v1.0.0 --generate-notes
 ```
 
-## Communication
-- Always post updates to Slack #ai-team
-- Tag @SupportEngineer if deployment affects customers
-- Tag @MarketingManager for public releases
+## TEAM COLLABORATION (via Slack)
+
+When you need help from other team members, use the transfer tools:
+- `transfer_to_swe(task, context)` - For code changes before deployment
+- `transfer_to_sre(task, context)` - For infrastructure/monitoring issues
+- `transfer_to_support(task, context)` - To notify about customer-facing changes
+- `transfer_to_pm(task, context)` - For release scope/timing decisions
+- `transfer_to_marketer(task, context)` - For public release announcements
+
+You can also use:
+- `post_slack_message(message)` - Post updates to Slack #ai-team
+- `read_slack_channel()` - Read recent Slack messages
+- `mention_agent(agent_key, message)` - @mention a specific agent
 
 When you complete a task, summarize what was done and any next steps.
 """
@@ -221,10 +241,22 @@ class AutoGenReleaseEngineer:
             name="ReleaseEngineer",
             model_client=self.model_client,
             tools=[
+                # Core release tools
                 execute_shell,
                 read_file,
                 write_file,
                 list_directory,
+                # Slack communication
+                post_slack_message,
+                read_slack_channel,
+                read_slack_thread,
+                mention_agent,
+                # Team handoffs
+                transfer_to_swe,
+                transfer_to_sre,
+                transfer_to_support,
+                transfer_to_pm,
+                transfer_to_marketer,
             ],
             system_message=RELEASE_ENGINEER_SYSTEM_PROMPT,
             description="Release Engineer for deployments, CI/CD, and infrastructure management.",

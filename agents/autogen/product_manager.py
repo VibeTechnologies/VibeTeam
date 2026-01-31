@@ -14,6 +14,17 @@ from typing import Any
 
 from agents.config import PRODUCT_MANAGER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.slack_tools import (
+    mention_agent,
+    post_slack_message,
+    read_slack_channel,
+    read_slack_thread,
+    transfer_to_marketer,
+    transfer_to_release,
+    transfer_to_sre,
+    transfer_to_support,
+    transfer_to_swe,
+)
 
 # AutoGen imports - will fail gracefully if not installed
 try:
@@ -82,6 +93,20 @@ As the supervisor agent, you can delegate to:
 ## Customer Requests Table
 Feature requests are tracked in GitHub Issue #322 (VibeTechnologies/VibeWebAgent).
 Format: | Request | Customer | Priority | Status | Assigned |
+
+## TEAM COLLABORATION (via Slack)
+
+As the supervisor agent, you can delegate work using transfer tools:
+- `transfer_to_swe(task, context)` - For implementation tasks
+- `transfer_to_release(task, context)` - For deployments and releases
+- `transfer_to_sre(task, context)` - For infrastructure issues
+- `transfer_to_support(task, context)` - For customer communication
+- `transfer_to_marketer(task, context)` - For announcements and marketing
+
+You can also use:
+- `post_slack_message(message)` - Post updates to Slack #ai-team
+- `read_slack_channel()` - Read recent Slack messages
+- `mention_agent(agent_key, message)` - @mention a specific agent
 
 When you complete a task, provide a clear summary and next steps.
 """
@@ -258,11 +283,23 @@ class AutoGenProductManager:
             name="ProductManager",
             model_client=self.model_client,
             tools=[
+                # Core PM tools
                 search_github_issues,
                 create_github_issue,
                 update_github_issue,
                 list_project_board,
                 write_document,
+                # Slack communication
+                post_slack_message,
+                read_slack_channel,
+                read_slack_thread,
+                mention_agent,
+                # Team handoffs (PM can delegate to all agents)
+                transfer_to_swe,
+                transfer_to_release,
+                transfer_to_sre,
+                transfer_to_support,
+                transfer_to_marketer,
             ],
             system_message=PRODUCT_MANAGER_SYSTEM_PROMPT,
             description="Product Manager for PRDs, user stories, backlog prioritization, and team coordination.",

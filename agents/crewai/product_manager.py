@@ -6,12 +6,14 @@ Capabilities:
 - PRD and user story creation
 - Backlog prioritization
 - Multi-agent task coordination
+- Slack communication and team handoffs
 """
 
 import os
 from typing import Any
 
 from agents.config import PRODUCT_MANAGER_CONFIG, AgentConfig
+from agents.crewai.slack_tools import get_pm_transfer_tools, get_slack_tools
 from agents.sessions import get_or_create_session, get_session_store
 
 try:
@@ -44,6 +46,20 @@ You have deep expertise in:
 
 You make data-driven decisions and prioritize using RICE scoring.
 You communicate clearly and ensure all stakeholders are aligned.
+
+## TEAM COLLABORATION (via Slack)
+
+As the supervisor agent, you can delegate work using transfer tools:
+- transfer_to_swe(task, context): For implementation tasks
+- transfer_to_release(task, context): For deployments and releases
+- transfer_to_sre(task, context): For infrastructure issues
+- transfer_to_support(task, context): For customer communication
+- transfer_to_marketer(task, context): For announcements and marketing
+
+You can also use:
+- post_slack_message(message): Post updates to Slack
+- read_slack_channel(): Read recent Slack messages
+- mention_agent(agent_key, message): @mention a specific agent
 """
 
 PRODUCT_MANAGER_GOAL = """Define product requirements, prioritize features,
@@ -87,9 +103,7 @@ class CreateGitHubIssueTool(BaseTool if CREWAI_AVAILABLE else object):
     """Create a GitHub issue."""
 
     name: str = "create_github_issue"
-    description: str = (
-        "Create a GitHub issue. Input: JSON with 'title', 'body', optional 'labels' and 'repo' keys."
-    )
+    description: str = "Create a GitHub issue. Input: JSON with 'title', 'body', optional 'labels' and 'repo' keys."
 
     def _run(self, input_data: str) -> str:
         """Create issue."""
@@ -253,12 +267,16 @@ class CrewAIProductManager:
     def _create_tools(self) -> list:
         """Create tools for the agent."""
         return [
+            # Core PM tools
             SearchGitHubIssuesTool(),
             CreateGitHubIssueTool(),
             UpdateGitHubIssueTool(),
             ListProjectBoardTool(),
             WriteDocumentTool(),
             ReadFileTool(),
+            # Slack communication and handoffs
+            *get_slack_tools(),
+            *get_pm_transfer_tools(),
         ]
 
     def _create_agent(self) -> "Agent":

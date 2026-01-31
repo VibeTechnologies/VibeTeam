@@ -6,6 +6,7 @@ Capabilities:
 - File operations (read, write, edit)
 - Git operations (branch, commit, merge)
 - Directory listing
+- Slack communication and team handoffs
 """
 
 import os
@@ -14,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
+from agents.crewai.slack_tools import get_slack_tools, get_swe_transfer_tools
 from agents.sessions import get_or_create_session, get_session_store
 
 try:
@@ -123,6 +125,19 @@ For directory listing: Use `list_directory` tool.
 For git commands: Use `git` tool.
 
 DO NOT guess or fabricate issue numbers, titles, or URLs. Always call the appropriate tool first.
+
+## TEAM COLLABORATION (via Slack)
+
+When you need help from other team members, use the transfer tools:
+- transfer_to_release(task, context): For deployments when code is ready
+- transfer_to_sre(task, context): For infrastructure/monitoring issues
+- transfer_to_support(task, context): To notify about customer-facing changes
+- transfer_to_pm(task, context): For clarification on requirements
+
+You can also use:
+- post_slack_message(message): Post updates to Slack
+- read_slack_channel(): Read recent Slack messages
+- mention_agent(agent_key, message): @mention a specific agent
 """
 
 SOFTWARE_ENGINEER_GOAL = """Implement features, fix bugs, write tests, and create
@@ -361,6 +376,7 @@ class CrewAISoftwareEngineer:
     def _create_tools(self) -> list:
         """Create tools for the agent."""
         return [
+            # Core dev tools
             ShellTool(),
             FileReadTool(),
             FileWriteTool(),
@@ -369,6 +385,9 @@ class CrewAISoftwareEngineer:
             GitTool(),
             ListIssuesTool(),
             GetIssueTool(),
+            # Slack communication and handoffs
+            *get_slack_tools(),
+            *get_swe_transfer_tools(),
         ]
 
     def _create_agent(self) -> "Agent":

@@ -77,14 +77,25 @@ Your responsibilities:
 - Always verify customer context before responding
 
 ## Error Monitoring
-- Critical errors: Escalate immediately to @ReleaseEngineer
+- Critical errors: Escalate immediately to ReleaseEngineer
 - High-frequency errors: Create GitHub issue
 - Performance issues: Log for weekly review
 
-## Communication
-- Post daily summaries to Slack #ai-team
-- Escalate customer-facing issues to @MarketingManager
-- Coordinate deployments with @ReleaseEngineer
+## TEAM COLLABORATION (via Slack)
+
+When you encounter issues outside your expertise, use the transfer tools to hand off tasks:
+- `transfer_to_swe(task, context)` - For bugs that need code fixes
+- `transfer_to_sre(task, context)` - For infrastructure/monitoring issues
+- `transfer_to_release(task, context)` - For deployment issues
+- `transfer_to_pm(task, context)` - For feature prioritization
+- `transfer_to_marketer(task, context)` - For customer communication
+
+You can also use:
+- `post_slack_message(message)` - Post updates to Slack
+- `read_slack_channel()` - Read recent Slack messages
+- `mention_agent(agent_key, message)` - @mention a specific agent
+
+These tools post messages to Slack so other agents (and humans) can see the handoffs.
 
 When you complete a task, summarize actions taken and any follow-ups needed.
 """
@@ -106,6 +117,17 @@ from agents.shared.gmail_tools import (
 )
 from agents.shared.langfuse_tools import (
     get_langfuse_traces,
+)
+from agents.shared.slack_tools import (
+    mention_agent,
+    post_slack_message,
+    read_slack_channel,
+    read_slack_thread,
+    transfer_to_marketer,
+    transfer_to_pm,
+    transfer_to_release,
+    transfer_to_sre,
+    transfer_to_swe,
 )
 
 
@@ -224,6 +246,7 @@ class AutoGenSupportEngineer:
             name="SupportEngineer",
             model_client=self.model_client,
             tools=[
+                # Core support tools
                 list_emails,
                 send_email,
                 list_calendar_events,
@@ -234,6 +257,17 @@ class AutoGenSupportEngineer:
                 search_docs,
                 list_docs,
                 get_doc_content,
+                # Slack communication tools
+                post_slack_message,
+                read_slack_channel,
+                read_slack_thread,
+                mention_agent,
+                # Team handoff tools
+                transfer_to_swe,
+                transfer_to_sre,
+                transfer_to_release,
+                transfer_to_pm,
+                transfer_to_marketer,
             ],
             system_message=SUPPORT_ENGINEER_SYSTEM_PROMPT,
             description="Support Engineer for customer support, email, calendar, and monitoring.",

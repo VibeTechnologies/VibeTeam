@@ -43,6 +43,10 @@ load_dotenv()
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Script paths
+SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+RUN_SLACK_AGENT_SCRIPT = SCRIPT_DIR / "run_slack_framework_agent.py"
+
 
 # ==============================================================================
 # Configuration
@@ -946,6 +950,334 @@ def list_scenarios() -> None:
     print("  python scripts/benchmark_handoffs.py --scenario support-to-swe")
     print("  python scripts/benchmark_handoffs.py --all")
     print("  python scripts/benchmark_handoffs.py --frameworks autogen crewai")
+    print("  python scripts/benchmark_handoffs.py --e2e --scenario support-to-swe")
+
+
+# ==============================================================================
+# E2E Slack Testing
+# ==============================================================================
+
+
+# Map role names to agent short names for the Slack runner
+ROLE_TO_AGENT_KEY = {
+    "support_engineer": "support",
+    "software_engineer": "swe",
+    "release_engineer": "release",
+    "product_manager": "pm",
+    "site_reliability_engineer": "sre",
+    "marketing_manager": "marketer",
+}
+
+# Map expected targets to agent keys
+TARGET_TO_AGENT_KEY = {
+    "swe": "swe",
+    "sre": "sre",
+    "release": "release",
+    "support": "support",
+    "pm": "pm",
+    "marketer": "marketer",
+}
+
+
+class E2EHandoffTester:
+    """
+    End-to-end handoff testing via real Slack.
+
+    Starts agent processes, posts test message to Slack, and verifies
+    that the correct handoff chain occurs.
+    """
+
+    def __init__(
+        self,
+        framework: str,
+        channel: str | None = None,
+        poll_interval: int = 3,
+        timeout: float = 180.0,
+    ):
+        self.framework = framework
+        self.channel = channel or os.getenv("SLACK_CHANNEL", "#ai-team-test")
+        self.poll_interval = poll_interval
+        self.timeout = timeout
+        self.processes: list[subprocess.Popen] = []
+        self.connector = None
+
+    def setup(self):
+        """Set up Slack connector."""
+        from vibeteam.connectors.slack import SlackConnector
+
+        self.connector = SlackConnector()
+        print(f"[E2E] Slack connected, channel: {self.channel}")
+
+    def start_agent(self, agent_key: str) -> subprocess.Popen:
+        """Start an agent as a Slack listener subprocess."""
+        cmd = [
+            sys.executable,
+            str(RUN_SLACK_AGENT_SCRIPT),
+            "--framework",
+            self.framework,
+            "--agent",
+            agent_key,
+            "--channel",
+            self.channel,
+            "--poll-interval",
+            str(self.poll_interval),
+        ]
+        print(f"[E2E] Starting {self.framework}/{agent_key}: {' '.join(cmd)}")
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        self.processes.append(process)
+        return process
+
+    def stop_all_agents(self):
+        """Stop all running agent processes."""
+        print(f"[E2E] Stopping {len(self.processes)} agent processes...")
+        for proc in self.processes:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            except Exception as e:
+                print(f"[E2E] Error stopping process: {e}")
+        self.processes = []
+
+    def post_test_message(self, agent_key: str, task: str) -> str:
+        """Post a test message to Slack mentioning the agent. Returns thread_ts."""
+        if self.connector is None:
+            raise RuntimeError("Slack connector not initialized. Call setup() first.")
+        message = f"@{agent_key} {task}"
+        result = self.connector.post_message(
+            channel=self.channel,
+            text=message,
+        )
+        ts = result.ts  # SlackMessage.ts attribute
+        print(f"[E2E] Posted test message (ts={ts}): {message[:100]}...")
+        return ts
+
+    def get_thread_messages(self, thread_ts: str) -> list[dict[str, Any]]:
+        """Get all messages in a thread."""
+        if self.connector is None:
+            raise RuntimeError("Slack connector not initialized. Call setup() first.")
+        messages = self.connector.get_thread_replies(
+            channel=self.channel,
+            thread_ts=thread_ts,
+        )
+        return [{"text": m.text, "user": m.user, "ts": m.ts, "is_bot": m.is_bot} for m in messages]
+
+    def wait_for_handoff(
+        self,
+        thread_ts: str,
+        expected_target: str,
+        max_wait: float,
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        """
+        Wait for a handoff to occur in the thread.
+
+        Returns (success, messages) where success is True if the expected
+        target was @mentioned in the thread.
+        """
+        start_time = time.perf_counter()
+        last_message_count = 0
+
+        while (time.perf_counter() - start_time) < max_wait:
+            messages = self.get_thread_messages(thread_ts)
+
+            if len(messages) > last_message_count:
+                last_message_count = len(messages)
+                print(f"[E2E] Thread has {len(messages)} messages")
+
+                # Check if expected target was mentioned
+                for msg in messages:
+                    text = msg.get("text", "").lower()
+                    # Check for @mention of target
+                    if f"@{expected_target}" in text:
+                        print(f"[E2E] Found handoff to @{expected_target}!")
+                        return True, messages
+
+                    # Also check for transfer_to pattern in response
+                    if f"transfer_to_{expected_target}" in text:
+                        print(f"[E2E] Found transfer_to_{expected_target} in response")
+                        return True, messages
+
+            time.sleep(self.poll_interval)
+
+        print(f"[E2E] Timeout waiting for handoff to {expected_target}")
+        return False, self.get_thread_messages(thread_ts)
+
+    async def run_scenario(
+        self,
+        scenario_id: str,
+        scenario: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run an E2E test for a handoff scenario."""
+        source_role: str = scenario["source_role"]
+        expected_target: str = scenario["expected_target"]
+        task: str = scenario["task"]
+
+        # Get agent keys with explicit type handling
+        source_agent_key: str = ROLE_TO_AGENT_KEY.get(source_role) or source_role
+        target_agent_key: str = TARGET_TO_AGENT_KEY.get(expected_target) or expected_target
+
+        print_header(f"E2E TEST: {scenario['name']}")
+        print(f"Framework: {self.framework}")
+        print(f"Source: {source_agent_key} -> Expected Target: {target_agent_key}")
+        print(f"Channel: {self.channel}")
+
+        start_time = time.perf_counter()
+
+        try:
+            # Start both source and target agents
+            print("\n>>> Starting agents...")
+            self.start_agent(source_agent_key)
+            if source_agent_key != target_agent_key:
+                self.start_agent(target_agent_key)
+
+            # Give agents time to initialize
+            await asyncio.sleep(3)
+
+            # Post test message
+            print("\n>>> Posting test message...")
+            thread_ts = self.post_test_message(source_agent_key, task)
+
+            # Wait for handoff
+            print("\n>>> Waiting for handoff...")
+            success, messages = self.wait_for_handoff(
+                thread_ts=thread_ts,
+                expected_target=target_agent_key,
+                max_wait=self.timeout,
+            )
+
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+
+            # Analyze messages for handoff detection
+            handoff_detected = False
+            handoff_context = None
+            for msg in messages:
+                text = msg.get("text", "")
+                if msg.get("is_bot"):  # Bot message
+                    used_transfer, target, context = detect_handoff(text)
+                    if used_transfer and target == expected_target:
+                        handoff_detected = True
+                        handoff_context = context
+                        break
+
+            result = {
+                "scenario": scenario_id,
+                "framework": self.framework,
+                "success": success,
+                "handoff_detected": handoff_detected,
+                "expected_target": expected_target,
+                "latency_ms": latency_ms,
+                "message_count": len(messages),
+                "thread_ts": thread_ts,
+                "channel": self.channel,
+                "handoff_context": handoff_context,
+                "messages": [
+                    {"text": m.get("text", "")[:500], "bot": bool(m.get("is_bot"))}
+                    for m in messages
+                ],
+            }
+
+            # Print result
+            status = "PASS" if success else "FAIL"
+            print(f"\n{'=' * 60}")
+            print(f"RESULT: [{status}]")
+            print(f"Handoff detected: {handoff_detected}")
+            print(f"Latency: {latency_ms}ms")
+            print(f"Messages in thread: {len(messages)}")
+            print(f"{'=' * 60}")
+
+            return result
+
+        finally:
+            # Cleanup
+            self.stop_all_agents()
+
+
+async def run_e2e_scenario(
+    scenario_id: str,
+    framework: str,
+    channel: str | None = None,
+    timeout: float = 180.0,
+    output_json: bool = False,
+) -> dict[str, Any]:
+    """Run an E2E handoff test for a scenario."""
+    scenario = HANDOFF_SCENARIOS[scenario_id]
+
+    tester = E2EHandoffTester(
+        framework=framework,
+        channel=channel,
+        timeout=timeout,
+    )
+    tester.setup()
+
+    result = await tester.run_scenario(scenario_id, scenario)
+
+    if output_json:
+        print(json.dumps(result, indent=2))
+
+    return result
+
+
+async def run_all_e2e_scenarios(
+    framework: str,
+    channel: str | None = None,
+    timeout: float = 180.0,
+    output_json: bool = False,
+) -> dict[str, Any]:
+    """Run E2E tests for all handoff scenarios."""
+    results = {}
+    summary = {"passed": 0, "failed": 0}
+
+    for scenario_id in HANDOFF_SCENARIOS:
+        print(f"\n{'#' * 70}")
+        print(f"# SCENARIO: {scenario_id}")
+        print(f"{'#' * 70}")
+
+        result = await run_e2e_scenario(
+            scenario_id=scenario_id,
+            framework=framework,
+            channel=channel,
+            timeout=timeout,
+            output_json=False,
+        )
+        results[scenario_id] = result
+
+        if result["success"]:
+            summary["passed"] += 1
+        else:
+            summary["failed"] += 1
+
+        # Brief pause between scenarios
+        await asyncio.sleep(5)
+
+    # Print summary
+    print_header("E2E TEST SUMMARY")
+    print(f"Framework: {framework}")
+    print(f"Passed: {summary['passed']}/{len(HANDOFF_SCENARIOS)}")
+    print(f"Failed: {summary['failed']}/{len(HANDOFF_SCENARIOS)}")
+    print()
+
+    for scenario_id, result in results.items():
+        status = "PASS" if result["success"] else "FAIL"
+        print(f"  [{status}] {scenario_id}: {result['latency_ms']}ms")
+
+    output = {
+        "framework": framework,
+        "scenarios": results,
+        "summary": summary,
+    }
+
+    if output_json:
+        print(json.dumps(output, indent=2))
+
+    return output
 
 
 # ==============================================================================
@@ -959,19 +1291,30 @@ async def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Unit testing (simulated handoffs)
   python scripts/benchmark_handoffs.py --list
   python scripts/benchmark_handoffs.py --scenario support-to-swe
   python scripts/benchmark_handoffs.py --all
   python scripts/benchmark_handoffs.py --frameworks autogen crewai --timeout 120
+
+  # E2E testing (real Slack)
+  python scripts/benchmark_handoffs.py --e2e --scenario support-to-swe --framework autogen
+  python scripts/benchmark_handoffs.py --e2e --all --framework autogen --channel "#ai-team-test"
         """,
     )
     parser.add_argument("--list", action="store_true", help="List available scenarios")
     parser.add_argument("--scenario", type=str, choices=list(HANDOFF_SCENARIOS.keys()))
     parser.add_argument("--all", action="store_true", help="Run all scenarios")
     parser.add_argument("--frameworks", nargs="+", default=FRAMEWORKS, choices=FRAMEWORKS)
+    parser.add_argument(
+        "--framework", type=str, choices=FRAMEWORKS, help="Single framework for E2E tests"
+    )
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--no-report", action="store_true", help="Skip markdown report")
+    # E2E testing options
+    parser.add_argument("--e2e", action="store_true", help="Run E2E tests via real Slack")
+    parser.add_argument("--channel", type=str, default=None, help="Slack channel for E2E tests")
 
     args = parser.parse_args()
 
@@ -979,6 +1322,32 @@ Examples:
         list_scenarios()
         return
 
+    # E2E testing mode
+    if args.e2e:
+        framework = args.framework or args.frameworks[0]
+        if args.all:
+            await run_all_e2e_scenarios(
+                framework=framework,
+                channel=args.channel,
+                timeout=args.timeout,
+                output_json=args.json,
+            )
+            return
+        elif args.scenario:
+            await run_e2e_scenario(
+                scenario_id=args.scenario,
+                framework=framework,
+                channel=args.channel,
+                timeout=args.timeout,
+                output_json=args.json,
+            )
+            return
+        else:
+            print("E2E mode requires --scenario or --all")
+            parser.print_help()
+            return
+
+    # Standard (simulated) testing mode
     if args.all:
         await run_all_scenarios(args.frameworks, args.timeout, args.json, not args.no_report)
         return
