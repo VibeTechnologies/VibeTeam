@@ -204,13 +204,119 @@ class SubscriptionDB:
             return count
 
 
+class InMemorySubscriptionDB:
+    """
+    In-memory implementation of SubscriptionDB.
+
+    Used when DATABASE_URL is not set or for testing.
+    Thread subscriptions are stored in memory and lost on restart.
+    """
+
+    def __init__(self):
+        # Key: (source, thread_id) -> list of ThreadSubscription
+        self._subscriptions: dict[tuple[str, str], list[ThreadSubscription]] = {}
+        logger.info("Using in-memory subscription database (subscriptions will not persist)")
+
+    async def subscribe(
+        self,
+        source: MessageSource,
+        thread_id: str,
+        agent_role: AgentRole,
+        session_id: str,
+    ) -> ThreadSubscription:
+        """Subscribe an agent to a thread."""
+        key = (source, thread_id)
+        now = datetime.now(timezone.utc)
+
+        if key not in self._subscriptions:
+            self._subscriptions[key] = []
+
+        # Check for existing subscription
+        for sub in self._subscriptions[key]:
+            if sub.agent_role == agent_role:
+                # Update existing
+                sub.session_id = session_id
+                return sub
+
+        # Create new subscription
+        sub = ThreadSubscription(
+            source=source,
+            thread_id=thread_id,
+            agent_role=agent_role,
+            session_id=session_id,
+            subscribed_at=now,
+        )
+        self._subscriptions[key].append(sub)
+        return sub
+
+    async def get_subscribed_agents(
+        self,
+        source: MessageSource,
+        thread_id: str,
+    ) -> list[ThreadSubscription]:
+        """Get all agents subscribed to a thread."""
+        key = (source, thread_id)
+        return self._subscriptions.get(key, [])
+
+    async def unsubscribe(
+        self,
+        source: MessageSource,
+        thread_id: str,
+        agent_role: AgentRole,
+    ) -> bool:
+        """Unsubscribe an agent from a thread."""
+        key = (source, thread_id)
+        if key not in self._subscriptions:
+            return False
+
+        original_len = len(self._subscriptions[key])
+        self._subscriptions[key] = [
+            s for s in self._subscriptions[key] if s.agent_role != agent_role
+        ]
+        return len(self._subscriptions[key]) < original_len
+
+    async def cleanup_expired(self, days: int = 7) -> int:
+        """Remove subscriptions older than the specified days."""
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        count = 0
+
+        for key in list(self._subscriptions.keys()):
+            original_len = len(self._subscriptions[key])
+            self._subscriptions[key] = [
+                s for s in self._subscriptions[key]
+                if s.subscribed_at and s.subscribed_at >= cutoff
+            ]
+            count += original_len - len(self._subscriptions[key])
+
+            if not self._subscriptions[key]:
+                del self._subscriptions[key]
+
+        logger.info(f"Cleaned up {count} expired subscriptions")
+        return count
+
+
 # Singleton instance
-_db: SubscriptionDB | None = None
+_db: SubscriptionDB | InMemorySubscriptionDB | None = None
 
 
-def get_subscription_db() -> SubscriptionDB:
-    """Get the singleton subscription database instance."""
+def get_subscription_db() -> SubscriptionDB | InMemorySubscriptionDB:
+    """
+    Get the singleton subscription database instance.
+
+    Uses PostgreSQL if DATABASE_URL is set, otherwise uses in-memory storage.
+    """
+    import os
+
     global _db
     if _db is None:
-        _db = SubscriptionDB()
+        if os.environ.get("DATABASE_URL"):
+            _db = SubscriptionDB()
+        else:
+            _db = InMemorySubscriptionDB()
     return _db
+
+
+def reset_subscription_db() -> None:
+    """Reset the singleton for testing."""
+    global _db
+    _db = None
