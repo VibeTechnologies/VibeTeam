@@ -401,7 +401,7 @@ Respond with JSON:
                 model=self.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
-                max_tokens=200,
+                max_completion_tokens=200,
             )
 
             # Parse response

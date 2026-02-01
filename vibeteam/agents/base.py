@@ -175,8 +175,13 @@ actionable outputs.{tool_descriptions}"""
             "model": self.model,
             "messages": messages,
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
         }
+
+        # Use max_completion_tokens for GPT-5+ models, max_tokens for older models
+        if "gpt-5" in self.model:
+            kwargs["max_completion_tokens"] = self.max_tokens
+        else:
+            kwargs["max_tokens"] = self.max_tokens
 
         # Add Azure-specific configuration
         if self.model.startswith("azure/"):
