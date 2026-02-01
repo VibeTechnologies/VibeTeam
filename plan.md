@@ -272,3 +272,26 @@ AZURE_API_KEY=
 AZURE_API_BASE=
 AZURE_API_VERSION=
 ```
+
+## Phase 6: Production Deployment & Validation (IN PROGRESS)
+
+### Final Goal
+**Run the Slack bot and demonstrate real agent-to-agent handoff in a Slack thread.**
+
+Test scenario:
+1. User reports via Gmail: "The Vibe GenAI Gateway isn't working"
+2. SupportEngineer receives the complaint, checks user subscription status
+3. SupportEngineer delegates to @ReleaseEngineer in the Slack thread
+4. ReleaseEngineer picks up and investigates the gateway issue
+5. Both agents communicate in the same Slack thread - visible to humans
+
+**Success criteria**: See the @ReleaseEngineer handoff message in Slack thread.
+
+### Remaining Tasks
+
+- [ ] Create database migration for `thread_subscriptions` table
+- [ ] Create `vibeteam/tools/send_message.py` for agents to post to Slack/Discord
+- [ ] Restore `agents/benchmark.py` module for e2e evaluation
+- [ ] Run Slack bot with real credentials
+- [ ] Execute test scenario: Gmail complaint → Support → Release handoff
+- [ ] Verify handoff appears in Slack thread
