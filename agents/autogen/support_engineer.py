@@ -16,6 +16,7 @@ from typing import Any
 
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.handoff import HANDOFF_PROMPT
 
 # AutoGen imports - will fail gracefully if not installed
 try:
@@ -42,28 +43,41 @@ AZURE_MODEL_INFO = {
 }
 
 
-SUPPORT_ENGINEER_SYSTEM_PROMPT = """You are Grace, the Support Engineer for VibeTeam.
+SUPPORT_ENGINEER_SYSTEM_PROMPT = f"""You are Grace, the Support Engineer for VibeTeam.
 
-## CRITICAL: Tool Usage Requirements
-You MUST use the provided tools to complete tasks. Do NOT respond without first calling the appropriate tools to gather real data.
+## CRITICAL: How to Respond
 
-Available tools:
-- `get_sentry_issues(project, hours, limit)` - Get Sentry issues. Use this for error monitoring tasks.
-- `get_langfuse_traces(hours, limit, name)` - Get Langfuse traces for LLM observability.
-- `list_emails(max_results, query)` - List emails from Gmail.
-- `send_email(to, subject, body)` - Send an email.
-- `list_calendar_events(max_results)` - List calendar events.
-- `create_calendar_event(summary, start_time, end_time, attendees)` - Create calendar event.
-- `search_docs(query)` - Search product documentation.
-- `create_support_ticket(customer_email, subject, description, priority)` - Create support ticket.
+You MUST use `send_message()` to post your response to Slack. Never just return text.
+Your message will be automatically prefixed with [SupportEngineer:session_id].
+
+Example:
+```
+send_message("I checked Sentry and found 3 errors. /ReleaseEngineer please investigate.")
+```
+
+## Available Tools
+
+- `send_message(message)` - Post your response to Slack (REQUIRED for all responses)
+- `get_sentry_issues(project, hours, limit)` - Get Sentry issues for error monitoring
+- `get_langfuse_traces(hours, limit, name)` - Get Langfuse traces for LLM observability
+- `list_emails(max_results, query)` - List emails from Gmail
+- `send_email(to, subject, body)` - Send an email
+- `list_calendar_events(max_results)` - List calendar events
+- `create_calendar_event(summary, start_time, end_time, attendees)` - Create calendar event
+- `search_docs(query)` - Search product documentation
+- `create_support_ticket(customer_email, subject, description, priority)` - Create support ticket
+- `read_slack_channel()` - Read recent Slack messages
+
+## Tool Usage Requirements
 
 IMPORTANT:
-- For Sentry/error tasks: ALWAYS call `get_sentry_issues` first to get real data.
-- For LLM monitoring: ALWAYS call `get_langfuse_traces` to get real traces.
-- NEVER generate fake data or respond from memory - use tools to get real information.
-- If a task mentions "errors", "issues", "traces", or "monitoring", you MUST use tools.
+- For Sentry/error tasks: ALWAYS call `get_sentry_issues` first to get real data
+- For LLM monitoring: ALWAYS call `get_langfuse_traces` to get real traces
+- NEVER generate fake data or respond from memory - use tools to get real information
+- After gathering data, use `send_message()` to post your findings
 
-Your responsibilities:
+## Your Responsibilities
+
 1. **Customer Support**: Handle customer inquiries and support tickets
 2. **Email Management**: Read and respond to support emails
 3. **Calendar Management**: Schedule meetings and manage team calendar
@@ -77,26 +91,11 @@ Your responsibilities:
 - Always verify customer context before responding
 
 ## Error Monitoring
-- Critical errors: Escalate immediately to ReleaseEngineer
+- Critical errors: Escalate immediately to /ReleaseEngineer
 - High-frequency errors: Create GitHub issue
 - Performance issues: Log for weekly review
 
-## TEAM COLLABORATION
-
-When you complete a task or need help from another team member, @mention them in your response:
-- @SoftwareEngineer - for bugs that need code fixes
-- @SiteReliabilityEngineer - for infrastructure/monitoring issues
-- @ReleaseEngineer - for deployment issues
-- @ProductManager - for feature prioritization
-- @Marketer - for customer communication
-
-Example: "Customer reported a critical bug affecting checkout. I've documented the issue. @SoftwareEngineer please investigate urgently."
-
-You can also use Slack tools:
-- `post_slack_message(message)` - Post updates to Slack
-- `read_slack_channel()` - Read recent Slack messages
-
-When you complete a task, summarize actions taken and any follow-ups needed.
+{HANDOFF_PROMPT}
 """
 
 
@@ -118,9 +117,9 @@ from agents.shared.langfuse_tools import (
     get_langfuse_traces,
 )
 from agents.shared.slack_tools import (
-    post_slack_message,
     read_slack_channel,
     read_slack_thread,
+    send_message,
 )
 
 
@@ -250,8 +249,8 @@ class AutoGenSupportEngineer:
                 search_docs,
                 list_docs,
                 get_doc_content,
-                # Slack communication tools
-                post_slack_message,
+                # Slack communication tools (send_message is PRIMARY for responses)
+                send_message,
                 read_slack_channel,
                 read_slack_thread,
             ],
@@ -295,12 +294,34 @@ class AutoGenSupportEngineer:
         result: TaskResult = await self.agent.run(task=task)
 
         # Extract response from result
+        # Priority: 1) send_message tool call content, 2) non-empty TextMessage
         response = ""
         if result.messages:
+            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
+            import json
+
+            # First, look for send_message tool calls - this is the actual response
             for msg in reversed(result.messages):
-                if hasattr(msg, "content") and msg.content:
-                    response = str(msg.content)
-                    break
+                if isinstance(msg, ToolCallRequestEvent) and msg.source == "SupportEngineer":
+                    for call in msg.content:
+                        if hasattr(call, "name") and call.name == "send_message":
+                            try:
+                                args = json.loads(call.arguments)
+                                if args.get("message"):
+                                    response = args["message"]
+                                    break
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
+                    if response:
+                        break
+
+            # Fallback: get the last non-empty TextMessage from the assistant
+            if not response:
+                for msg in reversed(result.messages):
+                    if isinstance(msg, TextMessage) and msg.source == "SupportEngineer":
+                        if msg.content and str(msg.content).strip():
+                            response = str(msg.content)
+                            break
 
         # Update session
         session.add_message("user", task)

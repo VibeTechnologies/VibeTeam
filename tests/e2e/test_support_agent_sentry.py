@@ -1,62 +1,81 @@
 """
-E2E Integration Test: SupportAgent Sentry Weekly Summary via REST API.
+E2E Integration Test: SupportAgent Sentry Weekly Summary.
 
-This test calls the VibeTeam Gateway REST API to invoke SupportAgent implementations
-across all three frameworks (AutoGen, CrewAI, OpenHands) and asks each to provide
-a summary of Sentry issues for this week.
+This test invokes SupportAgent implementations across all three frameworks
+(AutoGen, CrewAI, OpenHands) and asks each to provide a summary of Sentry issues.
 
-Uses LLM-as-judge (Azure GPT-5) for objective evaluation of response quality.
+Uses:
+- RealAgentRunner fixtures from conftest.py for agent execution
+- DeepEval G-Eval metrics for structured evaluation with per-agent thresholds
 
 Requirements:
-    - kubectl access to vibeteam namespace
-    - Services running: vibeteam-gateway, autogen-svc, crewai-svc, openhands-svc
-    - Azure OpenAI credentials configured in cluster
-    - Sentry auth token configured in cluster
+    - Agent services accessible (K8s or local)
+    - Azure OpenAI credentials configured
+    - Sentry auth token configured (for real Sentry access)
 
 Run with:
     pytest tests/e2e/test_support_agent_sentry.py -v -s
-
-Run specific framework:
-    pytest tests/e2e/test_support_agent_sentry.py -v -s -k "autogen"
-    pytest tests/e2e/test_support_agent_sentry.py -v -s -k "crewai"
     pytest tests/e2e/test_support_agent_sentry.py -v -s -k "openhands"
-
-Run all frameworks comparison:
-    pytest tests/e2e/test_support_agent_sentry.py -v -s -k "compare_all"
+    pytest tests/e2e/test_support_agent_sentry.py -v -s -k "DeepEval"
 """
 
-import asyncio
-import subprocess
-import sys
-import time
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from __future__ import annotations
 
-import httpx
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 import pytest
 
 # Add project root to path for import
 _project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_project_root))
 
-# Skip this test module until benchmark module is restored
-pytest.skip(
-    "agents.benchmark module not yet migrated to new architecture",
-    allow_module_level=True,
-)
+# Import DeepEval if available
+DEEPEVAL_AVAILABLE = False
+LLMTestCase = None
 
-# This import would fail without the skip above
-# from agents.benchmark import ComparativeEvaluator  # noqa: E402
-ComparativeEvaluator = None  # Stub for type hints
+try:
+    from deepeval import assert_test
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+
+    DEEPEVAL_AVAILABLE = True
+except ImportError:
+    pass
+
+# Import conftest helpers
+try:
+    from conftest import (
+        AGENT_THRESHOLDS,
+        AzureOpenAIModel,
+        create_professionalism_metric,
+        create_task_completion_metric,
+        create_tool_usage_metric,
+    )
+except ImportError:
+    try:
+        from tests.e2e.conftest import (
+            AGENT_THRESHOLDS,
+            AzureOpenAIModel,
+            create_professionalism_metric,
+            create_task_completion_metric,
+            create_tool_usage_metric,
+        )
+    except ImportError:
+        AGENT_THRESHOLDS = {}
+        AzureOpenAIModel = None
+        create_professionalism_metric = None
+        create_task_completion_metric = None
+        create_tool_usage_metric = None
+
+if TYPE_CHECKING:
+    from conftest import RealAgentRunner
+
 
 # ==============================================================================
 # Configuration
 # ==============================================================================
 
-GATEWAY_PORT = 19080  # Local port for kubectl port-forward
-GATEWAY_SERVICE = "vibeteam-gateway"
-NAMESPACE = "vibeteam"
 REQUEST_TIMEOUT = 180.0  # 3 minutes for LLM responses
 
 # The task to send to each SupportAgent
@@ -72,122 +91,20 @@ Include:
 Format the response as a clear, actionable report.
 """
 
-
-# ==============================================================================
-# Data Classes
-# ==============================================================================
-
-
-@dataclass
-class FrameworkResult:
-    """Result from a framework test."""
-
-    framework: str
-    success: bool
-    response: str
-    latency_ms: float
-    session_id: str
-    error: str | None = None
-
-    def __str__(self) -> str:
-        status = "PASS" if self.success else "FAIL"
-        return f"[{status}] {self.framework}: {self.latency_ms:.0f}ms"
-
-
 # ==============================================================================
 # Fixtures
 # ==============================================================================
 
 
-@pytest.fixture(scope="module")
-def gateway_port_forward():
-    """
-    Start kubectl port-forward for the gateway service.
-
-    Yields the local URL for the gateway.
-    """
-    proc = subprocess.Popen(
-        [
-            "kubectl",
-            "port-forward",
-            f"svc/{GATEWAY_SERVICE}",
-            f"{GATEWAY_PORT}:8080",
-            "-n",
-            NAMESPACE,
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    # Wait for port-forward to establish
-    time.sleep(3)
-
-    # Verify the port-forward is working
-    try:
-        response = httpx.get(
-            f"http://localhost:{GATEWAY_PORT}/health",
-            timeout=10.0,
-        )
-        if response.status_code != 200:
-            proc.terminate()
-            pytest.skip(f"Gateway health check failed: {response.status_code}")
-    except Exception as e:
-        proc.terminate()
-        pytest.skip(f"Cannot connect to gateway: {e}")
-
-    yield f"http://localhost:{GATEWAY_PORT}"
-
-    # Cleanup
-    proc.terminate()
-    proc.wait(timeout=5)
-
-
 @pytest.fixture
-def http_client():
-    """Provide an HTTP client with appropriate timeout."""
-    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-        yield client
+def sentry_task() -> str:
+    """Return the Sentry weekly summary task."""
+    return SENTRY_WEEKLY_SUMMARY_TASK
 
 
 # ==============================================================================
 # Helper Functions
 # ==============================================================================
-
-
-def call_gateway_run(
-    client: httpx.Client,
-    gateway_url: str,
-    task: str,
-    framework: str,
-    role: str = "support_engineer",
-    context_type: str = "sentry",
-) -> dict[str, Any]:
-    """
-    Call the gateway /api/run endpoint.
-
-    Args:
-        client: HTTP client
-        gateway_url: Base URL of the gateway
-        task: Task description
-        framework: Agent framework (autogen, crewai, openhands)
-        role: Agent role
-        context_type: Context type for session tracking
-
-    Returns:
-        Response dict from the gateway
-    """
-    response = client.post(
-        f"{gateway_url}/api/run",
-        json={
-            "task": task,
-            "framework": framework,
-            "role": role,
-            "context_type": context_type,
-            "context_id": f"e2e-sentry-{framework}",
-        },
-    )
-    response.raise_for_status()
-    return response.json()
 
 
 def validate_sentry_summary(response: str) -> tuple[bool, list[str]]:
@@ -256,390 +173,235 @@ def validate_sentry_summary(response: str) -> tuple[bool, list[str]]:
 
 
 # ==============================================================================
-# Tests - Individual Frameworks
+# NOTE: Legacy test classes (TestSupportAgentSentryOpenHands, TestSupportAgentSentryAutoGen,
+# TestSupportAgentSentryCrewAI, TestSupportAgentSentryComparison) have been removed.
+# They used the deprecated GPT52Evaluator. Use DeepEval test classes below instead.
 # ==============================================================================
 
 
-class TestSupportAgentSentryAutoGen:
-    """Test AutoGen SupportAgent Sentry summary via REST API."""
-
-    @pytest.mark.xfail(reason="AutoGen container may not have Sentry connector installed")
-    def test_autogen_sentry_weekly_summary(
-        self,
-        gateway_port_forward: str,
-        http_client: httpx.Client,
-    ):
-        """Test AutoGen SupportAgent provides a Sentry weekly summary."""
-        framework = "autogen"
-
-        print(f"\n{'=' * 70}")
-        print(f"Testing {framework.upper()} SupportAgent - Sentry Weekly Summary")
-        print(f"{'=' * 70}")
-
-        start_time = time.perf_counter()
-
-        try:
-            result = call_gateway_run(
-                client=http_client,
-                gateway_url=gateway_port_forward,
-                task=SENTRY_WEEKLY_SUMMARY_TASK,
-                framework=framework,
-            )
-            latency_ms = (time.perf_counter() - start_time) * 1000
-
-            response = result.get("response", "")
-            session_id = result.get("session_id", "")
-
-            is_valid, notes = validate_sentry_summary(response)
-
-            print(f"\nFramework: {result.get('framework', framework)}")
-            print(f"Session ID: {session_id}")
-            print(f"Latency: {latency_ms:.0f}ms")
-            print(f"Valid: {is_valid}")
-            print(f"Validation notes: {', '.join(notes)}")
-            print(f"\nResponse ({len(response)} chars):")
-            print("-" * 40)
-            print(response[:1500] if len(response) > 1500 else response)
-            if len(response) > 1500:
-                print(f"\n... (truncated, {len(response) - 1500} more chars)")
-            print("-" * 40)
-
-            assert is_valid, f"Invalid Sentry summary: {notes}"
-            assert len(response) > 50, "Response too short"
-
-        except httpx.HTTPStatusError as e:
-            pytest.fail(f"HTTP error: {e.response.status_code} - {e.response.text}")
-
-
-class TestSupportAgentSentryCrewAI:
-    """Test CrewAI SupportAgent Sentry summary via REST API."""
-
-    @pytest.mark.xfail(reason="CrewAI container may not have Sentry connector installed")
-    def test_crewai_sentry_weekly_summary(
-        self,
-        gateway_port_forward: str,
-        http_client: httpx.Client,
-    ):
-        """Test CrewAI SupportAgent provides a Sentry weekly summary."""
-        framework = "crewai"
-
-        print(f"\n{'=' * 70}")
-        print(f"Testing {framework.upper()} SupportAgent - Sentry Weekly Summary")
-        print(f"{'=' * 70}")
-
-        start_time = time.perf_counter()
-
-        try:
-            result = call_gateway_run(
-                client=http_client,
-                gateway_url=gateway_port_forward,
-                task=SENTRY_WEEKLY_SUMMARY_TASK,
-                framework=framework,
-            )
-            latency_ms = (time.perf_counter() - start_time) * 1000
-
-            response = result.get("response", "")
-            session_id = result.get("session_id", "")
-
-            is_valid, notes = validate_sentry_summary(response)
-
-            print(f"\nFramework: {result.get('framework', framework)}")
-            print(f"Session ID: {session_id}")
-            print(f"Latency: {latency_ms:.0f}ms")
-            print(f"Valid: {is_valid}")
-            print(f"Validation notes: {', '.join(notes)}")
-            print(f"\nResponse ({len(response)} chars):")
-            print("-" * 40)
-            print(response[:1500] if len(response) > 1500 else response)
-            if len(response) > 1500:
-                print(f"\n... (truncated, {len(response) - 1500} more chars)")
-            print("-" * 40)
-
-            assert is_valid, f"Invalid Sentry summary: {notes}"
-            assert len(response) > 50, "Response too short"
-
-        except httpx.HTTPStatusError as e:
-            pytest.fail(f"HTTP error: {e.response.status_code} - {e.response.text}")
-
-
-class TestSupportAgentSentryOpenHands:
-    """Test OpenHands SupportAgent Sentry summary via REST API."""
-
-    def test_openhands_sentry_weekly_summary(
-        self,
-        gateway_port_forward: str,
-        http_client: httpx.Client,
-    ):
-        """Test OpenHands SupportAgent provides a Sentry weekly summary."""
-        framework = "openhands"
-
-        print(f"\n{'=' * 70}")
-        print(f"Testing {framework.upper()} SupportAgent - Sentry Weekly Summary")
-        print(f"{'=' * 70}")
-
-        start_time = time.perf_counter()
-
-        try:
-            result = call_gateway_run(
-                client=http_client,
-                gateway_url=gateway_port_forward,
-                task=SENTRY_WEEKLY_SUMMARY_TASK,
-                framework=framework,
-            )
-            latency_ms = (time.perf_counter() - start_time) * 1000
-
-            response = result.get("response", "")
-            session_id = result.get("session_id", "")
-
-            is_valid, notes = validate_sentry_summary(response)
-
-            print(f"\nFramework: {result.get('framework', framework)}")
-            print(f"Session ID: {session_id}")
-            print(f"Latency: {latency_ms:.0f}ms")
-            print(f"Valid: {is_valid}")
-            print(f"Validation notes: {', '.join(notes)}")
-            print(f"\nResponse ({len(response)} chars):")
-            print("-" * 40)
-            print(response[:1500] if len(response) > 1500 else response)
-            if len(response) > 1500:
-                print(f"\n... (truncated, {len(response) - 1500} more chars)")
-            print("-" * 40)
-
-            assert is_valid, f"Invalid Sentry summary: {notes}"
-            assert len(response) > 50, "Response too short"
-
-        except httpx.HTTPStatusError as e:
-            pytest.fail(f"HTTP error: {e.response.status_code} - {e.response.text}")
-
-
 # ==============================================================================
-# Tests - Cross-Framework Comparison
+# DeepEval G-Eval Tests
 # ==============================================================================
 
 
-class TestSupportAgentSentryComparison:
-    """Compare all three frameworks on the same Sentry summary task."""
+@pytest.mark.skipif(not DEEPEVAL_AVAILABLE, reason="DeepEval not installed")
+class TestSupportAgentSentryDeepEval:
+    """Test SupportAgent Sentry summary using DeepEval G-Eval metrics.
 
-    def test_compare_all_frameworks_sentry_summary(
+    Uses per-agent thresholds from requirements.md:
+    - SupportEngineer: TaskCompletion ≥ 0.80, Professionalism ≥ 0.80
+    """
+
+    @pytest.mark.asyncio
+    async def test_sentry_summary_with_deepeval(
         self,
-        gateway_port_forward: str,
-        http_client: httpx.Client,
+        openhands_runner: "RealAgentRunner",
+        azure_deepeval_model: "AzureOpenAIModel",
+        sentry_task: str,
     ):
-        """
-        Run the same Sentry weekly summary task across all three frameworks.
+        """Test Sentry summary using DeepEval G-Eval metrics."""
+        role = "support_engineer"
 
-        Uses LLM-as-judge (GPT-5) to objectively score each response on a 0-5 scale.
-        Winner is determined by the judge, not by response length or latency.
-        """
-        frameworks = ["autogen", "crewai", "openhands"]
-        results: list[FrameworkResult] = []
+        print(f"\n>>> Running DeepEval Sentry test for {role}...")
+        print(
+            f"    TaskCompletion threshold: {AGENT_THRESHOLDS.get(role, {}).get('task_completion', 0.80)}"
+        )
+        print(
+            f"    Professionalism threshold: {AGENT_THRESHOLDS.get(role, {}).get('professionalism', 0.80)}"
+        )
+
+        # Run the agent
+        result = await openhands_runner.run(
+            role=role,
+            task=sentry_task,
+            context_type="sentry",
+            context_id="deepeval-sentry-test",
+        )
+
+        if not result.get("success"):
+            pytest.skip(f"Agent failed: {result.get('error')}")
+
+        response = result.get("response", "")
+
+        # Create DeepEval test case
+        test_case = LLMTestCase(
+            input=sentry_task,
+            actual_output=response,
+        )
+
+        # Create metrics with SupportEngineer thresholds
+        task_metric = create_task_completion_metric(azure_deepeval_model, role)
+        prof_metric = create_professionalism_metric(azure_deepeval_model, role)
+
+        # Measure metrics
+        task_metric.measure(test_case)
+        prof_metric.measure(test_case)
+
+        print(f"    TaskCompletion: {task_metric.score:.2f} (threshold: {task_metric.threshold})")
+        print(f"    Professionalism: {prof_metric.score:.2f} (threshold: {prof_metric.threshold})")
+        print(f"    Task Reason: {task_metric.reason}")
+
+        # SupportEngineer has higher thresholds (0.80)
+        assert task_metric.score >= task_metric.threshold, (
+            f"TaskCompletion {task_metric.score:.2f} below threshold {task_metric.threshold}"
+        )
+        assert prof_metric.score >= prof_metric.threshold, (
+            f"Professionalism {prof_metric.score:.2f} below threshold {prof_metric.threshold}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sentry_tool_usage_with_deepeval(
+        self,
+        openhands_runner: "RealAgentRunner",
+        azure_deepeval_model: "AzureOpenAIModel",
+        sentry_task: str,
+    ):
+        """Test that SupportAgent uses Sentry tools appropriately."""
+        role = "support_engineer"
+
+        print(f"\n>>> Running DeepEval ToolUsage test...")
+
+        result = await openhands_runner.run(
+            role=role,
+            task=sentry_task,
+            context_type="sentry",
+            context_id="deepeval-tool-test",
+        )
+
+        if not result.get("success"):
+            pytest.skip(f"Agent failed: {result.get('error')}")
+
+        test_case = LLMTestCase(
+            input=sentry_task,
+            actual_output=result.get("response", ""),
+        )
+
+        # ToolUsage metric evaluates if agent used appropriate tools
+        tool_metric = create_tool_usage_metric(azure_deepeval_model, role)
+        tool_metric.measure(test_case)
+
+        print(f"    ToolUsage: {tool_metric.score:.2f}")
+        print(f"    Reason: {tool_metric.reason}")
+
+        # Tool usage threshold is 0.7
+        assert tool_metric.score >= tool_metric.threshold
+
+
+@pytest.mark.skipif(not DEEPEVAL_AVAILABLE, reason="DeepEval not installed")
+class TestSupportAgentSentryDeepEvalAllFrameworks:
+    """Run Sentry summary across all frameworks with DeepEval evaluation."""
+
+    @pytest.mark.asyncio
+    async def test_all_frameworks_sentry_deepeval(
+        self,
+        openhands_runner: "RealAgentRunner",
+        autogen_runner: "RealAgentRunner",
+        crewai_runner: "RealAgentRunner",
+        azure_deepeval_model: "AzureOpenAIModel",
+        sentry_task: str,
+    ):
+        """Run Sentry task across all frameworks with DeepEval metrics."""
+        runners = {
+            "openhands": openhands_runner,
+            "autogen": autogen_runner,
+            "crewai": crewai_runner,
+        }
+        results = []
+        role = "support_engineer"
 
         print("\n" + "=" * 70)
-        print("CROSS-FRAMEWORK SENTRY SUMMARY COMPARISON")
+        print("SENTRY SUMMARY E2E TEST - DEEPEVAL G-EVAL")
         print("=" * 70)
-        print(f"\nTask: {SENTRY_WEEKLY_SUMMARY_TASK[:100]}...")
-        print("-" * 70)
 
-        # Collect responses from all frameworks
-        for framework in frameworks:
+        for framework, runner in runners.items():
             print(f"\n>>> Testing {framework.upper()}...")
 
-            start_time = time.perf_counter()
-
             try:
-                result = call_gateway_run(
-                    client=http_client,
-                    gateway_url=gateway_port_forward,
-                    task=SENTRY_WEEKLY_SUMMARY_TASK,
-                    framework=framework,
+                agent_result = await runner.run(
+                    role=role,
+                    task=sentry_task,
+                    context_type="sentry",
+                    context_id=f"deepeval-{framework}",
                 )
-                latency_ms = (time.perf_counter() - start_time) * 1000
 
-                response = result.get("response", "")
-                session_id = result.get("session_id", "")
+                if not agent_result.get("success"):
+                    print(f"    SKIPPED: Agent failed - {agent_result.get('error')}")
+                    results.append(
+                        {
+                            "framework": framework,
+                            "success": False,
+                            "task_score": 0,
+                            "prof_score": 0,
+                        }
+                    )
+                    continue
 
-                is_valid, notes = validate_sentry_summary(response)
+                test_case = LLMTestCase(
+                    input=sentry_task,
+                    actual_output=agent_result.get("response", ""),
+                )
+
+                task_metric = create_task_completion_metric(azure_deepeval_model, role)
+                prof_metric = create_professionalism_metric(azure_deepeval_model, role)
+
+                task_metric.measure(test_case)
+                prof_metric.measure(test_case)
+
+                passed = (
+                    task_metric.score >= task_metric.threshold
+                    and prof_metric.score >= prof_metric.threshold
+                )
 
                 results.append(
-                    FrameworkResult(
-                        framework=framework,
-                        success=is_valid,
-                        response=response,
-                        latency_ms=latency_ms,
-                        session_id=session_id,
-                    )
+                    {
+                        "framework": framework,
+                        "success": True,
+                        "passed": passed,
+                        "task_score": task_metric.score,
+                        "task_threshold": task_metric.threshold,
+                        "prof_score": prof_metric.score,
+                        "prof_threshold": prof_metric.threshold,
+                        "latency_ms": agent_result.get("latency_ms", 0),
+                    }
                 )
 
-                print(f"    Status: {'PASS' if is_valid else 'FAIL'}")
-                print(f"    Latency: {latency_ms:.0f}ms")
-                print(f"    Response length: {len(response)} chars")
-                print(f"    Validation: {', '.join(notes)}")
+                status = "PASS" if passed else "FAIL"
+                print(f"    Status: {status}")
+                print(f"    TaskCompletion: {task_metric.score:.2f} >= {task_metric.threshold}")
+                print(f"    Professionalism: {prof_metric.score:.2f} >= {prof_metric.threshold}")
 
             except Exception as e:
-                latency_ms = (time.perf_counter() - start_time) * 1000
+                print(f"    ERROR: {e}")
                 results.append(
-                    FrameworkResult(
-                        framework=framework,
-                        success=False,
-                        response="",
-                        latency_ms=latency_ms,
-                        session_id="",
-                        error=str(e),
-                    )
+                    {
+                        "framework": framework,
+                        "success": False,
+                        "error": str(e),
+                        "task_score": 0,
+                        "prof_score": 0,
+                    }
                 )
-                print(f"    Status: ERROR - {e}")
 
-        # Run LLM-as-judge evaluation
+        # Summary
         print("\n" + "=" * 70)
-        print("LLM-AS-JUDGE EVALUATION (GPT-5)")
+        print("DEEPEVAL SUMMARY")
         print("=" * 70)
 
-        responses_for_judge = {r.framework: r.response for r in results}
+        successful = [r for r in results if r.get("success")]
+        passed = [r for r in successful if r.get("passed")]
 
-        evaluator = ComparativeEvaluator()
-        eval_result = asyncio.run(
-            evaluator.evaluate(
-                task=SENTRY_WEEKLY_SUMMARY_TASK,
-                responses=responses_for_judge,
-            )
-        )
-
-        # Print evaluation results
-        print(f"\nJudge Model: {eval_result.judge_model}")
-        print(f"Evaluation Time: {eval_result.evaluation_time_ms}ms")
-        print("\nScores:")
-        print("-" * 50)
-
-        for framework in frameworks:
-            score = eval_result.scores.get(framework)
-            if score:
-                status = "WINNER" if framework == eval_result.winner else ""
-                print(f"  {framework.upper()}: {score.score}/5 {status}")
-                print(f"    Feedback: {score.feedback}")
-            else:
-                print(f"  {framework.upper()}: No score")
-
-        print("-" * 50)
-        print(f"\nWINNER: {eval_result.winner.upper()}")
-        print(f"Reasoning: {eval_result.reasoning}")
-
-        # Print performance metrics
-        print("\n" + "=" * 70)
-        print("PERFORMANCE METRICS")
-        print("=" * 70)
-
-        successful = [r for r in results if r.success]
-        failed = [r for r in results if not r.success]
-
-        print(f"\nTotal frameworks tested: {len(results)}")
-        print(f"Passed validation: {len(successful)}")
-        print(f"Failed validation: {len(failed)}")
+        print(f"Total Frameworks: {len(results)}")
+        print(f"Executed: {len(successful)}")
+        print(f"Passed: {len(passed)}")
 
         if successful:
-            avg_latency = sum(r.latency_ms for r in successful) / len(successful)
-            fastest = min(successful, key=lambda r: r.latency_ms)
+            avg_task = sum(r["task_score"] for r in successful) / len(successful)
+            avg_prof = sum(r["prof_score"] for r in successful) / len(successful)
+            print(f"Avg TaskCompletion: {avg_task:.2f}")
+            print(f"Avg Professionalism: {avg_prof:.2f}")
 
-            print("\nLatency:")
-            print(f"  Average: {avg_latency:.0f}ms")
-            print(f"  Fastest: {fastest.framework} ({fastest.latency_ms:.0f}ms)")
-
-        print("\nPer-Framework Results:")
-        for r in results:
-            score = eval_result.scores.get(r.framework)
-            score_str = f"{score.score}/5" if score else "N/A"
-            status = "PASS" if r.success else "FAIL"
-            if r.error:
-                print(f"  [{status}] {r.framework}: ERROR - {r.error}")
-            else:
-                print(
-                    f"  [{status}] {r.framework}: {r.latency_ms:.0f}ms, {len(r.response)} chars, Score: {score_str}"
-                )
-
-        # Print sample responses
-        print("\n" + "-" * 70)
-        print("SAMPLE RESPONSES (first 500 chars)")
-        print("-" * 70)
-
-        for r in results:
-            if r.response:
-                score = eval_result.scores.get(r.framework)
-                score_str = f"[Score: {score.score}/5]" if score else ""
-                print(f"\n>>> {r.framework.upper()} {score_str}:")
-                print(r.response[:500])
-                if len(r.response) > 500:
-                    print(f"... ({len(r.response) - 500} more chars)")
-
-        print("\n" + "=" * 70)
-
-        # Assertions
-        assert len(results) == 3, f"Expected 3 frameworks, got {len(results)}"
-
-        # At least 1 framework must succeed to validate the test works
-        assert (
-            len(successful) >= 1
-        ), f"No frameworks succeeded! Results: {[f'{r.framework}: {r.response[:100]}' for r in results]}"
-
-        # Winner must have a score > 0
-        winner_score = eval_result.scores.get(eval_result.winner)
-        assert winner_score is not None, "No winner determined"
-        assert winner_score.score > 0, f"Winner {eval_result.winner} has score 0"
-
-        # Print final verdict
-        print("\n" + "=" * 70)
-        print(f"FINAL VERDICT: {eval_result.winner.upper()} wins with score {winner_score.score}/5")
-        print("=" * 70)
-
-
-# ==============================================================================
-# Tests - Gateway Health Check
-# ==============================================================================
-
-
-class TestGatewayServiceHealth:
-    """Verify gateway can reach all agent services."""
-
-    def test_gateway_health_shows_all_services(
-        self,
-        gateway_port_forward: str,
-        http_client: httpx.Client,
-    ):
-        """Test that gateway health endpoint shows all three agent services."""
-        response = http_client.get(f"{gateway_port_forward}/health")
-        assert response.status_code == 200
-
-        data = response.json()
-
-        print("\n" + "=" * 70)
-        print("GATEWAY HEALTH CHECK")
-        print("=" * 70)
-        print(f"\nStatus: {data.get('status')}")
-        print(f"Service: {data.get('service')}")
-        print(f"Timestamp: {data.get('timestamp')}")
-
-        services = data.get("services", {})
-        print("\nDownstream Services:")
-        for service, status in services.items():
-            print(f"  {service}: {status}")
-
-        assert data["status"] == "healthy"
-        assert "autogen-svc" in services
-        assert "crewai-svc" in services
-        assert "openhands-svc" in services
-
-        # All services should be healthy for this test to be meaningful
-        all_healthy = all(
-            status == "healthy"
-            for service, status in services.items()
-            if service in ("autogen-svc", "crewai-svc", "openhands-svc")
-        )
-
-        if not all_healthy:
-            unhealthy = [
-                service
-                for service, status in services.items()
-                if status != "healthy" and service in ("autogen-svc", "crewai-svc", "openhands-svc")
-            ]
-            pytest.skip(f"Some services unhealthy: {unhealthy}")
+        # At least one should pass
+        assert len(successful) >= 1, f"No frameworks succeeded!"
 
 
 # ==============================================================================

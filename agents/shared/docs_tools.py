@@ -493,3 +493,131 @@ def rebuild_index() -> str:
         f"Indexed {len(_docs_index.files)} files. "
         f"BM25 available: {BM25_AVAILABLE}"
     )
+
+
+# =====================
+# Infrastructure Docs (from vibe repo)
+# =====================
+
+# Path to infrastructure docs (generated from vibe repo)
+INFRA_DOCS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "docs",
+    "infra-llms.txt",
+)
+
+
+def search_infra_docs(query: str, max_results: int = 5) -> str:
+    """Search infrastructure documentation for k8s, deployment, and service information.
+
+    This searches the aggregated infrastructure docs from the vibe repository,
+    which includes:
+    - Kubernetes (k3s) cluster documentation
+    - Deployment and release processes
+    - Service configurations (LiteLLM, Stripe, Langfuse)
+    - Azure infrastructure (Terraform, VMs, Key Vault)
+    - Monitoring and alerting setup
+
+    Args:
+        query: The search query (e.g., "k3s cluster", "deployment process", "litellm config")
+        max_results: Maximum number of sections to return (default: 5)
+
+    Returns:
+        Formatted search results with relevant infrastructure documentation
+    """
+    if not os.path.exists(INFRA_DOCS_PATH):
+        return (
+            f"Infrastructure docs not found at {INFRA_DOCS_PATH}. "
+            "Run `python scripts/build_infra_docs.py` to generate them."
+        )
+
+    try:
+        with open(INFRA_DOCS_PATH, encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return f"Error reading infrastructure docs: {e}"
+
+    # Split into sections (delimited by ## headers)
+    sections = re.split(r"(?=^## )", content, flags=re.MULTILINE)
+
+    # Search for matching sections
+    query_lower = query.lower()
+    query_tokens = set(_preprocess_text(query))
+
+    scored_sections = []
+    for section in sections:
+        if not section.strip():
+            continue
+
+        section_lower = section.lower()
+        score = 0.0
+
+        # Exact phrase match
+        if query_lower in section_lower:
+            score += 10.0
+
+        # Token overlap
+        section_tokens = set(_preprocess_text(section[:2000]))  # First 2000 chars
+        overlap = len(query_tokens & section_tokens)
+        score += overlap * 2.0
+
+        # Boost for keyword matches in header
+        header_match = re.match(r"^## (.+)\n", section)
+        if header_match:
+            header = header_match.group(1).lower()
+            if query_lower in header:
+                score += 5.0
+            header_tokens = set(_preprocess_text(header))
+            score += len(query_tokens & header_tokens) * 3.0
+
+        if score > 0:
+            scored_sections.append((score, section))
+
+    # Sort by score and take top results
+    scored_sections.sort(key=lambda x: x[0], reverse=True)
+    top_sections = scored_sections[:max_results]
+
+    if not top_sections:
+        return f"No infrastructure documentation found matching: {query}"
+
+    # Format output
+    output = f"=== Infrastructure Documentation: {query} ===\n\n"
+    output += f"Found {len(top_sections)} relevant sections:\n\n"
+
+    for i, (score, section) in enumerate(top_sections, 1):
+        # Extract header
+        header_match = re.match(r"^## (.+)\n", section)
+        title = header_match.group(1) if header_match else "Untitled"
+
+        # Truncate long sections
+        if len(section) > 1500:
+            section = section[:1400] + "\n\n[...truncated...]\n"
+
+        output += f"**{i}. {title}** (score: {score:.1f})\n"
+        output += "-" * 40 + "\n"
+        output += section.strip() + "\n\n"
+
+    return output
+
+
+def search_infra_docs_sync(query: str, max_results: int = 5) -> str:
+    """Synchronous version of search_infra_docs (same implementation)."""
+    return search_infra_docs(query, max_results)
+
+
+def get_infra_context(query: str, max_results: int = 3) -> str:
+    """Get infrastructure context for injection into agent prompts.
+
+    This is designed for ReleaseEngineer and other ops-focused agents
+    to get relevant infrastructure documentation as context.
+
+    Args:
+        query: The query to find relevant documentation for
+        max_results: Maximum number of sections to include
+
+    Returns:
+        Formatted context string for agent prompts
+    """
+    results = search_infra_docs(query, max_results)
+
+    return f"## Infrastructure Documentation Context\n\n{results}"

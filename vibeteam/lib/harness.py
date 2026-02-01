@@ -11,8 +11,8 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from vibeteam.team.channel import ChannelMessage, SimulatedChannel
-from vibeteam.team.responsibility import ResponsibilityDetector
+from vibeteam.lib.channel import ChannelMessage, SimulatedChannel
+from vibeteam.lib.responsibility import ResponsibilityDetector
 
 if TYPE_CHECKING:
     pass
@@ -97,9 +97,7 @@ class MockAgent:
 
     def __init__(self, role: str):
         self.role = role
-        self.responsibility_detector = ResponsibilityDetector(
-            agent_role=role, use_llm=False
-        )
+        self.responsibility_detector = ResponsibilityDetector(agent_role=role, use_llm=False)
         self._response_templates = self._get_response_templates()
 
     def _get_response_templates(self) -> dict[str, str]:
@@ -238,15 +236,19 @@ class TeamTestHarness:
         try:
             if role == "software_engineer":
                 from agents.crewai.software_engineer import create_software_engineer
+
                 return create_software_engineer()
             elif role == "release_engineer":
                 from agents.crewai.release_engineer import create_release_engineer
+
                 return create_release_engineer()
             elif role == "support_engineer":
                 from agents.crewai.support_engineer import create_support_engineer
+
                 return create_support_engineer()
             elif role == "product_manager":
                 from agents.crewai.product_manager import create_product_manager
+
                 return create_product_manager()
             else:
                 return MockAgent(role)
@@ -258,15 +260,19 @@ class TeamTestHarness:
         try:
             if role == "software_engineer":
                 from agents.autogen.software_engineer import create_software_engineer
+
                 return create_software_engineer()
             elif role == "release_engineer":
                 from agents.autogen.release_engineer import create_release_engineer
+
                 return create_release_engineer()
             elif role == "support_engineer":
                 from agents.autogen.support_engineer import create_support_engineer
+
                 return create_support_engineer()
             elif role == "product_manager":
                 from agents.autogen.product_manager import create_product_manager
+
                 return create_product_manager()
             else:
                 return MockAgent(role)
@@ -278,18 +284,23 @@ class TeamTestHarness:
         try:
             if role == "software_engineer":
                 from agents.openhands.software_engineer import create_software_engineer
+
                 return create_software_engineer()
             elif role == "release_engineer":
                 from agents.openhands.release_engineer import create_release_engineer
+
                 return create_release_engineer()
             elif role == "support_engineer":
                 from agents.openhands.support_engineer import create_support_engineer
+
                 return create_support_engineer()
             elif role == "product_manager":
                 from agents.openhands.product_manager import create_product_manager
+
                 return create_product_manager()
             elif role == "marketing_manager":
                 from agents.openhands.marketing_manager import create_marketing_manager
+
                 return create_marketing_manager()
             else:
                 return MockAgent(role)
@@ -301,27 +312,30 @@ class TeamTestHarness:
         try:
             if role == "software_engineer":
                 from agents.opencode.software_engineer import create_software_engineer
+
                 return create_software_engineer()
             elif role == "release_engineer":
                 from agents.opencode.release_engineer import create_release_engineer
+
                 return create_release_engineer()
             elif role == "support_engineer":
                 from agents.opencode.support_engineer import create_support_engineer
+
                 return create_support_engineer()
             elif role == "product_manager":
                 from agents.opencode.product_manager import create_product_manager
+
                 return create_product_manager()
             elif role == "marketing_manager":
                 from agents.opencode.marketing_manager import create_marketing_manager
+
                 return create_marketing_manager()
             else:
                 return MockAgent(role)
         except ImportError:
             return MockAgent(role)
 
-    async def _on_message(
-        self, agent: Any, role: str, message: ChannelMessage
-    ) -> None:
+    async def _on_message(self, agent: Any, role: str, message: ChannelMessage) -> None:
         """Handle incoming message for an agent.
 
         Args:
@@ -402,8 +416,7 @@ class TeamTestHarness:
 
         # Collect results
         agent_responses = {
-            role: self.channel.get_messages_by_author(role)
-            for role in self.agents.keys()
+            role: self.channel.get_messages_by_author(role) for role in self.agents.keys()
         }
 
         return ScenarioResult(

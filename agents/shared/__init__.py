@@ -73,8 +73,11 @@ from agents.shared.slack_tools import (
     read_slack_channel_sync,
     read_slack_thread,
     read_slack_thread_sync,
+    send_message,
+    send_message_sync,
     set_slack_context,
 )
+from agents.shared.handoff import HANDOFF_PROMPT
 
 __all__ = [
     # Gmail
@@ -113,6 +116,8 @@ __all__ = [
     "get_docs_context",
     "rebuild_index",
     # Slack
+    "send_message",
+    "send_message_sync",
     "post_slack_message",
     "post_slack_message_sync",
     "mention_agent",
@@ -127,4 +132,6 @@ __all__ = [
     "is_slack_context_set",
     "get_slack_context_for_injection",
     "get_slack_handoff_instructions",
+    # Handoff
+    "HANDOFF_PROMPT",
 ]

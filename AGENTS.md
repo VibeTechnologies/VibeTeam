@@ -54,21 +54,7 @@ Does this need public communication?
 
 ## System Readiness
 
-Before running VibeTeam agents or after infrastructure changes, verify system readiness.
-
-### Option 1: Run Script (Quick)
-
-```bash
-python readiness/check.py           # Standard checks
-python readiness/check.py --quick   # Health endpoints only
-python readiness/check.py --full    # Everything including k8s, Sentry, Langfuse
-```
-
-Exit codes: 0=GREEN, 1=YELLOW, 2=RED
-
-### Option 2: Follow Playbook (Thorough)
-
-For detailed investigation or incident analysis:
+Before running VibeTeam agents or after infrastructure changes, verify system readiness by following the playbook:
 
 1. Read the playbook: `readiness/playbook.md`
 2. Execute each check command
@@ -88,9 +74,8 @@ VibeTeam/
     opencode/          # OpenCode agents (experimental)
   vibeteam/            # Main package
     connectors/        # External service integrations
-    team/              # Team orchestration and test harness
+    lib/               # Test harness for multi-agent scenarios
   readiness/           # System readiness checks
-    check.py           # Automated script
     playbook.md        # GenAI evaluation playbook
   docs/                # Documentation
     requirements.md    # System requirements and agent roles

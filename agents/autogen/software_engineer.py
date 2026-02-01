@@ -15,10 +15,11 @@ from typing import Any
 
 from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.handoff import HANDOFF_PROMPT
 from agents.shared.slack_tools import (
-    post_slack_message,
     read_slack_channel,
     read_slack_thread,
+    send_message,
 )
 
 # AutoGen imports - will fail gracefully if not installed
@@ -44,7 +45,14 @@ GPT_MODEL_INFO = {
 }
 
 
-SOFTWARE_ENGINEER_SYSTEM_PROMPT = """You are Alan, the Software Engineer for VibeTeam.
+SOFTWARE_ENGINEER_SYSTEM_PROMPT = f"""You are Alan, the Software Engineer for VibeTeam.
+
+## CRITICAL: How to Respond
+You MUST use the `send_message()` tool to send ALL responses to the user.
+- NEVER return plain text responses - always use send_message()
+- Call send_message(message="your response here") with your full response
+- This ensures your response is properly delivered to Slack
+- After calling send_message(), you can end your turn
 
 ## CRITICAL: Tool Usage Requirements
 You MUST use the provided tools to complete tasks. Do NOT respond without first calling the appropriate tools to gather real data.
@@ -85,18 +93,10 @@ Your responsibilities:
 - Keep functions focused and small
 - Write tests for new functionality
 
-## TEAM COLLABORATION
-
-When you complete a task or need help from another team member, @mention them in your response:
-- @ReleaseEngineer - for deployments when code is ready
-- @SiteReliabilityEngineer - for infrastructure/monitoring issues
-- @SupportEngineer - to notify about customer-facing changes
-- @ProductManager - for clarification on requirements
-
-Example: "I've fixed the login bug in PR #457. @ReleaseEngineer this is ready for staging deployment."
+{HANDOFF_PROMPT}
 
 You can also use Slack tools:
-- `post_slack_message(message)` - Post updates to Slack
+- `send_message(message)` - Send responses to Slack (USE THIS FOR ALL RESPONSES)
 - `read_slack_channel()` - Read recent Slack messages
 
 When you complete a task, summarize what was done, files changed, and any next steps.
@@ -104,6 +104,13 @@ When you complete a task, summarize what was done, files changed, and any next s
 
 
 # Tool functions for AutoGen
+
+# Path to read-only agent kubeconfig
+AGENT_KUBECONFIG = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".kube", "agent-config.yaml"
+)
+
+
 async def execute_shell(command: str) -> str:
     """Execute a shell command and return the output.
 
@@ -114,6 +121,11 @@ async def execute_shell(command: str) -> str:
         The command output (stdout + stderr)
     """
     try:
+        # Set up environment with agent kubeconfig for kubectl commands
+        env = os.environ.copy()
+        if os.path.exists(AGENT_KUBECONFIG):
+            env["KUBECONFIG"] = AGENT_KUBECONFIG
+
         result = await asyncio.to_thread(
             subprocess.run,
             command,
@@ -121,6 +133,7 @@ async def execute_shell(command: str) -> str:
             capture_output=True,
             text=True,
             timeout=300,
+            env=env,
         )
         output = result.stdout
         if result.stderr:
@@ -345,7 +358,7 @@ class AutoGenSoftwareEngineer:
                 list_issues,
                 get_issue,
                 # Slack communication
-                post_slack_message,
+                send_message,
                 read_slack_channel,
                 read_slack_thread,
             ],
@@ -387,12 +400,35 @@ class AutoGenSoftwareEngineer:
 
         result: TaskResult = await self.agent.run(task=task)
 
+        # Extract response from result
+        # Priority: 1) send_message tool call content, 2) non-empty TextMessage
         response = ""
         if result.messages:
+            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
+            import json
+
+            # First, look for send_message tool calls - this is the actual response
             for msg in reversed(result.messages):
-                if hasattr(msg, "content") and msg.content:
-                    response = str(msg.content)
-                    break
+                if isinstance(msg, ToolCallRequestEvent) and msg.source == "SoftwareEngineer":
+                    for call in msg.content:
+                        if hasattr(call, "name") and call.name == "send_message":
+                            try:
+                                args = json.loads(call.arguments)
+                                if args.get("message"):
+                                    response = args["message"]
+                                    break
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
+                    if response:
+                        break
+
+            # Fallback: get the last non-empty TextMessage from the assistant
+            if not response:
+                for msg in reversed(result.messages):
+                    if isinstance(msg, TextMessage) and msg.source == "SoftwareEngineer":
+                        if msg.content and str(msg.content).strip():
+                            response = str(msg.content)
+                            break
 
         session.add_message("user", task)
         session.add_message("assistant", response)

@@ -1,4 +1,4 @@
-"""VibeTeam team orchestration and simulation.
+"""VibeTeam test library.
 
 This module provides:
 - SimulatedChannel: In-memory Discord/Slack channel simulation for testing
@@ -6,9 +6,9 @@ This module provides:
 - TeamTestHarness: Test harness for multi-agent scenarios
 """
 
-from vibeteam.team.channel import ChannelMessage, SimulatedChannel
-from vibeteam.team.responsibility import ResponsibilityClaim, ResponsibilityDetector
-from vibeteam.team.harness import (
+from vibeteam.lib.channel import ChannelMessage, SimulatedChannel
+from vibeteam.lib.responsibility import ResponsibilityClaim, ResponsibilityDetector
+from vibeteam.lib.harness import (
     MockAgent,
     ScenarioResult,
     TeamTestHarness,

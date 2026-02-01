@@ -191,16 +191,182 @@ LANGFUSE_SECRET_KEY=
 
 ## Evaluation
 
-Agents are evaluated using DeepEval with G-Eval metrics:
+Agents are evaluated using **DeepEval** with **G-Eval** methodology, using **Azure GPT-5.2** as the LLM judge.
 
-| Metric | Threshold | Description |
-|--------|-----------|-------------|
-| TaskCompletion | 0.7 | Was the request fully addressed |
-| HandoffQuality | 0.7 | Context preservation in handoffs |
-| ResponseTime | < 60s | Time to first response |
-| Professionalism | 0.7 | Clear, concise communication |
+### Evaluation Framework
 
-Run tests:
-```bash
-pytest tests/e2e/test_team_eval.py -v -s
+```python
+# DeepEval with Azure GPT-5.2 configuration
+from deepeval import evaluate
+from deepeval.metrics import GEval
+from deepeval.test_case import LLMTestCase
+
+evaluator_config = {
+    "model": "azure/gpt-5.2",
+    "api_key": os.environ["AZURE_API_KEY"],
+    "api_base": os.environ["AZURE_API_BASE"],
+    "api_version": "2024-12-01-preview",
+}
 ```
+
+### G-Eval Metrics
+
+| Metric | Threshold | Evaluation Criteria |
+|--------|-----------|---------------------|
+| **TaskCompletion** | 0.7 | Did the agent complete the requested task? Consider tool usage, output quality, and whether the user's intent was satisfied. |
+| **HandoffQuality** | 0.7 | Was context preserved during handoff? Did the receiving agent understand the task without re-explanation? |
+| **ResponseTime** | < 60s | Time from message receipt to first response. Measured via timestamps. |
+| **Professionalism** | 0.7 | Clear, concise, professional communication. Appropriate tone for the audience. |
+| **ToolUsage** | 0.7 | Did the agent use appropriate tools? Were tools called with correct parameters? |
+| **ContextPreservation** | 0.7 | Does agent maintain conversation context across messages in a thread? |
+
+### Test Scenarios
+
+| Test File | Scenario | Agents Tested | Key Metrics |
+|-----------|----------|---------------|-------------|
+| `test_slack_routing.py` | Slack message → agent response | All agents | TaskCompletion, ResponseTime |
+| `test_discord_routing.py` | Discord message → agent response | All agents | TaskCompletion, ResponseTime |
+| `test_github_routing.py` | GitHub issue comment → agent response | SWE, PM | TaskCompletion, Professionalism |
+| `test_handoff_chain.py` | Multi-agent handoff chain | Support → Release → Support | HandoffQuality, ContextPreservation |
+| `test_sentry_alert.py` | Sentry error → investigation | Support, Release | TaskCompletion, ToolUsage |
+
+### Example Test Implementation
+
+```python
+# tests/e2e/test_handoff_chain.py
+import pytest
+from deepeval import evaluate
+from deepeval.metrics import GEval
+from deepeval.test_case import LLMTestCase
+
+class TestHandoffChain:
+    """Test multi-agent handoff scenarios with DeepEval."""
+    
+    @pytest.fixture
+    def gpt52_evaluator(self):
+        """GPT-5.2 evaluator configuration."""
+        return {
+            "model": "azure/gpt-5.2",
+            "api_key": os.environ["AZURE_API_KEY"],
+            "api_base": os.environ["AZURE_API_BASE"],
+        }
+    
+    @pytest.mark.asyncio
+    async def test_support_to_release_handoff(self, mock_slack, gpt52_evaluator):
+        """
+        Scenario: Customer reports outage, Support hands off to Release.
+        
+        Flow:
+        1. User: @SupportEngineer customer reports GenAI Gateway down
+        2. SupportEngineer: checks Gmail, responds, mentions @ReleaseEngineer
+        3. ReleaseEngineer: investigates, reports status
+        """
+        # Arrange
+        user_message = "Customer emailed that GenAI Gateway is returning 500 errors"
+        
+        # Act
+        support_response = await run_agent("support_engineer", user_message)
+        release_response = await run_agent("release_engineer", support_response)
+        
+        # Evaluate with DeepEval
+        test_case = LLMTestCase(
+            input=user_message,
+            actual_output=f"{support_response}\n\n{release_response}",
+            expected_output="Support checks email, identifies issue, hands off to Release who investigates",
+        )
+        
+        handoff_metric = GEval(
+            name="HandoffQuality",
+            criteria="Was the handoff context-preserving and actionable?",
+            threshold=0.7,
+            **gpt52_evaluator,
+        )
+        
+        task_metric = GEval(
+            name="TaskCompletion", 
+            criteria="Did both agents contribute to resolving the customer issue?",
+            threshold=0.7,
+            **gpt52_evaluator,
+        )
+        
+        # Assert
+        results = evaluate([test_case], [handoff_metric, task_metric])
+        assert results.passed, f"Evaluation failed: {results.summary}"
+```
+
+### Running Evaluation Tests
+
+```bash
+# Install DeepEval
+pip install deepeval>=0.21.0
+
+# Set required environment variables
+export AZURE_API_KEY="your-key"
+export AZURE_API_BASE="https://your-endpoint.openai.azure.com"
+export AZURE_API_VERSION="2024-12-01-preview"
+
+# Run all E2E evaluation tests
+pytest tests/e2e/ -v -s
+
+# Run specific test
+pytest tests/e2e/test_handoff_chain.py -v -s --tb=short
+
+# Run with DeepEval dashboard reporting
+deepeval test run tests/e2e/
+
+# Generate evaluation report
+python scripts/run_evaluation.py --output results/eval_report.json
+```
+
+### Evaluation CI/CD Integration
+
+```yaml
+# .github/workflows/evaluation.yml
+name: Agent Evaluation
+
+on:
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6 AM UTC
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      
+      - name: Run E2E Evaluation
+        env:
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+        run: pytest tests/e2e/ -v --tb=short
+      
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-results
+          path: results/
+```
+
+### Evaluation Thresholds
+
+All agents must meet these minimum thresholds before release:
+
+| Agent | TaskCompletion | HandoffQuality | Professionalism |
+|-------|----------------|----------------|-----------------|
+| SoftwareEngineer | ≥ 0.75 | ≥ 0.70 | ≥ 0.70 |
+| ReleaseEngineer | ≥ 0.75 | ≥ 0.70 | ≥ 0.70 |
+| SupportEngineer | ≥ 0.80 | ≥ 0.75 | ≥ 0.80 |
+| ProductManager | ≥ 0.70 | ≥ 0.70 | ≥ 0.80 |
+| MarketingManager | ≥ 0.70 | ≥ 0.65 | ≥ 0.85 |
+
+SupportEngineer has higher thresholds due to customer-facing nature of the role.

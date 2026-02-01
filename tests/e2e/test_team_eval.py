@@ -41,7 +41,7 @@ pytestmark = pytest.mark.asyncio
 _project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_project_root))
 
-from vibeteam.team import (
+from vibeteam.lib import (
     ScenarioResult,
     TeamTestHarness,
     create_handoff_test_case,
@@ -246,6 +246,7 @@ def has_deepeval() -> bool:
     """Check if deepeval is available."""
     try:
         import deepeval  # noqa: F401
+
         return True
     except ImportError:
         return False

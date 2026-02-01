@@ -8,12 +8,19 @@ and OpenHands (for context injection or post-processing).
 All functions are async-compatible for AutoGen and can be called synchronously
 for other frameworks.
 
-Key Concept - Natural @Mentions:
-    Agents write natural @mentions in their responses (e.g., "@SoftwareEngineer 
-    please fix the login bug"). The bot parses these mentions and routes the
+Key Concept - /RoleName Mentions:
+    Agents use /RoleName mentions in their responses (e.g., "/SoftwareEngineer
+    please fix the login bug"). The router parses these mentions and routes the
     conversation to the appropriate agent's session.
-    
+
     This makes all inter-agent communication visible to humans in Slack.
+
+Message Format:
+    When agents use send_message(), messages are automatically prefixed with
+    [RoleName:session_id] for identification.
+
+    Example: send_message("Fixed bug. /ReleaseEngineer please deploy.")
+    Posted as: [SoftwareEngineer:abc123] Fixed bug. /ReleaseEngineer please deploy.
 """
 
 import os
@@ -43,6 +50,7 @@ def set_slack_context(
     channel: str,
     thread_ts: str | None = None,
     from_agent: str | None = None,
+    session_id: str | None = None,
 ) -> None:
     """
     Set Slack context for operations.
@@ -53,7 +61,8 @@ def set_slack_context(
         connector: SlackConnector instance
         channel: Channel ID or name
         thread_ts: Thread timestamp (to keep responses in same thread)
-        from_agent: Name of the agent setting context
+        from_agent: Name of the agent setting context (e.g., "SupportEngineer")
+        session_id: Session ID for message prefix (e.g., "abc123")
     """
     global _slack_context
     _slack_context = {
@@ -61,6 +70,7 @@ def set_slack_context(
         "channel": channel,
         "thread_ts": thread_ts,
         "from_agent": from_agent,
+        "session_id": session_id,
     }
 
 
@@ -85,21 +95,29 @@ def is_slack_context_set() -> bool:
 # ==============================================================================
 
 
-async def post_slack_message(
+async def send_message(
     message: str,
     channel: str | None = None,
     thread_ts: str | None = None,
 ) -> str:
     """
-    Post a message to a Slack channel.
+    Post a message to Slack with automatic [RoleName:session_id] prefix.
+
+    This is the PRIMARY tool agents should use to respond. The message is
+    automatically prefixed with the agent's identity.
 
     Args:
-        message: The message text to post
+        message: The message text to post (handoffs use /RoleName mentions)
         channel: Channel name or ID (uses context or default if None)
         thread_ts: Thread timestamp to reply in (uses context if None)
 
     Returns:
         Confirmation with message timestamp
+
+    Example:
+        >>> await send_message("Fixed bug in PR #457. /ReleaseEngineer please deploy.")
+        "Posted to #ai-team at 1234567890.123456"
+        # Posted as: [SoftwareEngineer:abc123] Fixed bug in PR #457. /ReleaseEngineer please deploy.
     """
     ctx = get_slack_context()
     connector = ctx.get("connector")
@@ -113,11 +131,46 @@ async def post_slack_message(
     ch = channel or ctx.get("channel") or os.getenv("SLACK_CHANNEL", "#ai-team")
     ts = thread_ts or ctx.get("thread_ts")
 
+    # Add [RoleName:session_id] prefix
+    from_agent = ctx.get("from_agent")
+    session_id = ctx.get("session_id")
+
+    if from_agent and session_id:
+        # Short session_id (first 8 chars)
+        short_session = session_id[:8] if len(session_id) > 8 else session_id
+        prefixed_message = f"[{from_agent}:{short_session}] {message}"
+    elif from_agent:
+        prefixed_message = f"[{from_agent}] {message}"
+    else:
+        prefixed_message = message
+
     try:
-        result = connector.post_message(channel=ch, text=message, thread_ts=ts)
+        result = connector.post_message(channel=ch, text=prefixed_message, thread_ts=ts)
         return f"Posted to {ch} at {result.ts}"
     except Exception as e:
         return f"Error posting to Slack: {e}"
+
+
+async def post_slack_message(
+    message: str,
+    channel: str | None = None,
+    thread_ts: str | None = None,
+) -> str:
+    """
+    Post a message to a Slack channel.
+
+    DEPRECATED: Use send_message() instead for automatic [RoleName:session_id] prefix.
+
+    Args:
+        message: The message text to post
+        channel: Channel name or ID (uses context or default if None)
+        thread_ts: Thread timestamp to reply in (uses context if None)
+
+    Returns:
+        Confirmation with message timestamp
+    """
+    # Delegate to send_message for consistent behavior
+    return await send_message(message, channel, thread_ts)
 
 
 async def mention_agent(
@@ -267,6 +320,17 @@ async def read_slack_thread(
 # ==============================================================================
 # Sync Versions (for CrewAI and OpenHands)
 # ==============================================================================
+
+
+def send_message_sync(
+    message: str,
+    channel: str | None = None,
+    thread_ts: str | None = None,
+) -> str:
+    """Synchronous version of send_message."""
+    import asyncio
+
+    return asyncio.get_event_loop().run_until_complete(send_message(message, channel, thread_ts))
 
 
 def post_slack_message_sync(

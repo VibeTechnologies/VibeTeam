@@ -4,6 +4,9 @@ GitHub Webhook Handlers.
 Handles GitHub webhook events and routes to agent microservices:
 - issues.assigned: Trigger SWE agent when issue assigned to bot
 - issue_comment.created: Respond to @mentions in comments
+- pull_request_review_comment.created: Respond to PR review comments
+
+Uses the Router for /RoleName mention-based routing.
 """
 
 import asyncio
@@ -12,16 +15,29 @@ import hmac
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibeteam.gateway.server import call_agent_service, config
+from vibeteam.router import Router
+from vibeteam.router.models import ROLE_DISPLAY_NAMES, AgentRole
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["GitHub"])
+
+# Message router for /RoleName parsing
+_message_router: Router | None = None
+
+
+def get_message_router() -> Router:
+    """Get or create the message router."""
+    global _message_router
+    if _message_router is None:
+        _message_router = Router()
+    return _message_router
 
 
 def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
@@ -141,6 +157,11 @@ You have been assigned to fix GitHub issue #{issue_number} in repository {repo}.
 5. Create a pull request with your changes
 6. Link the PR to this issue
 
+If you need another team member's help, mention them with /RoleName:
+- /ReleaseEngineer - for deployment or release issues
+- /SupportEngineer - for customer-facing issues
+- /ProductManager - for requirements clarification
+
 Repository: {repo}
 Issue: #{issue_number}
 """
@@ -149,17 +170,111 @@ Issue: #{issue_number}
         result = await call_agent_service(
             task=task,
             role="software_engineer",
-            context_type="issue",
-            context_id=f"{repo}#{issue_number}",
+            context_type="github_issue",
+            context_id=f"{repo}:{issue_number}",
         )
 
         if "error" in result:
             logger.error(f"SWE agent failed for {repo}#{issue_number}: {result['error']}")
+            await post_github_comment(
+                repo,
+                issue_number,
+                f"I encountered an error while working on this issue: {result['error']}",
+            )
         else:
-            logger.info(f"SWE agent completed for {repo}#{issue_number}")
+            response = result.get("response", "I've completed my analysis.")
+            # Post response as comment
+            await post_github_comment(repo, issue_number, response)
+
+            # Check for handoffs
+            message_router = get_message_router()
+            handoff_roles = message_router.parse_role_mentions(response)
+            if handoff_roles:
+                logger.info(f"Detected handoff to: {handoff_roles}")
+                for role in handoff_roles:
+                    await run_agent_for_github(
+                        repo=repo,
+                        issue_number=issue_number,
+                        role=role,
+                        context=f"Handoff from SoftwareEngineer:\n\n{response}",
+                    )
 
     except Exception as e:
         logger.exception(f"Failed to run SWE agent: {e}")
+
+
+async def run_agent_for_github(
+    repo: str,
+    issue_number: int,
+    role: AgentRole,
+    context: str,
+) -> None:
+    """Run a specific agent for a GitHub issue."""
+    display_name = ROLE_DISPLAY_NAMES.get(role) or role.replace("_", " ").title()
+    logger.info(f"Running {display_name} agent for {repo}#{issue_number}")
+
+    task = f"""## GitHub Issue Context
+
+You are helping with GitHub issue #{issue_number} in repository {repo}.
+
+### Context
+{context}
+
+### Instructions
+1. Analyze the context and provide helpful information
+2. Use available tools to investigate or take action
+3. If you need another team member, mention them with /RoleName
+
+Repository: {repo}
+Issue: #{issue_number}
+"""
+
+    try:
+        result = await call_agent_service(
+            task=task,
+            role=role,
+            context_type="github_issue",
+            context_id=f"{repo}:{issue_number}",
+        )
+
+        if "error" in result:
+            logger.error(f"{display_name} agent failed: {result['error']}")
+        else:
+            response = result.get("response", "")
+            if response:
+                formatted = f"[{display_name}] {response}"
+                await post_github_comment(repo, issue_number, formatted)
+
+    except Exception as e:
+        logger.exception(f"Failed to run {display_name} agent: {e}")
+
+
+async def post_github_comment(repo: str, issue_number: int, body: str) -> None:
+    """Post a comment on a GitHub issue."""
+    token = await get_installation_token()
+    if not token:
+        token = os.environ.get("GITHUB_TOKEN")
+
+    if not token:
+        logger.warning("No GitHub token available, skipping comment")
+        return
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                json={"body": body},
+            )
+            response.raise_for_status()
+            logger.info(f"Posted comment to {repo}#{issue_number}")
+
+    except Exception as e:
+        logger.error(f"Failed to post GitHub comment: {e}")
 
 
 @router.post("/webhook")
@@ -203,28 +318,85 @@ async def handle_github_webhook(
 
             return {"status": "accepted", "message": f"Processing issue #{issue_number}"}
 
-    # Handle @mention in comments
+    # Handle @mention or /RoleName in issue comments
     if x_github_event == "issue_comment" and action == "created":
         comment = payload.get("comment", {})
         comment_body = comment.get("body", "")
         issue = payload.get("issue", {})
+        comment_user = comment.get("user", {}).get("login", "")
 
-        # Check if bot is mentioned
+        # Ignore bot's own comments
+        if config.BOT_USERNAME.replace("[bot]", "") in comment_user:
+            return {"status": "ignored", "reason": "own_comment"}
+
+        issue_number = issue.get("number")
+
+        # Check for /RoleName mentions
+        message_router = get_message_router()
+        role_mentions = message_router.parse_role_mentions(comment_body)
+
+        if role_mentions:
+            logger.info(f"Role mentions in comment on #{issue_number}: {role_mentions}")
+            for role in role_mentions:
+                asyncio.create_task(
+                    run_agent_for_github(
+                        repo=repo_full_name,
+                        issue_number=issue_number,
+                        role=role,
+                        context=f"User comment:\n\n{comment_body}",
+                    )
+                )
+            return {
+                "status": "accepted",
+                "message": f"Processing roles {role_mentions} for #{issue_number}",
+            }
+
+        # Check if bot is mentioned (fallback to SWE)
         bot_mention = f"@{config.BOT_USERNAME.replace('[bot]', '')}"
-        if bot_mention in comment_body:
-            issue_number = issue.get("number")
+        if bot_mention in comment_body or "@VibeTeam" in comment_body:
             logger.info(f"Bot mentioned in comment on #{issue_number}")
 
-            # Trigger SWE agent
             asyncio.create_task(
                 run_swe_agent(
                     repo_full_name,
                     issue_number,
                     issue.get("title", ""),
-                    issue.get("body", ""),
+                    f"Original issue:\n{issue.get('body', '')}\n\nNew comment:\n{comment_body}",
                 )
             )
 
             return {"status": "accepted", "message": f"Processing mention in #{issue_number}"}
+
+    # Handle PR review comments
+    if x_github_event == "pull_request_review_comment" and action == "created":
+        comment = payload.get("comment", {})
+        comment_body = comment.get("body", "")
+        pr = payload.get("pull_request", {})
+        pr_number = pr.get("number")
+        comment_user = comment.get("user", {}).get("login", "")
+
+        # Ignore bot's own comments
+        if config.BOT_USERNAME.replace("[bot]", "") in comment_user:
+            return {"status": "ignored", "reason": "own_comment"}
+
+        # Check for /RoleName mentions
+        message_router = get_message_router()
+        role_mentions = message_router.parse_role_mentions(comment_body)
+
+        if role_mentions:
+            logger.info(f"Role mentions in PR comment on #{pr_number}: {role_mentions}")
+            for role in role_mentions:
+                asyncio.create_task(
+                    run_agent_for_github(
+                        repo=repo_full_name,
+                        issue_number=pr_number,  # PRs use the same comment API
+                        role=role,
+                        context=f"PR review comment:\n\n{comment_body}",
+                    )
+                )
+            return {
+                "status": "accepted",
+                "message": f"Processing roles {role_mentions} for PR #{pr_number}",
+            }
 
     return {"status": "ignored", "event": f"{x_github_event}.{action}"}

@@ -14,6 +14,7 @@ from typing import Any
 
 from agents.config import MARKETING_MANAGER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.handoff import HANDOFF_PROMPT
 
 # Import shared browser tools
 from agents.shared.browser_tools import (
@@ -22,6 +23,9 @@ from agents.shared.browser_tools import (
     fetch_webpage,
     take_screenshot,
     web_search,
+)
+from agents.shared.slack_tools import (
+    send_message,
 )
 
 # AutoGen imports - will fail gracefully if not installed
@@ -49,7 +53,17 @@ AZURE_MODEL_INFO = {
 }
 
 
-MARKETING_MANAGER_SYSTEM_PROMPT = """You are Ada, the Marketing Manager for VibeTeam.
+MARKETING_MANAGER_SYSTEM_PROMPT = f"""You are Ada, the Marketing Manager for VibeTeam.
+
+## CRITICAL: How to Respond
+
+You MUST use `send_message()` to post your response to Slack. Never just return text.
+Always call `send_message(message="your response here")` to communicate your findings, updates, and results.
+
+Example:
+```
+send_message("Campaign analysis complete. /ProductManager please review the metrics before we proceed.")
+```
 
 Your responsibilities:
 1. **Content Creation**: Write blog posts, social media content, and announcements
@@ -68,10 +82,7 @@ Your responsibilities:
 - Include calls to action when appropriate
 - Maintain consistent brand voice
 
-## Communication
-- Post announcements to Slack #ai-team
-- Coordinate with @ReleaseEngineer for launch timing
-- Coordinate with @SupportEngineer for customer feedback
+{HANDOFF_PROMPT}
 
 When you complete a task, summarize the content created and any scheduled posts.
 """
@@ -225,6 +236,8 @@ class AutoGenMarketingManager:
             name="MarketingManager",
             model_client=self.model_client,
             tools=[
+                # Slack communication (send_message is PRIMARY for responses)
+                send_message,
                 # Browser tools from shared layer
                 web_search,
                 fetch_webpage,
@@ -273,12 +286,34 @@ class AutoGenMarketingManager:
         result: TaskResult = await self.agent.run(task=task)
 
         # Extract response from result
+        # Priority: 1) send_message tool call content, 2) non-empty TextMessage
         response = ""
         if result.messages:
+            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
+            import json
+
+            # First, look for send_message tool calls - this is the actual response
             for msg in reversed(result.messages):
-                if hasattr(msg, "content") and msg.content:
-                    response = str(msg.content)
-                    break
+                if isinstance(msg, ToolCallRequestEvent) and msg.source == "MarketingManager":
+                    for call in msg.content:
+                        if hasattr(call, "name") and call.name == "send_message":
+                            try:
+                                args = json.loads(call.arguments)
+                                if args.get("message"):
+                                    response = args["message"]
+                                    break
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
+                    if response:
+                        break
+
+            # Fallback: get the last non-empty TextMessage from the assistant
+            if not response:
+                for msg in reversed(result.messages):
+                    if isinstance(msg, TextMessage) and msg.source == "MarketingManager":
+                        if msg.content and str(msg.content).strip():
+                            response = str(msg.content)
+                            break
 
         # Update session
         session.add_message("user", task)

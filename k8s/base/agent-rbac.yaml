@@ -1,0 +1,114 @@
+# RBAC for VibeTeam agents - Read-only access to cluster resources
+# This allows agents to inspect pods, deployments, services, etc. without modifying them
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vibeteam-agent
+  namespace: vibeteam
+  labels:
+    app.kubernetes.io/name: vibeteam
+    app.kubernetes.io/component: agent
+
+---
+# ClusterRole with read-only access to common resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vibeteam-agent-readonly
+  labels:
+    app.kubernetes.io/name: vibeteam
+    app.kubernetes.io/component: agent
+rules:
+  # Core resources - read only
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - endpoints
+      - configmaps
+      - secrets  # Metadata only, not actual secret data (see note below)
+      - namespaces
+      - events
+      - persistentvolumeclaims
+      - replicationcontrollers
+    verbs: ["get", "list", "watch"]
+  
+  # Apps resources - read only
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - replicasets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+  
+  # Batch resources - read only
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  
+  # Networking resources - read only
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch"]
+  
+  # Autoscaling resources - read only
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+  
+  # Policy resources - read only
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch"]
+  
+  # Traefik ingress resources (for k3s)
+  - apiGroups: ["traefik.io", "traefik.containo.us"]
+    resources:
+      - ingressroutes
+      - middlewares
+      - tlsoptions
+      - serverstransports
+    verbs: ["get", "list", "watch"]
+
+---
+# Bind the ClusterRole to the ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vibeteam-agent-readonly
+  labels:
+    app.kubernetes.io/name: vibeteam
+    app.kubernetes.io/component: agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vibeteam-agent-readonly
+subjects:
+  - kind: ServiceAccount
+    name: vibeteam-agent
+    namespace: vibeteam
+
+---
+# Optional: Role for namespace-specific write access (e.g., to create debug pods)
+# Currently disabled - agents are read-only
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: Role
+# metadata:
+#   name: vibeteam-agent-debug
+#   namespace: vibeteam
+# rules:
+#   - apiGroups: [""]
+#     resources:
+#       - pods
+#       - pods/exec
+#     verbs: ["create", "delete"]

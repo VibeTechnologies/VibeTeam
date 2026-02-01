@@ -4,6 +4,8 @@ Slack Event Handlers.
 Handles Slack events and routes to agent microservices:
 - app_mention: Respond to @VibeTeam mentions in channels
 - message.im: Respond to direct messages
+
+Uses the Router for /RoleName mention-based routing.
 """
 
 import asyncio
@@ -19,10 +21,23 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibeteam.gateway.server import call_agent_service, config
+from vibeteam.router import Router, UnifiedMessage
+from vibeteam.router.models import ROLE_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Slack"])
+
+# Message router for /RoleName parsing
+_message_router: Router | None = None
+
+
+def get_message_router() -> Router:
+    """Get or create the message router."""
+    global _message_router
+    if _message_router is None:
+        _message_router = Router()
+    return _message_router
 
 
 def verify_slack_signature(
@@ -90,6 +105,54 @@ async def send_slack_message(
         logger.exception(f"Failed to send Slack message: {e}")
 
 
+async def add_reaction(
+    channel: str,
+    timestamp: str,
+    emoji: str = "eyes",
+) -> bool:
+    """Add an emoji reaction to a Slack message.
+
+    Args:
+        channel: Channel ID where the message is
+        timestamp: Message timestamp (ts)
+        emoji: Emoji name without colons (default: "eyes" for 👀)
+
+    Returns:
+        True if reaction was added successfully
+    """
+    if not config.SLACK_BOT_TOKEN:
+        logger.warning("SLACK_BOT_TOKEN not set, cannot add reaction")
+        return False
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://slack.com/api/reactions.add",
+                headers={
+                    "Authorization": f"Bearer {config.SLACK_BOT_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "channel": channel,
+                    "timestamp": timestamp,
+                    "name": emoji,
+                },
+            )
+            result = response.json()
+            if not result.get("ok"):
+                # "already_reacted" is not an error - just means we already added this reaction
+                if result.get("error") != "already_reacted":
+                    logger.warning(f"Slack reactions.add error: {result.get('error')}")
+                return result.get("error") == "already_reacted"
+            else:
+                logger.info(f"Added :{emoji}: reaction to message in {channel}")
+                return True
+
+    except Exception as e:
+        logger.exception(f"Failed to add Slack reaction: {e}")
+        return False
+
+
 async def run_agent_for_slack(
     user_message: str,
     channel: str,
@@ -99,26 +162,73 @@ async def run_agent_for_slack(
     """
     Run the appropriate agent based on Slack message and respond.
 
-    Routes based on keywords in the message to determine the best agent:
-    - sentry, error, bug → release_engineer
-    - email, customer, support → support_engineer
-    - fix, implement, code → software_engineer
+    Uses the Router to parse /RoleName mentions and route to specific agents.
+    Falls back to keyword-based routing if no role is mentioned.
     """
     logger.info(f"Processing Slack message from {user_id}: {user_message[:100]}")
 
-    # Determine role based on keywords
-    message_lower = user_message.lower()
-    role = "support_engineer"  # default
+    # Create unified message for router
+    message_router = get_message_router()
+    unified = UnifiedMessage(
+        source="slack",
+        thread_id=thread_ts or "",
+        channel_id=channel,
+        content=user_message,
+        author_id=user_id,
+        author_name=user_id,
+        is_bot=False,
+        message_id=thread_ts or "",
+    )
 
-    if any(kw in message_lower for kw in ["sentry", "error", "crash", "exception"]):
-        role = "release_engineer"
-    elif any(
-        kw in message_lower for kw in ["fix", "implement", "code", "bug", "pr", "pull request"]
-    ):
-        role = "software_engineer"
-    elif any(kw in message_lower for kw in ["release", "deploy", "version"]):
-        role = "release_engineer"
+    # Parse /RoleName mentions
+    role_mentions = message_router.parse_role_mentions(user_message)
 
+    if role_mentions:
+        # Route to mentioned roles
+        for role in role_mentions:
+            display_name = ROLE_DISPLAY_NAMES.get(role, role)
+            await _run_agent_and_respond(
+                role=role,
+                display_name=display_name,
+                user_message=user_message,
+                channel=channel,
+                thread_ts=thread_ts,
+                user_id=user_id,
+            )
+    else:
+        # Fall back to keyword-based routing
+        message_lower = user_message.lower()
+        role = "support_engineer"  # default
+
+        if any(kw in message_lower for kw in ["sentry", "error", "crash", "exception"]):
+            role = "release_engineer"
+        elif any(
+            kw in message_lower for kw in ["fix", "implement", "code", "bug", "pr", "pull request"]
+        ):
+            role = "software_engineer"
+        elif any(kw in message_lower for kw in ["release", "deploy", "version"]):
+            role = "release_engineer"
+
+        display_name = ROLE_DISPLAY_NAMES.get(role, role)
+        await _run_agent_and_respond(
+            role=role,
+            display_name=display_name,
+            user_message=user_message,
+            channel=channel,
+            thread_ts=thread_ts,
+            user_id=user_id,
+        )
+
+
+async def _run_agent_and_respond(
+    role: str,
+    display_name: str,
+    user_message: str,
+    channel: str,
+    thread_ts: str | None,
+    user_id: str,
+) -> None:
+    """Run a specific agent and post response to Slack."""
     # Build task for the agent
     task = f"""## Slack Request
 
@@ -136,6 +246,8 @@ A user has requested help via Slack.
 1. Analyze what the user is asking for
 2. Complete the task using available tools
 3. Provide a clear, concise response
+4. If you need another team member's help, mention them with /RoleName
+   (e.g., /ReleaseEngineer, /SoftwareEngineer, /SupportEngineer)
 
 Please help with this request and provide actionable information.
 """
@@ -151,7 +263,7 @@ Please help with this request and provide actionable information.
         if "error" in result:
             await send_slack_message(
                 channel,
-                f"Sorry, I encountered an error: {result['error']}",
+                f"[{display_name}] Sorry, I encountered an error: {result['error']}",
                 thread_ts,
             )
         else:
@@ -159,13 +271,23 @@ Please help with this request and provide actionable information.
             # Truncate long responses for Slack
             if len(response) > 3000:
                 response = response[:2900] + "\n\n... (truncated)"
-            await send_slack_message(channel, response, thread_ts)
+
+            # Prefix with role name
+            formatted_response = f"[{display_name}] {response}"
+            await send_slack_message(channel, formatted_response, thread_ts)
+
+            # Check for handoffs in the response
+            message_router = get_message_router()
+            handoff_roles = message_router.parse_role_mentions(response)
+            if handoff_roles:
+                logger.info(f"Detected handoff to: {handoff_roles}")
+                # The next poll will pick up the handoff from the bot's message
 
     except Exception as e:
         logger.exception(f"Failed to run agent for Slack: {e}")
         await send_slack_message(
             channel,
-            "Sorry, I encountered an unexpected error. Please try again later.",
+            f"[{display_name}] Sorry, I encountered an unexpected error. Please try again later.",
             thread_ts,
         )
 
@@ -210,17 +332,14 @@ async def handle_slack_events(
         user_id = event.get("user", "")
         channel = event.get("channel", "")
         text = event.get("text", "")
-        thread_ts = event.get("thread_ts") or event.get("ts")
+        message_ts = event.get("ts", "")
+        thread_ts = event.get("thread_ts") or message_ts
 
         # Remove the bot mention from the text
         clean_text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
 
-        # Acknowledge immediately
-        await send_slack_message(
-            channel,
-            "Got it! I'm working on your request...",
-            thread_ts,
-        )
+        # React with 👀 to show we're looking at the message
+        await add_reaction(channel, message_ts, "eyes")
 
         # Process in background
         asyncio.create_task(run_agent_for_slack(clean_text, channel, thread_ts, user_id))
@@ -232,14 +351,11 @@ async def handle_slack_events(
         user_id = event.get("user", "")
         channel = event.get("channel", "")
         text = event.get("text", "")
-        thread_ts = event.get("thread_ts") or event.get("ts")
+        message_ts = event.get("ts", "")
+        thread_ts = event.get("thread_ts") or message_ts
 
-        # Acknowledge immediately
-        await send_slack_message(
-            channel,
-            "Got it! I'm working on your request...",
-            thread_ts,
-        )
+        # React with 👀 to show we're looking at the message
+        await add_reaction(channel, message_ts, "eyes")
 
         # Process in background
         asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id))

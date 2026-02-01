@@ -16,10 +16,12 @@ from typing import Any
 
 from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.handoff import HANDOFF_PROMPT
+from agents.shared.docs_tools import search_infra_docs
 from agents.shared.slack_tools import (
-    post_slack_message,
     read_slack_channel,
     read_slack_thread,
+    send_message,
 )
 
 # AutoGen imports - will fail gracefully if not installed
@@ -47,24 +49,50 @@ GPT5_MODEL_INFO = {
 }
 
 
-RELEASE_ENGINEER_SYSTEM_PROMPT = """You are Einstein, the Release Engineer for VibeTeam.
+RELEASE_ENGINEER_SYSTEM_PROMPT = f"""You are Einstein, the Release Engineer for VibeTeam.
 
-## CRITICAL: Tool Usage Requirements
-You MUST use the provided tools to complete tasks. Do NOT respond without first calling the appropriate tools to gather real data.
+## CRITICAL: How to Respond
 
-Available tools:
-- `execute_shell(command)` - Execute shell commands. Use this for git, kubectl, gh CLI, and other system commands.
-- `read_file(file_path)` - Read file contents. Use to read config files, manifests, changelogs.
-- `write_file(file_path, content)` - Write content to a file. Use for creating/updating configs.
-- `list_directory(path)` - List directory contents. Use to explore project structure.
+You MUST ALWAYS end with `send_message()` to post your findings to Slack.
+Your message will be automatically prefixed with [ReleaseEngineer:session_id].
+
+WORKFLOW:
+1. If you need infrastructure information, FIRST use `search_infra_docs()` to find relevant docs
+2. Use tools (execute_shell, etc.) to investigate
+3. ALWAYS call send_message() with your findings at the end
+4. Never finish without calling send_message()
+
+Example:
+```
+# First check docs for relevant information
+search_infra_docs("k3s cluster pods")
+# Then investigate
+execute_shell("kubectl get pods -n vibeteam")
+# Then ALWAYS post findings
+send_message("Investigated cluster: all pods healthy. /SupportEngineer issue not on our side.")
+```
+
+## Available Tools
+
+- `send_message(message)` - Post your response to Slack (REQUIRED - must be called!)
+- `search_infra_docs(query)` - Search infrastructure documentation (k3s, deployment, services)
+- `execute_shell(command)` - Execute shell commands (git, kubectl, gh CLI, etc.)
+- `read_file(file_path)` - Read file contents (configs, manifests, changelogs)
+- `write_file(file_path, content)` - Write content to a file
+- `list_directory(path)` - List directory contents
+- `read_slack_channel()` - Read recent Slack messages
+
+## Tool Usage Requirements
 
 IMPORTANT:
-- For deployment tasks: ALWAYS use `execute_shell` to run kubectl commands and check status.
-- For release tasks: Use `execute_shell` with `gh release` commands, read CHANGELOG.md first.
-- For checking build status: Use `execute_shell` with `gh run list` or similar commands.
-- NEVER generate fake data or respond from memory - use tools to get real information.
+- For deployment tasks: Use `execute_shell` to run kubectl commands and check status
+- For release tasks: Use `execute_shell` with `gh release` commands
+- For infrastructure questions: Use `search_infra_docs` FIRST to find relevant docs
+- NEVER generate fake data - use tools to get real information
+- **ALWAYS call send_message() at the end with your findings**
 
-Your responsibilities:
+## Your Responsibilities
+
 1. **Deployments**: Deploy applications to the k3s Kubernetes cluster
 2. **Release Management**: Create releases, changelogs, and version bumps
 3. **CI/CD**: Monitor and fix build pipelines
@@ -91,26 +119,18 @@ kubectl logs -f deployment/vibeteam -n production
 gh release create v1.0.0 --generate-notes
 ```
 
-## TEAM COLLABORATION
-
-When you complete a task or need help from another team member, @mention them in your response:
-- @SoftwareEngineer - for code changes before deployment
-- @SiteReliabilityEngineer - for infrastructure/monitoring issues
-- @SupportEngineer - to notify about customer-facing changes
-- @ProductManager - for release scope/timing decisions
-- @Marketer - for public release announcements
-
-Example: "Deployment to staging complete. @SupportEngineer please verify the customer-facing changes before we proceed to production."
-
-You can also use Slack tools:
-- `post_slack_message(message)` - Post updates to Slack #ai-team
-- `read_slack_channel()` - Read recent Slack messages
-
-When you complete a task, summarize what was done and any next steps.
+{HANDOFF_PROMPT}
 """
 
 
 # Tool functions for AutoGen
+
+# Path to read-only agent kubeconfig
+AGENT_KUBECONFIG = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".kube", "agent-config.yaml"
+)
+
+
 async def execute_shell(command: str) -> str:
     """Execute a shell command and return the output.
 
@@ -121,6 +141,11 @@ async def execute_shell(command: str) -> str:
         The command output (stdout + stderr)
     """
     try:
+        # Set up environment with agent kubeconfig for kubectl commands
+        env = os.environ.copy()
+        if os.path.exists(AGENT_KUBECONFIG):
+            env["KUBECONFIG"] = AGENT_KUBECONFIG
+
         result = await asyncio.to_thread(
             subprocess.run,
             command,
@@ -128,6 +153,7 @@ async def execute_shell(command: str) -> str:
             capture_output=True,
             text=True,
             timeout=300,
+            env=env,
         )
         output = result.stdout
         if result.stderr:
@@ -236,20 +262,22 @@ class AutoGenReleaseEngineer:
             name="ReleaseEngineer",
             model_client=self.model_client,
             tools=[
+                # Infrastructure docs search (use first for infra questions)
+                search_infra_docs,
                 # Core release tools
                 execute_shell,
                 read_file,
                 write_file,
                 list_directory,
-                # Slack communication
-                post_slack_message,
+                # Slack communication (send_message is PRIMARY for responses)
+                send_message,
                 read_slack_channel,
                 read_slack_thread,
             ],
             system_message=RELEASE_ENGINEER_SYSTEM_PROMPT,
             description="Release Engineer for deployments, CI/CD, and infrastructure management.",
             reflect_on_tool_use=True,  # Summarize after tool calls
-            max_tool_iterations=5,  # Allow multiple tool iterations
+            max_tool_iterations=8,  # Allow more iterations for investigation + send_message
         )
 
     async def run_async(
@@ -287,13 +315,34 @@ class AutoGenReleaseEngineer:
         result: TaskResult = await self.agent.run(task=task)
 
         # Extract response from result
+        # Priority: 1) send_message tool call content, 2) non-empty TextMessage
         response = ""
         if result.messages:
-            # Get the last assistant message
+            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
+            import json
+
+            # First, look for send_message tool calls - this is the actual response
             for msg in reversed(result.messages):
-                if hasattr(msg, "content") and msg.content:
-                    response = str(msg.content)
-                    break
+                if isinstance(msg, ToolCallRequestEvent) and msg.source == "ReleaseEngineer":
+                    for call in msg.content:
+                        if hasattr(call, "name") and call.name == "send_message":
+                            try:
+                                args = json.loads(call.arguments)
+                                if args.get("message"):
+                                    response = args["message"]
+                                    break
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
+                    if response:
+                        break
+
+            # Fallback: get the last non-empty TextMessage from the assistant
+            if not response:
+                for msg in reversed(result.messages):
+                    if isinstance(msg, TextMessage) and msg.source == "ReleaseEngineer":
+                        if msg.content and str(msg.content).strip():
+                            response = str(msg.content)
+                            break
 
         # Update session
         session.add_message("user", task)

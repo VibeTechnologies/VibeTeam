@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from vibeteam.team.channel import ChannelMessage
-    from vibeteam.team.schemas import ClaimDecision
+    from vibeteam.lib.channel import ChannelMessage
+    from vibeteam.lib.schemas import ClaimDecision
 
 
 # Role-specific keywords for fast-path matching
@@ -168,9 +168,7 @@ class ResponsibilityDetector:
         if not self.mention_patterns:
             self.mention_patterns = ROLE_MENTION_PATTERNS.get(self.agent_role, [])
 
-    async def should_claim(
-        self, message: ChannelMessage | str
-    ) -> ResponsibilityClaim:
+    async def should_claim(self, message: ChannelMessage | str) -> ResponsibilityClaim:
         """Evaluate if this agent should work on this message.
 
         Args:
@@ -242,7 +240,7 @@ class ResponsibilityDetector:
             ClaimDecision with full structured decision data
         """
         # Import here to avoid circular imports
-        from vibeteam.team.schemas import ClaimDecision
+        from vibeteam.lib.schemas import ClaimDecision
 
         # Get the legacy claim result
         claim = await self.should_claim(message)
@@ -384,14 +382,14 @@ class ResponsibilityDetector:
         try:
             import litellm
 
-            prompt = f"""You are a {self.agent_role.replace('_', ' ')} in a software team.
+            prompt = f"""You are a {self.agent_role.replace("_", " ")} in a software team.
 
 Evaluate if the following message is something YOU should handle based on your role:
 
 Message: "{content}"
 
 Your role responsibilities:
-{', '.join(self.keywords[:10])}
+{", ".join(self.keywords[:10])}
 
 Respond with JSON:
 {{"should_claim": true/false, "confidence": 0.0-1.0, "reasoning": "brief explanation", "effort": "small/medium/large"}}

@@ -13,6 +13,7 @@ Uses slack-bolt for event handling and slack-sdk for API calls.
 API Docs: https://api.slack.com/methods
 """
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from typing import Any
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

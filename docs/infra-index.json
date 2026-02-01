@@ -1,0 +1,479 @@
+{
+  "version": "1.0",
+  "generated": "2026-02-01T12:27:15.489771",
+  "total_files": 77,
+  "categories": [
+    "security",
+    "kubernetes",
+    "services",
+    "infrastructure",
+    "general",
+    "deployment",
+    "monitoring"
+  ],
+  "files": [
+    {
+      "path": "services/k3s/README.md",
+      "title": "k3s Cluster Management",
+      "category": "kubernetes",
+      "relevance": 33.0
+    },
+    {
+      "path": "services/subscription/docs/systemDesign.md",
+      "title": "Vibe API System Design",
+      "category": "kubernetes",
+      "relevance": 30.5
+    },
+    {
+      "path": "docs/quality.md",
+      "title": "Production Quality Checklist",
+      "category": "services",
+      "relevance": 25.0
+    },
+    {
+      "path": "AGENTS.md",
+      "title": "Eval Test Analysis",
+      "category": "deployment",
+      "relevance": 22.5
+    },
+    {
+      "path": "docs/systemDesign.md",
+      "title": "Building a Production AI SaaS on Azure for Under $100/Month",
+      "category": "services",
+      "relevance": 21.0
+    },
+    {
+      "path": "docs/productionServices.md",
+      "title": "Production Services Configuration",
+      "category": "deployment",
+      "relevance": 20.5
+    },
+    {
+      "path": "docs/langfuse-integration.md",
+      "title": "Langfuse Integration Guide",
+      "category": "infrastructure",
+      "relevance": 20.0
+    },
+    {
+      "path": "services/subscription/terraform/README.md",
+      "title": "Azure OpenAI Terraform Module",
+      "category": "deployment",
+      "relevance": 19.5
+    },
+    {
+      "path": "services/subscription/docs/deployment.md",
+      "title": "Subscription Service Deployment",
+      "category": "services",
+      "relevance": 19.0
+    },
+    {
+      "path": "services/design.md",
+      "title": "Vibe Browser Services Architecture",
+      "category": "infrastructure",
+      "relevance": 18.5
+    },
+    {
+      "path": "services/subscription/design.md",
+      "title": "Subscription Service Design",
+      "category": "services",
+      "relevance": 18.5
+    },
+    {
+      "path": "README.md",
+      "title": "Vibe AI Browser Extension",
+      "category": "monitoring",
+      "relevance": 17.5
+    },
+    {
+      "path": "services/subscription/k8s/README-MCP.md",
+      "title": "Google Workspace MCP Server",
+      "category": "kubernetes",
+      "relevance": 17.5
+    },
+    {
+      "path": ".opencode/skills/deploy-subscription/SKILL.md",
+      "title": "Deploy Subscription Services",
+      "category": "services",
+      "relevance": 16.5
+    },
+    {
+      "path": "docs/blogpost-ptu-fuckup.md",
+      "title": "How Claude Opus 4.5 Cost Me $12,000 in 3 Days",
+      "category": "deployment",
+      "relevance": 15.0
+    },
+    {
+      "path": "services/subscription/infra/langfuse/README.md",
+      "title": "Langfuse Azure Production Deployment",
+      "category": "monitoring",
+      "relevance": 14.5
+    },
+    {
+      "path": "services/subscription/docs/model-access-control.md",
+      "title": "Model Access Control Architecture",
+      "category": "services",
+      "relevance": 14.5
+    },
+    {
+      "path": "services/subscription/README.md",
+      "title": "Subscription Services",
+      "category": "services",
+      "relevance": 14.0
+    },
+    {
+      "path": "docs/googleOAuth.md",
+      "title": "Google OAuth Configuration",
+      "category": "security",
+      "relevance": 14.0
+    },
+    {
+      "path": "docs/release.md",
+      "title": "Release Process",
+      "category": "deployment",
+      "relevance": 12.5
+    },
+    {
+      "path": "services/langfuse/README.md",
+      "title": "Langfuse Deployment",
+      "category": "deployment",
+      "relevance": 12.5
+    },
+    {
+      "path": "services/subscription/stripe-service/README.md",
+      "title": "Stripe Service",
+      "category": "services",
+      "relevance": 12.5
+    },
+    {
+      "path": "docs/CI.md",
+      "title": "CI/CD Pipeline",
+      "category": "deployment",
+      "relevance": 12.0
+    },
+    {
+      "path": "docs/distribution.md",
+      "title": "Extension Distribution",
+      "category": "deployment",
+      "relevance": 12.0
+    },
+    {
+      "path": ".opencode/skills/release/SKILL.md",
+      "title": "Release Process",
+      "category": "deployment",
+      "relevance": 11.5
+    },
+    {
+      "path": "services/docusarus/README.md",
+      "title": "Building an AI-Powered Documentation Portal with Automated Support on Azure",
+      "category": "deployment",
+      "relevance": 11.0
+    },
+    {
+      "path": "services/k3s/terraform/README.md",
+      "title": "K3s Terraform Infrastructure",
+      "category": "deployment",
+      "relevance": 10.5
+    },
+    {
+      "path": "services/mcp/CLAUDE.md",
+      "title": "CLAUDE.md - @presto-ai/google-workspace-mcp",
+      "category": "deployment",
+      "relevance": 9.5
+    },
+    {
+      "path": "services/subscription/docs/endpoints.md",
+      "title": "API Endpoints",
+      "category": "services",
+      "relevance": 9.5
+    },
+    {
+      "path": "services/subscription/docs/tiers.md",
+      "title": "Vibe Browser Subscription Tiers",
+      "category": "services",
+      "relevance": 9.0
+    },
+    {
+      "path": "docs/openrouter-oauth.md",
+      "title": "OpenRouter OAuth Integration",
+      "category": "security",
+      "relevance": 8.5
+    },
+    {
+      "path": "docs/azure.md",
+      "title": "Note: capacity=100 gives 100 requests/min and 100K tokens/min",
+      "category": "deployment",
+      "relevance": 8.5
+    },
+    {
+      "path": "services/README.md",
+      "title": "Vibe AI Services",
+      "category": "deployment",
+      "relevance": 8.0
+    },
+    {
+      "path": "services/docusarus/AGENTS.md",
+      "title": "Documentation Update Guide",
+      "category": "deployment",
+      "relevance": 7.5
+    },
+    {
+      "path": "docs/vibeApiOauth.md",
+      "title": "Vibeapioauth",
+      "category": "security",
+      "relevance": 7.0
+    },
+    {
+      "path": "docs/social-ptu-fuckup.md",
+      "title": "PTU Fuckup - Social Media Posts",
+      "category": "deployment",
+      "relevance": 7.0
+    },
+    {
+      "path": "services/subscription/docs/test.md",
+      "title": "Vibe Browser E2E Test Cases",
+      "category": "security",
+      "relevance": 7.0
+    },
+    {
+      "path": "services/mcp/README.md",
+      "title": "@presto-ai/google-workspace-mcp",
+      "category": "security",
+      "relevance": 6.0
+    },
+    {
+      "path": ".opencode/skills/qa-automation/SKILL.md",
+      "title": "QA Automation Skill",
+      "category": "security",
+      "relevance": 6.0
+    },
+    {
+      "path": ".opencode/skills/production-readiness/SKILL.md",
+      "title": "Production Readiness",
+      "category": "deployment",
+      "relevance": 6.0
+    },
+    {
+      "path": "docs/chromeWebStore.md",
+      "title": "Chrome Web Store Publishing Guide",
+      "category": "deployment",
+      "relevance": 5.5
+    },
+    {
+      "path": ".opencode/skills/software-engineering/SKILL.md",
+      "title": "Software Engineering Workflow",
+      "category": "deployment",
+      "relevance": 5.5
+    },
+    {
+      "path": "docs/blogpost-page-load-optimization.md",
+      "title": "Building an Agentic Browser: Lessons from Page Load Optimization",
+      "category": "deployment",
+      "relevance": 5.0
+    },
+    {
+      "path": "services/docusarus/docs/settings.md",
+      "title": "Settings Reference",
+      "category": "services",
+      "relevance": 5.0
+    },
+    {
+      "path": ".opencode/skills/eval-benchmark/SKILL.md",
+      "title": "Eval Benchmark",
+      "category": "monitoring",
+      "relevance": 5.0
+    },
+    {
+      "path": "docs/extension.md",
+      "title": "Extension",
+      "category": "monitoring",
+      "relevance": 4.5
+    },
+    {
+      "path": "services/docusarus/docs/providers.md",
+      "title": "AI Providers",
+      "category": "services",
+      "relevance": 4.0
+    },
+    {
+      "path": "docs/EvalAnalysis.md",
+      "title": "Eval Analysis Report",
+      "category": "monitoring",
+      "relevance": 3.5
+    },
+    {
+      "path": "services/docusarus/docs/getting-started/configuration.md",
+      "title": "Configuration",
+      "category": "services",
+      "relevance": 3.5
+    },
+    {
+      "path": "docs/testing.md",
+      "title": "Testing",
+      "category": "security",
+      "relevance": 3.0
+    },
+    {
+      "path": ".opencode/skills/chrome-webstore-publish/SKILL.md",
+      "title": "Chrome Web Store Publishing",
+      "category": "security",
+      "relevance": 3.0
+    },
+    {
+      "path": "docs/requirements.md",
+      "title": "Product Requirements",
+      "category": "deployment",
+      "relevance": 2.5
+    },
+    {
+      "path": "docs/product.md",
+      "title": "Vibe Browser - Product Information for Accelerator Applications",
+      "category": "deployment",
+      "relevance": 2.5
+    },
+    {
+      "path": "docs/chromeCDP.md",
+      "title": "Chrome DevTools Protocol from Extensions: You Don't Need to Fork Chromium",
+      "category": "infrastructure",
+      "relevance": 2.0
+    },
+    {
+      "path": "docs/browserFillTool.md",
+      "title": "Building a Robust fill_by_index Tool for Browser Automation",
+      "category": "security",
+      "relevance": 2.0
+    },
+    {
+      "path": "docs/mcp-server-design.md",
+      "title": "Vibe MCP Server Design",
+      "category": "monitoring",
+      "relevance": 1.5
+    },
+    {
+      "path": "services/subscription/docs/models.md",
+      "title": "List Azure deployments",
+      "category": "deployment",
+      "relevance": 1.5
+    },
+    {
+      "path": "services/docusarus/docs/skills.md",
+      "title": "Skills",
+      "category": "security",
+      "relevance": 1.5
+    },
+    {
+      "path": "services/docusarus/docs/mcp-integration.md",
+      "title": "MCP Integration",
+      "category": "monitoring",
+      "relevance": 1.5
+    },
+    {
+      "path": ".opencode/skills/pr-review/SKILL.md",
+      "title": "PR Review Comment Resolution",
+      "category": "monitoring",
+      "relevance": 1.5
+    },
+    {
+      "path": "tests/README.md",
+      "title": "Vibe Extension Test Suite",
+      "category": "deployment",
+      "relevance": 1.5
+    },
+    {
+      "path": "docs/contentCompression.md",
+      "title": "Vibe Engineering: Context Compression with Two-Phase LLM Compaction",
+      "category": "monitoring",
+      "relevance": 1.0
+    },
+    {
+      "path": "docs/lastChat.md",
+      "title": "Feature: Cross-Session Context (get_session_history Tool)",
+      "category": "deployment",
+      "relevance": 1.0
+    },
+    {
+      "path": "docs/subagent.md",
+      "title": "SubAgent Architecture",
+      "category": "deployment",
+      "relevance": 1.0
+    },
+    {
+      "path": "docs/httpErrorHandling.md",
+      "title": "Httperrorhandling",
+      "category": "infrastructure",
+      "relevance": 1.0
+    },
+    {
+      "path": "docs/reflection.md",
+      "title": "Reflection System",
+      "category": "monitoring",
+      "relevance": 1.0
+    },
+    {
+      "path": "services/docusarus/docs/intro.md",
+      "title": "Vibe AI Co-pilot",
+      "category": "services",
+      "relevance": 1.0
+    },
+    {
+      "path": "services/docusarus/docs/using-copilot.md",
+      "title": "Using the Co-Pilot",
+      "category": "deployment",
+      "relevance": 1.0
+    },
+    {
+      "path": "docs/voice.md",
+      "title": "SpeechRecognition Browser Support",
+      "category": "infrastructure",
+      "relevance": 0.5
+    },
+    {
+      "path": "docs/getPageContent-selected-text-design.md",
+      "title": "Design Document for Enhancing `getPageContent` to Include Selected Text",
+      "category": "kubernetes",
+      "relevance": 0.5
+    },
+    {
+      "path": "services/docusarus/docs/refunds.md",
+      "title": "Refunds & Cancellation",
+      "category": "services",
+      "relevance": 0.5
+    },
+    {
+      "path": "services/docusarus/docs/getting-started/extension.md",
+      "title": "Install the Chrome Extension",
+      "category": "deployment",
+      "relevance": 0.5
+    },
+    {
+      "path": "docs/agentTimeouts.md",
+      "title": "Agent Timeout Configuration",
+      "category": "general",
+      "relevance": 0.0
+    },
+    {
+      "path": "docs/tabs.md",
+      "title": "Tabs",
+      "category": "general",
+      "relevance": 0.0
+    },
+    {
+      "path": "docs/geminiNano.md",
+      "title": "Gemini Nano - Built-in AI Provider",
+      "category": "general",
+      "relevance": 0.0
+    },
+    {
+      "path": "services/docusarus/docs/troubleshooting.md",
+      "title": "Troubleshooting",
+      "category": "general",
+      "relevance": 0.0
+    },
+    {
+      "path": "tests/fixtures/attachments/test-text.md",
+      "title": "Test Markdown",
+      "category": "general",
+      "relevance": 0.0
+    }
+  ],
+  "content_hash": "be7f270a70d4e856"
+}
