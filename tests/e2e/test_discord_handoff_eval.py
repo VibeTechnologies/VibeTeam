@@ -121,9 +121,9 @@ Multi-agent handoff scenario: Customer API Gateway 404 Error
 
 PHASE 1 - SupportEngineer:
 - Receives customer email reporting 404 errors on API Gateway
-- Identifies this as an infrastructure issue needing ReleaseEngineer
-- Posts to Discord channel with context
-- @mentions ReleaseEngineer for assistance
+- Analyzes the issue and identifies it as infrastructure-related
+- Based on AGENTS.md instructions, decides to escalate to ReleaseEngineer
+- Posts to Discord channel with context and @mentions ReleaseEngineer
 
 PHASE 2 - ReleaseEngineer:
 - Receives notification via Discord @mention
@@ -138,10 +138,10 @@ PHASE 3 - SupportEngineer:
 - Includes what was fixed, when, and any follow-up actions
 
 SUCCESS CRITERIA:
+- SupportEngineer correctly identifies infrastructure issue and escalates
 - Agents correctly detect and respond to @mentions
 - Context is preserved across handoffs
 - Customer receives professional resolution email
-- Clear communication between team members
 """
 
 
@@ -246,10 +246,14 @@ class HandoffEvaluator:
 SCENARIO:
 A customer (ACME Corp) reported that the Vibe API Gateway is returning 404 errors.
 The expected workflow was:
-1. SupportEngineer reads the customer email and identifies infrastructure issue
-2. SupportEngineer posts to Discord and @mentions ReleaseEngineer for help
+1. SupportEngineer reads the customer email and identifies it as an infrastructure issue
+2. SupportEngineer autonomously decides to @mention ReleaseEngineer based on their responsibilities
 3. ReleaseEngineer investigates, fixes, and @mentions SupportEngineer when done
 4. SupportEngineer sends resolution email to customer
+
+IMPORTANT: The SupportEngineer was NOT explicitly told to contact ReleaseEngineer.
+They should decide this on their own based on understanding that API/infrastructure
+issues require ReleaseEngineer's expertise.
 
 CUSTOMER EMAIL:
 {customer_email}
@@ -259,25 +263,25 @@ AGENT CONVERSATION:
 
 Evaluate the conversation on these criteria (score each 0-5):
 
-1. HANDOFF_DETECTION: Did agents correctly identify and respond to @mentions?
+1. AUTONOMOUS_ESCALATION: Did SupportEngineer correctly identify this as an infrastructure issue and autonomously escalate to ReleaseEngineer?
+   - 0: Failed to escalate or escalated to wrong team member
+   - 3: Escalated but with unclear reasoning or delayed decision
+   - 5: Promptly and correctly identified infrastructure issue and escalated to ReleaseEngineer
+
+2. HANDOFF_DETECTION: Did agents correctly identify and respond to @mentions?
    - 0: Failed to detect mentions or ignored them
    - 3: Detected mentions but response was delayed or incomplete
    - 5: Promptly detected and responded to all mentions appropriately
 
-2. TASK_COMPLETION: Was the customer ultimately notified of the fix?
+3. TASK_COMPLETION: Was the customer ultimately notified of the fix?
    - 0: Customer was never contacted
    - 3: Customer was contacted but information was incomplete
    - 5: Customer received comprehensive resolution email with all details
 
-3. COMMUNICATION: Was information passed clearly between agents?
+4. COMMUNICATION: Was information passed clearly between agents?
    - 0: No meaningful communication between agents
    - 3: Basic information shared but missing important context
    - 5: Clear, comprehensive context transfer with all relevant details
-
-4. TOOL_USAGE: Were Gmail and Discord tools used appropriately?
-   - 0: Failed to use required tools
-   - 3: Used tools but with errors or inefficiencies
-   - 5: Correct and efficient use of all required tools
 
 5. OVERALL: Overall quality of the multi-agent collaboration
    - 0: Complete failure
@@ -286,10 +290,10 @@ Evaluate the conversation on these criteria (score each 0-5):
 
 Return ONLY valid JSON in this exact format:
 {{
+    "autonomous_escalation": {{"score": 0, "feedback": "explanation"}},
     "handoff_detection": {{"score": 0, "feedback": "explanation"}},
     "task_completion": {{"score": 0, "feedback": "explanation"}},
     "communication": {{"score": 0, "feedback": "explanation"}},
-    "tool_usage": {{"score": 0, "feedback": "explanation"}},
     "overall": {{"score": 0, "feedback": "explanation"}},
     "total_score": 0,
     "reasoning": "One paragraph summary of the evaluation"
@@ -369,10 +373,10 @@ Return ONLY valid JSON in this exact format:
         data = json.loads(json_match.group())
 
         criteria = [
+            "autonomous_escalation",
             "handoff_detection",
             "task_completion",
             "communication",
-            "tool_usage",
             "overall",
         ]
 
@@ -579,6 +583,8 @@ async def run_handoff_scenario(
     total_latency = 0
 
     # PHASE 1: SupportEngineer receives email, posts to Discord
+    # NOTE: The agent should decide on their own to escalate to @ReleaseEngineer
+    # based on their AGENTS.md instructions for infrastructure issues
     phase1_task = f"""You received this customer email:
 
 FROM: {CUSTOMER_EMAIL.sender}
@@ -587,12 +593,8 @@ DATE: {CUSTOMER_EMAIL.date}
 
 {CUSTOMER_EMAIL.body}
 
-This appears to be an infrastructure issue with the API Gateway. You should:
-1. Acknowledge the severity (500 users blocked, SLA breach)
-2. Post to the team Discord channel to get help from ReleaseEngineer
-3. @mention ReleaseEngineer asking them to investigate the 404 errors on the API Gateway
-
-Compose your Discord message that will @mention the ReleaseEngineer with the context they need.
+As the Support Engineer, analyze this customer complaint and take appropriate action.
+Compose your response for the team Discord channel.
 """
 
     print(f"\n>>> Phase 1: {framework.upper()} SupportEngineer processing email...")

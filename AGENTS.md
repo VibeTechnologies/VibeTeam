@@ -2,6 +2,56 @@
 
 Instructions for AI agents working on the VibeTeam repository.
 
+## Agent Roles and Responsibilities
+
+Each agent has specific service ownership and handoff responsibilities. See individual agent instructions for details:
+
+| Agent | Persona | Instructions | Primary Services |
+|-------|---------|--------------|------------------|
+| **SupportEngineer** | Grace | [agents/SupportEngineer/AGENTS.md](agents/SupportEngineer/AGENTS.md) | Gmail, Sentry, Customer Requests |
+| **ReleaseEngineer** | Einstein | [agents/ReleaseEngineer/AGENTS.md](agents/ReleaseEngineer/AGENTS.md) | API endpoints, k3s cluster, CI/CD |
+| **SoftwareEngineer** | Alex | [agents/SoftwareEngineer/AGENTS.md](agents/SoftwareEngineer/AGENTS.md) | VibeBrowser repos, code review |
+| **ProductManager** | Jordan | [agents/ProductManager/AGENTS.md](agents/ProductManager/AGENTS.md) | GitHub Issues, PRDs, roadmap |
+| **MarketingManager** | Sam | [agents/MarketingManager/AGENTS.md](agents/MarketingManager/AGENTS.md) | Status page, docs, announcements |
+
+## Service Ownership Matrix
+
+| Service | Primary Owner | Escalation Path |
+|---------|--------------|-----------------|
+| **api.vibebrowser.app** | ReleaseEngineer | → SoftwareEngineer (code bugs) |
+| **api-dev.vibebrowser.app** | ReleaseEngineer | → SoftwareEngineer (code bugs) |
+| **portal.vibebrowser.app** | ReleaseEngineer | → SoftwareEngineer (code bugs) |
+| **GenAI Gateway** | ReleaseEngineer | → SoftwareEngineer (code bugs) |
+| **Gmail (support@)** | SupportEngineer | → ProductManager (roadmap questions) |
+| **Sentry** | SupportEngineer | → ReleaseEngineer (infra) / SoftwareEngineer (code) |
+| **Langfuse** | SupportEngineer | → SoftwareEngineer (LLM issues) |
+| **GitHub Issues** | ProductManager | → SoftwareEngineer (implementation) |
+| **GitHub Actions CI/CD** | ReleaseEngineer | → SoftwareEngineer (test failures) |
+| **Customer Requests (#322)** | SupportEngineer | → ProductManager (prioritization) |
+| **Status Page** | MarketingManager | ← ReleaseEngineer (incident info) |
+| **Documentation** | MarketingManager | ← SoftwareEngineer (technical review) |
+
+## Handoff Decision Tree
+
+When an agent receives a request, they should use this decision tree:
+
+```
+Is this a customer email/complaint?
+  → SupportEngineer handles initially
+  
+Is this an infrastructure outage (API down, 5xx, health check failing)?
+  → ReleaseEngineer investigates
+  
+Is this a code bug or feature request?
+  → SoftwareEngineer implements
+  
+Is this a prioritization or roadmap question?
+  → ProductManager decides
+  
+Does this need public communication?
+  → MarketingManager drafts
+```
+
 ## System Readiness
 
 Before running VibeTeam agents or after infrastructure changes, verify system readiness.
