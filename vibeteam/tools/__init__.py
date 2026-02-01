@@ -9,6 +9,7 @@ from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.gmail import GmailTool
 from vibeteam.tools.health import HealthCheckTool
 from vibeteam.tools.langfuse import LangfuseTool
+from vibeteam.tools.send_message import SendMessageTool
 from vibeteam.tools.sentry import SentryTool
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "GmailTool",
     "HealthCheckTool",
     "LangfuseTool",
+    "SendMessageTool",
     "SentryTool",
 ]
