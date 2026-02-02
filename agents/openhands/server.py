@@ -38,6 +38,12 @@ class RunRequest(BaseModel):
     context_id: str | None = Field(None, description="Context ID for session tracking")
     session_id: str | None = Field(None, description="Resume existing session")
     workspace: str | None = Field(None, description="Working directory for OpenHands")
+    use_tools: bool = Field(
+        True, description="Enable TerminalTool and FileEditorTool for agentic exploration"
+    )
+    skip_context_injection: bool = Field(
+        False, description="Skip automatic context injection from Sentry/Gmail/etc"
+    )
 
 
 class RunResponse(BaseModel):
@@ -156,6 +162,8 @@ async def run_task(request: RunRequest):
                 context_type=request.context_type,
                 context_id=context_id,
                 workspace=request.workspace,
+                use_tools=request.use_tools,
+                skip_context_injection=request.skip_context_injection,
             )
         else:
             # Let team route based on @mentions or keywords
