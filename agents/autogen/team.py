@@ -131,7 +131,7 @@ class AutoGenTeam:
                 tools=[execute_shell, read_file, write_file, list_directory],
                 system_message="""You are Einstein, the Release Engineer.
                 Handle deployments, CI/CD, infrastructure, and Git operations.
-                When your part is done, let the coordinator know.""",
+                Be concise. Answer the question directly, then say TASK_COMPLETE.""",
                 description="Handles deployments, CI/CD pipelines, k3s cluster management, and infrastructure.",
             )
 
@@ -147,7 +147,7 @@ class AutoGenTeam:
                 ],
                 system_message="""You are Ada, the Marketing Manager.
                 Handle content creation, social media, web research, and brand monitoring.
-                When your part is done, let the coordinator know.""",
+                Be concise. Answer the question directly, then say TASK_COMPLETE.""",
                 description="Handles content creation, social media posts, market research, and brand monitoring.",
             )
 
@@ -166,7 +166,7 @@ class AutoGenTeam:
                 ],
                 system_message="""You are Grace, the Support Engineer.
                 Handle customer support, email, calendar, and error monitoring.
-                When your part is done, let the coordinator know.""",
+                Be concise. Answer the question directly, then say TASK_COMPLETE.""",
                 description="Handles customer support, email, calendar, Sentry errors, and Langfuse traces.",
             )
 
@@ -177,8 +177,8 @@ class AutoGenTeam:
         if self._team is None:
             agents = self._get_agents()
 
-            # Termination conditions
-            termination = TextMentionTermination("TASK_COMPLETE") | MaxMessageTermination(20)
+            # Termination conditions - stop early to avoid agent loops
+            termination = TextMentionTermination("TASK_COMPLETE") | MaxMessageTermination(6)
 
             self._team = SelectorGroupChat(
                 participants=agents,
