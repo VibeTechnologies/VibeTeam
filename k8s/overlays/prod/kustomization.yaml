@@ -1,4 +1,5 @@
-# Prod overlay - Deploy VibeTeam agents to vibeteam namespace
+# Production overlay - Deploy VibeTeam agents to vibeteam namespace
+# Secrets are generated from .env.secrets file (created by CI from GitHub Secrets)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -6,23 +7,23 @@ namespace: vibeteam
 
 resources:
   - ../../base
+  # GitHub App secret (generated separately with private key file)
+  - github-app-secret.yaml
 
-# Secrets from environment files
+# Secrets generated from environment files (populated by CI pipeline)
+# CI writes secrets from GitHub Secrets -> .env.secrets -> secretGenerator
 secretGenerator:
-  # Sentry + GitHub tokens for issue triage
+  # Main secrets for all agents and gateway
   - name: vibeteam-secrets
     envs:
       - .env.secrets
     options:
       disableNameSuffixHash: true
-  
-  # Gmail OAuth credentials (JSON files)
-  - name: gmail-oauth-secrets
-    files:
-      - gmail-credentials.json
-      - gmail-token.json
-    options:
-      disableNameSuffixHash: true
 
 generatorOptions:
   disableNameSuffixHash: true
+
+# Image customization (CI updates this with specific SHA)
+images:
+  - name: ghcr.io/vibetechnologies/vibeteam
+    newTag: latest

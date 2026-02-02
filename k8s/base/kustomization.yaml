@@ -3,6 +3,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
+  # RBAC for agent pods (read-only k8s access)
+  - agent-rbac.yaml
   # Infrastructure
   - postgres.yaml
   # Gateway (routes webhooks to agent microservices)

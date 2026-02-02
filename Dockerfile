@@ -19,19 +19,25 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
-COPY pyproject.toml README.md ./
-COPY vibeteam/ ./vibeteam/
+# Install uv for dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install package (non-editable for production)
-RUN pip install --no-cache-dir .
+# Copy package files
+COPY pyproject.toml uv.lock README.md ./
+COPY vibeteam/ ./vibeteam/
+COPY agents/ ./agents/
+COPY scripts/ ./scripts/
+COPY docs/ ./docs/
+
+# Install dependencies with uv
+RUN uv sync --frozen --no-dev
 
 # Production stage
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies (git for agent operations, curl for health checks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -41,12 +47,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /usr/bin/gh /usr/bin/gh
 COPY --from=builder /usr/share/keyrings/githubcli-archive-keyring.gpg /usr/share/keyrings/
 
-# Copy installed packages
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin/vibeteam /usr/local/bin/vibeteam
+# Copy uv and virtual environment from builder
+COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
+COPY --from=builder /app/.venv /app/.venv
 
-# Set Python path to ensure module is found
-ENV PYTHONPATH=/usr/local/lib/python3.12/site-packages
+# Copy application code
+COPY --from=builder /app/vibeteam ./vibeteam
+COPY --from=builder /app/agents ./agents
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/docs ./docs
+COPY --from=builder /app/pyproject.toml ./
+
+# Set environment
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app"
 
 # Create non-root user
 RUN useradd -m -u 1000 vibeteam
@@ -56,6 +70,6 @@ USER vibeteam
 EXPOSE 8080
 
 # Default command runs the gateway server
-# Override with different commands for CLI usage
+# Override with different commands for CLI usage or agent scripts
 ENTRYPOINT ["python", "-m", "vibeteam.gateway.server"]
 CMD []
