@@ -36,7 +36,7 @@ jobs:
         with:
           version: "latest"
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --all-extras
       - name: Run ruff lint
         run: uv run ruff check .
       - name: Run ruff format check
@@ -51,7 +51,7 @@ jobs:
         with:
           version: "latest"
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --all-extras
       - name: Run tests
         run: uv run pytest tests/unit/ -v --tb=short
         continue-on-error: true  # TODO: remove once tests are stable
