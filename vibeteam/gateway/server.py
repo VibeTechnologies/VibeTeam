@@ -163,6 +163,12 @@ async def call_agent_service(
         "context_id": context_id,
     }
 
+    # For openhands, add parameters to avoid requiring vibeteam.connectors
+    fw = framework or config.DEFAULT_FRAMEWORK
+    if fw == "openhands":
+        payload["use_tools"] = True
+        payload["skip_context_injection"] = True
+
     try:
         response = await client.post(
             f"{service_url}{endpoint}",

@@ -475,8 +475,57 @@ def get_agent_class(framework: str, role: str):
     raise ValueError(f"Unknown framework/role: {framework}/{role}")
 
 
-async def run_agent(framework: str, role: str, task: str, timeout: float) -> FrameworkResult:
+async def run_agent_via_gateway(
+    framework: str, role: str, task: str, timeout: float, gateway_url: str
+) -> FrameworkResult:
+    """Run an agent via the gateway HTTP API."""
+    start_time = time.perf_counter()
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{gateway_url}/api/run",
+                json={"task": task, "framework": framework, "role": role},
+            )
+            response.raise_for_status()
+            result = response.json()
+
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+
+        return FrameworkResult(
+            framework=framework,
+            response=result.get("response", ""),
+            latency_ms=latency_ms,
+            success=True,
+        )
+    except httpx.TimeoutException:
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        return FrameworkResult(
+            framework=framework,
+            response="",
+            latency_ms=latency_ms,
+            success=False,
+            error=f"Timeout after {timeout}s",
+        )
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        return FrameworkResult(
+            framework=framework,
+            response="",
+            latency_ms=latency_ms,
+            success=False,
+            error=str(e),
+        )
+
+
+async def run_agent(
+    framework: str, role: str, task: str, timeout: float, gateway_url: str | None = None
+) -> FrameworkResult:
     """Run an agent with the given task and return results."""
+    # If gateway URL is provided, use HTTP API instead of local import
+    if gateway_url:
+        return await run_agent_via_gateway(framework, role, task, timeout, gateway_url)
+
     start_time = time.perf_counter()
 
     try:
@@ -736,6 +785,7 @@ async def run_scenario(
     timeout: float,
     output_json: bool = False,
     save_report: bool = True,
+    gateway_url: str | None = None,
 ) -> dict[str, Any]:
     """Run a single scenario across all frameworks."""
     scenario = SCENARIOS[scenario_id]
@@ -745,6 +795,8 @@ async def run_scenario(
     print(f"Role: {scenario['role']}")
     print(f"Timeout: {timeout}s per framework")
     print(f"Frameworks: {', '.join(frameworks)}")
+    if gateway_url:
+        print(f"Mode: Gateway API ({gateway_url})")
 
     results: list[FrameworkResult] = []
     responses: dict[str, str] = {}
@@ -752,7 +804,9 @@ async def run_scenario(
     # Run each framework sequentially (to avoid rate limits)
     for framework in frameworks:
         print(f"\n>>> Running {framework.upper()} {scenario['role']}...")
-        result = await run_agent(framework, scenario["role"], scenario["task"], timeout)
+        result = await run_agent(
+            framework, scenario["role"], scenario["task"], timeout, gateway_url
+        )
         results.append(result)
         responses[framework] = result.response
 
@@ -815,13 +869,16 @@ async def run_all_scenarios(
     timeout: float,
     output_json: bool = False,
     save_report: bool = True,
+    gateway_url: str | None = None,
 ) -> dict[str, Any]:
     """Run all scenarios and produce aggregate results."""
     all_results = {}
     winners = {}
 
     for scenario_id in SCENARIOS:
-        result = await run_scenario(scenario_id, frameworks, timeout, output_json, save_report)
+        result = await run_scenario(
+            scenario_id, frameworks, timeout, output_json, save_report, gateway_url
+        )
         all_results[scenario_id] = result
         winners[scenario_id] = result["winner"]
 
@@ -883,6 +940,7 @@ Examples:
   python scripts/benchmark_agents.py --all --json
   python scripts/benchmark_agents.py --scenario github-triage --frameworks autogen crewai
   python scripts/benchmark_agents.py --scenario error-analysis --no-report
+  python scripts/benchmark_agents.py --scenario error-analysis --gateway http://localhost:8080
         """,
     )
     parser.add_argument(
@@ -924,6 +982,12 @@ Examples:
         action="store_true",
         help="Skip generating markdown report",
     )
+    parser.add_argument(
+        "--gateway",
+        type=str,
+        default=None,
+        help="Gateway URL to use (e.g., http://localhost:8080). If not set, runs agents locally.",
+    )
 
     args = parser.parse_args()
 
@@ -933,13 +997,22 @@ Examples:
 
     if args.all:
         await run_all_scenarios(
-            args.frameworks, args.timeout, args.json, save_report=not args.no_report
+            args.frameworks,
+            args.timeout,
+            args.json,
+            save_report=not args.no_report,
+            gateway_url=args.gateway,
         )
         return
 
     if args.scenario:
         await run_scenario(
-            args.scenario, args.frameworks, args.timeout, args.json, save_report=not args.no_report
+            args.scenario,
+            args.frameworks,
+            args.timeout,
+            args.json,
+            save_report=not args.no_report,
+            gateway_url=args.gateway,
         )
         return
 
