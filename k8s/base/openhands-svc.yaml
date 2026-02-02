@@ -67,10 +67,10 @@ spec:
                   key: SENTRY_AUTH_TOKEN
           resources:
             requests:
-              memory: "2Gi"
+              memory: "3Gi"
               cpu: "500m"
             limits:
-              memory: "4Gi"
+              memory: "6Gi"
               cpu: "1000m"
           livenessProbe:
             httpGet:

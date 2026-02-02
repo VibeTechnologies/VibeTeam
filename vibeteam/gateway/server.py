@@ -118,14 +118,15 @@ def get_http_client() -> httpx.AsyncClient:
     """Get or create async HTTP client with robust connection settings."""
     global _http_client
     if _http_client is None:
-        # Configure connection limits and retries for reliability
+        # Configure connection limits for reliability
+        # Disable keepalive to avoid stale connection issues in K8s cross-node networking
         limits = httpx.Limits(
             max_connections=100,
-            max_keepalive_connections=20,
-            keepalive_expiry=30.0,  # Close idle connections after 30s
+            max_keepalive_connections=0,  # Disable keepalive - new connection per request
+            keepalive_expiry=5.0,  # Short expiry if any keepalive
         )
         _http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(120.0, connect=10.0),  # 10s connect, 120s total
+            timeout=httpx.Timeout(120.0, connect=30.0),  # Longer connect timeout for K8s DNS
             limits=limits,
         )
     return _http_client
@@ -163,7 +164,6 @@ async def call_agent_service(
     """
     import asyncio
 
-    client = get_http_client()
     service_url = config.get_agent_service_url(framework)
     endpoint = "/run/stream" if stream else "/run"
 
@@ -186,6 +186,9 @@ async def call_agent_service(
 
     for attempt in range(max_retries):
         try:
+            # Get a fresh client reference for each attempt (handles stale connections)
+            client = get_http_client()
+            logger.debug(f"Calling {service_url}{endpoint} (attempt {attempt + 1}/{max_retries})")
             response = await client.post(
                 f"{service_url}{endpoint}",
                 json=payload,
@@ -201,14 +204,23 @@ async def call_agent_service(
             }
         except httpx.RequestError as e:
             last_error = e
+            error_type = type(e).__name__
             if attempt < max_retries - 1:
-                logger.warning(f"Connection failed (attempt {attempt + 1}/{max_retries}): {e}")
-                await asyncio.sleep(0.5 * (attempt + 1))  # Brief backoff
+                logger.warning(
+                    f"Connection failed (attempt {attempt + 1}/{max_retries}) "
+                    f"[{error_type}] to {service_url}: {e}"
+                )
+                # Reset the HTTP client on connection errors to clear stale connections
+                await close_http_client()
+                await asyncio.sleep(1.0 * (attempt + 1))  # Longer backoff
                 continue
             break
 
     # All retries exhausted
-    logger.error(f"Failed to connect to agent service after {max_retries} attempts: {last_error}")
+    logger.error(
+        f"Failed to connect to {service_url} after {max_retries} attempts: "
+        f"[{type(last_error).__name__}] {last_error}"
+    )
     return {
         "error": f"Failed to connect to agent service: {last_error}",
     }
