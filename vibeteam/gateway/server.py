@@ -115,10 +115,19 @@ _http_client: httpx.AsyncClient | None = None
 
 
 def get_http_client() -> httpx.AsyncClient:
-    """Get or create async HTTP client."""
+    """Get or create async HTTP client with robust connection settings."""
     global _http_client
     if _http_client is None:
-        _http_client = httpx.AsyncClient(timeout=120.0)
+        # Configure connection limits and retries for reliability
+        limits = httpx.Limits(
+            max_connections=100,
+            max_keepalive_connections=20,
+            keepalive_expiry=30.0,  # Close idle connections after 30s
+        )
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=10.0),  # 10s connect, 120s total
+            limits=limits,
+        )
     return _http_client
 
 
@@ -152,6 +161,8 @@ async def call_agent_service(
     Returns:
         Agent response dict
     """
+    import asyncio
+
     client = get_http_client()
     service_url = config.get_agent_service_url(framework)
     endpoint = "/run/stream" if stream else "/run"
@@ -169,25 +180,38 @@ async def call_agent_service(
         payload["use_tools"] = True
         payload["skip_context_injection"] = True
 
-    try:
-        response = await client.post(
-            f"{service_url}{endpoint}",
-            json=payload,
-            timeout=120.0,
-        )
-        response.raise_for_status()
-        return response.json()
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Agent service error: {e.response.status_code} - {e.response.text}")
-        return {
-            "error": f"Agent service error: {e.response.status_code}",
-            "detail": e.response.text,
-        }
-    except httpx.RequestError as e:
-        logger.error(f"Failed to connect to agent service: {e}")
-        return {
-            "error": f"Failed to connect to agent service: {e}",
-        }
+    # Retry logic for transient connection failures
+    max_retries = 3
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            response = await client.post(
+                f"{service_url}{endpoint}",
+                json=payload,
+                timeout=120.0,
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Agent service error: {e.response.status_code} - {e.response.text}")
+            return {
+                "error": f"Agent service error: {e.response.status_code}",
+                "detail": e.response.text,
+            }
+        except httpx.RequestError as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                logger.warning(f"Connection failed (attempt {attempt + 1}/{max_retries}): {e}")
+                await asyncio.sleep(0.5 * (attempt + 1))  # Brief backoff
+                continue
+            break
+
+    # All retries exhausted
+    logger.error(f"Failed to connect to agent service after {max_retries} attempts: {last_error}")
+    return {
+        "error": f"Failed to connect to agent service: {last_error}",
+    }
 
 
 async def call_scheduler_service(

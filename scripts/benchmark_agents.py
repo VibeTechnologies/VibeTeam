@@ -478,44 +478,45 @@ def get_agent_class(framework: str, role: str):
 async def run_agent_via_gateway(
     framework: str, role: str, task: str, timeout: float, gateway_url: str
 ) -> FrameworkResult:
-    """Run an agent via the gateway HTTP API."""
+    """Run an agent via the gateway HTTP API with retry logic."""
     start_time = time.perf_counter()
+    max_retries = 3
+    last_error = None
 
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                f"{gateway_url}/api/run",
-                json={"task": task, "framework": framework, "role": role},
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    f"{gateway_url}/api/run",
+                    json={"task": task, "framework": framework, "role": role},
+                )
+                response.raise_for_status()
+                result = response.json()
+
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+
+            return FrameworkResult(
+                framework=framework,
+                response=result.get("response", ""),
+                latency_ms=latency_ms,
+                success=True,
             )
-            response.raise_for_status()
-            result = response.json()
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1.0 * (attempt + 1))  # Exponential backoff
+                continue
+            break
 
-        latency_ms = int((time.perf_counter() - start_time) * 1000)
-
-        return FrameworkResult(
-            framework=framework,
-            response=result.get("response", ""),
-            latency_ms=latency_ms,
-            success=True,
-        )
-    except httpx.TimeoutException:
-        latency_ms = int((time.perf_counter() - start_time) * 1000)
-        return FrameworkResult(
-            framework=framework,
-            response="",
-            latency_ms=latency_ms,
-            success=False,
-            error=f"Timeout after {timeout}s",
-        )
-    except Exception as e:
-        latency_ms = int((time.perf_counter() - start_time) * 1000)
-        return FrameworkResult(
-            framework=framework,
-            response="",
-            latency_ms=latency_ms,
-            success=False,
-            error=str(e),
-        )
+    # All retries exhausted
+    latency_ms = int((time.perf_counter() - start_time) * 1000)
+    return FrameworkResult(
+        framework=framework,
+        response="",
+        latency_ms=latency_ms,
+        success=False,
+        error=str(last_error),
+    )
 
 
 async def run_agent(
