@@ -180,6 +180,11 @@ jobs:
           cd k8s/overlays/prod
           kustomize edit set image ghcr.io/vibetechnologies/vibeteam=ghcr.io/vibetechnologies/vibeteam:${{ github.sha }}
           
+          # Delete deployments with potentially stale selectors (selectors are immutable)
+          # These will be recreated with the correct selectors
+          echo "Cleaning up deployments with potentially stale selectors..."
+          kubectl -n $K8S_NAMESPACE delete deployment openhands-agents --ignore-not-found=true
+          
           # Apply manifests
           kubectl apply -k .
           

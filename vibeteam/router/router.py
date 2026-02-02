@@ -8,8 +8,8 @@ and thread subscriptions.
 import logging
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from vibeteam.router.db import SubscriptionDB, get_subscription_db
 from vibeteam.router.models import (

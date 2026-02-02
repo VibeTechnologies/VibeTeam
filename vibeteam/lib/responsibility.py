@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from vibeteam.lib.channel import ChannelMessage

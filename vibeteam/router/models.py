@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
-
 # Valid agent roles that can be mentioned
 AgentRole = Literal[
     "software_engineer",

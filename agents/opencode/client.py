@@ -7,8 +7,7 @@ Supports session persistence via --session flag.
 
 import json
 import subprocess
-import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -68,7 +67,7 @@ class OpenCodeClient:
             raise RuntimeError(
                 f"opencode not found at {self.config.opencode_path}. "
                 "Install with: npm install -g @anthropic/opencode"
-            )
+            ) from None
 
     def run(
         self,

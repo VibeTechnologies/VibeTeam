@@ -22,9 +22,7 @@ Install DeepEval: pip install deepeval>=1.0.0
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-import re
 import sys
 import time
 from dataclasses import dataclass
@@ -40,8 +38,7 @@ _project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_project_root))
 
 if TYPE_CHECKING:
-    from vibeteam.connectors.slack import SlackConnector
-    from vibeteam.router.models import AgentRole
+    pass
 
 
 # ==============================================================================
@@ -61,7 +58,7 @@ class EvaluatorConfig:
     max_tokens: int = 2000
 
     @classmethod
-    def from_env(cls) -> "EvaluatorConfig":
+    def from_env(cls) -> EvaluatorConfig:
         """Create config from environment variables."""
         api_key = os.getenv("AZURE_OPENAI_API_KEY", os.getenv("AZURE_API_KEY", ""))
         api_base = os.getenv("AZURE_OPENAI_ENDPOINT", os.getenv("AZURE_API_BASE", ""))

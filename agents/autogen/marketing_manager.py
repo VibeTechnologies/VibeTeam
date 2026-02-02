@@ -14,7 +14,6 @@ from typing import Any
 
 from agents.config import MARKETING_MANAGER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.handoff import HANDOFF_PROMPT
 
 # Import shared browser tools
 from agents.shared.browser_tools import (
@@ -24,6 +23,7 @@ from agents.shared.browser_tools import (
     take_screenshot,
     web_search,
 )
+from agents.shared.handoff import HANDOFF_PROMPT
 from agents.shared.slack_tools import (
     send_message,
 )
@@ -289,8 +289,9 @@ class AutoGenMarketingManager:
         # Priority: 1) send_message tool call content, 2) non-empty TextMessage
         response = ""
         if result.messages:
-            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
             import json
+
+            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
 
             # First, look for send_message tool calls - this is the actual response
             for msg in reversed(result.messages):

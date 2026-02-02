@@ -16,8 +16,8 @@ from typing import Any
 
 from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.handoff import HANDOFF_PROMPT
 from agents.shared.docs_tools import search_infra_docs
+from agents.shared.handoff import HANDOFF_PROMPT
 from agents.shared.slack_tools import (
     read_slack_channel,
     read_slack_thread,
@@ -318,8 +318,9 @@ class AutoGenReleaseEngineer:
         # Priority: 1) send_message tool call content, 2) non-empty TextMessage
         response = ""
         if result.messages:
-            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
             import json
+
+            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
 
             # First, look for send_message tool calls - this is the actual response
             for msg in reversed(result.messages):

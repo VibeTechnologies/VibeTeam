@@ -20,11 +20,9 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -35,7 +33,6 @@ _project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_project_root))
 
 from vibeteam.router.models import (
-    ROLE_DISPLAY_NAMES,
     ROLE_MENTION_MAP,
     AgentRole,
 )
@@ -45,8 +42,8 @@ DEEPEVAL_AVAILABLE = False
 LLMTestCase = None
 
 try:
-    from deepeval import assert_test
-    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+    from deepeval import assert_test  # noqa: F401
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams  # noqa: F401
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
@@ -380,8 +377,8 @@ class TestGitHubRoutingWithDeepEval:
     @pytest.mark.asyncio
     async def test_issue_comment_with_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         github_routing_scenarios,
     ):
         """Test GitHub issue comment using DeepEval G-Eval metrics."""
@@ -435,8 +432,8 @@ Please respond appropriately as {role}.
     @pytest.mark.asyncio
     async def test_pr_review_with_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         github_routing_scenarios,
     ):
         """Test PR review comment using DeepEval G-Eval metrics."""
@@ -486,8 +483,8 @@ Please respond appropriately as {role}.
     @pytest.mark.asyncio
     async def test_new_issue_routing_with_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         github_routing_scenarios,
     ):
         """Test new issue (opened) routing using DeepEval."""
@@ -538,8 +535,8 @@ class TestGitHubRoutingDeepEvalAllScenarios:
     @pytest.mark.asyncio
     async def test_all_github_scenarios_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         github_routing_scenarios,
     ):
         """Run all GitHub routing scenarios with DeepEval G-Eval metrics."""
@@ -639,7 +636,7 @@ Please respond appropriately as {role}.
 
             # Group by event type
             print("\nBy Event Type:")
-            for event_type in set(r.get("event", "unknown") for r in successful):
+            for event_type in {r.get("event", "unknown") for r in successful}:
                 event_results = [r for r in successful if r.get("event") == event_type]
                 event_passed = sum(1 for r in event_results if r.get("passed"))
                 print(f"  {event_type}: {event_passed}/{len(event_results)} passed")

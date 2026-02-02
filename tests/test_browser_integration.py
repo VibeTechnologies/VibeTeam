@@ -650,6 +650,6 @@ class TestCrossFrameworkBrowserComparison:
         print("=" * 70)
 
         # Assert at least 2 passed
-        assert (
-            len(successful) >= 2
-        ), f"Not enough frameworks passed: {[r.framework for r in failed]}"
+        assert len(successful) >= 2, (
+            f"Not enough frameworks passed: {[r.framework for r in failed]}"
+        )

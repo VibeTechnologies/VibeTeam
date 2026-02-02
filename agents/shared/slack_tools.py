@@ -304,7 +304,7 @@ async def read_slack_thread(
         messages = connector.get_thread_replies(channel=ch, thread_ts=thread_ts, limit=limit)
 
         if not messages:
-            return f"No messages found in thread"
+            return "No messages found in thread"
 
         result = f"=== Thread ({len(messages)} messages) ===\n\n"
         for msg in messages:

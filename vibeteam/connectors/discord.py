@@ -184,7 +184,9 @@ class DiscordConnector:
             if value:
                 AGENT_WEBHOOK_MAP[agent_key] = value
 
-        logger.debug(f"Loaded {len(AGENT_ROLE_MAP)} role mappings, {len(AGENT_WEBHOOK_MAP)} webhook mappings")
+        logger.debug(
+            f"Loaded {len(AGENT_ROLE_MAP)} role mappings, {len(AGENT_WEBHOOK_MAP)} webhook mappings"
+        )
 
     @property
     def http_client(self) -> httpx.Client:

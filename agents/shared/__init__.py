@@ -53,6 +53,7 @@ from agents.shared.gmail_tools import (
     send_email,
     send_email_reply,
 )
+from agents.shared.handoff import HANDOFF_PROMPT
 from agents.shared.langfuse_tools import (
     detect_langfuse_anomalies,
     get_langfuse_context,
@@ -77,7 +78,6 @@ from agents.shared.slack_tools import (
     send_message_sync,
     set_slack_context,
 )
-from agents.shared.handoff import HANDOFF_PROMPT
 
 __all__ = [
     # Gmail

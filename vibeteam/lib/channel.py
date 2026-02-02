@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
@@ -59,9 +60,7 @@ class SimulatedChannel:
 
     name: str
     messages: list[ChannelMessage] = field(default_factory=list)
-    listeners: list[Callable[[ChannelMessage], Awaitable[None]]] = field(
-        default_factory=list
-    )
+    listeners: list[Callable[[ChannelMessage], Awaitable[None]]] = field(default_factory=list)
     _message_counter: int = 0
 
     def post(
@@ -205,9 +204,8 @@ class SimulatedChannel:
             from deepeval.test_case import Turn
         except ImportError:
             raise ImportError(
-                "deepeval is required for to_deepeval_turns(). "
-                "Install with: pip install deepeval"
-            )
+                "deepeval is required for to_deepeval_turns(). Install with: pip install deepeval"
+            ) from None
 
         turns = []
         for msg in self.messages:

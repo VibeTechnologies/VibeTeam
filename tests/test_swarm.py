@@ -249,9 +249,7 @@ class TestSwarmMessage:
 
     def test_message_with_tool_calls(self):
         """Test message with tool calls."""
-        tool_calls = [
-            {"id": "call_1", "function": {"name": "search", "arguments": "{}"}}
-        ]
+        tool_calls = [{"id": "call_1", "function": {"name": "search", "arguments": "{}"}}]
         msg = SwarmMessage(
             role="assistant",
             content="Let me search",

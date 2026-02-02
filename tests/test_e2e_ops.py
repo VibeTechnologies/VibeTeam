@@ -432,9 +432,9 @@ class TestKubernetesManifests:
                     assert "schedule" in doc.get("spec", {}), f"Missing schedule in {manifest.name}"
                     job_spec = doc["spec"]["jobTemplate"]["spec"]["template"]["spec"]
                     assert "containers" in job_spec, f"Missing containers in {manifest.name}"
-                    assert (
-                        "imagePullSecrets" in job_spec
-                    ), f"Missing imagePullSecrets in {manifest.name}"
+                    assert "imagePullSecrets" in job_spec, (
+                        f"Missing imagePullSecrets in {manifest.name}"
+                    )
 
 
 if __name__ == "__main__":

@@ -27,7 +27,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import os
 import sys
 from pathlib import Path
@@ -42,7 +41,6 @@ _project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(_project_root))
 
 from vibeteam.lib import (
-    ScenarioResult,
     TeamTestHarness,
     create_handoff_test_case,
 )
@@ -188,7 +186,7 @@ class TestTeamScenarios:
         # Verify message count
         assert result.total_messages >= 3  # user + 2 agents
 
-        print(f"\n--- Full Transcript ---")
+        print("\n--- Full Transcript ---")
         print(result.channel.to_transcript())
 
 
@@ -285,7 +283,7 @@ class TestTeamEvalWithDeepEval:
             - SupportEngineer should claim: customer issues, error analysis
             - ProductManager should claim: feature requests, prioritization
             - MarketingManager should claim: announcements, content
-            
+
             Score based on:
             1. Correct agent claimed the task (or multiple if appropriate)
             2. Wrong agents did NOT claim tasks outside their area
@@ -421,7 +419,7 @@ class TestConversationalEval:
         assert test_case is not None
         assert len(test_case.turns) >= 2  # user + at least one agent
 
-        print(f"\n--- ConversationalTestCase ---")
+        print("\n--- ConversationalTestCase ---")
         for turn in test_case.turns:
             print(f"  [{turn.role}]: {turn.content[:80]}...")
 

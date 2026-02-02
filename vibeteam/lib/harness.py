@@ -6,7 +6,6 @@ conversations and converting results to DeepEval test cases.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -74,7 +73,7 @@ class ScenarioResult:
             raise ImportError(
                 "deepeval is required for to_deepeval_test_case(). "
                 "Install with: pip install deepeval"
-            )
+            ) from None
 
         turns = self.channel.to_deepeval_turns()
 

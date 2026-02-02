@@ -10,7 +10,6 @@ Capabilities:
 
 from agents.opencode.base import OpenCodeAgentConfig, OpenCodeBaseAgent
 
-
 MARKETING_MANAGER_PROMPT = """You are Ada, the Marketing Manager for VibeTeam.
 
 ## Your Responsibilities

@@ -4,32 +4,25 @@ OpenCode team orchestration for VibeTeam.
 Manages the 5-agent team with @mention-based handoffs.
 """
 
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from agents.opencode.base import OpenCodeAgentConfig
 from agents.opencode.marketing_manager import (
-    OpenCodeMarketingManager,
     create_marketing_manager,
 )
 from agents.opencode.product_manager import (
-    OpenCodeProductManager,
     create_product_manager,
 )
 from agents.opencode.release_engineer import (
-    OpenCodeReleaseEngineer,
     create_release_engineer,
 )
 from agents.opencode.software_engineer import (
-    OpenCodeSoftwareEngineer,
     create_software_engineer,
 )
 from agents.opencode.support_engineer import (
-    OpenCodeSupportEngineer,
     create_support_engineer,
 )
-
 
 # Agent role to @mention mapping
 ROLE_MENTIONS = {
@@ -173,7 +166,7 @@ class OpenCodeTeam:
         # For broadcasts, PM acts as coordinator
         pm = self.agents["product_manager"]
 
-        coordination_prompt = f"""You are coordinating a team task. 
+        coordination_prompt = f"""You are coordinating a team task.
 The following message was received and needs to be assigned:
 
 MESSAGE: {message}
@@ -243,9 +236,7 @@ Otherwise, delegate using @mentions."""
             for role in mentioned:
                 agent = self.agents.get(role)
                 if agent:
-                    tasks.append(
-                        (role, agent.run_async(message, context_type, context_id))
-                    )
+                    tasks.append((role, agent.run_async(message, context_type, context_id)))
 
             responses = {}
             for role, task in tasks:
@@ -262,9 +253,7 @@ Otherwise, delegate using @mentions."""
             }
         else:
             # For broadcast, use sync version in thread
-            return await asyncio.to_thread(
-                self._route_broadcast, message, context_type, context_id
-            )
+            return await asyncio.to_thread(self._route_broadcast, message, context_type, context_id)
 
 
 def create_team(config: TeamConfig | None = None) -> OpenCodeTeam:

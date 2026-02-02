@@ -36,8 +36,8 @@ DEEPEVAL_AVAILABLE = False
 LLMTestCase = None
 
 try:
-    from deepeval import assert_test
-    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+    from deepeval import assert_test  # noqa: F401
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams  # noqa: F401
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
@@ -195,8 +195,8 @@ class TestSupportAgentSentryDeepEval:
     @pytest.mark.asyncio
     async def test_sentry_summary_with_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         sentry_task: str,
     ):
         """Test Sentry summary using DeepEval G-Eval metrics."""
@@ -252,14 +252,14 @@ class TestSupportAgentSentryDeepEval:
     @pytest.mark.asyncio
     async def test_sentry_tool_usage_with_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         sentry_task: str,
     ):
         """Test that SupportAgent uses Sentry tools appropriately."""
         role = "support_engineer"
 
-        print(f"\n>>> Running DeepEval ToolUsage test...")
+        print("\n>>> Running DeepEval ToolUsage test...")
 
         result = await openhands_runner.run(
             role=role,
@@ -294,10 +294,10 @@ class TestSupportAgentSentryDeepEvalAllFrameworks:
     @pytest.mark.asyncio
     async def test_all_frameworks_sentry_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        autogen_runner: "RealAgentRunner",
-        crewai_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        autogen_runner: RealAgentRunner,
+        crewai_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         sentry_task: str,
     ):
         """Run Sentry task across all frameworks with DeepEval metrics."""
@@ -401,7 +401,7 @@ class TestSupportAgentSentryDeepEvalAllFrameworks:
             print(f"Avg Professionalism: {avg_prof:.2f}")
 
         # At least one should pass
-        assert len(successful) >= 1, f"No frameworks succeeded!"
+        assert len(successful) >= 1, "No frameworks succeeded!"
 
 
 # ==============================================================================

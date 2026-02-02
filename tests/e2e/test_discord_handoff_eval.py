@@ -27,9 +27,7 @@ Usage:
 """
 
 import asyncio
-import json
 import os
-import re
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -38,7 +36,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
 
 # Add project root to path for imports
@@ -50,8 +47,8 @@ DEEPEVAL_AVAILABLE = False
 LLMTestCase = None
 
 try:
-    from deepeval import assert_test
-    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+    from deepeval import assert_test  # noqa: F401
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams  # noqa: F401
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
@@ -87,7 +84,6 @@ except ImportError:
 
 from vibeteam.connectors.discord import DiscordMessage  # noqa: E402
 from vibeteam.connectors.gmail import Email  # noqa: E402
-
 
 # ==============================================================================
 # Configuration
@@ -553,7 +549,7 @@ class TestDiscordHandoffWithDeepEval:
 
         framework = "autogen" if sys.version_info < (3, 12) else "openhands"
 
-        print(f"\n>>> Running DeepEval Discord handoff test...")
+        print("\n>>> Running DeepEval Discord handoff test...")
         print(f"    Framework: {framework}")
 
         conversation = await run_handoff_scenario(framework)
@@ -723,7 +719,7 @@ class TestDiscordHandoffDeepEvalAllFrameworks:
             print(f"Avg TaskCompletion: {avg_task:.2f}")
 
         # At least one should pass
-        assert len(successful) >= 1, f"No frameworks succeeded!"
+        assert len(successful) >= 1, "No frameworks succeeded!"
 
 
 # ==============================================================================

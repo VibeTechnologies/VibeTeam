@@ -30,13 +30,9 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
-import os
 import re
 import sys
-import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -58,8 +54,8 @@ LLMTestCase = None
 assert_test = None
 
 try:
-    from deepeval import assert_test
-    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+    from deepeval import assert_test  # noqa: F401
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams  # noqa: F401
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
@@ -402,7 +398,7 @@ class TestSlackRoutingWithRealSlack:
     @pytest.mark.asyncio
     async def test_post_agent_response_to_slack(
         self,
-        autogen_runner: "RealAgentRunner",
+        autogen_runner: RealAgentRunner,
         slack_connector,
         slack_test_channel: str,
         should_post_to_slack: bool,
@@ -414,7 +410,7 @@ class TestSlackRoutingWithRealSlack:
 
         scenario = slack_routing_scenarios[0]  # Use first scenario
 
-        print(f"\n>>> Testing with REAL Slack posting")
+        print("\n>>> Testing with REAL Slack posting")
         print(f"    Channel: {slack_test_channel}")
         print(f"    Task: {scenario['message']}")
 
@@ -470,8 +466,8 @@ class TestSlackRoutingWithDeepEval:
     @pytest.mark.asyncio
     async def test_swe_task_with_deepeval(
         self,
-        autogen_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        autogen_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         slack_routing_scenarios,
     ):
         """Test SWE task using DeepEval G-Eval metrics with per-role thresholds."""
@@ -520,8 +516,8 @@ class TestSlackRoutingWithDeepEval:
     @pytest.mark.asyncio
     async def test_support_task_with_deepeval(
         self,
-        autogen_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        autogen_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         slack_routing_scenarios,
     ):
         """Test SupportEngineer task with higher thresholds per requirements.md."""
@@ -572,12 +568,11 @@ class TestSlackRoutingDeepEvalAllScenarios:
     @pytest.mark.asyncio
     async def test_all_scenarios_deepeval(
         self,
-        autogen_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        autogen_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         slack_routing_scenarios,
     ):
         """Run all Slack routing scenarios with DeepEval G-Eval metrics."""
-        from deepeval.metrics import GEval
 
         results = []
 
@@ -694,11 +689,11 @@ class TestRealSlackHandoffE2E:
     @pytest.mark.asyncio
     async def test_real_slack_handoff_support_to_release(
         self,
-        autogen_runner: "RealAgentRunner",
+        autogen_runner: RealAgentRunner,
         slack_connector,
         slack_test_channel: str,
         should_post_to_slack: bool,
-        azure_deepeval_model: "AzureOpenAIModel",
+        azure_deepeval_model: AzureOpenAIModel,
     ):
         """
         Test complete handoff flow from SupportEngineer to ReleaseEngineer.
@@ -711,8 +706,8 @@ class TestRealSlackHandoffE2E:
 
         # Import Slack tools
         from agents.shared.slack_tools import (
-            set_slack_context,
             clear_slack_context,
+            set_slack_context,
         )
 
         print("\n" + "=" * 70)
@@ -728,7 +723,7 @@ class TestRealSlackHandoffE2E:
             "After initial investigation, handoff to /ReleaseEngineer to check recent deployments."
         )
 
-        print(f"\n>>> Step 1: Posting initial message to Slack")
+        print("\n>>> Step 1: Posting initial message to Slack")
         initial_msg = slack_connector.post_message(
             channel=slack_test_channel,
             text=f"[E2E Handoff Test] {customer_message}",
@@ -753,7 +748,7 @@ class TestRealSlackHandoffE2E:
         )
 
         # Step 3: Run SupportEngineer - agent should use send_message() to post to Slack
-        print(f"\n>>> Step 3: Running SupportEngineer (agent will post via send_message)...")
+        print("\n>>> Step 3: Running SupportEngineer (agent will post via send_message)...")
         support_result = await autogen_runner.run(
             role="support_engineer",
             task=customer_message,
@@ -769,7 +764,7 @@ class TestRealSlackHandoffE2E:
         # We no longer post on behalf of the agent here
 
         # Step 4: Detect handoff in response (using /RoleName format)
-        print(f"\n>>> Step 4: Detecting handoff...")
+        print("\n>>> Step 4: Detecting handoff...")
         response_text = support_result.get("response", "").lower()
         handoff_detected = any(
             mention in response_text
@@ -885,20 +880,19 @@ class TestRealSlackHandoffE2E:
         clear_slack_context()
 
         # Step 6: Evaluate with DeepEval
-        print(f"\n>>> Step 6: Evaluating with DeepEval G-Eval...")
+        print("\n>>> Step 6: Evaluating with DeepEval G-Eval...")
 
         # Import metric factories
         try:
             from conftest import (
+                create_context_preservation_metric,  # noqa: F401
                 create_handoff_quality_metric,
                 create_task_completion_metric,
-                create_context_preservation_metric,
             )
         except ImportError:
             from tests.e2e.conftest import (
                 create_handoff_quality_metric,
                 create_task_completion_metric,
-                create_context_preservation_metric,
             )
 
         # Create test case for SupportEngineer
@@ -915,7 +909,7 @@ class TestRealSlackHandoffE2E:
         handoff_metric.measure(support_test_case)
         task_metric.measure(support_test_case)
 
-        print(f"\n    SupportEngineer Metrics:")
+        print("\n    SupportEngineer Metrics:")
         print(
             f"    HandoffQuality: {handoff_metric.score:.2f} (threshold: {handoff_metric.threshold})"
         )
@@ -927,7 +921,7 @@ class TestRealSlackHandoffE2E:
         release_task_score = None
         if release_result and release_result.get("success"):
             release_test_case = LLMTestCase(
-                input=f"Handoff from SupportEngineer about API 404 errors",
+                input="Handoff from SupportEngineer about API 404 errors",
                 actual_output=release_result.get("response", ""),
             )
 
@@ -937,13 +931,13 @@ class TestRealSlackHandoffE2E:
             release_task_metric.measure(release_test_case)
 
             release_task_score = release_task_metric.score
-            print(f"\n    ReleaseEngineer Metrics:")
+            print("\n    ReleaseEngineer Metrics:")
             print(
                 f"    TaskCompletion: {release_task_metric.score:.2f} (threshold: {release_task_metric.threshold})"
             )
 
         # Step 7: Verify messages in Slack
-        print(f"\n>>> Step 7: Verifying messages in Slack...")
+        print("\n>>> Step 7: Verifying messages in Slack...")
         try:
             thread_messages = slack_connector.get_thread_replies(
                 channel=slack_test_channel,

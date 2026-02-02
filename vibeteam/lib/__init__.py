@@ -7,13 +7,13 @@ This module provides:
 """
 
 from vibeteam.lib.channel import ChannelMessage, SimulatedChannel
-from vibeteam.lib.responsibility import ResponsibilityClaim, ResponsibilityDetector
 from vibeteam.lib.harness import (
     MockAgent,
     ScenarioResult,
     TeamTestHarness,
     create_handoff_test_case,
 )
+from vibeteam.lib.responsibility import ResponsibilityClaim, ResponsibilityDetector
 
 __all__ = [
     # Channel simulation

@@ -21,12 +21,10 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import re
 import sys
 import time
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -47,8 +45,8 @@ DEEPEVAL_AVAILABLE = False
 LLMTestCase = None
 
 try:
-    from deepeval import assert_test
-    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+    from deepeval import assert_test  # noqa: F401
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams  # noqa: F401
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
@@ -286,7 +284,7 @@ async def run_handoff_chain(
     initial_message: str,
     initial_agent: AgentRole,
     expected_chain: list[AgentRole],
-    runner: "RealAgentRunner",
+    runner: RealAgentRunner,
     max_turns: int = MAX_CHAIN_LENGTH,
 ) -> HandoffChain:
     """
@@ -474,8 +472,8 @@ class TestHandoffChainWithDeepEval:
     @pytest.mark.asyncio
     async def test_support_to_swe_handoff_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         handoff_chain_scenarios,
     ):
         """Test Support -> SWE handoff using DeepEval G-Eval metrics."""
@@ -533,8 +531,8 @@ class TestHandoffChainWithDeepEval:
     @pytest.mark.asyncio
     async def test_swe_to_release_handoff_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         handoff_chain_scenarios,
     ):
         """Test SWE -> Release handoff using DeepEval."""
@@ -573,8 +571,8 @@ class TestHandoffChainWithDeepEval:
     @pytest.mark.asyncio
     async def test_context_preservation_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
     ):
         """Test context preservation across handoffs using DeepEval."""
         scenario = {
@@ -590,7 +588,7 @@ class TestHandoffChainWithDeepEval:
             "expected_chain": ["support_engineer", "software_engineer"],
         }
 
-        print(f"\n>>> CONTEXT PRESERVATION TEST with DeepEval")
+        print("\n>>> CONTEXT PRESERVATION TEST with DeepEval")
 
         chain = await run_handoff_chain(
             scenario_name=scenario["name"],
@@ -602,7 +600,7 @@ class TestHandoffChainWithDeepEval:
         )
 
         if not chain.turns or not chain.turns[0].success:
-            pytest.skip(f"Chain failed")
+            pytest.skip("Chain failed")
 
         test_case = LLMTestCase(
             input=scenario["initial_message"],
@@ -631,8 +629,8 @@ class TestHandoffChainDeepEvalAllScenarios:
     @pytest.mark.asyncio
     async def test_all_handoff_scenarios_deepeval(
         self,
-        openhands_runner: "RealAgentRunner",
-        azure_deepeval_model: "AzureOpenAIModel",
+        openhands_runner: RealAgentRunner,
+        azure_deepeval_model: AzureOpenAIModel,
         handoff_chain_scenarios,
     ):
         """Run all handoff chain scenarios with DeepEval G-Eval metrics."""

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from vibeteam.router.models import AgentRole, MessageSource, ThreadSubscription
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +24,19 @@ def _get_db_session():
     """Lazy import of database session context manager."""
     try:
         from agents.shared.db import get_db_session
+
         return get_db_session
     except ImportError:
         raise ImportError(
             "Database support requires agents.shared.db. "
             "Make sure SQLAlchemy and asyncpg are installed."
-        )
+        ) from None
 
 
 def _get_text():
     """Lazy import of SQLAlchemy text function."""
     from sqlalchemy import text
+
     return text
 
 
@@ -283,8 +285,7 @@ class InMemorySubscriptionDB:
         for key in list(self._subscriptions.keys()):
             original_len = len(self._subscriptions[key])
             self._subscriptions[key] = [
-                s for s in self._subscriptions[key]
-                if s.subscribed_at and s.subscribed_at >= cutoff
+                s for s in self._subscriptions[key] if s.subscribed_at and s.subscribed_at >= cutoff
             ]
             count += original_len - len(self._subscriptions[key])
 

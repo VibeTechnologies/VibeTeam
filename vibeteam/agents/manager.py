@@ -1,5 +1,6 @@
-from typing import Any
 import logging
+from typing import Any
+
 from vibeteam.router.models import AgentRole
 
 logger = logging.getLogger(__name__)
@@ -57,11 +58,11 @@ class AgentSessionManager:
         """Create a CrewAI agent."""
         try:
             from agents.crewai import (
-                create_software_engineer,
-                create_release_engineer,
-                create_support_engineer,
-                create_product_manager,
                 create_marketing_manager,
+                create_product_manager,
+                create_release_engineer,
+                create_software_engineer,
+                create_support_engineer,
             )
 
             creators = {
@@ -75,18 +76,18 @@ class AgentSessionManager:
             if creator:
                 return creator()
         except ImportError:
-            logger.warning(f"CrewAI not available, falling back to vibeteam agents")
+            logger.warning("CrewAI not available, falling back to vibeteam agents")
         return self._create_vibeteam_agent(role)
 
     def _create_autogen_agent(self, role: AgentRole):
         """Create an AutoGen agent."""
         try:
             from agents.autogen import (
-                create_software_engineer,
-                create_release_engineer,
-                create_support_engineer,
-                create_product_manager,
                 create_marketing_manager,
+                create_product_manager,
+                create_release_engineer,
+                create_software_engineer,
+                create_support_engineer,
             )
 
             creators = {
@@ -100,18 +101,18 @@ class AgentSessionManager:
             if creator:
                 return creator()
         except ImportError:
-            logger.warning(f"AutoGen not available, falling back to vibeteam agents")
+            logger.warning("AutoGen not available, falling back to vibeteam agents")
         return self._create_vibeteam_agent(role)
 
     def _create_openhands_agent(self, role: AgentRole):
         """Create an OpenHands agent."""
         try:
             from agents.openhands import (
-                create_software_engineer,
-                create_release_engineer,
-                create_support_engineer,
-                create_product_manager,
                 create_marketing_manager,
+                create_product_manager,
+                create_release_engineer,
+                create_software_engineer,
+                create_support_engineer,
             )
 
             creators = {
@@ -125,5 +126,5 @@ class AgentSessionManager:
             if creator:
                 return creator()
         except ImportError:
-            logger.warning(f"OpenHands not available, falling back to vibeteam agents")
+            logger.warning("OpenHands not available, falling back to vibeteam agents")
         return self._create_vibeteam_agent(role)

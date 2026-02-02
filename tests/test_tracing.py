@@ -16,7 +16,7 @@ import pytest
 
 # Check if langfuse is installed
 try:
-    import langfuse
+    import langfuse  # noqa: F401
 
     LANGFUSE_INSTALLED = True
 except ImportError:

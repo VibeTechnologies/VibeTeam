@@ -99,9 +99,7 @@ class SendMessageTool(BaseTool):
             elif platform == "discord":
                 return await self._send_discord(channel, message, thread_id)
             else:
-                return ToolResult(
-                    success=False, output="", error=f"Unknown platform: {platform}"
-                )
+                return ToolResult(success=False, output="", error=f"Unknown platform: {platform}")
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e))
 
@@ -131,7 +129,8 @@ class SendMessageTool(BaseTool):
             )
             return ToolResult(
                 success=True,
-                output=f"Message sent to {channel}" + (f" (thread: {thread_ts})" if thread_ts else ""),
+                output=f"Message sent to {channel}"
+                + (f" (thread: {thread_ts})" if thread_ts else ""),
                 metadata={"ts": result.ts, "channel": result.channel},
             )
         except Exception as e:
@@ -165,8 +164,11 @@ class SendMessageTool(BaseTool):
             )
             return ToolResult(
                 success=True,
-                output=f"Message sent to {channel}" + (f" (thread: {thread_id})" if thread_id else ""),
-                metadata={"message_id": result.get("id") if isinstance(result, dict) else str(result)},
+                output=f"Message sent to {channel}"
+                + (f" (thread: {thread_id})" if thread_id else ""),
+                metadata={
+                    "message_id": result.get("id") if isinstance(result, dict) else str(result)
+                },
             )
         except Exception as e:
             return ToolResult(success=False, output="", error=f"Discord error: {e}")

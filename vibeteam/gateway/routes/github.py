@@ -15,7 +15,7 @@ import hmac
 import json
 import logging
 import os
-from typing import Any, cast
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request

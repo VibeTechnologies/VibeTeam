@@ -10,7 +10,6 @@ Capabilities:
 
 from agents.opencode.base import OpenCodeAgentConfig, OpenCodeBaseAgent
 
-
 RELEASE_ENGINEER_PROMPT = """You are Einstein, the Release Engineer for VibeTeam.
 
 ## Your Responsibilities

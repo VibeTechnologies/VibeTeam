@@ -114,7 +114,7 @@ Available tools: {", ".join(t.name for t in self.tools)}
         """
         Run the supervisor with shared state context.
 
-        This method is used to run the supervisor with full visibility 
+        This method is used to run the supervisor with full visibility
         into the shared conversation state.
 
         Args:

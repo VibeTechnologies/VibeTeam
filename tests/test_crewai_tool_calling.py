@@ -141,9 +141,9 @@ class TestCrewAIToolExecution:
         result_str = str(result)
 
         # Verify the tool was actually executed
-        assert (
-            len(TOOL_EXECUTION_LOG) > 0
-        ), f"Tool was never executed! CrewAI is hallucinating tool outputs. Result: {result_str}"
+        assert len(TOOL_EXECUTION_LOG) > 0, (
+            f"Tool was never executed! CrewAI is hallucinating tool outputs. Result: {result_str}"
+        )
 
         # Verify the correct value is in the result
         assert "XYZZY-42-PLUGH" in result_str, (
