@@ -124,6 +124,8 @@ jobs:
             --from-literal=LANGFUSE_BASE_URL="https://langfuse.vibebrowser.app" \
             --from-literal=AZURE_API_KEY="${{ secrets.AZURE_API_KEY }}" \
             --from-literal=AZURE_API_BASE="${{ secrets.AZURE_API_BASE }}" \
+            --from-literal=AZURE_OPENAI_DEPLOYMENT="${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" \
+            --from-literal=AZURE_API_VERSION="${{ secrets.AZURE_API_VERSION }}" \
             --from-literal=SLACK_BOT_TOKEN="${{ secrets.SLACK_BOT_TOKEN }}" \
             --from-literal=SLACK_SIGNING_SECRET="${{ secrets.SLACK_SIGNING_SECRET }}"
 

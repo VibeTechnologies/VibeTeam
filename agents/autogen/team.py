@@ -121,6 +121,57 @@ class AutoGenTeam:
             model_info=AZURE_MODEL_INFO,
         )
 
+    def _create_fresh_agent(self, role: str) -> "AssistantAgent | None":
+        """Create a fresh agent instance for stateless execution.
+
+        This avoids the "tool_calls must be followed by tool messages" error
+        that occurs when agents accumulate state between requests.
+        """
+        if role == "release_engineer":
+            return AssistantAgent(
+                name="ReleaseEngineer",
+                model_client=self.model_client,
+                tools=[execute_shell, read_file, write_file, list_directory],
+                system_message="""You are Einstein, the Release Engineer.
+                Handle deployments, CI/CD, infrastructure, and Git operations.
+                Be concise. Answer the question directly, then say TASK_COMPLETE.""",
+                description="Handles deployments, CI/CD pipelines, k3s cluster management, and infrastructure.",
+            )
+        elif role == "marketing_manager":
+            return AssistantAgent(
+                name="MarketingManager",
+                model_client=self.model_client,
+                tools=[
+                    web_search,
+                    fetch_webpage,
+                    create_social_post,
+                    analyze_sentiment,
+                ],
+                system_message="""You are Ada, the Marketing Manager.
+                Handle content creation, social media, web research, and brand monitoring.
+                Be concise. Answer the question directly, then say TASK_COMPLETE.""",
+                description="Handles content creation, social media posts, market research, and brand monitoring.",
+            )
+        elif role == "support_engineer":
+            return AssistantAgent(
+                name="SupportEngineer",
+                model_client=self.model_client,
+                tools=[
+                    list_emails,
+                    send_email,
+                    list_calendar_events,
+                    create_calendar_event,
+                    get_sentry_issues,
+                    get_langfuse_traces,
+                    create_support_ticket,
+                ],
+                system_message="""You are Grace, the Support Engineer.
+                Handle customer support, email, calendar, and error monitoring.
+                Be concise. Answer the question directly, then say TASK_COMPLETE.""",
+                description="Handles customer support, email, calendar, Sentry errors, and Langfuse traces.",
+            )
+        return None
+
     def _get_agents(self) -> list["AssistantAgent"]:
         """Create all team agents."""
         if not self._agents:
@@ -243,9 +294,9 @@ Reply with just the agent name.""",
         if context_id is None:
             context_id = str(uuid.uuid4())[:8]
 
-        # Get the specific agent
-        agents = self._get_agents()
-        agent = self._agents.get(role)
+        # Create a fresh agent instance to avoid state accumulation
+        # This prevents "tool_calls must be followed by tool messages" errors
+        agent = self._create_fresh_agent(role)
         if not agent:
             return {"error": f"Unknown role: {role}"}
 
