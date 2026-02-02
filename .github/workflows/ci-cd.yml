@@ -175,10 +175,15 @@ jobs:
           EOF
       
       - name: Deploy with kustomize
+        env:
+          # Use short SHA (7 chars) to match docker/metadata-action output
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Update image tag to current SHA
+          # Update image tag to current SHA (short form, first 7 chars)
           cd k8s/overlays/prod
-          kustomize edit set image ghcr.io/vibetechnologies/vibeteam=ghcr.io/vibetechnologies/vibeteam:${{ github.sha }}
+          SHORT_SHA="${IMAGE_TAG:0:7}"
+          echo "Using image tag: $SHORT_SHA"
+          kustomize edit set image ghcr.io/vibetechnologies/vibeteam=ghcr.io/vibetechnologies/vibeteam:${SHORT_SHA}
           
           # Delete deployments with potentially stale selectors (selectors are immutable)
           # These will be recreated with the correct selectors
