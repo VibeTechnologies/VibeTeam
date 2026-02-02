@@ -125,33 +125,29 @@ jobs:
       - name: Generate secrets file from env
         working-directory: k8s/overlays/prod
         run: |
-          cat > .env.secrets << 'EOF'
-          # LLM Configuration
+          cat > .env.secrets << EOF
           AZURE_API_KEY=${{ secrets.AZURE_API_KEY }}
           AZURE_API_BASE=${{ secrets.AZURE_API_BASE }}
           AZURE_OPENAI_DEPLOYMENT=${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
           AZURE_API_VERSION=${{ secrets.AZURE_API_VERSION }}
           LITELLM_MASTER_KEY=${{ secrets.LITELLM_MASTER_KEY }}
-          
-          # GitHub Integration
           GITHUB_TOKEN=${{ secrets.PAT_TOKEN }}
           GITHUB_WEBHOOK_SECRET=${{ secrets.GITHUB_WEBHOOK_SECRET }}
-          
-          # Slack Integration
           SLACK_BOT_TOKEN=${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
-          
-          # Sentry Integration
           SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_CLIENT_SECRET=${{ secrets.SENTRY_CLIENT_SECRET }}
-          
-          # Langfuse Observability
           LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }}
-          
-          # Database
+          LANGFUSE_BASE_URL=${{ secrets.LANGFUSE_BASE_URL }}
           DATABASE_URL=${{ secrets.DATABASE_URL }}
           EOF
+          # Strip leading whitespace from each line
+          sed -i 's/^[[:space:]]*//' .env.secrets
+          # Remove empty lines and comment lines
+          sed -i '/^$/d' .env.secrets
+          sed -i '/^#/d' .env.secrets
+          echo "Generated .env.secrets with $(wc -l < .env.secrets) entries"
       
       - name: Generate GitHub App secret YAML
         working-directory: k8s/overlays/prod
