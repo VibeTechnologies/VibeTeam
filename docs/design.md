@@ -384,3 +384,76 @@ pytest tests/e2e/test_discord_routing.py -v -s
 | TaskCompletion | 0.7 | Request fully addressed |
 | HandoffQuality | 0.7 | Context preservation |
 | ResponseTime | < 60s | Time to first response |
+
+
+# DeepEval test design
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           E2E TEST FLOW                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+Step 1: Test posts initial message to Slack
+┌──────────┐         ┌─────────────────┐
+│  pytest  │ ──────► │  Slack API      │  POST /SupportEngineer, issue...
+└──────────┘         │  #channel       │
+                     │  thread_ts: X   │
+                     └────────┬────────┘
+                              │
+Step 2: Webhook picks up message
+                              ▼
+                     ┌─────────────────┐
+                     │ Slack Webhook   │  (K8s microservice)
+                     │ Microservice    │
+                     └────────┬────────┘
+                              │ routes /SupportEngineer
+                              ▼
+Step 3: Agent service processes
+                     ┌─────────────────┐
+                     │ OpenHands Agent │  (K8s service)
+                     │ Service         │
+                     │                 │  - Checks PostgreSQL for session
+                     │ /SupportEngineer│  - No session for thread_ts X
+                     │                 │  - Creates new session
+                     └────────┬────────┘
+                              │
+Step 4: Agent responds via send_message tool
+                              │ Tool pre-initialized with:
+                              │   - thread_ts: X
+                              │   - slack_token
+                              ▼
+                     ┌─────────────────┐
+                     │  Slack API      │  "Handing off to /ReleaseEngineer..."
+                     │  thread_ts: X   │
+                     └────────┬────────┘
+                              │
+Step 5: Webhook picks up handoff
+                              ▼
+                     ┌─────────────────┐
+                     │ Slack Webhook   │  routes /ReleaseEngineer
+                     │ Microservice    │
+                     └────────┬────────┘
+                              │
+Step 6: Release Engineer processes
+                              ▼
+                     ┌─────────────────┐
+                     │ OpenHands Agent │
+                     │ /ReleaseEngineer│  - Same thread, new/existing session
+                     └────────┬────────┘
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │  Slack API      │  "Investigated, found X..."
+                     │  thread_ts: X   │
+                     └────────┬────────┘
+                              │
+Step 7: Test reads thread, evaluates
+                              ▼
+┌──────────┐         ┌─────────────────┐
+│  pytest  │ ◄────── │  Slack API      │  GET thread messages
+│          │         │  thread_ts: X   │
+│ DeepEval │         └─────────────────┘
+│ evaluate │
+│          │
+│ ASSERT   │  - Thread has N messages
+│          │  - HandoffQuality score
+│          │  - TaskCompletion score
+└──────────┘

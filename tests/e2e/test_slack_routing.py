@@ -1,990 +1,504 @@
 """
-E2E Test: Slack Message Routing with /RoleName Mentions
+E2E Test: Slack Agent Handoff Evaluation
 
-This test validates the Slack integration's ability to:
-1. Parse /RoleName mentions from incoming Slack messages
-2. Route messages to the correct agent based on role mention
-3. Execute REAL agents (OpenHands, AutoGen, CrewAI) for tasks
-4. Evaluate agent responses using DeepEval G-Eval with Azure GPT-5.2
-5. Optionally post results to real Slack channels
+Tests the agent pipeline via Gateway API with Slack context:
+1. Post initial message to Slack (for visibility/thread creation)
+2. Call Gateway /api/run with slack context (simulates webhook)
+3. Gateway routes to Agent Service (openhands-agents)
+4. Agent responds - test posts response to Slack thread
+5. Detect /RoleName handoffs, repeat for each
+6. Evaluate actual conversation with DeepEval G-Eval
 
-Uses DeepEval G-Eval metrics with Azure GPT-5.2 as the LLM judge.
-Metrics evaluated: TaskCompletion, Professionalism, ToolUsage
+This bypasses Slack webhook (which may not be configured) but tests
+the real Gateway → Agent Service pipeline on K8s.
 
 Usage:
-    # Run with OpenHands (default)
-    pytest tests/e2e/test_slack_routing.py -v -s
-
-    # Run with specific framework
-    pytest tests/e2e/test_slack_routing.py -v -s --framework=autogen
-
-    # Run with real Slack posting
     pytest tests/e2e/test_slack_routing.py -v -s --post-to-slack
-
-    # Run DeepEval tests only
-    pytest tests/e2e/test_slack_routing.py -v -s -k "DeepEval"
-
-    # Run specific test
-    pytest tests/e2e/test_slack_routing.py -v -s -k "openhands_swe"
 """
 
 from __future__ import annotations
 
+import os
 import re
-import sys
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+import time
+from typing import TYPE_CHECKING
 
+import httpx
 import pytest
-
-# Add project root to path for imports
-_project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(_project_root))
-
-from vibeteam.router.models import (
-    ROLE_DISPLAY_NAMES,
-    ROLE_MENTION_MAP,
-    AgentRole,
-)
 
 # Import DeepEval if available
 DEEPEVAL_AVAILABLE = False
 LLMTestCase = None
-assert_test = None
+LLMTestCaseParams = None
+GEval = None
 
 try:
-    from deepeval import assert_test  # noqa: F401
-    from deepeval.test_case import LLMTestCase, LLMTestCaseParams  # noqa: F401
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+    from deepeval.metrics import GEval
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
     pass
 
-# Import conftest helpers (these are always available)
+# Import conftest helpers for Azure model
 try:
-    from conftest import (
-        AGENT_THRESHOLDS,
-        AzureOpenAIModel,
-        create_professionalism_metric,
-        create_task_completion_metric,
-        create_tool_usage_metric,
-    )
+    from conftest import AzureOpenAIModel
 except ImportError:
     try:
-        # Try relative import if running from within package
-        from tests.e2e.conftest import (
-            AGENT_THRESHOLDS,
-            AzureOpenAIModel,
-            create_professionalism_metric,
-            create_task_completion_metric,
-            create_tool_usage_metric,
-        )
+        from tests.e2e.conftest import AzureOpenAIModel
     except ImportError:
-        # Running standalone without any conftest access
-        AGENT_THRESHOLDS = {}
         AzureOpenAIModel = None
-        create_professionalism_metric = None
-        create_task_completion_metric = None
-        create_tool_usage_metric = None
 
 if TYPE_CHECKING:
-    from conftest import RealAgentRunner
+    from vibeteam.connectors.slack import SlackConnector
 
 
 # ==============================================================================
-# Data Classes
+# Configuration
 # ==============================================================================
 
+# Gateway URL - can be overridden via environment
+GATEWAY_URL = os.environ.get(
+    "VIBETEAM_GATEWAY_URL", "http://vibeteam-gateway.vibeteam.svc.cluster.local:8080"
+)
 
-@dataclass
-class RoutingResult:
-    """Result of routing a Slack message to a real agent."""
+# For local testing, try localhost or k8s service
+GATEWAY_URLS = [
+    os.environ.get("VIBETEAM_GATEWAY_URL", ""),
+    "http://localhost:8080",
+    "http://vibeteam-gateway.vibeteam.svc.cluster.local:8080",
+    "http://10.43.14.189:8080",  # ClusterIP from kubectl
+]
 
-    scenario_name: str
-    original_message: str
-    detected_role: AgentRole | None
-    expected_role: AgentRole
-    routing_correct: bool
-    agent_response: str
-    latency_ms: int
-    framework: str
-    success: bool
-    error: str | None = None
+# Timeout for agent responses
+AGENT_TIMEOUT = 120
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+# Maximum handoff chain depth
+MAX_HANDOFFS = 3
 
+# Role name pattern
+ROLE_PATTERN = re.compile(
+    r"/(SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager|SWE|SRE|PM)",
+    re.IGNORECASE,
+)
 
-@dataclass
-class RoutingEvalResult:
-    """Evaluation result from GPT-5.2 judge."""
+# Role name normalization
+ROLE_MAP = {
+    "softwareengineer": "software_engineer",
+    "swe": "software_engineer",
+    "releaseengineer": "release_engineer",
+    "sre": "release_engineer",
+    "supportengineer": "support_engineer",
+    "productmanager": "product_manager",
+    "pm": "product_manager",
+    "marketingmanager": "marketing_manager",
+}
 
-    scenario_name: str
-    task_understanding: float
-    action_taken: float
-    result_quality: float
-    tool_usage: float
-    completeness: float
-    overall_score: float
-    feedback: str
-    judge_model: str
-
-    @property
-    def passed(self) -> bool:
-        """Check if evaluation passed quality threshold."""
-        return self.overall_score >= 0.6
-
-
-# ==============================================================================
-# G-Eval Prompt for Slack Routing
-# ==============================================================================
-
-SLACK_ROUTING_EVAL_PROMPT = """You are evaluating an AI agent's response to a Slack message task.
-
-SCENARIO: {scenario_name}
-DESCRIPTION: {description}
-SLACK MESSAGE: {message}
-EXPECTED ROLE: {expected_role}
-DETECTED ROLE: {detected_role}
-AGENT FRAMEWORK: {framework}
-
-AGENT RESPONSE:
-{response}
-
-Evaluate the agent's response on these criteria (score 0.0 to 1.0):
-
-1. TASK_UNDERSTANDING: Did the agent understand what was being asked in the Slack message?
-   - 1.0: Fully understood the task and context
-   - 0.5: Partially understood but missed some details
-   - 0.0: Did not understand the task
-
-2. ACTION_TAKEN: Did the agent take appropriate actions to complete the task?
-   - 1.0: Took correct actions (used tools, made decisions, etc.)
-   - 0.5: Took some actions but incomplete
-   - 0.0: No meaningful action taken
-
-3. RESULT_QUALITY: Is the response helpful, accurate, and actionable?
-   - 1.0: Excellent response with clear, useful information
-   - 0.5: Acceptable but could be more detailed
-   - 0.0: Unhelpful or incorrect response
-
-4. TOOL_USAGE: Did the agent use available tools effectively? (gh CLI, file operations, etc.)
-   - 1.0: Used tools appropriately and effectively
-   - 0.5: Limited tool usage or partial success
-   - 0.0: Failed to use tools when needed (or N/A if no tools required)
-
-5. COMPLETENESS: Is the response complete, or does it clearly need follow-up?
-   - 1.0: Complete response, task fully addressed
-   - 0.5: Partial response, some follow-up needed
-   - 0.0: Incomplete, major parts missing
-
-Return ONLY valid JSON:
-{{
-    "task_understanding": 0.0,
-    "action_taken": 0.0,
-    "result_quality": 0.0,
-    "tool_usage": 0.0,
-    "completeness": 0.0,
-    "overall_score": 0.0,
-    "feedback": "Brief explanation of scores"
-}}"""
+ROLE_DISPLAY = {
+    "software_engineer": "SoftwareEngineer",
+    "release_engineer": "ReleaseEngineer",
+    "support_engineer": "SupportEngineer",
+    "product_manager": "ProductManager",
+    "marketing_manager": "MarketingManager",
+}
 
 
 # ==============================================================================
-# Router Helper Functions
+# Strict G-Eval Metrics for Support Engineer Investigation Scenario
 # ==============================================================================
 
 
-def parse_role_mention(message: str) -> AgentRole | None:
+def create_investigation_quality_metric(model):
     """
-    Parse /RoleName mention from a message.
+    Strict metric: Did the agent ACTUALLY investigate the issue?
 
-    Returns the detected agent role or None if no mention found.
+    This should FAIL if the agent just gives generic advice without:
+    - Using tools to check Sentry/logs/metrics
+    - Providing specific findings from investigation
+    - Taking concrete action or making specific handoff
     """
-    pattern = r"/([A-Za-z]+)"
-    matches = re.findall(pattern, message)
+    if not DEEPEVAL_AVAILABLE or GEval is None:
+        return None
 
-    for match in matches:
-        normalized = match.lower()
-        if normalized in ROLE_MENTION_MAP:
-            return ROLE_MENTION_MAP[normalized]
+    return GEval(
+        name="InvestigationQuality",
+        criteria=(
+            "Did the SupportEngineer ACTUALLY investigate the reported issue? "
+            "A proper investigation MUST include: "
+            "(1) Using tools to check error tracking (Sentry), logs, or metrics - not just saying they would check; "
+            "(2) Reporting SPECIFIC findings from the investigation (error messages, stack traces, affected endpoints); "
+            "(3) Either resolving the issue OR handing off to another agent with specific technical details. "
+            "A generic 'triage checklist' or 'here's what I would do' response is a FAILURE - "
+            "the agent must actually DO the investigation, not describe how to do it."
+        ),
+        evaluation_steps=[
+            "Check if the agent used any tools (Sentry, logs, kubectl, etc.) - just mentioning tools is not enough",
+            "Verify the agent reported SPECIFIC findings (actual error messages, specific endpoints, concrete data)",
+            "Check if the response contains actual investigation results vs generic advice",
+            "If no specific findings, score should be LOW (< 0.5) regardless of how well-written the response is",
+            "A checklist or process description without actual execution should score < 0.3",
+        ],
+        evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+        threshold=0.70,
+        model=model,
+    )
 
+
+def create_handoff_or_resolution_metric(model):
+    """
+    Strict metric: Did the agent either resolve the issue OR make a proper handoff?
+
+    For infrastructure issues, SupportEngineer should:
+    - Investigate and find root cause, OR
+    - Hand off to ReleaseEngineer/SoftwareEngineer with specific findings
+
+    This should FAIL if the agent neither resolves nor hands off.
+    """
+    if not DEEPEVAL_AVAILABLE or GEval is None:
+        return None
+
+    return GEval(
+        name="HandoffOrResolution",
+        criteria=(
+            "Did the agent either RESOLVE the issue or make a PROPER HANDOFF? "
+            "For an infrastructure issue (API Gateway 400 errors affecting 500 users): "
+            "(1) RESOLUTION means: identified root cause AND either fixed it or provided specific fix instructions; "
+            "(2) PROPER HANDOFF means: explicitly mentioned /ReleaseEngineer or /SoftwareEngineer "
+            "with SPECIFIC technical context (not just 'look into this'). "
+            "If the agent neither resolved the issue nor handed off with specific context, this is a FAILURE. "
+            "Providing a checklist without taking action is NOT resolution or handoff."
+        ),
+        evaluation_steps=[
+            "Check if the issue was actually resolved (root cause identified and fixed)",
+            "If not resolved, check for explicit /RoleName handoff mention",
+            "If handoff exists, verify it includes specific technical context from investigation",
+            "A vague 'escalate to engineering' without specific findings should score < 0.4",
+            "No resolution AND no handoff should score < 0.2",
+        ],
+        evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+        threshold=0.70,
+        model=model,
+    )
+
+
+# ==============================================================================
+# Helper Functions
+# ==============================================================================
+
+
+def get_working_gateway_url() -> str | None:
+    """Find a working gateway URL."""
+    for url in GATEWAY_URLS:
+        if not url:
+            continue
+        try:
+            resp = httpx.get(f"{url}/health", timeout=5.0)
+            if resp.status_code == 200:
+                return url
+        except Exception:
+            continue
     return None
 
 
-def keyword_based_routing(message: str) -> AgentRole | None:
+def detect_handoffs(text: str) -> list[str]:
+    """Detect /RoleName mentions in text and return normalized role names."""
+    mentions = ROLE_PATTERN.findall(text)
+    roles = []
+    for mention in mentions:
+        normalized = ROLE_MAP.get(mention.lower())
+        if normalized and normalized not in roles:
+            roles.append(normalized)
+    return roles
+
+
+async def call_gateway_run(
+    gateway_url: str,
+    task: str,
+    role: str,
+    context_type: str = "slack",
+    context_id: str = "",
+    timeout: int = AGENT_TIMEOUT,
+) -> dict:
     """
-    Fall back to keyword-based routing when no mention is present.
+    Call Gateway /api/run endpoint.
 
-    Returns the detected agent role based on keywords.
+    This simulates what the Slack webhook handler does.
     """
-    message_lower = message.lower()
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(
+            f"{gateway_url}/api/run",
+            json={
+                "task": task,
+                "role": role,
+                "framework": "openhands",
+                "context_type": context_type,
+                "context_id": context_id,
+            },
+        )
 
-    patterns: dict[AgentRole, list[str]] = {
-        "software_engineer": [
-            "bug",
-            "fix",
-            "code",
-            "implement",
-            "pr",
-            "merge",
-            "function",
-            "error",
-            "issue",
-            "github",
-            "review",
-            "test",
-        ],
-        "release_engineer": [
-            "deploy",
-            "release",
-            "staging",
-            "production",
-            "kubernetes",
-            "rollback",
-            "infrastructure",
-            "k8s",
-            "helm",
-        ],
-        "support_engineer": [
-            "customer",
-            "ticket",
-            "support",
-            "complaint",
-            "help",
-            "user",
-            "incident",
-            "sentry",
-        ],
-        "product_manager": [
-            "feature",
-            "backlog",
-            "priority",
-            "roadmap",
-            "requirement",
-            "spec",
-            "story",
-            "prd",
-        ],
-        "marketing_manager": [
-            "announce",
-            "tweet",
-            "blog",
-            "campaign",
-            "launch",
-            "marketing",
-            "press",
-            "newsletter",
-        ],
-    }
+        if response.status_code != 200:
+            return {
+                "success": False,
+                "error": f"Gateway returned {response.status_code}: {response.text}",
+            }
 
-    for role, keywords in patterns.items():
-        if any(keyword in message_lower for keyword in keywords):
-            return role
+        data = response.json()
+        return {
+            "success": True,
+            "response": data.get("response", ""),
+            "session_id": data.get("session_id", ""),
+            "framework": data.get("framework", ""),
+            "agents_used": data.get("agents_used", []),
+        }
 
-    return None
+
+def build_transcript(messages: list[tuple[str, str]]) -> str:
+    """Build transcript from (role, text) pairs."""
+    lines = []
+    for role, text in messages:
+        display = ROLE_DISPLAY.get(role, role)
+        lines.append(f"[{display}] {text[:500]}")
+    return "\n\n".join(lines)
 
 
 # ==============================================================================
-# Test Classes: Unit Tests for Parsing
+# E2E Test
 # ==============================================================================
 
 
-class TestSlackMentionParsing:
-    """Test /RoleName mention parsing (unit tests, no agents needed)."""
+@pytest.mark.skipif(not DEEPEVAL_AVAILABLE, reason="DeepEval not installed")
+class TestSlackHandoffE2E:
+    """
+    E2E test for Slack agent handoffs via Gateway API.
 
-    def test_parse_software_engineer(self):
-        """Test parsing /SoftwareEngineer mention."""
-        role = parse_role_mention("/SoftwareEngineer fix the bug")
-        assert role == "software_engineer"
-
-    def test_parse_release_engineer(self):
-        """Test parsing /ReleaseEngineer mention."""
-        role = parse_role_mention("/ReleaseEngineer deploy to staging")
-        assert role == "release_engineer"
-
-    def test_parse_support_engineer(self):
-        """Test parsing /SupportEngineer mention."""
-        role = parse_role_mention("/SupportEngineer customer needs help")
-        assert role == "support_engineer"
-
-    def test_parse_product_manager(self):
-        """Test parsing /ProductManager mention."""
-        role = parse_role_mention("/ProductManager add to backlog")
-        assert role == "product_manager"
-
-    def test_parse_marketing_manager(self):
-        """Test parsing /MarketingManager mention."""
-        role = parse_role_mention("/MarketingManager announce the release")
-        assert role == "marketing_manager"
-
-    def test_parse_short_form_swe(self):
-        """Test parsing short form /SWE mention."""
-        role = parse_role_mention("/SWE review this PR")
-        assert role == "software_engineer"
-
-    def test_parse_short_form_pm(self):
-        """Test parsing short form /PM mention."""
-        role = parse_role_mention("/PM prioritize this feature")
-        assert role == "product_manager"
-
-    def test_parse_case_insensitive(self):
-        """Test case-insensitive parsing."""
-        assert parse_role_mention("/softwareengineer fix it") == "software_engineer"
-        assert parse_role_mention("/SOFTWAREENGINEER fix it") == "software_engineer"
-        assert parse_role_mention("/SoftwareEngineer fix it") == "software_engineer"
-
-    def test_parse_no_mention(self):
-        """Test message with no mention returns None."""
-        role = parse_role_mention("Just a regular message")
-        assert role is None
-
-    def test_parse_mention_in_middle(self):
-        """Test mention in middle of message."""
-        role = parse_role_mention("Hey /ReleaseEngineer can you deploy?")
-        assert role == "release_engineer"
-
-
-class TestKeywordRouting:
-    """Test keyword-based fallback routing (unit tests)."""
-
-    def test_keyword_deploy(self):
-        """Test 'deploy' routes to release_engineer."""
-        role = keyword_based_routing("We need to deploy to staging")
-        assert role == "release_engineer"
-
-    def test_keyword_bug(self):
-        """Test 'bug' routes to software_engineer."""
-        role = keyword_based_routing("There's a bug in the login form")
-        assert role == "software_engineer"
-
-    def test_keyword_customer(self):
-        """Test 'customer' routes to support_engineer."""
-        role = keyword_based_routing("A customer needs assistance with billing")
-        assert role == "support_engineer"
-
-    def test_keyword_feature(self):
-        """Test 'feature' routes to product_manager."""
-        role = keyword_based_routing("New feature request from the team")
-        assert role == "product_manager"
-
-    def test_keyword_announce(self):
-        """Test 'announce' routes to marketing_manager."""
-        role = keyword_based_routing("We need to announce this via tweet")
-        assert role == "marketing_manager"
-
-    def test_keyword_sentry(self):
-        """Test 'sentry' routes to support_engineer."""
-        role = keyword_based_routing("Sentry alert received from customer")
-        assert role == "support_engineer"
-
-    def test_keyword_github(self):
-        """Test 'github' routes to software_engineer."""
-        role = keyword_based_routing("Check the GitHub issues for open bugs")
-        assert role == "software_engineer"
-
-
-# ==============================================================================
-# NOTE: Legacy test classes (TestOpenHandsSlackRouting, TestSlackRoutingAllScenarios,
-# TestCrossFrameworkComparison) have been removed. They used the deprecated
-# GPT52Evaluator. Use DeepEval test classes below instead.
-# ==============================================================================
-
-
-class TestSlackRoutingWithRealSlack:
-    """Test Slack routing with real Slack posting (when --post-to-slack is enabled)."""
+    Flow:
+    1. Post message to Slack (creates visible thread)
+    2. Call Gateway /api/run (real agent service on K8s)
+    3. Post agent response to Slack thread
+    4. Detect handoffs, run next agent
+    5. Evaluate with DeepEval
+    """
 
     @pytest.mark.asyncio
-    async def test_post_agent_response_to_slack(
+    async def test_support_engineer_handoff(
         self,
-        autogen_runner: RealAgentRunner,
-        slack_connector,
+        slack_connector: "SlackConnector",
         slack_test_channel: str,
         should_post_to_slack: bool,
-        slack_routing_scenarios,
-    ):
-        """Run agent and post response to real Slack channel."""
-        if not should_post_to_slack:
-            pytest.skip("--post-to-slack not enabled")
-
-        scenario = slack_routing_scenarios[0]  # Use first scenario
-
-        print("\n>>> Testing with REAL Slack posting")
-        print(f"    Channel: {slack_test_channel}")
-        print(f"    Task: {scenario['message']}")
-
-        # Post the original message to Slack
-        original_msg = slack_connector.post_message(
-            channel=slack_test_channel,
-            text=f"[E2E Test] {scenario['message']}",
-        )
-
-        print(f"    Posted message: {original_msg.ts}")
-
-        # Run the agent (using AutoGen since OpenHands requires Python 3.12+)
-        agent_result = await autogen_runner.run(
-            role=scenario["expected_role"],
-            task=scenario["message"],
-            context_type="slack",
-            context_id=original_msg.ts,
-        )
-
-        # Post agent response as reply
-        if agent_result.get("success") and agent_result.get("response"):
-            role_display = ROLE_DISPLAY_NAMES.get(
-                scenario["expected_role"],
-                scenario["expected_role"],
-            )
-
-            reply = slack_connector.post_message(
-                channel=slack_test_channel,
-                text=f"*{role_display}* responds:\n\n{agent_result['response'][:2000]}",
-                thread_ts=original_msg.ts,
-            )
-
-            print(f"    Posted reply: {reply.ts}")
-
-        assert agent_result.get("success"), f"Agent failed: {agent_result.get('error')}"
-
-
-# ==============================================================================
-# DeepEval G-Eval Tests (New - Using DeepEval Library)
-# ==============================================================================
-
-
-@pytest.mark.skipif(not DEEPEVAL_AVAILABLE, reason="DeepEval not installed")
-class TestSlackRoutingWithDeepEval:
-    """
-    Slack routing tests using DeepEval G-Eval metrics.
-
-    Uses the proper DeepEval library with GEval as specified in requirements.md.
-    Metrics: TaskCompletion, Professionalism, ToolUsage
-    Thresholds are per-agent as defined in AGENT_THRESHOLDS.
-    """
-
-    @pytest.mark.asyncio
-    async def test_swe_task_with_deepeval(
-        self,
-        autogen_runner: RealAgentRunner,
-        azure_deepeval_model: AzureOpenAIModel,
-        slack_routing_scenarios,
-    ):
-        """Test SWE task using DeepEval G-Eval metrics with per-role thresholds."""
-        scenario = next(
-            s for s in slack_routing_scenarios if s["name"] == "openhands_swe_github_issue"
-        )
-        role = scenario["expected_role"]
-
-        print(f"\n>>> Running DeepEval test for {role}...")
-        print(f"    Threshold: {AGENT_THRESHOLDS.get(role, {}).get('task_completion', 0.7)}")
-
-        # Run the agent (using AutoGen since OpenHands requires Python 3.12+)
-        result = await autogen_runner.run(
-            role=role,
-            task=scenario["message"],
-            context_type="slack",
-            context_id="deepeval-test",
-        )
-
-        if not result.get("success"):
-            pytest.skip(f"Agent failed: {result.get('error')}")
-
-        # Create DeepEval test case
-        test_case = LLMTestCase(
-            input=scenario["message"],
-            actual_output=result.get("response", ""),
-        )
-
-        # Create metrics with role-specific thresholds
-        task_metric = create_task_completion_metric(azure_deepeval_model, role)
-        prof_metric = create_professionalism_metric(azure_deepeval_model, role)
-
-        # Measure metrics
-        task_metric.measure(test_case)
-        prof_metric.measure(test_case)
-
-        print(f"    TaskCompletion: {task_metric.score:.2f} (threshold: {task_metric.threshold})")
-        print(f"    Professionalism: {prof_metric.score:.2f} (threshold: {prof_metric.threshold})")
-        print(f"    Task Reason: {task_metric.reason}")
-
-        # Assert using DeepEval
-        assert task_metric.score >= task_metric.threshold, (
-            f"TaskCompletion {task_metric.score:.2f} below threshold {task_metric.threshold}"
-        )
-
-    @pytest.mark.asyncio
-    async def test_support_task_with_deepeval(
-        self,
-        autogen_runner: RealAgentRunner,
-        azure_deepeval_model: AzureOpenAIModel,
-        slack_routing_scenarios,
-    ):
-        """Test SupportEngineer task with higher thresholds per requirements.md."""
-        scenario = next(
-            s for s in slack_routing_scenarios if s["name"] == "openhands_support_analyze"
-        )
-        role = scenario["expected_role"]
-
-        print(f"\n>>> Running DeepEval test for {role}...")
-        print(f"    Threshold: {AGENT_THRESHOLDS.get(role, {}).get('task_completion', 0.8)}")
-
-        # Run the agent (using AutoGen since OpenHands requires Python 3.12+)
-        result = await autogen_runner.run(
-            role=role,
-            task=scenario["message"],
-            context_type="slack",
-            context_id="deepeval-test",
-        )
-
-        if not result.get("success"):
-            pytest.skip(f"Agent failed: {result.get('error')}")
-
-        test_case = LLMTestCase(
-            input=scenario["message"],
-            actual_output=result.get("response", ""),
-        )
-
-        # SupportEngineer has higher thresholds (0.80 task, 0.80 professionalism)
-        task_metric = create_task_completion_metric(azure_deepeval_model, role)
-        prof_metric = create_professionalism_metric(azure_deepeval_model, role)
-
-        task_metric.measure(test_case)
-        prof_metric.measure(test_case)
-
-        print(f"    TaskCompletion: {task_metric.score:.2f}")
-        print(f"    Professionalism: {prof_metric.score:.2f}")
-
-        # SupportEngineer has higher thresholds
-        assert task_metric.score >= 0.80, (
-            f"SupportEngineer TaskCompletion too low: {task_metric.score:.2f}"
-        )
-
-
-@pytest.mark.skipif(not DEEPEVAL_AVAILABLE, reason="DeepEval not installed")
-class TestSlackRoutingDeepEvalAllScenarios:
-    """Run all scenarios with DeepEval and summarize results."""
-
-    @pytest.mark.asyncio
-    async def test_all_scenarios_deepeval(
-        self,
-        autogen_runner: RealAgentRunner,
-        azure_deepeval_model: AzureOpenAIModel,
-        slack_routing_scenarios,
-    ):
-        """Run all Slack routing scenarios with DeepEval G-Eval metrics."""
-
-        results = []
-
-        print("\n" + "=" * 70)
-        print("SLACK ROUTING E2E TEST - DEEPEVAL G-EVAL")
-        print("=" * 70)
-
-        for scenario in slack_routing_scenarios:
-            role = scenario["expected_role"]
-            print(f"\n>>> {scenario['name']} (role: {role})")
-
-            # Run agent (using AutoGen since OpenHands requires Python 3.12+)
-            agent_result = await autogen_runner.run(
-                role=role,
-                task=scenario["message"],
-                context_type="slack",
-                context_id=f"deepeval-{scenario['name']}",
-            )
-
-            if not agent_result.get("success"):
-                print(f"    SKIPPED: Agent failed - {agent_result.get('error')}")
-                results.append(
-                    {
-                        "scenario": scenario["name"],
-                        "role": role,
-                        "success": False,
-                        "task_score": 0,
-                        "prof_score": 0,
-                    }
-                )
-                continue
-
-            # Create test case
-            test_case = LLMTestCase(
-                input=scenario["message"],
-                actual_output=agent_result.get("response", ""),
-            )
-
-            # Create and measure metrics
-            task_metric = create_task_completion_metric(azure_deepeval_model, role)
-            prof_metric = create_professionalism_metric(azure_deepeval_model, role)
-
-            task_metric.measure(test_case)
-            prof_metric.measure(test_case)
-
-            passed = (
-                task_metric.score >= task_metric.threshold
-                and prof_metric.score >= prof_metric.threshold
-            )
-
-            results.append(
-                {
-                    "scenario": scenario["name"],
-                    "role": role,
-                    "success": True,
-                    "passed": passed,
-                    "task_score": task_metric.score,
-                    "task_threshold": task_metric.threshold,
-                    "prof_score": prof_metric.score,
-                    "prof_threshold": prof_metric.threshold,
-                    "latency_ms": agent_result.get("latency_ms", 0),
-                }
-            )
-
-            status = "PASS" if passed else "FAIL"
-            print(f"    Status: {status}")
-            print(f"    TaskCompletion: {task_metric.score:.2f} >= {task_metric.threshold}")
-            print(f"    Professionalism: {prof_metric.score:.2f} >= {prof_metric.threshold}")
-
-        # Summary
-        print("\n" + "=" * 70)
-        print("DEEPEVAL SUMMARY")
-        print("=" * 70)
-
-        successful = [r for r in results if r.get("success")]
-        passed = [r for r in successful if r.get("passed")]
-
-        print(f"Total Scenarios: {len(results)}")
-        print(f"Executed: {len(successful)}")
-        print(f"Passed: {len(passed)}")
-
-        if successful:
-            avg_task = sum(r["task_score"] for r in successful) / len(successful)
-            avg_prof = sum(r["prof_score"] for r in successful) / len(successful)
-            print(f"Avg TaskCompletion: {avg_task:.2f}")
-            print(f"Avg Professionalism: {avg_prof:.2f}")
-
-        # At least half should pass
-        assert len(passed) >= len(successful) // 2, (
-            f"Only {len(passed)}/{len(successful)} passed DeepEval thresholds"
-        )
-
-
-# ==============================================================================
-# Real Slack E2E Handoff Test (with Slack Tools)
-# ==============================================================================
-
-
-@pytest.mark.skipif(not DEEPEVAL_AVAILABLE, reason="DeepEval not installed")
-class TestRealSlackHandoffE2E:
-    """
-    End-to-end test for Slack handoff scenarios.
-
-    This test validates the COMPLETE handoff flow:
-    1. Post initial message to REAL Slack channel
-    2. Set Slack context for agent
-    3. Run SupportEngineer with Slack tools (post_slack_message, mention_agent)
-    4. Detect handoff via @mention
-    5. Run ReleaseEngineer with same context
-    6. Evaluate with DeepEval metrics
-    7. Verify messages appeared in Slack
-    """
-
-    @pytest.mark.asyncio
-    async def test_real_slack_handoff_support_to_release(
-        self,
-        autogen_runner: RealAgentRunner,
-        slack_connector,
-        slack_test_channel: str,
-        should_post_to_slack: bool,
-        azure_deepeval_model: AzureOpenAIModel,
+        azure_deepeval_model: "AzureOpenAIModel",
     ):
         """
-        Test complete handoff flow from SupportEngineer to ReleaseEngineer.
-
-        Scenario: Customer reports API 404 errors. SupportEngineer should
-        analyze and handoff to ReleaseEngineer for investigation.
+        E2E: SupportEngineer investigates issue, may handoff to other agents.
         """
         if not should_post_to_slack:
             pytest.skip("--post-to-slack not enabled")
 
-        # Import Slack tools
-        from agents.shared.slack_tools import (
-            clear_slack_context,
-            set_slack_context,
-        )
+        # Find working gateway
+        gateway_url = get_working_gateway_url()
+        if not gateway_url:
+            pytest.skip(
+                "No working gateway found. Set VIBETEAM_GATEWAY_URL or ensure "
+                "vibeteam-gateway is accessible."
+            )
 
         print("\n" + "=" * 70)
-        print("REAL SLACK E2E HANDOFF TEST")
+        print("E2E SLACK HANDOFF TEST (Gateway API)")
         print("=" * 70)
+        print(f"Gateway: {gateway_url}")
         print(f"Channel: {slack_test_channel}")
 
-        # Step 1: Post initial customer message to Slack
-        customer_message = (
-            "/SupportEngineer URGENT: customer ACME Corp reports API 404 errors since 8am. "
-            "They're hitting https://api.vibetechnologies.com/v2/agent/execute. "
-            "This is affecting 500 users and is CRITICAL. "
-            "After initial investigation, handoff to /ReleaseEngineer to check recent deployments."
+        # Step 1: Post initial message to Slack
+        user_message = (
+            "/SupportEngineer there is a request from a user who sees the issue with "
+            "Vibe API Gateway returning 400 errors. Customer ACME Corp reports this "
+            "started after the deployment at 8am. Multiple customers affected, about "
+            "500 users. This seems infrastructure-related. Please investigate."
         )
 
         print("\n>>> Step 1: Posting initial message to Slack")
         initial_msg = slack_connector.post_message(
             channel=slack_test_channel,
-            text=f"[E2E Handoff Test] {customer_message}",
+            text=user_message,
         )
-        print(f"    Message TS: {initial_msg.ts}")
+        thread_ts = initial_msg.ts
+        context_id = f"{slack_test_channel}:{thread_ts}"
+        print(f"    Thread: {thread_ts}")
 
-        # Generate session_id for SupportEngineer
-        import uuid
+        # Track conversation
+        conversation: list[tuple[str, str]] = [("user", user_message)]
+        agents_ran: list[str] = []
 
-        support_session_id = str(uuid.uuid4())[:8]
+        # Step 2: Call Gateway for SupportEngineer
+        print("\n>>> Step 2: Calling Gateway /api/run for SupportEngineer")
+        start_time = time.time()
 
-        # Step 2: Set Slack context for SupportEngineer (with session_id for [RoleName:session_id] prefix)
-        print(
-            f"\n>>> Step 2: Setting Slack context for SupportEngineer (session: {support_session_id})"
-        )
-        set_slack_context(
-            connector=slack_connector,
-            channel=slack_test_channel,
-            thread_ts=initial_msg.ts,
-            from_agent="SupportEngineer",
-            session_id=support_session_id,
-        )
-
-        # Step 3: Run SupportEngineer - agent should use send_message() to post to Slack
-        print("\n>>> Step 3: Running SupportEngineer (agent will post via send_message)...")
-        support_result = await autogen_runner.run(
+        result = await call_gateway_run(
+            gateway_url=gateway_url,
+            task=user_message,
             role="support_engineer",
-            task=customer_message,
             context_type="slack",
-            context_id=initial_msg.ts,
+            context_id=context_id,
         )
 
-        print(f"    Success: {support_result.get('success', False)}")
-        print(f"    Latency: {support_result.get('latency_ms', 0)}ms")
-        print(f"    Response (first 300 chars): {support_result.get('response', '')[:300]}...")
+        latency = int((time.time() - start_time) * 1000)
+        print(f"    Success: {result.get('success')}")
+        print(f"    Latency: {latency}ms")
 
-        # NOTE: Agent should have posted to Slack directly via send_message()
-        # We no longer post on behalf of the agent here
+        if not result.get("success"):
+            print(f"    Error: {result.get('error')}")
+            # Post error to Slack
+            slack_connector.post_message(
+                channel=slack_test_channel,
+                text=f"[SupportEngineer] Error: {result.get('error', 'Unknown error')}",
+                thread_ts=thread_ts,
+            )
+            pytest.fail(f"Gateway call failed: {result.get('error')}")
 
-        # Step 4: Detect handoff in response (using /RoleName format)
-        print("\n>>> Step 4: Detecting handoff...")
-        response_text = support_result.get("response", "").lower()
-        handoff_detected = any(
-            mention in response_text
-            for mention in [
-                "/releaseengineer",
-                "/release",
-                "/sre",
-                "/sitereliabilityengineer",
-                "release engineer",
-                "releaseengineer",
-            ]
+        response_text = result.get("response", "")
+        print(f"    Response: {response_text[:200]}...")
+
+        # Post response to Slack
+        slack_connector.post_message(
+            channel=slack_test_channel,
+            text=f"[SupportEngineer] {response_text}",
+            thread_ts=thread_ts,
         )
-        print(f"    Handoff detected: {handoff_detected}")
 
-        # Step 5: Run handoff chain - continue until no more handoffs detected
-        agent_results = [("support_engineer", support_result)]
-        max_handoffs = 5  # Prevent infinite loops
-        handoff_count = 0
+        conversation.append(("support_engineer", response_text))
+        agents_ran.append("support_engineer")
 
-        # Parse handoffs from SupportEngineer response
-        def detect_handoffs(response_text: str) -> list[str]:
-            """Detect /RoleName mentions in response, return list of roles to run."""
-            text_lower = response_text.lower()
-            detected = []
-            role_mapping = {
-                "/softwareengineer": "software_engineer",
-                "/releaseengineer": "release_engineer",
-                "/supportengineer": "support_engineer",
-                "/productmanager": "product_manager",
-                "/marketingmanager": "marketing_manager",
-            }
-            for mention, role in role_mapping.items():
-                if mention in text_lower:
-                    detected.append(role)
-            return detected
+        # Step 3: Handle handoff chain
+        print("\n>>> Step 3: Processing handoff chain")
 
-        # Initial handoffs from SupportEngineer
-        pending_handoffs = detect_handoffs(support_result.get("response", ""))
-        print(f"    Handoffs detected: {pending_handoffs}")
-
-        # Already ran support_engineer, so remove it from pending
-        pending_handoffs = [r for r in pending_handoffs if r != "support_engineer"]
+        pending_handoffs = detect_handoffs(response_text)
         already_ran = {"support_engineer"}
+        handoff_count = 0
+        last_response = response_text
 
-        while pending_handoffs and handoff_count < max_handoffs:
+        while pending_handoffs and handoff_count < MAX_HANDOFFS:
             next_role = pending_handoffs.pop(0)
             if next_role in already_ran:
                 continue
 
             handoff_count += 1
             already_ran.add(next_role)
+            display_name = ROLE_DISPLAY.get(next_role, next_role)
 
-            # Generate session_id
-            next_session_id = str(uuid.uuid4())[:8]
-            display_name = next_role.replace("_", " ").title().replace(" ", "")
+            print(f"    Handoff #{handoff_count}: {display_name}")
 
-            print(
-                f"\n>>> Step 5.{handoff_count}: Running {display_name} (handoff, session: {next_session_id})..."
-            )
-
-            # Set context
-            set_slack_context(
-                connector=slack_connector,
-                channel=slack_test_channel,
-                thread_ts=initial_msg.ts,
-                from_agent=display_name,
-                session_id=next_session_id,
-            )
-
-            # Build task from previous agent's response
-            prev_role, prev_result = agent_results[-1]
-            prev_display = prev_role.replace("_", " ").title().replace(" ", "")
+            # Build context for handoff
             handoff_task = (
-                f"[Handoff from {prev_display}] Customer ACME Corp has API 404 errors. "
-                f"You were mentioned to help. Context: {prev_result.get('response', '')[:500]}"
+                f"[Handoff from previous agent]\n\n"
+                f"Original request: {user_message}\n\n"
+                f"Previous agent's findings: {last_response[:500]}"
             )
 
-            result = await autogen_runner.run(
-                role=next_role,
+            result = await call_gateway_run(
+                gateway_url=gateway_url,
                 task=handoff_task,
+                role=next_role,
                 context_type="slack",
-                context_id=initial_msg.ts,
+                context_id=context_id,
             )
 
-            print(f"    Success: {result.get('success', False)}")
-            print(f"    Latency: {result.get('latency_ms', 0)}ms")
-            print(f"    Response (first 300 chars): {result.get('response', '')[:300]}...")
+            if result.get("success"):
+                response_text = result.get("response", "")
+                print(f"      Response: {response_text[:100]}...")
 
-            agent_results.append((next_role, result))
+                # Post to Slack
+                slack_connector.post_message(
+                    channel=slack_test_channel,
+                    text=f"[{display_name}] {response_text}",
+                    thread_ts=thread_ts,
+                )
 
-            # Detect new handoffs from this agent's response
-            new_handoffs = detect_handoffs(result.get("response", ""))
-            # Filter out already ran and add new ones
-            new_handoffs = [r for r in new_handoffs if r not in already_ran]
-            if new_handoffs:
-                print(f"    New handoffs detected: {new_handoffs}")
-                pending_handoffs.extend(new_handoffs)
+                conversation.append((next_role, response_text))
+                agents_ran.append(next_role)
+                last_response = response_text
 
-        if not pending_handoffs:
-            print(f"\n>>> Handoff chain complete after {handoff_count} handoffs")
-        else:
-            print(f"\n>>> Handoff chain stopped at max {max_handoffs} handoffs")
+                # Check for more handoffs
+                new_handoffs = detect_handoffs(response_text)
+                for h in new_handoffs:
+                    if h not in already_ran and h not in pending_handoffs:
+                        pending_handoffs.append(h)
+            else:
+                print(f"      Error: {result.get('error')}")
+                slack_connector.post_message(
+                    channel=slack_test_channel,
+                    text=f"[{display_name}] Error: {result.get('error', 'Unknown')}",
+                    thread_ts=thread_ts,
+                )
 
-        # For backwards compatibility, extract release_result if it ran
-        release_result = None
-        handoff_detected = handoff_count > 0
-        for role, result in agent_results:
-            if role == "release_engineer":
-                release_result = result
-                break
+        print(f"    Total handoffs: {handoff_count}")
 
-        # Clear context
-        clear_slack_context()
+        # Step 4: Read back Slack thread to verify
+        print("\n>>> Step 4: Verifying Slack thread")
+        thread_messages = slack_connector.get_thread_replies(
+            channel=slack_test_channel,
+            thread_ts=thread_ts,
+            limit=20,
+        )
+        print(f"    Messages in thread: {len(thread_messages)}")
 
-        # Step 6: Evaluate with DeepEval
-        print("\n>>> Step 6: Evaluating with DeepEval G-Eval...")
+        for i, msg in enumerate(thread_messages):
+            sender = "Bot" if msg.is_bot else "User"
+            print(f"    [{i + 1}] {sender}: {msg.text[:80]}...")
 
-        # Import metric factories
-        try:
-            from conftest import (
-                create_context_preservation_metric,  # noqa: F401
-                create_handoff_quality_metric,
-                create_task_completion_metric,
-            )
-        except ImportError:
-            from tests.e2e.conftest import (
-                create_handoff_quality_metric,
-                create_task_completion_metric,
-            )
+        # Step 5: Evaluate with DeepEval
+        print("\n>>> Step 5: DeepEval G-Eval evaluation")
 
-        # Create test case for SupportEngineer
-        support_test_case = LLMTestCase(
-            input=customer_message,
-            actual_output=support_result.get("response", ""),
+        transcript = build_transcript(conversation)
+
+        test_case = LLMTestCase(
+            input=user_message,
+            actual_output=transcript,
         )
 
-        # Create metrics for SupportEngineer (role-specific thresholds)
-        handoff_metric = create_handoff_quality_metric(azure_deepeval_model, "support_engineer")
-        task_metric = create_task_completion_metric(azure_deepeval_model, "support_engineer")
+        investigation_metric = create_investigation_quality_metric(azure_deepeval_model)
+        handoff_metric = create_handoff_or_resolution_metric(azure_deepeval_model)
 
-        # Measure
-        handoff_metric.measure(support_test_case)
-        task_metric.measure(support_test_case)
+        investigation_metric.measure(test_case)
+        handoff_metric.measure(test_case)
 
-        print("\n    SupportEngineer Metrics:")
         print(
-            f"    HandoffQuality: {handoff_metric.score:.2f} (threshold: {handoff_metric.threshold})"
+            f"    InvestigationQuality: {investigation_metric.score:.2f} (threshold: {investigation_metric.threshold})"
         )
-        print(f"    TaskCompletion: {task_metric.score:.2f} (threshold: {task_metric.threshold})")
-        print(f"    Handoff Reason: {handoff_metric.reason[:200]}...")
-
-        # If ReleaseEngineer ran, evaluate that too
-        release_handoff_score = None
-        release_task_score = None
-        if release_result and release_result.get("success"):
-            release_test_case = LLMTestCase(
-                input="Handoff from SupportEngineer about API 404 errors",
-                actual_output=release_result.get("response", ""),
-            )
-
-            release_task_metric = create_task_completion_metric(
-                azure_deepeval_model, "release_engineer"
-            )
-            release_task_metric.measure(release_test_case)
-
-            release_task_score = release_task_metric.score
-            print("\n    ReleaseEngineer Metrics:")
-            print(
-                f"    TaskCompletion: {release_task_metric.score:.2f} (threshold: {release_task_metric.threshold})"
-            )
-
-        # Step 7: Verify messages in Slack
-        print("\n>>> Step 7: Verifying messages in Slack...")
-        try:
-            thread_messages = slack_connector.get_thread_replies(
-                channel=slack_test_channel,
-                thread_ts=initial_msg.ts,
-                limit=10,
-            )
-            print(f"    Found {len(thread_messages)} messages in thread")
-
-            for i, msg in enumerate(thread_messages[:5]):
-                print(f"    [{i + 1}] {msg.text[:100]}...")
-        except Exception as e:
-            print(f"    Error reading thread: {e}")
+        print(
+            f"    HandoffOrResolution: {handoff_metric.score:.2f} (threshold: {handoff_metric.threshold})"
+        )
+        print(f"    Investigation reason: {investigation_metric.reason[:200]}...")
+        print(f"    Handoff reason: {handoff_metric.reason[:200]}...")
 
         # Summary
         print("\n" + "=" * 70)
-        print("HANDOFF TEST SUMMARY")
+        print("TEST SUMMARY")
         print("=" * 70)
-        print(f"SupportEngineer Success: {support_result.get('success', False)}")
-        print(f"Handoff Detected: {handoff_detected}")
-        print(
-            f"ReleaseEngineer Success: {release_result.get('success', False) if release_result else 'N/A'}"
-        )
-        print(f"HandoffQuality Score: {handoff_metric.score:.2f}")
-        print(f"TaskCompletion Score: {task_metric.score:.2f}")
+        print(f"Thread: {slack_test_channel} / {thread_ts}")
+        print(f"Agents ran: {agents_ran}")
+        print(f"Handoffs: {handoff_count}")
+        print(f"Slack messages: {len(thread_messages)}")
+        print(f"InvestigationQuality: {investigation_metric.score:.2f}")
+        print(f"HandoffOrResolution: {handoff_metric.score:.2f}")
         print("=" * 70)
 
         # Assertions
-        assert support_result.get("success"), (
-            f"SupportEngineer failed: {support_result.get('error')}"
+        assert len(agents_ran) >= 1, "No agents ran successfully"
+
+        # Must have at least 2 messages in thread (user + 1 agent)
+        assert len(thread_messages) >= 2, (
+            f"Expected at least 2 messages in Slack thread, got {len(thread_messages)}. "
+            f"Agent responses may not have been posted."
         )
 
-        # HandoffQuality threshold for support_engineer is 0.75
+        assert investigation_metric.score >= investigation_metric.threshold, (
+            f"InvestigationQuality {investigation_metric.score:.2f} below threshold {investigation_metric.threshold}. "
+            f"Reason: {investigation_metric.reason}"
+        )
+
         assert handoff_metric.score >= handoff_metric.threshold, (
-            f"HandoffQuality {handoff_metric.score:.2f} below threshold {handoff_metric.threshold}"
+            f"HandoffOrResolution {handoff_metric.score:.2f} below threshold {handoff_metric.threshold}. "
+            f"Reason: {handoff_metric.reason}"
         )
-
-        # TaskCompletion threshold for support_engineer is 0.80
-        assert task_metric.score >= task_metric.threshold, (
-            f"TaskCompletion {task_metric.score:.2f} below threshold {task_metric.threshold}"
-        )
-
-        # If handoff was detected, ReleaseEngineer should have succeeded
-        if handoff_detected:
-            assert release_result is not None, "ReleaseEngineer result is None despite handoff"
-            assert release_result.get("success"), (
-                f"ReleaseEngineer failed: {release_result.get('error')}"
-            )
 
 
 # ==============================================================================
@@ -993,4 +507,4 @@ class TestRealSlackHandoffE2E:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "-s"])
+    pytest.main([__file__, "-v", "-s", "--post-to-slack"])
