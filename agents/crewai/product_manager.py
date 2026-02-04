@@ -302,6 +302,7 @@ class CrewAIProductManager:
             tools=self.tools,
             verbose=self.config.verbose,
             llm=llm,
+            max_iter=15,
         )
 
     def run(
