@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Shared configuration for all agent frameworks.
 

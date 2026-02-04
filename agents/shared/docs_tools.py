@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Shared Documentation Search tool functions for all agent frameworks.
 

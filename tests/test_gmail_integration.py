@@ -19,6 +19,8 @@ Run specific framework:
     pytest tests/test_gmail_integration.py -v --run-integration -k "openhands"
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import time

@@ -21,6 +21,8 @@ Run just shared tools tests (no LLM required):
     pytest tests/test_browser_integration.py -v --run-integration -k "TestSharedBrowserTools"
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import time

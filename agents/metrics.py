@@ -5,6 +5,8 @@ This module provides standardized metrics collection across OpenHands, CrewAI,
 and AutoGen frameworks to enable fair comparison of agent performance.
 """
 
+from __future__ import annotations
+
 import json
 import threading
 import time

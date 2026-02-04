@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Scheduler tools for agents to schedule future tasks.
 """

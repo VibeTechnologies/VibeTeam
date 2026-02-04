@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Shared Browser Automation tool functions for all agent frameworks.
 

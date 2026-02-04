@@ -21,6 +21,8 @@ With metrics export:
     pytest tests/test_sentry_integration.py -v --run-integration --export-metrics=results/sentry_test_metrics.json
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import time

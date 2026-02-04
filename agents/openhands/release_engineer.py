@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 ReleaseEngineer agent using OpenHands.
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 PostgreSQL database module for agent sessions and task results.
 
