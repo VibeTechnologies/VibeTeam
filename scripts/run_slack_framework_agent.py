@@ -38,7 +38,6 @@ load_dotenv()
 AGENT_ALIASES = {
     # Short names
     "swe": "software_engineer",
-    "sre": "site_reliability_engineer",
     "release": "release_engineer",
     "support": "support_engineer",
     "pm": "product_manager",

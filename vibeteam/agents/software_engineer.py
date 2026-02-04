@@ -17,8 +17,7 @@ HANDOFF_INSTRUCTIONS = """
 When you complete a task or need help from another team member, @mention them in your response:
 - @ProductManager - for requirements clarification or prioritization
 - @ReleaseEngineer - for deployments when code is ready
-- @SupportEngineer - to notify about fixes that affect customers
-- @SiteReliabilityEngineer - for infrastructure or monitoring issues
+- @SupportEngineer - to notify about fixes that affect customers, or for error investigation with Sentry
 
 Example: "I've fixed the login bug in PR #457. @ReleaseEngineer this is ready for staging deployment."
 

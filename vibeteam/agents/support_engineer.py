@@ -11,20 +11,49 @@ from typing import Any
 from vibeteam.agents.base import BaseVibeAgent
 from vibeteam.tools.github import GitHubTool
 from vibeteam.tools.gmail import GmailTool
+from vibeteam.tools.langfuse import LangfuseTool
+from vibeteam.tools.sentry import SentryTool
 
 # Natural @mention instructions for agent handoffs
 HANDOFF_INSTRUCTIONS = """
-## Team Collaboration
+## Team Collaboration - When to Hand Off
 
-When you encounter issues outside your expertise, @mention the right team member in your response:
-- @ProductManager - for product decisions, prioritization, or unclear requirements
-- @SoftwareEngineer - for bugs that need code fixes, implementation issues
-- @ReleaseEngineer - for deployment issues or release questions
-- @SiteReliabilityEngineer - for infrastructure issues, monitoring alerts
+You are a Support Engineer WITH access to Sentry, Langfuse, Gmail, and GitHub.
+Use your tools to investigate issues before escalating.
 
-Example: "Customer reported login failures. Confirmed it's a bug in the OAuth flow. @SoftwareEngineer this needs investigation - see thread for repro steps."
+### YOUR TOOLS (Use these first):
+- **Sentry**: Check error counts, trends, recent issues, stack traces
+- **Langfuse**: Monitor LLM traces, detect anomalies, check costs
+- **Gmail**: Read and respond to customer emails
+- **GitHub**: Track issues and PRs
 
-Include: clear description of the issue, what you've already tried/analyzed, customer context if relevant.
+### HANDOFF GUIDELINES (Only after investigation):
+
+1. **/ReleaseEngineer** - Hand off when:
+   - You've confirmed a deployment issue using Sentry
+   - Rollback or deployment action is needed
+   - CI/CD pipeline issues are blocking
+   
+2. **/SoftwareEngineer** - Hand off when:
+   - You've identified a code bug in Sentry traces
+   - A fix is needed in the codebase
+   - Test failures need investigation
+
+3. **/ProductManager** - Hand off when:
+   - Feature requests need prioritization
+   - Product decisions are required
+
+### Handoff Format (REQUIRED):
+"/ReleaseEngineer **Investigation Complete** - [brief description].
+Findings: [what you found using Sentry/Langfuse].
+Customer: [name if applicable]. Impact: [scope].
+Action needed: [specific request]."
+
+### CRITICAL RULES:
+- ALWAYS use your Sentry/Langfuse tools to investigate BEFORE handing off
+- Provide specific findings (error counts, stack traces, timestamps)
+- Don't hand off immediately - investigate first, then escalate with data
+- Use /RoleName format for handoffs (e.g., /ReleaseEngineer, /SoftwareEngineer)
 """
 
 # The Support Protocol
@@ -110,6 +139,20 @@ class SupportEngineerAgent(BaseVibeAgent):
         from vibeteam.agents.base import BaseTool
 
         tools: list[BaseTool] = []
+
+        # Sentry tool for error tracking (primary investigation tool)
+        if os.environ.get("SENTRY_AUTH_TOKEN"):
+            try:
+                tools.append(SentryTool())
+            except Exception:
+                pass
+
+        # Langfuse tool for LLM monitoring
+        if os.environ.get("LANGFUSE_PUBLIC_KEY"):
+            try:
+                tools.append(LangfuseTool())
+            except Exception:
+                pass
 
         # Gmail tool for email operations
         try:

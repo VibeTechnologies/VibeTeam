@@ -323,9 +323,18 @@ async def handle_slack_events(
 
     logger.info(f"Received Slack event: {event_type}")
 
-    # Ignore bot messages to prevent loops
-    if event.get("bot_id") or event.get("subtype") == "bot_message":
-        return {"status": "ignored", "reason": "bot_message"}
+    # Handle bot messages: process if they contain role mentions (handoffs/eval)
+    # Per requirements: "Bot Messages: Router processes bot's own messages to detect handoffs"
+    is_bot_message = event.get("bot_id") or event.get("subtype") == "bot_message"
+    if is_bot_message:
+        text = event.get("text", "")
+        message_router = get_message_router()
+        has_role_mention = bool(message_router.parse_role_mentions(text))
+        if not has_role_mention:
+            # Ignore bot messages without role mentions to prevent loops
+            return {"status": "ignored", "reason": "bot_message_no_role_mention"}
+        # Continue processing - bot message has a role mention (handoff or eval)
+        logger.info(f"Processing bot message with role mention: {text[:80]}...")
 
     # Handle app_mention events
     if event_type == "app_mention":
@@ -361,5 +370,22 @@ async def handle_slack_events(
         asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id))
 
         return {"status": "accepted", "event": "message.im"}
+
+    # Handle bot messages with role mentions in channels (handoffs and eval)
+    # This handles cases where the bot posts /RoleName mentions (eval script or agent handoffs)
+    if event_type == "message" and is_bot_message:
+        channel = event.get("channel", "")
+        text = event.get("text", "")
+        message_ts = event.get("ts", "")
+        thread_ts = event.get("thread_ts") or message_ts
+        user_id = event.get("bot_id", "bot")  # Use bot_id as user_id for bot messages
+
+        # React with 👀 to show we're processing the message
+        await add_reaction(channel, message_ts, "eyes")
+
+        # Process in background
+        asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id))
+
+        return {"status": "accepted", "event": "message.bot_with_role_mention"}
 
     return {"status": "ignored", "event": event_type}

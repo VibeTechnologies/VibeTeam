@@ -16,7 +16,6 @@ from vibeteam.agents import (
     MarketerAgent,
     ProductManagerAgent,
     ReleaseEngineerAgent,
-    ReliabilityEngineerAgent,
     SoftwareEngineerAgent,
     SupportEngineerAgent,
 )
@@ -29,7 +28,6 @@ class AgentType(Enum):
     SWE = "swe"
     MARKETER = "marketer"
     SUPPORT = "support"
-    SRE = "sre"
     RELEASE = "release"
 
 
@@ -39,7 +37,6 @@ AGENT_REGISTRY: dict[AgentType, type[BaseVibeAgent]] = {
     AgentType.SWE: SoftwareEngineerAgent,
     AgentType.MARKETER: MarketerAgent,
     AgentType.SUPPORT: SupportEngineerAgent,
-    AgentType.SRE: ReliabilityEngineerAgent,
     AgentType.RELEASE: ReleaseEngineerAgent,
 }
 
@@ -86,15 +83,9 @@ ROUTING_KEYWORDS: dict[AgentType, list[str]] = {
         "documentation",
         "faq",
         "user issue",
-    ],
-    AgentType.SRE: [
-        "monitor",
-        "alert",
-        "incident",
         "sentry",
         "error",
-        "health",
-        "production",
+        "incident",
         "observability",
     ],
     AgentType.RELEASE: [
@@ -104,6 +95,11 @@ ROUTING_KEYWORDS: dict[AgentType, list[str]] = {
         "changelog",
         "tag",
         "publish",
+        "monitor",
+        "health",
+        "production",
+        "alert",
+        "rollback",
     ],
 }
 
@@ -271,7 +267,7 @@ class VibeTeam:
         Convenience method for CLI usage.
 
         Args:
-            agent_key: Agent key (pm, swe, marketer, support, sre, release)
+            agent_key: Agent key (pm, swe, marketer, support, release)
             task: The task to execute
             context: Optional context
 

@@ -2,6 +2,8 @@
 """
 Run the VibeTeam Slack bot with multi-session routing.
 
+NOTE: from __future__ import annotations enables Python 3.10+ type syntax on 3.9+
+
 This bot:
 1. Monitors a Slack channel for messages mentioning @VibeTeam
 2. Routes messages to appropriate agents based on /RoleName mentions
@@ -25,6 +27,8 @@ Environment Variables:
     AZURE_API_KEY: Azure OpenAI API key
     AZURE_API_BASE: Azure OpenAI endpoint
 """
+
+from __future__ import annotations
 
 import argparse
 import asyncio
@@ -329,8 +333,19 @@ class VibeTeamSlackBot:
 
             has_role_mention = bool(self.router.parse_role_mentions(msg.text))
 
+            # Skip our own responses (messages starting with [RoleName])
+            # UNLESS they contain a handoff mention to another agent
+            if msg.is_bot and msg.text.startswith("["):
+                if not has_role_mention:
+                    self.processed_ts.add(msg.ts)
+                    continue
+                # Fall through to process handoff mentions in bot responses
+                logger.info(f"Detected handoff in bot response: {msg.text[:80]}...")
+
             if msg.is_bot:
+                # Process bot messages with /RoleName mentions (could be from eval script or handoffs)
                 if has_role_mention:
+                    logger.info(f"Processing bot message with role mention: {msg.text[:50]}...")
                     await self.process_message(msg)
                     count += 1
             else:

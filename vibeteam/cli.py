@@ -32,7 +32,7 @@ def main() -> None:
 @click.option(
     "--agent",
     "-a",
-    type=click.Choice(["pm", "swe", "marketer", "support", "sre", "release"]),
+    type=click.Choice(["pm", "swe", "marketer", "support", "release"]),
     help="Specific agent to use (auto-routes if not specified)",
 )
 @click.option(
@@ -95,9 +95,8 @@ def agents() -> None:
         "pm": ("Product Manager", "Requirements, roadmap, Langfuse analysis"),
         "swe": ("Software Engineer", "Implementation, testing, Torvalds Protocol"),
         "marketer": ("Marketer", "Social media, content, announcements"),
-        "support": ("Support Engineer", "Customer issues, documentation, FAQ"),
-        "sre": ("Reliability Engineer", "Monitoring, incidents, Sentry"),
-        "release": ("Release Engineer", "Deployments, versioning, changelogs"),
+        "support": ("Support Engineer", "Customer issues, error investigation, Sentry"),
+        "release": ("Release Engineer", "Deployments, versioning, infrastructure"),
     }
 
     for key, (name, desc) in agent_info.items():
@@ -107,7 +106,7 @@ def agents() -> None:
 @main.command()
 @click.argument(
     "agent_key",
-    type=click.Choice(["pm", "swe", "marketer", "support", "sre", "release"]),
+    type=click.Choice(["pm", "swe", "marketer", "support", "release"]),
 )
 @click.option(
     "--model",

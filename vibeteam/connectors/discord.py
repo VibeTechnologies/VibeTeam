@@ -94,10 +94,6 @@ AGENT_DISPLAY_INFO: dict[str, dict[str, str]] = {
         "name": "ProductManager",
         "emoji": ":chart_with_upwards_trend:",
     },
-    "sre": {
-        "name": "SiteReliabilityEngineer",
-        "emoji": ":shield:",
-    },
 }
 
 
@@ -162,7 +158,6 @@ class DiscordConnector:
             "DISCORD_ROLE_PM": "pm",
             "DISCORD_ROLE_MARKETING": "marketing",
             "DISCORD_ROLE_SUPERVISOR": "supervisor",
-            "DISCORD_ROLE_SRE": "sre",
         }
         for env_key, agent_key in role_prefixes.items():
             value = os.environ.get(env_key)
@@ -177,7 +172,6 @@ class DiscordConnector:
             "DISCORD_WEBHOOK_PM": "pm",
             "DISCORD_WEBHOOK_MARKETING": "marketing",
             "DISCORD_WEBHOOK_SUPERVISOR": "supervisor",
-            "DISCORD_WEBHOOK_SRE": "sre",
         }
         for env_key, agent_key in webhook_prefixes.items():
             value = os.environ.get(env_key)

@@ -188,7 +188,7 @@ async def mention_agent(
     will pick up.
 
     Args:
-        agent_key: Agent to mention (swe, sre, release, support, pm, marketer)
+        agent_key: Agent to mention (swe, release, support, pm, marketer)
         message: Message explaining the task/context
         channel: Channel to post in (uses context if None)
         thread_ts: Thread timestamp (uses context if None)
@@ -431,8 +431,7 @@ def get_slack_handoff_instructions() -> str:
 When you need help from another team member, @mention them naturally in your response:
 - @SoftwareEngineer - for code implementation, bug fixes, PRs
 - @ReleaseEngineer - for deployments and releases
-- @SupportEngineer - for customer communication
-- @SiteReliabilityEngineer - for monitoring, Sentry errors, infrastructure
+- @SupportEngineer - for customer communication, error investigation with Sentry
 - @MarketingManager - for announcements and content
 - @ProductManager - for requirements and prioritization
 
@@ -453,7 +452,6 @@ def _get_agent_display_name(agent_key: str) -> str:
     """Get display name for an agent key."""
     display_names = {
         "swe": "SoftwareEngineer",
-        "sre": "SiteReliabilityEngineer",
         "release": "ReleaseEngineer",
         "support": "SupportEngineer",
         "pm": "ProductManager",

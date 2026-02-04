@@ -80,7 +80,7 @@ MAX_HANDOFFS = 3
 
 # Role name pattern
 ROLE_PATTERN = re.compile(
-    r"/(SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager|SWE|SRE|PM)",
+    r"[/@](SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager|SWE|PM)",
     re.IGNORECASE,
 )
 
@@ -89,7 +89,6 @@ ROLE_MAP = {
     "softwareengineer": "software_engineer",
     "swe": "software_engineer",
     "releaseengineer": "release_engineer",
-    "sre": "release_engineer",
     "supportengineer": "support_engineer",
     "productmanager": "product_manager",
     "pm": "product_manager",
@@ -125,19 +124,19 @@ def create_investigation_quality_metric(model):
     return GEval(
         name="InvestigationQuality",
         criteria=(
-            "Did the SupportEngineer ACTUALLY investigate the reported issue? "
+            "Did the SupportEngineer ACTUALLY investigate the reported issue using Sentry? "
             "A proper investigation MUST include: "
-            "(1) Using tools to check error tracking (Sentry), logs, or metrics - not just saying they would check; "
-            "(2) Reporting SPECIFIC findings from the investigation (error messages, stack traces, affected endpoints); "
-            "(3) Either resolving the issue OR handing off to another agent with specific technical details. "
+            "(1) Using Sentry tool to check error patterns, counts, and stack traces - not just saying they would check; "
+            "(2) Reporting SPECIFIC findings from the investigation (error messages, affected endpoints, timestamps); "
+            "(3) Either resolving the issue OR handing off to ReleaseEngineer/SoftwareEngineer with specific technical details. "
             "A generic 'triage checklist' or 'here's what I would do' response is a FAILURE - "
-            "the agent must actually DO the investigation, not describe how to do it."
+            "the agent must actually DO the investigation with Sentry, not describe how to do it."
         ),
         evaluation_steps=[
-            "Check if the agent used any tools (Sentry, logs, kubectl, etc.) - just mentioning tools is not enough",
+            "Check if the agent used Sentry tool to check errors - just mentioning Sentry is not enough",
             "Verify the agent reported SPECIFIC findings (actual error messages, specific endpoints, concrete data)",
             "Check if the response contains actual investigation results vs generic advice",
-            "If no specific findings, score should be LOW (< 0.5) regardless of how well-written the response is",
+            "If no specific findings from Sentry, score should be LOW (< 0.5) regardless of how well-written the response is",
             "A checklist or process description without actual execution should score < 0.3",
         ],
         evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
@@ -151,7 +150,7 @@ def create_handoff_or_resolution_metric(model):
     Strict metric: Did the agent either resolve the issue OR make a proper handoff?
 
     For infrastructure issues, SupportEngineer should:
-    - Investigate and find root cause, OR
+    - Investigate with Sentry and find root cause, OR
     - Hand off to ReleaseEngineer/SoftwareEngineer with specific findings
 
     This should FAIL if the agent neither resolves nor hands off.
@@ -164,16 +163,16 @@ def create_handoff_or_resolution_metric(model):
         criteria=(
             "Did the agent either RESOLVE the issue or make a PROPER HANDOFF? "
             "For an infrastructure issue (API Gateway 400 errors affecting 500 users): "
-            "(1) RESOLUTION means: identified root cause AND either fixed it or provided specific fix instructions; "
+            "(1) RESOLUTION means: identified root cause using Sentry AND either fixed it or provided specific fix instructions; "
             "(2) PROPER HANDOFF means: explicitly mentioned /ReleaseEngineer or /SoftwareEngineer "
-            "with SPECIFIC technical context (not just 'look into this'). "
+            "with SPECIFIC technical context from Sentry investigation (not just 'look into this'). "
             "If the agent neither resolved the issue nor handed off with specific context, this is a FAILURE. "
             "Providing a checklist without taking action is NOT resolution or handoff."
         ),
         evaluation_steps=[
-            "Check if the issue was actually resolved (root cause identified and fixed)",
-            "If not resolved, check for explicit /RoleName handoff mention",
-            "If handoff exists, verify it includes specific technical context from investigation",
+            "Check if the issue was actually resolved (root cause identified using Sentry and fixed)",
+            "If not resolved, check for explicit /ReleaseEngineer or /SoftwareEngineer handoff mention",
+            "If handoff exists, verify it includes specific technical context from Sentry investigation",
             "A vague 'escalate to engineering' without specific findings should score < 0.4",
             "No resolution AND no handoff should score < 0.2",
         ],

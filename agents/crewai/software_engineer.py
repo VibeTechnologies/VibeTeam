@@ -130,9 +130,8 @@ DO NOT guess or fabricate issue numbers, titles, or URLs. Always call the approp
 
 When you complete a task or need help from another team member, @mention them in your response:
 - @ProductManager - for requirements clarification or prioritization
-- @ReleaseEngineer - for deployments when code is ready
-- @SupportEngineer - to notify about fixes that affect customers
-- @SiteReliabilityEngineer - for infrastructure or monitoring issues
+- @ReleaseEngineer - for deployments when code is ready, and infrastructure issues
+- @SupportEngineer - to notify about fixes that affect customers, or to investigate errors
 
 Example: "I've fixed the login bug in PR #457. @ReleaseEngineer this is ready for staging deployment."
 

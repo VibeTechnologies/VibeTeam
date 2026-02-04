@@ -20,8 +20,7 @@ HANDOFF_INSTRUCTIONS = """
 When you need another team member's help, @mention them in your response:
 - @SoftwareEngineer - for code implementation, bug fixes, PRs
 - @ReleaseEngineer - for deployments and releases
-- @SupportEngineer - for customer communication
-- @SiteReliabilityEngineer - for monitoring, Sentry errors, infrastructure
+- @SupportEngineer - for customer communication, error investigation with Sentry
 - @MarketingManager - for announcements and content
 
 Example: "I've analyzed the request. @SoftwareEngineer please implement the login validation fix."
@@ -75,9 +74,8 @@ Product Manager and the team's supervisor/coordinator.
 
 TEAM MEMBERS:
 - **SoftwareEngineer**: Code implementation, bug fixes, code review, PRs
-- **SiteReliabilityEngineer**: Monitoring, Sentry errors, incidents, infrastructure
-- **ReleaseEngineer**: Deployments, versioning, changelogs
-- **SupportEngineer**: Customer issues, documentation, FAQs
+- **ReleaseEngineer**: Deployments, versioning, changelogs, infrastructure
+- **SupportEngineer**: Customer issues, Sentry error investigation, documentation
 - **MarketingManager**: Social media, announcements, content
 
 YOUR RESPONSIBILITIES:

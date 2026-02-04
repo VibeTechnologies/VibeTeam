@@ -8218,6 +8218,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "cryptography" },
+    { name = "deepeval" },
     { name = "discord-py" },
     { name = "fastapi" },
     { name = "google-api-python-client" },
@@ -8269,6 +8270,7 @@ requires-dist = [
     { name = "crewai", marker = "extra == 'agents'", specifier = ">=0.100.0" },
     { name = "crewai", marker = "extra == 'crewai'", specifier = ">=0.100.0" },
     { name = "cryptography", specifier = ">=41.0.0" },
+    { name = "deepeval", specifier = ">=3.8.3" },
     { name = "deepeval", marker = "extra == 'eval'", specifier = ">=1.0.0" },
     { name = "discord-py", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.109.0" },

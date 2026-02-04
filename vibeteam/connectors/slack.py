@@ -118,6 +118,47 @@ class SlackConnector:
                 agent_name = key.replace("SLACK_AGENT_", "").lower()
                 AGENT_USER_MAP[agent_name] = value
 
+    def _call_with_retry(
+        self,
+        api_call: Any,
+        max_retries: int = 3,
+        base_delay: float = 2.0,
+    ) -> Any:
+        """
+        Execute a Slack API call with rate limit retry logic.
+
+        Args:
+            api_call: A callable that makes the API call
+            max_retries: Maximum number of retries on rate limit
+            base_delay: Base delay in seconds (doubles each retry)
+
+        Returns:
+            The API response
+
+        Raises:
+            SlackApiError: If all retries fail or non-rate-limit error
+        """
+        import time
+
+        for attempt in range(max_retries + 1):
+            try:
+                return api_call()
+            except SlackApiError as e:
+                if e.response.get("error") == "ratelimited":
+                    if attempt < max_retries:
+                        # Get retry-after from headers, or use exponential backoff
+                        retry_after = e.response.headers.get("Retry-After")
+                        if retry_after:
+                            delay = int(retry_after)
+                        else:
+                            delay = base_delay * (2**attempt)
+                        logger.warning(
+                            f"Rate limited, waiting {delay}s before retry {attempt + 1}/{max_retries}"
+                        )
+                        time.sleep(delay)
+                        continue
+                raise
+
     @property
     def bot_user_id(self) -> str:
         """Get the bot's user ID (lazy loaded)."""
@@ -291,7 +332,7 @@ class SlackConnector:
         if latest:
             kwargs["latest"] = latest
 
-        response = self.client.conversations_history(**kwargs)
+        response = self._call_with_retry(lambda: self.client.conversations_history(**kwargs))
 
         return [self._parse_message(msg, channel_id) for msg in response.get("messages", [])]
 
@@ -314,10 +355,12 @@ class SlackConnector:
         """
         channel_id = self._resolve_channel(channel)
 
-        response = self.client.conversations_replies(
-            channel=channel_id,
-            ts=thread_ts,
-            limit=limit,
+        response = self._call_with_retry(
+            lambda: self.client.conversations_replies(
+                channel=channel_id,
+                ts=thread_ts,
+                limit=limit,
+            )
         )
 
         return [self._parse_message(msg, channel_id) for msg in response.get("messages", [])]
@@ -405,7 +448,7 @@ class SlackConnector:
 
         # Also check for text-based mentions (@pm, @swe, etc.)
         text_lower = message.text.lower()
-        for agent_key in ["pm", "swe", "release", "support", "sre", "marketer", "supervisor"]:
+        for agent_key in ["pm", "swe", "release", "support", "marketer", "supervisor"]:
             if f"@{agent_key}" in text_lower and agent_key not in mentioned:
                 mentioned.append(agent_key)
 
