@@ -332,7 +332,8 @@ def send_message_sync(
     """Synchronous version of send_message."""
     import asyncio
 
-    return asyncio.get_event_loop().run_until_complete(send_message(message, channel, thread_ts))
+    # Use asyncio.run() which creates a new event loop - safe for threads
+    return asyncio.run(send_message(message, channel, thread_ts))
 
 
 def post_slack_message_sync(
@@ -343,9 +344,8 @@ def post_slack_message_sync(
     """Synchronous version of post_slack_message."""
     import asyncio
 
-    return asyncio.get_event_loop().run_until_complete(
-        post_slack_message(message, channel, thread_ts)
-    )
+    # Use asyncio.run() which creates a new event loop - safe for threads
+    return asyncio.run(post_slack_message(message, channel, thread_ts))
 
 
 def mention_agent_sync(
@@ -357,16 +357,16 @@ def mention_agent_sync(
     """Synchronous version of mention_agent."""
     import asyncio
 
-    return asyncio.get_event_loop().run_until_complete(
-        mention_agent(agent_key, message, channel, thread_ts)
-    )
+    # Use asyncio.run() which creates a new event loop - safe for threads
+    return asyncio.run(mention_agent(agent_key, message, channel, thread_ts))
 
 
 def read_slack_channel_sync(channel: str | None = None, limit: int = 10) -> str:
     """Synchronous version of read_slack_channel."""
     import asyncio
 
-    return asyncio.get_event_loop().run_until_complete(read_slack_channel(channel, limit))
+    # Use asyncio.run() which creates a new event loop - safe for threads
+    return asyncio.run(read_slack_channel(channel, limit))
 
 
 def read_slack_thread_sync(
@@ -377,7 +377,8 @@ def read_slack_thread_sync(
     """Synchronous version of read_slack_thread."""
     import asyncio
 
-    return asyncio.get_event_loop().run_until_complete(read_slack_thread(thread_ts, channel, limit))
+    # Use asyncio.run() which creates a new event loop - safe for threads
+    return asyncio.run(read_slack_thread(thread_ts, channel, limit))
 
 
 # ==============================================================================

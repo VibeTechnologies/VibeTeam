@@ -20,6 +20,7 @@ spec:
         app: autogen-agents
         framework: autogen
     spec:
+      serviceAccountName: vibeteam-agent
       imagePullSecrets:
         - name: ghcr-pull-secret
       containers:

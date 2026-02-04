@@ -159,12 +159,31 @@ class ShellTool(BaseTool if CREWAI_AVAILABLE else object):
         import subprocess
 
         try:
+            # Set up environment with k8s access support
+            env = os.environ.copy()
+
+            # Check for in-cluster k8s access first (ServiceAccount token)
+            in_cluster_token = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+            if os.path.exists(in_cluster_token):
+                # In-cluster: kubectl will auto-detect via ServiceAccount
+                pass
+            else:
+                # Local dev: use agent-config.yaml if available
+                agent_kubeconfig = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    ".kube",
+                    "agent-config.yaml",
+                )
+                if os.path.exists(agent_kubeconfig):
+                    env["KUBECONFIG"] = agent_kubeconfig
+
             result = subprocess.run(
                 command,
                 shell=True,
                 capture_output=True,
                 text=True,
                 timeout=300,
+                env=env,
             )
             output = result.stdout
             if result.stderr:
