@@ -167,17 +167,20 @@ async def run_agent_for_slack(
     """
     logger.info(f"Processing Slack message from {user_id}: {user_message[:100]}")
 
+    # Generate a thread_id if none provided (for new threads)
+    effective_thread_id = thread_ts or f"new-{channel}-{int(time.time())}"
+
     # Create unified message for router
     message_router = get_message_router()
     unified = UnifiedMessage(
         source="slack",
-        thread_id=thread_ts or "",
+        thread_id=effective_thread_id,
         channel_id=channel,
         content=user_message,
         author_id=user_id,
         author_name=user_id,
         is_bot=False,
-        message_id=thread_ts or "",
+        message_id=thread_ts or effective_thread_id,
     )
 
     # Parse /RoleName mentions

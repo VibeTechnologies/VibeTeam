@@ -40,7 +40,7 @@ spec:
             - name: SCHEDULER_SERVICE_URL
               value: "http://scheduler-svc:8080"
             - name: DEFAULT_FRAMEWORK
-              value: "openhands"
+              value: "crewai"
             # GitHub configuration
             - name: GITHUB_WEBHOOK_SECRET
               valueFrom:
