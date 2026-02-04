@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -49,7 +50,6 @@ try:
     from deepeval.test_case import LLMTestCase, LLMTestCaseParams
     from deepeval.metrics import GEval
     from deepeval.models.base_model import DeepEvalBaseLLM
-    import httpx
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
@@ -426,6 +426,33 @@ async def run_evaluation(
     thread_ts = initial_msg.ts
     print(f"    Thread TS: {thread_ts}")
     print(f"    Posted successfully!")
+
+    # Step 1b: Trigger the gateway to process this message
+    # Slack doesn't send webhooks for messages the bot itself posts,
+    # so we need to explicitly trigger the gateway
+    print("\n>>> Step 1b: Triggering gateway to process message")
+    gateway_url = os.environ.get("GATEWAY_URL", "https://webhook.team.vibebrowser.app")
+    trigger_url = f"{gateway_url}/slack/trigger"
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                trigger_url,
+                json={
+                    "channel": channel,
+                    "thread_ts": thread_ts,
+                    "text": user_message,
+                    "user_id": "eval_script",
+                },
+            )
+            if response.status_code == 200:
+                result = response.json()
+                print(f"    Gateway accepted: routing to {result.get('roles', [])}")
+            else:
+                print(f"    WARNING: Gateway returned {response.status_code}: {response.text}")
+    except Exception as e:
+        print(f"    WARNING: Failed to trigger gateway: {e}")
+        print("    Falling back to webhook-only mode (may not work)")
 
     # Track conversation
     conversation: list[tuple[str, str]] = [("user", user_message)]

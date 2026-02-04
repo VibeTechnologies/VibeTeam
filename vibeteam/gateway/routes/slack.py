@@ -227,8 +227,14 @@ async def _run_agent_and_respond(
     channel: str,
     thread_ts: str | None,
     user_id: str,
+    max_handoff_depth: int = 3,
+    current_depth: int = 0,
 ) -> None:
-    """Run a specific agent and post response to Slack."""
+    """Run a specific agent and post response to Slack.
+
+    Supports synchronous handoffs: if the agent mentions /RoleName in its response,
+    that agent is immediately invoked (up to max_handoff_depth to prevent infinite loops).
+    """
     # Build task for the agent
     task = f"""## Slack Request
 
@@ -276,12 +282,39 @@ Please help with this request and provide actionable information.
             formatted_response = f"[{display_name}] {response}"
             await send_slack_message(channel, formatted_response, thread_ts)
 
-            # Check for handoffs in the response
+            # Check for handoffs in the response and execute them synchronously
             message_router = get_message_router()
             handoff_roles = message_router.parse_role_mentions(response)
-            if handoff_roles:
-                logger.info(f"Detected handoff to: {handoff_roles}")
-                # The next poll will pick up the handoff from the bot's message
+            if handoff_roles and current_depth < max_handoff_depth:
+                logger.info(
+                    f"Detected handoff to: {handoff_roles} (depth {current_depth + 1}/{max_handoff_depth})"
+                )
+                # Execute handoffs synchronously
+                for handoff_role in handoff_roles:
+                    if handoff_role == role:
+                        # Skip self-handoffs
+                        continue
+                    handoff_display = ROLE_DISPLAY_NAMES.get(handoff_role, handoff_role)
+                    # Pass the original message + context about handoff
+                    handoff_message = (
+                        f"[Handoff from {display_name}]\n\n"
+                        f"Original request: {user_message}\n\n"
+                        f"Previous response: {response[:500]}..."
+                    )
+                    await _run_agent_and_respond(
+                        role=handoff_role,
+                        display_name=handoff_display,
+                        user_message=handoff_message,
+                        channel=channel,
+                        thread_ts=thread_ts,
+                        user_id=user_id,
+                        max_handoff_depth=max_handoff_depth,
+                        current_depth=current_depth + 1,
+                    )
+            elif handoff_roles:
+                logger.warning(
+                    f"Max handoff depth ({max_handoff_depth}) reached, ignoring: {handoff_roles}"
+                )
 
     except Exception as e:
         logger.exception(f"Failed to run agent for Slack: {e}")
@@ -389,3 +422,60 @@ async def handle_slack_events(
         return {"status": "accepted", "event": "message.bot_with_role_mention"}
 
     return {"status": "ignored", "event": event_type}
+
+
+@router.post("/slack/trigger")
+async def trigger_agent_for_slack(request: Request) -> dict[str, Any]:
+    """
+    Directly trigger an agent for a Slack thread.
+
+    This endpoint bypasses Slack webhooks and directly invokes the agent routing logic.
+    Useful for:
+    - E2E eval tests that post messages via Slack API but need to trigger agents
+    - Manual testing and debugging
+    - Programmatic agent invocation
+
+    Request body:
+    {
+        "channel": "C0AATPSADB8",
+        "thread_ts": "1234567890.123456",
+        "text": "/SupportEngineer please investigate the issue",
+        "user_id": "eval_script"
+    }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    channel = body.get("channel")
+    thread_ts = body.get("thread_ts")
+    text = body.get("text", "")
+    user_id = body.get("user_id", "trigger_api")
+
+    if not channel:
+        raise HTTPException(status_code=400, detail="channel is required")
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    # Check for role mentions
+    message_router = get_message_router()
+    role_mentions = message_router.parse_role_mentions(text)
+
+    if not role_mentions:
+        raise HTTPException(
+            status_code=400,
+            detail="text must contain /RoleName mention (e.g., /SupportEngineer)",
+        )
+
+    logger.info(f"Trigger API: routing to {role_mentions} in {channel}")
+
+    # Process in background (same as webhook handler)
+    asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id))
+
+    return {
+        "status": "accepted",
+        "channel": channel,
+        "thread_ts": thread_ts,
+        "roles": role_mentions,
+    }
