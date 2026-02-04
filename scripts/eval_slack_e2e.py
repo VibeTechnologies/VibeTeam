@@ -73,26 +73,41 @@ SCENARIOS = {
         "expected_agent": "support_engineer",
         "evaluation_criteria": {
             "InvestigationQuality": (
-                "Did the SupportEngineer ACTUALLY investigate the issue using their tools? "
-                "EXPECTED BEHAVIOR: "
-                "(1) SupportEngineer acknowledges the customer report; "
-                "(2) SupportEngineer uses Sentry to check error patterns, counts, and stack traces; "
-                "(3) Response includes SPECIFIC findings from Sentry (e.g., '127 400 errors in last 24h'); "
-                "(4) If rollback/deployment action needed, SupportEngineer hands off to @ReleaseEngineer with findings. "
-                "Score 0.0 if no investigation occurred. Score 0.5 if generic response without tool usage. "
-                "Score 1.0 if Sentry was used and specific findings were reported."
+                "Did the SupportEngineer ACTUALLY investigate and RESOLVE the issue? "
+                "This is a STRICT evaluation - attempting tools that fail is NOT success. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Successfully query Sentry and report SPECIFIC error counts, patterns, stack traces; "
+                "(2) Successfully access Kubernetes/infrastructure to check deployment state; "
+                "(3) Identify the ROOT CAUSE with evidence from internal tools (not just external HTTP checks); "
+                "(4) Take concrete action OR provide findings that enable resolution. "
+                "SCORING: "
+                "Score 0.0-0.2: No investigation or all tools failed with no useful findings. "
+                "Score 0.2-0.4: Tools failed but agent made reasonable external observations. "
+                "Score 0.4-0.6: Some tools worked, partial findings, but no root cause identified. "
+                "Score 0.6-0.8: Tools worked, root cause identified, but no resolution. "
+                "Score 0.8-1.0: Full investigation with tools, root cause found, and resolution provided. "
+                "CRITICAL: If agent just says 'tools failed, someone else please help' repeatedly, "
+                "score should be 0.2 or lower. External curl/HTTP checks alone are worth at most 0.3."
             ),
-            "ActionableResolution": (
-                "Did the SupportEngineer provide actionable next steps based on investigation? "
-                "EXPECTED: "
-                "(1) Specific findings from Sentry (error patterns, affected endpoints, timestamps); "
-                "(2) Either direct resolution OR handoff to @ReleaseEngineer/@SoftwareEngineer with context; "
-                "(3) Clear communication to customer about what was found and next steps. "
-                "Score 0.0 if no action taken. Score 0.5 if vague response. "
-                "Score 1.0 if concrete findings and clear next steps provided."
+            "TaskCompletion": (
+                "Was the customer's issue ACTUALLY RESOLVED or significantly progressed? "
+                "The user reported 400 errors affecting 500 users - was this fixed or meaningfully addressed? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) The actual 400 errors were identified (not 401s or 404s - those are different); "
+                "(2) Root cause was determined with evidence; "
+                "(3) Either: issue was fixed, OR rollback was initiated, OR specific fix was implemented; "
+                "(4) Customer would see improvement after this interaction. "
+                "SCORING: "
+                "Score 0.0-0.2: Nothing resolved, just circular handoffs or 'please help' messages. "
+                "Score 0.2-0.4: Some diagnostic info gathered but no progress toward resolution. "
+                "Score 0.4-0.6: Root cause hypothesized but not confirmed, no action taken. "
+                "Score 0.6-0.8: Root cause confirmed, actionable fix identified but not implemented. "
+                "Score 0.8-1.0: Issue resolved or concrete fix deployed/initiated. "
+                "CRITICAL: Multiple agents repeating the same failed actions is a FAILURE (score ≤0.2). "
+                "Asking others to 'collect samples' or 'check logs' without doing it yourself is NOT resolution."
             ),
         },
-        "threshold": 0.70,
+        "threshold": 0.60,
     },
     "github_issue": {
         "name": "Software Engineer - GitHub Issue Triage",
@@ -104,16 +119,26 @@ SCENARIOS = {
         "expected_agent": "software_engineer",
         "evaluation_criteria": {
             "IssueAnalysis": (
-                "Did the SoftwareEngineer analyze the GitHub issue properly? "
-                "Should include: checking the issue details, understanding the reproduction steps, "
-                "identifying potential causes, and suggesting next steps."
+                "Did the SoftwareEngineer ACTUALLY investigate the GitHub issue? "
+                "REQUIRED: "
+                "(1) Successfully fetch and read the GitHub issue content; "
+                "(2) Analyze the code related to the record button functionality; "
+                "(3) Identify potential causes based on code analysis, not speculation. "
+                "SCORING: "
+                "Score 0.0-0.3: Failed to access GitHub or code, only generic suggestions. "
+                "Score 0.3-0.6: Accessed issue but superficial analysis without code review. "
+                "Score 0.6-0.8: Reviewed relevant code, identified likely cause. "
+                "Score 0.8-1.0: Full analysis with specific code references and fix proposal."
             ),
-            "ActionablePlan": (
-                "Did the agent provide an actionable plan? "
-                "Should include specific debugging steps, potential fixes, or handoffs to other agents."
+            "TaskCompletion": (
+                "Was the issue RESOLVED or a concrete fix provided? "
+                "REQUIRED: "
+                "(1) Specific diagnosis with evidence; "
+                "(2) Either: PR created with fix, OR detailed fix instructions, OR issue triaged with labels/assignment. "
+                "Score 0.0-0.3 if only suggestions without action taken."
             ),
         },
-        "threshold": 0.70,
+        "threshold": 0.60,
     },
     "release_deploy": {
         "name": "Release Engineer - Deployment Request",
@@ -125,16 +150,24 @@ SCENARIOS = {
         "expected_agent": "release_engineer",
         "evaluation_criteria": {
             "DeploymentExecution": (
-                "Did the ReleaseEngineer handle the deployment request properly? "
-                "Should include: confirming the PR status, executing deployment steps, "
-                "and providing deployment status updates."
+                "Did the ReleaseEngineer ACTUALLY deploy to staging? "
+                "REQUIRED: "
+                "(1) Verify PR #123 status and test results; "
+                "(2) Execute the actual deployment command/pipeline; "
+                "(3) Confirm deployment succeeded with evidence (pod status, health checks). "
+                "SCORING: "
+                "Score 0.0-0.3: No deployment attempted or all commands failed. "
+                "Score 0.3-0.6: Deployment attempted but failed or couldn't verify. "
+                "Score 0.6-0.8: Deployment succeeded but incomplete verification. "
+                "Score 0.8-1.0: Full deployment with verification and notification."
             ),
-            "CommunicationQuality": (
-                "Did the agent communicate clearly about the deployment? "
-                "Should include: what was deployed, where, and any follow-up actions needed."
+            "TaskCompletion": (
+                "Is the deployment DONE and verified? "
+                "REQUIRED: Staging environment running the new code, health checks passing. "
+                "Score 0.0-0.3 if deployment was not completed for any reason."
             ),
         },
-        "threshold": 0.70,
+        "threshold": 0.60,
     },
 }
 
