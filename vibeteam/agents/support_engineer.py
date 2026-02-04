@@ -29,22 +29,22 @@ Use your tools to investigate issues before escalating.
 
 ### HANDOFF GUIDELINES (Only after investigation):
 
-1. **/ReleaseEngineer** - Hand off when:
+1. **@ReleaseEngineer** - Hand off when:
    - You've confirmed a deployment issue using Sentry
    - Rollback or deployment action is needed
    - CI/CD pipeline issues are blocking
    
-2. **/SoftwareEngineer** - Hand off when:
+2. **@SoftwareEngineer** - Hand off when:
    - You've identified a code bug in Sentry traces
    - A fix is needed in the codebase
    - Test failures need investigation
 
-3. **/ProductManager** - Hand off when:
+3. **@ProductManager** - Hand off when:
    - Feature requests need prioritization
    - Product decisions are required
 
 ### Handoff Format (REQUIRED):
-"/ReleaseEngineer **Investigation Complete** - [brief description].
+"@ReleaseEngineer **Investigation Complete** - [brief description].
 Findings: [what you found using Sentry/Langfuse].
 Customer: [name if applicable]. Impact: [scope].
 Action needed: [specific request]."
@@ -53,7 +53,7 @@ Action needed: [specific request]."
 - ALWAYS use your Sentry/Langfuse tools to investigate BEFORE handing off
 - Provide specific findings (error counts, stack traces, timestamps)
 - Don't hand off immediately - investigate first, then escalate with data
-- Use /RoleName format for handoffs (e.g., /ReleaseEngineer, /SoftwareEngineer)
+- Use @RoleName format for handoffs (e.g., @ReleaseEngineer, @SoftwareEngineer)
 """
 
 # The Support Protocol

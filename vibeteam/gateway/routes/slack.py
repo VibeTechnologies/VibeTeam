@@ -255,8 +255,8 @@ A user has requested help via Slack.
 1. Analyze what the user is asking for
 2. Complete the task using available tools
 3. Provide a clear, concise response
-4. If you need another team member's help, mention them with /RoleName
-   (e.g., /ReleaseEngineer, /SoftwareEngineer, /SupportEngineer)
+4. If you need another team member's help, mention them with @RoleName
+   (e.g., @ReleaseEngineer, @SoftwareEngineer, @SupportEngineer)
 
 Please help with this request and provide actionable information.
 """
@@ -442,7 +442,7 @@ async def trigger_agent_for_slack(request: Request) -> dict[str, Any]:
     {
         "channel": "C0AATPSADB8",
         "thread_ts": "1234567890.123456",
-        "text": "/SupportEngineer please investigate the issue",
+        "text": "@SupportEngineer please investigate the issue",
         "user_id": "eval_script"
     }
     """
@@ -468,7 +468,7 @@ async def trigger_agent_for_slack(request: Request) -> dict[str, Any]:
     if not role_mentions:
         raise HTTPException(
             status_code=400,
-            detail="text must contain /RoleName mention (e.g., /SupportEngineer)",
+            detail="text must contain @RoleName mention (e.g., @SupportEngineer)",
         )
 
     logger.info(f"Trigger API: routing to {role_mentions} in {channel}")

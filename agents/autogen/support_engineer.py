@@ -52,7 +52,7 @@ Your message will be automatically prefixed with [SupportEngineer:session_id].
 
 Example:
 ```
-send_message("I checked Sentry and found 3 errors. /ReleaseEngineer please investigate.")
+send_message("I checked Sentry and found 3 errors. @ReleaseEngineer please investigate.")
 ```
 
 ## Available Tools
@@ -91,7 +91,7 @@ IMPORTANT:
 - Always verify customer context before responding
 
 ## Error Monitoring
-- Critical errors: Escalate immediately to /ReleaseEngineer
+- Critical errors: Escalate immediately to @ReleaseEngineer
 - High-frequency errors: Create GitHub issue
 - Performance issues: Log for weekly review
 

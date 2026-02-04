@@ -1,7 +1,7 @@
 """
 Message Router for VibeTeam.
 
-Routes messages to appropriate agents based on /RoleName mentions
+Routes messages to appropriate agents based on @RoleName mentions
 and thread subscriptions.
 """
 
@@ -35,21 +35,21 @@ class RouteResult:
 
 class Router:
     """
-    Thread-based message router with /RoleName mentions.
+    Thread-based message router with @RoleName mentions.
 
     Workflow:
-    1. Parse /RoleName mentions from message content
+    1. Parse @RoleName mentions from message content
     2. Subscribe mentioned agents to the thread
     3. Forward message to all subscribed agents
 
     Mention patterns:
-    - /SoftwareEngineer, /ReleaseEngineer, etc. (full names)
-    - @SoftwareEngineer, @ReleaseEngineer, etc. (@ prefix)
+    - @SoftwareEngineer, @ReleaseEngineer, etc. (@ prefix - preferred)
+    - /SoftwareEngineer, /ReleaseEngineer, etc. (/ prefix - also supported)
     """
 
-    # Pattern to match role mentions: /RoleName or @RoleName
+    # Pattern to match role mentions: @RoleName or /RoleName
     ROLE_PATTERN = re.compile(
-        r"[/@](SoftwareEngineer|ReleaseEngineer|SupportEngineer|"
+        r"[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|"
         r"ProductManager|MarketingManager)",
         re.IGNORECASE,
     )

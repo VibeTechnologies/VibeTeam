@@ -65,7 +65,7 @@ SCENARIOS = {
     "support_400_errors": {
         "name": "Support Engineer - API 400 Errors Investigation",
         "message": (
-            "/SupportEngineer there is a request from a user who sees the issue with "
+            "@SupportEngineer there is a request from a user who sees the issue with "
             "Vibe API Gateway returning 400 errors. Customer ACME Corp reports this "
             "started after the deployment at 8am. Multiple customers affected, about "
             "500 users. This seems infrastructure-related. Please investigate."
@@ -97,7 +97,7 @@ SCENARIOS = {
     "github_issue": {
         "name": "Software Engineer - GitHub Issue Triage",
         "message": (
-            "/SoftwareEngineer we have a new GitHub issue #42 reporting that the "
+            "@SoftwareEngineer we have a new GitHub issue #42 reporting that the "
             "browser extension crashes when clicking the record button. The user says "
             "it happens on Chrome 120 with the latest extension version. Please investigate."
         ),
@@ -118,7 +118,7 @@ SCENARIOS = {
     "release_deploy": {
         "name": "Release Engineer - Deployment Request",
         "message": (
-            "/ReleaseEngineer we need to deploy the latest changes to staging. "
+            "@ReleaseEngineer we need to deploy the latest changes to staging. "
             "The PR #123 has been merged and all tests are passing. Please proceed "
             "with the staging deployment and notify the team when done."
         ),
