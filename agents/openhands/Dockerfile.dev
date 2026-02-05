@@ -1,0 +1,58 @@
+# OpenHands Agent Service Dockerfile - Development Mode
+# Pulls fresh code from GitHub on startup for fast iteration
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install runtime + dev dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI for agent operations
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install kubectl for k8s operations
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
+    && rm kubectl
+
+# Copy and install requirements first (cached layer)
+COPY agents/openhands/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Copy dev entrypoint
+COPY agents/openhands/entrypoint-dev.sh /entrypoint-dev.sh
+RUN chmod +x /entrypoint-dev.sh
+
+# Create non-root user for security
+RUN useradd -m -u 1000 vibeteam
+USER vibeteam
+
+# Environment variables
+ENV AZURE_API_KEY=""
+ENV AZURE_API_BASE=""
+ENV AZURE_API_VERSION="2024-08-01-preview"
+ENV DATABASE_URL=""
+ENV PYTHONPATH="/app/code"
+ENV PORT="8080"
+ENV HOST="0.0.0.0"
+# Dev mode settings
+ENV GITHUB_REPO_URL="https://github.com/VibeTechnologies/VibeTeam.git"
+ENV GITHUB_BRANCH="master"
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Use dev entrypoint that pulls fresh code
+CMD ["/entrypoint-dev.sh"]
