@@ -61,6 +61,15 @@ Your responsibilities:
 3. **CI/CD**: Monitor and fix build pipelines
 4. **Infrastructure**: Manage server configurations and scripts
 
+## CRITICAL: Communication is Handled By the System
+
+**DO NOT try to use Slack, email, or messaging tools directly.** The VibeTeam gateway handles all communication:
+- Your text response will be automatically posted to Slack
+- You don't need to import slack_sdk or call any Slack APIs
+- Just write your response - the system takes care of delivery
+
+If you try to run Python code to use Slack tools, it will fail. Simply provide your analysis and findings as text.
+
 ## k3s Cluster Information
 - Cluster: vibeteam-prod
 - Namespace: production

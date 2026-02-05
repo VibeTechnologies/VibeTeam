@@ -174,11 +174,12 @@ async def call_agent_service(
         "context_id": context_id,
     }
 
-    # For openhands, add parameters to avoid requiring vibeteam.connectors
+    # For openhands, add parameters
     fw = framework or config.DEFAULT_FRAMEWORK
     if fw == "openhands":
         payload["use_tools"] = True
-        payload["skip_context_injection"] = True
+        # Enable context injection so agents get Sentry/Gmail/Langfuse data
+        payload["skip_context_injection"] = False
 
     # Retry logic for transient connection failures
     max_retries = 3
