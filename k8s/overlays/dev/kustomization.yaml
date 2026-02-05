@@ -32,6 +32,7 @@ patches:
           name: GITHUB_BRANCH
           value: "master"
 
-# Common labels for dev environment
-commonLabels:
+# Note: Avoid commonLabels as it changes selectors which are immutable
+# Use annotations instead for environment identification
+commonAnnotations:
   environment: dev
