@@ -6,6 +6,7 @@ OpenHands Agent Microservice.
 FastAPI server exposing OpenHands team functionality via REST API.
 """
 
+import asyncio
 import logging
 import os
 import time
@@ -156,10 +157,13 @@ async def run_task(request: RunRequest):
         role = request.role
 
         # Run the task
+        # Use asyncio.to_thread to run blocking agent code without blocking the event loop
+        # This allows health checks to respond while the agent is processing
         if role:
-            # Run with specific agent
+            # Run with specific agent in a thread pool
             agent = team._get_agent(role)
-            result = agent.run(
+            result = await asyncio.to_thread(
+                agent.run,
                 task=request.task,
                 context_type=request.context_type,
                 context_id=context_id,
