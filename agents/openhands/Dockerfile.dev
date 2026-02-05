@@ -33,8 +33,10 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY agents/openhands/entrypoint-dev.sh /entrypoint-dev.sh
 RUN chmod +x /entrypoint-dev.sh
 
-# Create non-root user for security
-RUN useradd -m -u 1000 vibeteam
+# Create non-root user and directories for security
+RUN useradd -m -u 1000 vibeteam \
+    && mkdir -p /app/code \
+    && chown -R vibeteam:vibeteam /app
 USER vibeteam
 
 # Environment variables
