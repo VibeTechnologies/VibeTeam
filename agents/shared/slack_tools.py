@@ -1,54 +1,354 @@
-from __future__ import annotations
-
 """
-Shared Slack tool functions for all agent frameworks.
+Standalone Slack tools for OpenHands and other agent frameworks.
 
-These functions wrap the SlackConnector and provide a consistent interface
-that can be used by AutoGen (as FunctionTool), CrewAI (wrapped in BaseTool),
-and OpenHands (for context injection or post-processing).
-
-All functions are async-compatible for AutoGen and can be called synchronously
-for other frameworks.
+This module provides Slack functionality WITHOUT depending on vibeteam package.
+It uses slack_sdk directly, making it suitable for containerized deployments
+where only the agents/ directory is available.
 
 Key Concept - /RoleName Mentions:
     Agents use /RoleName mentions in their responses (e.g., "/SoftwareEngineer
     please fix the login bug"). The router parses these mentions and routes the
     conversation to the appropriate agent's session.
-
-    This makes all inter-agent communication visible to humans in Slack.
-
-Message Format:
-    When agents use send_message(), messages are automatically prefixed with
-    [RoleName:session_id] for identification.
-
-    Example: send_message("Fixed bug. /ReleaseEngineer please deploy.")
-    Posted as: [SoftwareEngineer:abc123] Fixed bug. /ReleaseEngineer please deploy.
 """
 
+from __future__ import annotations
+
+import logging
 import os
+import re
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
+# Default timeout for Slack API calls
+DEFAULT_TIMEOUT = 10
+
+
+@dataclass
+class SlackMessage:
+    """Represents a Slack message."""
+
+    ts: str  # Message timestamp (unique ID)
+    channel: str
+    user: str
+    text: str
+    thread_ts: str | None  # Parent thread timestamp
+    timestamp: datetime | None  # When the message was sent
+    is_bot: bool
+    mentions: list[str]  # User IDs mentioned
+
+    @property
+    def permalink(self) -> str:
+        """Generate a permalink-style reference."""
+        return f"{self.channel}/{self.ts}"
+
+
+@dataclass
+class SlackChannel:
+    """Represents a Slack channel."""
+
+    id: str
+    name: str
+    is_private: bool
+    is_member: bool
+    topic: str
+    purpose: str
+
+
+class SlackClient:
+    """
+    Lightweight Slack API client using slack_sdk directly.
+
+    This is a standalone implementation that doesn't depend on vibeteam.
+
+    Usage:
+        client = SlackClient()  # Uses SLACK_BOT_TOKEN env var
+
+        # Post message
+        client.post_message("#ai-team", "Hello!")
+
+        # Read channel history
+        messages = client.get_channel_history("#ai-team", limit=10)
+
+        # Reply in thread
+        client.post_message("#ai-team", "Following up...", thread_ts=msg.ts)
+    """
+
+    def __init__(
+        self,
+        token: str | None = None,
+        default_channel: str | None = None,
+        timeout: int = DEFAULT_TIMEOUT,
+    ):
+        """
+        Initialize Slack client.
+
+        Args:
+            token: Slack bot token (or from SLACK_BOT_TOKEN env)
+            default_channel: Default channel for messages
+            timeout: Request timeout in seconds
+        """
+        self.token = token or os.environ.get("SLACK_BOT_TOKEN")
+        self.default_channel = default_channel or os.environ.get(
+            "SLACK_DEFAULT_CHANNEL", "#ai-team"
+        )
+        self.timeout = timeout
+
+        if not self.token:
+            raise ValueError("Slack token required. Set SLACK_BOT_TOKEN env var or pass token.")
+
+        # Import slack_sdk here to fail fast if not available
+        try:
+            from slack_sdk import WebClient
+            from slack_sdk.errors import SlackApiError
+
+            self.WebClient = WebClient
+            self.SlackApiError = SlackApiError
+        except ImportError as e:
+            raise ImportError("slack_sdk is required. Install with: pip install slack_sdk") from e
+
+        self.client = self.WebClient(token=self.token, timeout=self.timeout)
+        self._bot_user_id: str | None = None
+        self._channel_cache: dict[str, str] = {}  # name -> id
+
+    @property
+    def bot_user_id(self) -> str:
+        """Get the bot's user ID (lazy loaded)."""
+        if self._bot_user_id is None:
+            response = self.client.auth_test()
+            self._bot_user_id = response["user_id"]
+        return self._bot_user_id
+
+    def _resolve_channel(self, channel: str) -> str:
+        """
+        Resolve channel name to ID.
+
+        Args:
+            channel: Channel name (with or without #) or ID
+
+        Returns:
+            Channel ID
+        """
+        # Already an ID
+        if channel.startswith("C") or channel.startswith("D"):
+            return channel
+
+        # Remove # prefix
+        name = channel.lstrip("#")
+
+        # Check cache
+        if name in self._channel_cache:
+            return self._channel_cache[name]
+
+        # Look up channel
+        try:
+            response = self.client.conversations_list(types="public_channel,private_channel")
+            for ch in response.get("channels", []):
+                self._channel_cache[ch["name"]] = ch["id"]
+                if ch["name"] == name:
+                    return ch["id"]
+        except self.SlackApiError:
+            pass
+
+        # Return as-is if not found (might be a DM or already resolved)
+        return channel
+
+    def _parse_message(self, data: dict, channel: str) -> SlackMessage:
+        """Parse API response into SlackMessage."""
+        text = data.get("text", "")
+        mentions = re.findall(r"<@(U[A-Z0-9]+)>", text)
+
+        ts_float = float(data.get("ts", "0"))
+        timestamp = datetime.fromtimestamp(ts_float)
+
+        return SlackMessage(
+            ts=data.get("ts", ""),
+            channel=channel,
+            user=data.get("user", ""),
+            text=text,
+            thread_ts=data.get("thread_ts"),
+            timestamp=timestamp,
+            is_bot=data.get("bot_id") is not None,
+            mentions=mentions,
+        )
+
+    def post_message(
+        self,
+        channel: str | None = None,
+        text: str = "",
+        thread_ts: str | None = None,
+        blocks: list[dict] | None = None,
+    ) -> SlackMessage:
+        """
+        Post a message to a channel.
+
+        Args:
+            channel: Channel name or ID (uses default if None)
+            text: Message text
+            thread_ts: Thread timestamp to reply to
+            blocks: Block Kit blocks for rich formatting
+
+        Returns:
+            The posted message
+        """
+        channel = channel or self.default_channel
+        channel_id = self._resolve_channel(channel)
+
+        kwargs: dict[str, Any] = {
+            "channel": channel_id,
+            "text": text,
+        }
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+        if blocks:
+            kwargs["blocks"] = blocks
+
+        response = self.client.chat_postMessage(**kwargs)
+
+        return SlackMessage(
+            ts=response["ts"],
+            channel=channel_id,
+            user=self.bot_user_id,
+            text=text,
+            thread_ts=thread_ts,
+            timestamp=datetime.now(),
+            is_bot=True,
+            mentions=[],
+        )
+
+    def add_reaction(
+        self,
+        channel: str,
+        timestamp: str,
+        emoji: str = "eyes",
+    ) -> bool:
+        """
+        Add a reaction emoji to a message.
+
+        Args:
+            channel: Channel ID where the message is
+            timestamp: Message timestamp (ts)
+            emoji: Emoji name without colons (default: "eyes")
+
+        Returns:
+            True if reaction was added successfully
+        """
+        try:
+            self.client.reactions_add(
+                channel=channel,
+                timestamp=timestamp,
+                name=emoji,
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to add reaction: {e}")
+            return False
+
+    def get_channel_history(
+        self,
+        channel: str | None = None,
+        limit: int = 20,
+        oldest: str | None = None,
+        latest: str | None = None,
+    ) -> list[SlackMessage]:
+        """
+        Get channel message history.
+
+        Args:
+            channel: Channel name or ID
+            limit: Maximum messages to return
+            oldest: Only messages after this timestamp
+            latest: Only messages before this timestamp
+
+        Returns:
+            List of messages (newest first)
+        """
+        channel = channel or self.default_channel
+        channel_id = self._resolve_channel(channel)
+
+        kwargs: dict[str, Any] = {
+            "channel": channel_id,
+            "limit": limit,
+        }
+        if oldest:
+            kwargs["oldest"] = oldest
+        if latest:
+            kwargs["latest"] = latest
+
+        response = self.client.conversations_history(**kwargs)
+
+        return [self._parse_message(msg, channel_id) for msg in response.get("messages", [])]
+
+    def get_thread_replies(
+        self,
+        channel: str,
+        thread_ts: str,
+        limit: int = 100,
+    ) -> list[SlackMessage]:
+        """
+        Get replies in a thread.
+
+        Args:
+            channel: Channel name or ID
+            thread_ts: Parent message timestamp
+            limit: Maximum replies to return
+
+        Returns:
+            List of thread messages
+        """
+        channel_id = self._resolve_channel(channel)
+
+        response = self.client.conversations_replies(
+            channel=channel_id,
+            ts=thread_ts,
+            limit=limit,
+        )
+
+        return [self._parse_message(msg, channel_id) for msg in response.get("messages", [])]
+
+    def list_channels(self, include_private: bool = False) -> list[SlackChannel]:
+        """
+        List available channels.
+
+        Args:
+            include_private: Include private channels
+
+        Returns:
+            List of channels the bot has access to
+        """
+        types = "public_channel"
+        if include_private:
+            types += ",private_channel"
+
+        response = self.client.conversations_list(types=types)
+
+        channels = []
+        for ch in response.get("channels", []):
+            channels.append(
+                SlackChannel(
+                    id=ch["id"],
+                    name=ch["name"],
+                    is_private=ch.get("is_private", False),
+                    is_member=ch.get("is_member", False),
+                    topic=ch.get("topic", {}).get("value", ""),
+                    purpose=ch.get("purpose", {}).get("value", ""),
+                )
+            )
+
+        return channels
+
+
+# ==============================================================================
 # Thread-local context for Slack operations
+# ==============================================================================
+
 _slack_context: dict[str, Any] = {}
 
 
-def _get_slack_connector():
-    """Get Slack connector (lazy import to avoid init errors)."""
-    from vibeteam.connectors.slack import SlackConnector
-
-    try:
-        return SlackConnector()
-    except ValueError as e:
-        return None, str(e)
-
-
-# ==============================================================================
-# Slack Context Management
-# ==============================================================================
-
-
 def set_slack_context(
-    connector: Any,
+    client: SlackClient | Any,
     channel: str,
     thread_ts: str | None = None,
     from_agent: str | None = None,
@@ -60,7 +360,7 @@ def set_slack_context(
     Called by the Slack agent runner before processing a message.
 
     Args:
-        connector: SlackConnector instance
+        client: SlackClient instance
         channel: Channel ID or name
         thread_ts: Thread timestamp (to keep responses in same thread)
         from_agent: Name of the agent setting context (e.g., "SupportEngineer")
@@ -68,7 +368,7 @@ def set_slack_context(
     """
     global _slack_context
     _slack_context = {
-        "connector": connector,
+        "client": client,
         "channel": channel,
         "thread_ts": thread_ts,
         "from_agent": from_agent,
@@ -89,12 +389,75 @@ def clear_slack_context() -> None:
 
 def is_slack_context_set() -> bool:
     """Check if Slack context is set."""
-    return bool(_slack_context.get("connector"))
+    return bool(_slack_context.get("client"))
 
 
 # ==============================================================================
-# Core Slack Tools (Async for AutoGen)
+# High-level functions for agents
 # ==============================================================================
+
+
+def _get_slack_client() -> SlackClient | tuple[None, str]:
+    """Get or create Slack client."""
+    ctx = get_slack_context()
+    client = ctx.get("client")
+
+    if client:
+        return client
+
+    # Try to create a new client
+    try:
+        return SlackClient()
+    except ValueError as e:
+        return None, str(e)
+    except ImportError as e:
+        return None, str(e)
+
+
+def get_slack_thread_context(
+    channel: str | None = None,
+    thread_ts: str | None = None,
+    limit: int = 50,
+) -> str:
+    """
+    Get Slack thread context for injection into agent prompts.
+
+    Args:
+        channel: Channel to read from
+        thread_ts: Thread timestamp to read
+        limit: Maximum messages to return
+
+    Returns:
+        Formatted context string for prompt injection
+    """
+    result = _get_slack_client()
+    if isinstance(result, tuple):
+        return f"Slack: Not available - {result[1]}"
+
+    client = result
+    ctx = get_slack_context()
+    ch = channel or ctx.get("channel") or os.getenv("SLACK_CHANNEL", "#ai-team")
+    ts = thread_ts or ctx.get("thread_ts")
+
+    try:
+        if ts:
+            messages = client.get_thread_replies(channel=ch, thread_ts=ts, limit=limit)
+            context = f"=== Slack Thread ({len(messages)} messages) ===\n\n"
+        else:
+            messages = client.get_channel_history(channel=ch, limit=limit)
+            context = f"=== Recent Slack Messages ({ch}) ===\n\n"
+
+        if not messages:
+            return f"Slack: No messages found"
+
+        for msg in messages:
+            user = msg.user or "bot"
+            ts_str = msg.timestamp.strftime("%H:%M") if msg.timestamp else ""
+            context += f"[{ts_str}] {user}: {msg.text[:300]}\n"
+
+        return context
+    except Exception as e:
+        return f"Slack: Error - {e}"
 
 
 async def send_message(
@@ -105,30 +468,20 @@ async def send_message(
     """
     Post a message to Slack with automatic [RoleName:session_id] prefix.
 
-    This is the PRIMARY tool agents should use to respond. The message is
-    automatically prefixed with the agent's identity.
-
     Args:
-        message: The message text to post (handoffs use /RoleName mentions)
+        message: The message text to post
         channel: Channel name or ID (uses context or default if None)
         thread_ts: Thread timestamp to reply in (uses context if None)
 
     Returns:
         Confirmation with message timestamp
-
-    Example:
-        >>> await send_message("Fixed bug in PR #457. /ReleaseEngineer please deploy.")
-        "Posted to #ai-team at 1234567890.123456"
-        # Posted as: [SoftwareEngineer:abc123] Fixed bug in PR #457. /ReleaseEngineer please deploy.
     """
-    ctx = get_slack_context()
-    connector = ctx.get("connector")
+    result = _get_slack_client()
+    if isinstance(result, tuple):
+        return f"Slack error: {result[1]}"
 
-    if not connector:
-        result = _get_slack_connector()
-        if isinstance(result, tuple):
-            return f"Slack error: {result[1]}"
-        connector = result
+    client = result
+    ctx = get_slack_context()
 
     ch = channel or ctx.get("channel") or os.getenv("SLACK_CHANNEL", "#ai-team")
     ts = thread_ts or ctx.get("thread_ts")
@@ -138,7 +491,6 @@ async def send_message(
     session_id = ctx.get("session_id")
 
     if from_agent and session_id:
-        # Short session_id (first 8 chars)
         short_session = session_id[:8] if len(session_id) > 8 else session_id
         prefixed_message = f"[{from_agent}:{short_session}] {message}"
     elif from_agent:
@@ -147,88 +499,10 @@ async def send_message(
         prefixed_message = message
 
     try:
-        result = connector.post_message(channel=ch, text=prefixed_message, thread_ts=ts)
+        result = client.post_message(channel=ch, text=prefixed_message, thread_ts=ts)
         return f"Posted to {ch} at {result.ts}"
     except Exception as e:
         return f"Error posting to Slack: {e}"
-
-
-async def post_slack_message(
-    message: str,
-    channel: str | None = None,
-    thread_ts: str | None = None,
-) -> str:
-    """
-    Post a message to a Slack channel.
-
-    DEPRECATED: Use send_message() instead for automatic [RoleName:session_id] prefix.
-
-    Args:
-        message: The message text to post
-        channel: Channel name or ID (uses context or default if None)
-        thread_ts: Thread timestamp to reply in (uses context if None)
-
-    Returns:
-        Confirmation with message timestamp
-    """
-    # Delegate to send_message for consistent behavior
-    return await send_message(message, channel, thread_ts)
-
-
-async def mention_agent(
-    agent_key: str,
-    message: str,
-    channel: str | None = None,
-    thread_ts: str | None = None,
-) -> str:
-    """
-    Mention another agent in Slack.
-
-    This posts a message with an @mention that another agent's session
-    will pick up.
-
-    Args:
-        agent_key: Agent to mention (swe, release, support, pm, marketer)
-        message: Message explaining the task/context
-        channel: Channel to post in (uses context if None)
-        thread_ts: Thread timestamp (uses context if None)
-
-    Returns:
-        Confirmation that message was posted
-
-    Example:
-        >>> await mention_agent("swe", "Please fix the login validation bug in auth.py")
-        "Posted mention to @SoftwareEngineer in #ai-team"
-    """
-    ctx = get_slack_context()
-    connector = ctx.get("connector")
-
-    if not connector:
-        result = _get_slack_connector()
-        if isinstance(result, tuple):
-            return f"Slack error: {result[1]}"
-        connector = result
-
-    ch = channel or ctx.get("channel") or os.getenv("SLACK_CHANNEL", "#ai-team")
-    ts = thread_ts or ctx.get("thread_ts")
-    from_agent = ctx.get("from_agent", "Unknown")
-
-    try:
-        # Format message with agent mention
-        agent_name = _get_agent_display_name(agent_key)
-        mention_message = f"@{agent_name} {message}"
-        if from_agent:
-            mention_message = f"[From {from_agent}] {mention_message}"
-
-        connector.mention_agent(
-            channel=ch,
-            agent_key=agent_key,
-            message=mention_message,
-            thread_ts=ts,
-        )
-        return f"Posted mention to @{agent_name} in {ch}"
-    except Exception as e:
-        return f"Error mentioning agent: {e}"
 
 
 async def read_slack_channel(
@@ -245,30 +519,27 @@ async def read_slack_channel(
     Returns:
         Formatted string with recent messages
     """
+    result = _get_slack_client()
+    if isinstance(result, tuple):
+        return f"Slack error: {result[1]}"
+
+    client = result
     ctx = get_slack_context()
-    connector = ctx.get("connector")
-
-    if not connector:
-        result = _get_slack_connector()
-        if isinstance(result, tuple):
-            return f"Slack error: {result[1]}"
-        connector = result
-
     ch = channel or ctx.get("channel") or os.getenv("SLACK_CHANNEL", "#ai-team")
 
     try:
-        messages = connector.get_channel_history(channel=ch, limit=limit)
+        messages = client.get_channel_history(channel=ch, limit=limit)
 
         if not messages:
             return f"No messages found in {ch}"
 
-        result = f"=== Last {len(messages)} messages from {ch} ===\n\n"
+        output = f"=== Last {len(messages)} messages from {ch} ===\n\n"
         for msg in messages:
             user = msg.user or "bot"
             ts = msg.timestamp.strftime("%H:%M") if msg.timestamp else ""
-            result += f"[{ts}] {user}: {msg.text[:200]}\n"
+            output += f"[{ts}] {user}: {msg.text[:200]}\n"
 
-        return result
+        return output
     except Exception as e:
         return f"Error reading channel: {e}"
 
@@ -281,8 +552,6 @@ async def read_slack_thread(
     """
     Read messages from a Slack thread.
 
-    Useful for understanding the full context of a conversation.
-
     Args:
         thread_ts: Thread parent timestamp
         channel: Channel name or ID (uses context if None)
@@ -291,36 +560,33 @@ async def read_slack_thread(
     Returns:
         Formatted string with thread messages
     """
+    result = _get_slack_client()
+    if isinstance(result, tuple):
+        return f"Slack error: {result[1]}"
+
+    client = result
     ctx = get_slack_context()
-    connector = ctx.get("connector")
-
-    if not connector:
-        result = _get_slack_connector()
-        if isinstance(result, tuple):
-            return f"Slack error: {result[1]}"
-        connector = result
-
     ch = channel or ctx.get("channel") or os.getenv("SLACK_CHANNEL", "#ai-team")
 
     try:
-        messages = connector.get_thread_replies(channel=ch, thread_ts=thread_ts, limit=limit)
+        messages = client.get_thread_replies(channel=ch, thread_ts=thread_ts, limit=limit)
 
         if not messages:
             return "No messages found in thread"
 
-        result = f"=== Thread ({len(messages)} messages) ===\n\n"
+        output = f"=== Thread ({len(messages)} messages) ===\n\n"
         for msg in messages:
             user = msg.user or "bot"
             ts = msg.timestamp.strftime("%H:%M") if msg.timestamp else ""
-            result += f"[{ts}] {user}: {msg.text[:300]}\n"
+            output += f"[{ts}] {user}: {msg.text[:300]}\n"
 
-        return result
+        return output
     except Exception as e:
         return f"Error reading thread: {e}"
 
 
 # ==============================================================================
-# Sync Versions (for CrewAI and OpenHands)
+# Sync versions (for CrewAI and OpenHands)
 # ==============================================================================
 
 
@@ -332,40 +598,13 @@ def send_message_sync(
     """Synchronous version of send_message."""
     import asyncio
 
-    # Use asyncio.run() which creates a new event loop - safe for threads
     return asyncio.run(send_message(message, channel, thread_ts))
-
-
-def post_slack_message_sync(
-    message: str,
-    channel: str | None = None,
-    thread_ts: str | None = None,
-) -> str:
-    """Synchronous version of post_slack_message."""
-    import asyncio
-
-    # Use asyncio.run() which creates a new event loop - safe for threads
-    return asyncio.run(post_slack_message(message, channel, thread_ts))
-
-
-def mention_agent_sync(
-    agent_key: str,
-    message: str,
-    channel: str | None = None,
-    thread_ts: str | None = None,
-) -> str:
-    """Synchronous version of mention_agent."""
-    import asyncio
-
-    # Use asyncio.run() which creates a new event loop - safe for threads
-    return asyncio.run(mention_agent(agent_key, message, channel, thread_ts))
 
 
 def read_slack_channel_sync(channel: str | None = None, limit: int = 10) -> str:
     """Synchronous version of read_slack_channel."""
     import asyncio
 
-    # Use asyncio.run() which creates a new event loop - safe for threads
     return asyncio.run(read_slack_channel(channel, limit))
 
 
@@ -377,46 +616,12 @@ def read_slack_thread_sync(
     """Synchronous version of read_slack_thread."""
     import asyncio
 
-    # Use asyncio.run() which creates a new event loop - safe for threads
     return asyncio.run(read_slack_thread(thread_ts, channel, limit))
 
 
-# ==============================================================================
-# Context Injection (for OpenHands)
-# ==============================================================================
-
-
-def get_slack_context_for_injection(channel: str | None = None, limit: int = 5) -> str:
-    """
-    Get Slack context for injection into OpenHands prompts.
-
-    Args:
-        channel: Channel to read from
-        limit: Number of recent messages
-
-    Returns:
-        Formatted context string for prompt injection
-    """
-    try:
-        result = _get_slack_connector()
-        if isinstance(result, tuple):
-            return f"Slack: Not available - {result[1]}"
-
-        connector = result
-        ch = channel or os.getenv("SLACK_CHANNEL", "#ai-team")
-        messages = connector.get_channel_history(channel=ch, limit=limit)
-
-        if not messages:
-            return f"Slack: No recent messages in {ch}"
-
-        context = f"=== Recent Slack Messages ({ch}) ===\n\n"
-        for msg in messages:
-            user = msg.user or "bot"
-            context += f"[{user}]: {msg.text[:200]}\n"
-
-        return context
-    except Exception as e:
-        return f"Slack: Error - {e}"
+# Aliases for backward compatibility
+post_slack_message = send_message
+post_slack_message_sync = send_message_sync
 
 
 def get_slack_handoff_instructions() -> str:
@@ -444,11 +649,6 @@ can understand and work on the task effectively.
 """
 
 
-# ==============================================================================
-# Helpers
-# ==============================================================================
-
-
 def _get_agent_display_name(agent_key: str) -> str:
     """Get display name for an agent key."""
     display_names = {
@@ -460,3 +660,48 @@ def _get_agent_display_name(agent_key: str) -> str:
         "supervisor": "ProductManager",
     }
     return display_names.get(agent_key.lower(), agent_key)
+
+
+# ==============================================================================
+# Backward compatibility aliases
+# ==============================================================================
+
+# Alias for backward compatibility with __init__.py
+get_slack_context_for_injection = get_slack_thread_context
+
+
+async def mention_agent(
+    agent_name: str,
+    message: str,
+    channel: str | None = None,
+    thread_ts: str | None = None,
+) -> str:
+    """
+    Mention another agent with a message.
+
+    This posts a message that includes an @mention of the specified agent,
+    which triggers the router to route the conversation to that agent.
+
+    Args:
+        agent_name: Agent to mention (e.g., "SoftwareEngineer")
+        message: Message to send with the mention
+        channel: Channel name or ID (uses context if None)
+        thread_ts: Thread timestamp (uses context if None)
+
+    Returns:
+        Confirmation with message timestamp
+    """
+    full_message = f"@{agent_name} {message}"
+    return await send_message(full_message, channel, thread_ts)
+
+
+def mention_agent_sync(
+    agent_name: str,
+    message: str,
+    channel: str | None = None,
+    thread_ts: str | None = None,
+) -> str:
+    """Synchronous version of mention_agent."""
+    import asyncio
+
+    return asyncio.run(mention_agent(agent_name, message, channel, thread_ts))
