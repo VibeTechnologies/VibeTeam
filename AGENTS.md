@@ -52,6 +52,29 @@ Does this need public communication?
   → MarketingManager drafts
 ```
 
+## Task Completion Policy
+
+**A task is not complete until it is verified end-to-end.** After deploying code changes that affect agent behavior:
+
+1. **Always run the evaluation** to verify the fix works:
+   ```bash
+   uv run python scripts/eval_slack_e2e.py --scenario <relevant_scenario> --channel C0AATPSADB8
+   ```
+
+2. **Check the evaluation report** for:
+   - Agent response received (no timeout)
+   - Response quality meets threshold
+   - No new errors introduced
+
+3. **If evaluation fails**, debug and iterate until it passes
+
+Do not consider infrastructure or agent code changes complete based solely on:
+- Successful deployment
+- Unit tests passing
+- Manual spot checks
+
+The evaluation script is the source of truth for agent functionality.
+
 ## System Readiness
 
 Before running VibeTeam agents or after infrastructure changes, verify system readiness by following the playbook:
