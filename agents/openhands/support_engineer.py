@@ -28,37 +28,12 @@ from agents.shared.docs_tools import get_docs_context
 # Import shared tools for context injection
 from agents.shared.gmail_tools import get_email_context
 from agents.shared.langfuse_tools import get_langfuse_context
+from agents.shared.sentry_tools import get_sentry_context
 
 
 def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
     """Fetch Sentry issues and format as context for the agent."""
-    try:
-        from vibeteam.connectors.sentry import SentryConnector
-
-        auth_token = os.getenv("SENTRY_AUTH_TOKEN")
-        if not auth_token:
-            return "Sentry: SENTRY_AUTH_TOKEN not configured."
-
-        connector = SentryConnector(auth_token=auth_token)
-        issues = connector.fetch_unresolved_issues(hours=hours, limit=limit)
-
-        if not issues:
-            return f"Sentry: No unresolved issues found in the last {hours} hours."
-
-        result = f"## Current Sentry Issues (last {hours}h)\n\n"
-        for issue in issues:
-            result += f"### [{issue.project}] {issue.short_id}\n"
-            result += f"**{issue.title}**\n"
-            result += f"- Level: {issue.level} | Count: {issue.count} | Users: {issue.user_count}\n"
-            result += f"- First seen: {issue.first_seen[:10]} | Last seen: {issue.last_seen[:10]}\n"
-            result += f"- URL: {issue.permalink}\n\n"
-
-        return result
-
-    except ImportError:
-        return "Sentry: vibeteam.connectors.sentry module not available."
-    except Exception as e:
-        return f"Sentry: Error fetching issues - {e}"
+    return get_sentry_context(hours=hours, limit=limit)
 
 
 def fetch_gmail_context(max_results: int = 5) -> str:
