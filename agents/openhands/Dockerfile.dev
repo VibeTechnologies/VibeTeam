@@ -1,5 +1,5 @@
 # OpenHands Agent Service Dockerfile - Development Mode
-# Pulls fresh code from GitHub on startup for fast iteration
+# Works with git-sync sidecar - code mounted at /code/current
 
 FROM python:3.12-slim
 
@@ -29,32 +29,23 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
 COPY agents/openhands/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Copy dev entrypoint
-COPY agents/openhands/entrypoint-dev.sh /entrypoint-dev.sh
-RUN chmod +x /entrypoint-dev.sh
-
-# Create non-root user and directories for security
-RUN useradd -m -u 1000 vibeteam \
-    && mkdir -p /app/code \
-    && chown -R vibeteam:vibeteam /app
+# Create non-root user
+RUN useradd -m -u 1000 vibeteam
 USER vibeteam
 
 # Environment variables
+# PYTHONPATH is set by k8s patch to /code/current (git-sync mount)
 ENV AZURE_API_KEY=""
 ENV AZURE_API_BASE=""
 ENV AZURE_API_VERSION="2024-08-01-preview"
 ENV DATABASE_URL=""
-ENV PYTHONPATH="/app/code"
 ENV PORT="8080"
 ENV HOST="0.0.0.0"
-# Dev mode settings
-ENV GITHUB_REPO_URL="https://github.com/VibeTechnologies/VibeTeam.git"
-ENV GITHUB_BRANCH="master"
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Use dev entrypoint that pulls fresh code
-CMD ["/entrypoint-dev.sh"]
+# Run server - code comes from git-sync volume at /code/current
+CMD ["python", "-m", "uvicorn", "agents.openhands.server:app", "--host", "0.0.0.0", "--port", "8080"]

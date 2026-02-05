@@ -1,0 +1,62 @@
+# Dev patch for openhands-svc with git-sync sidecar
+# Continuously syncs code from GitHub - no pod restart needed for code changes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhands-svc
+spec:
+  template:
+    spec:
+      # Init container to do initial clone before main container starts
+      initContainers:
+        - name: git-sync-init
+          image: registry.k8s.io/git-sync/git-sync:v4.2.1
+          args:
+            - --repo=https://github.com/VibeTechnologies/VibeTeam.git
+            - --ref=master
+            - --root=/git
+            - --link=current
+            - --one-time
+          volumeMounts:
+            - name: code
+              mountPath: /git
+          securityContext:
+            runAsUser: 65533
+            runAsGroup: 65533
+      containers:
+        # Patch the main container to use synced code
+        - name: openhands
+          image: ghcr.io/vibetechnologies/vibeteam-openhands:dev
+          imagePullPolicy: Always
+          env:
+            - name: PYTHONPATH
+              value: "/code/current"
+          volumeMounts:
+            - name: code
+              mountPath: /code
+              readOnly: true
+        # Git-sync sidecar for continuous updates
+        - name: git-sync
+          image: registry.k8s.io/git-sync/git-sync:v4.2.1
+          args:
+            - --repo=https://github.com/VibeTechnologies/VibeTeam.git
+            - --ref=master
+            - --root=/git
+            - --link=current
+            - --period=30s
+          volumeMounts:
+            - name: code
+              mountPath: /git
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          securityContext:
+            runAsUser: 65533
+            runAsGroup: 65533
+      volumes:
+        - name: code
+          emptyDir: {}

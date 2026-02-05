@@ -1,11 +1,16 @@
-# Dev overlay - uses images that pull fresh code from GitHub on restart
+# Dev overlay - uses git-sync sidecar for live code updates
+# Code syncs every 30s from GitHub master branch - no pod restart needed
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - ../../base
 
-# Patch deployments to use dev images
+# Strategic merge patches for dev mode
+patchesStrategicMerge:
+  - openhands-svc-patch.yaml
+
+# JSON patches for other deployments
 patches:
   - target:
       kind: Deployment
