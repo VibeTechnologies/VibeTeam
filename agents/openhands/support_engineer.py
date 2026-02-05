@@ -267,9 +267,15 @@ class OpenHandsSupportEngineer:
 
             # Inject relevant context based on task keywords (unless skipped)
             injected_context = []
+            import logging
+
+            logger = logging.getLogger(__name__)
 
             if not skip_context_injection:
                 task_lower = task.lower()
+                logger.info(
+                    f"Context injection enabled, checking keywords in task: {task_lower[:100]}..."
+                )
 
                 # Sentry context for error-related tasks
                 # Expanded to include infrastructure/incident keywords
@@ -303,7 +309,13 @@ class OpenHandsSupportEngineer:
                     "complaint",  # customer reports often relate to errors
                 ]
                 if any(kw in task_lower for kw in sentry_keywords):
-                    injected_context.append(fetch_sentry_context())
+                    logger.info("Sentry keywords matched, fetching Sentry context...")
+                    sentry_ctx = fetch_sentry_context()
+                    logger.info(f"Sentry context length: {len(sentry_ctx)} chars")
+                    logger.info(f"Sentry context preview: {sentry_ctx[:200]}...")
+                    injected_context.append(sentry_ctx)
+                else:
+                    logger.info("No Sentry keywords matched")
 
                 # Gmail context for email-related tasks
                 if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
@@ -346,6 +358,9 @@ class OpenHandsSupportEngineer:
 
             # Build full task with context
             context_str = "\n\n".join(injected_context) if injected_context else ""
+            logger.info(
+                f"Total injected context length: {len(context_str)} chars from {len(injected_context)} sources"
+            )
             if context_str:
                 # Add very clear visual separators so agents know this is the injected data
                 context_block = f"""
@@ -360,8 +375,10 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 ================================================================================
 """
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n{context_block}\nTask: {task}"
+                logger.info(f"Full task length (with context): {len(full_task)} chars")
             else:
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\nTask: {task}"
+                logger.warning("No context injected - injected_context is empty")
 
             # When tools are disabled, convert numbered lists to bullet points.
             # OpenHands interprets numbered lists as action steps to execute,
