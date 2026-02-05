@@ -267,20 +267,9 @@ class OpenHandsSupportEngineer:
 
             # Inject relevant context based on task keywords (unless skipped)
             injected_context = []
-            import logging
-            import sys
-
-            logger = logging.getLogger(__name__)
-
-            # Also print to stdout for debugging since logging config may vary
-            print(f"[DEBUG] skip_context_injection={skip_context_injection}", file=sys.stderr)
 
             if not skip_context_injection:
                 task_lower = task.lower()
-                print(
-                    f"[DEBUG] Context injection enabled, task preview: {task_lower[:100]}...",
-                    file=sys.stderr,
-                )
 
                 # Sentry context for error-related tasks
                 # Expanded to include infrastructure/incident keywords
@@ -314,18 +303,8 @@ class OpenHandsSupportEngineer:
                     "complaint",  # customer reports often relate to errors
                 ]
                 if any(kw in task_lower for kw in sentry_keywords):
-                    print(
-                        f"[DEBUG] Sentry keywords matched! Fetching Sentry context...",
-                        file=sys.stderr,
-                    )
                     sentry_ctx = fetch_sentry_context()
-                    print(
-                        f"[DEBUG] Sentry context length: {len(sentry_ctx)} chars", file=sys.stderr
-                    )
-                    print(f"[DEBUG] Sentry context preview: {sentry_ctx[:300]}...", file=sys.stderr)
                     injected_context.append(sentry_ctx)
-                else:
-                    print(f"[DEBUG] No Sentry keywords matched in task", file=sys.stderr)
 
                 # Gmail context for email-related tasks
                 if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
@@ -368,10 +347,6 @@ class OpenHandsSupportEngineer:
 
             # Build full task with context
             context_str = "\n\n".join(injected_context) if injected_context else ""
-            print(
-                f"[DEBUG] Total injected context: {len(context_str)} chars from {len(injected_context)} sources",
-                file=sys.stderr,
-            )
             if context_str:
                 # Add very clear visual separators so agents know this is the injected data
                 context_block = f"""
@@ -386,13 +361,8 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 ================================================================================
 """
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n{context_block}\nTask: {task}"
-                print(
-                    f"[DEBUG] Full task length with context: {len(full_task)} chars",
-                    file=sys.stderr,
-                )
             else:
                 full_task = f"{SUPPORT_ENGINEER_CONTEXT}\n\nTask: {task}"
-                print(f"[DEBUG] WARNING: No context injected!", file=sys.stderr)
 
             # When tools are disabled, convert numbered lists to bullet points.
             # OpenHands interprets numbered lists as action steps to execute,
