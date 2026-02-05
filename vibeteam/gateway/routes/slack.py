@@ -252,13 +252,19 @@ A user has requested help via Slack.
 - Thread: {thread_ts or "new thread"}
 
 ### Instructions
-1. Analyze what the user is asking for
-2. Complete the task using available tools
-3. Provide a clear, concise response
-4. If you need another team member's help, mention them with @RoleName
-   (e.g., @ReleaseEngineer, @SoftwareEngineer, @SupportEngineer)
+1. Analyze the user's request carefully
+2. Use your available tools (Sentry, Langfuse, GitHub, etc.) to investigate the issue
+3. Provide a response with SPECIFIC findings - include issue IDs, error counts, timestamps, affected endpoints, etc.
+4. DO NOT use Slack or messaging tools - your response is automatically posted to Slack
+5. DO NOT list available team roles in your response - only @mention ONE specific role if you genuinely need their expertise AFTER completing your own investigation
 
-Please help with this request and provide actionable information.
+### Expected Output Format
+Your response MUST include concrete findings:
+- Summary of what you discovered
+- Specific data (error counts, issue IDs, affected users/endpoints, time ranges)
+- Root cause analysis or hypothesis
+- Recommended next steps
+- ONLY if needed: A single @RoleName handoff with specific context about what they should investigate next
 """
 
     try:
