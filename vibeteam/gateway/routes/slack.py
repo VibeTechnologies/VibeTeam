@@ -251,20 +251,29 @@ A user has requested help via Slack.
 - Channel: {channel}
 - Thread: {thread_ts or "new thread"}
 
-### Instructions
-1. Analyze the user's request carefully
-2. Use your available tools (Sentry, Langfuse, GitHub, etc.) to investigate the issue
-3. Provide a response with SPECIFIC findings - include issue IDs, error counts, timestamps, affected endpoints, etc.
-4. DO NOT use Slack or messaging tools - your response is automatically posted to Slack
-5. DO NOT list available team roles in your response - only @mention ONE specific role if you genuinely need their expertise AFTER completing your own investigation
+### CRITICAL INSTRUCTIONS - READ CAREFULLY
+
+**DATA HAS ALREADY BEEN PROVIDED:** Sentry issues, error data, and other relevant context have been automatically injected above this task. DO NOT try to fetch this data yourself - ANALYZE WHAT IS ALREADY PROVIDED.
+
+**FORBIDDEN ACTIONS (will fail):**
+- DO NOT run Python code to import slack_sdk or use Slack tools
+- DO NOT run kubectl commands (not available in your environment)
+- DO NOT try to read Slack threads or channels programmatically
+- DO NOT list team roles as options - only @mention ONE role if absolutely necessary
+
+**REQUIRED ACTIONS:**
+1. Look at the Sentry issues/errors provided in the context above
+2. Identify which issues relate to the user's complaint (400 errors, gateway issues, etc.)
+3. Report SPECIFIC findings: issue IDs, error counts, affected endpoints, timestamps
+4. Provide analysis of what the data shows
+5. If you need to hand off, @mention ONE specific role with concrete context
 
 ### Expected Output Format
-Your response MUST include concrete findings:
-- Summary of what you discovered
-- Specific data (error counts, issue IDs, affected users/endpoints, time ranges)
-- Root cause analysis or hypothesis
-- Recommended next steps
-- ONLY if needed: A single @RoleName handoff with specific context about what they should investigate next
+Your response MUST reference the actual data provided:
+- "Found Sentry issue [ID]: [error message] - [count] events affecting [users]"
+- "The errors correlate with [specific pattern/timeframe]"
+- "Root cause appears to be: [analysis based on the data]"
+- "Recommended: [specific action] @RoleName [only if genuinely needed]"
 """
 
     try:
