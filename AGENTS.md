@@ -31,16 +31,52 @@ Each agent has specific service ownership and handoff responsibilities. See indi
 | **Status Page** | MarketingManager | ← ReleaseEngineer (incident info) |
 | **Documentation** | MarketingManager | ← SoftwareEngineer (technical review) |
 
+## Production Action Ownership
+
+**CRITICAL: Only ReleaseEngineer can modify the production cluster.**
+
+| Action | Owner | Others |
+|--------|-------|--------|
+| **Rollback deployments** | ReleaseEngineer ONLY | SupportEngineer investigates, hands off |
+| **Restart pods** | ReleaseEngineer ONLY | SupportEngineer identifies need, hands off |
+| **Scale deployments** | ReleaseEngineer ONLY | SupportEngineer detects load, hands off |
+| **kubectl apply** | ReleaseEngineer ONLY | SoftwareEngineer provides manifests |
+| **kubectl get/logs** (read-only) | All agents | Investigation only |
+
+### Investigation vs Action Flow
+
+```
+Customer reports issue
+        ↓
+SupportEngineer INVESTIGATES:
+  - Check Sentry (pre-injected data)
+  - Run kubectl get pods, events, logs (READ-ONLY)
+  - Identify root cause
+        ↓
+If action needed:
+        ↓
+Hand off to ReleaseEngineer with findings
+        ↓
+ReleaseEngineer ACTS:
+  - Rollback: kubectl rollout undo
+  - Restart: kubectl rollout restart
+  - Scale: kubectl scale
+        ↓
+Report action taken
+```
+
 ## Handoff Decision Tree
 
 When an agent receives a request, they should use this decision tree:
 
 ```
 Is this a customer email/complaint?
-  → SupportEngineer handles initially
+  → SupportEngineer investigates (kubectl read-only + Sentry)
+  → If action needed: hand off to ReleaseEngineer
   
 Is this an infrastructure outage (API down, 5xx, health check failing)?
-  → ReleaseEngineer investigates
+  → SupportEngineer investigates first
+  → ReleaseEngineer takes action (rollback/restart)
   
 Is this a code bug or feature request?
   → SoftwareEngineer implements
