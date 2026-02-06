@@ -99,16 +99,54 @@ subjects:
     namespace: vibeteam
 
 ---
-# Optional: Role for namespace-specific write access (e.g., to create debug pods)
-# Currently disabled - agents are read-only
-# apiVersion: rbac.authorization.k8s.io/v1
-# kind: Role
-# metadata:
-#   name: vibeteam-agent-debug
-#   namespace: vibeteam
-# rules:
-#   - apiGroups: [""]
-#     resources:
-#       - pods
-#       - pods/exec
-#     verbs: ["create", "delete"]
+# Role for namespace-specific write access for incident response
+# Allows agents to restart deployments, scale, and rollback
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vibeteam-agent-ops
+  namespace: vibeteam
+  labels:
+    app.kubernetes.io/name: vibeteam
+    app.kubernetes.io/component: agent
+rules:
+  # Deployment operations - restart, scale, rollback
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - deployments/scale
+    verbs: ["patch", "update"]
+  # ReplicaSet operations - for rollback
+  - apiGroups: ["apps"]
+    resources:
+      - replicasets
+    verbs: ["get", "list"]
+  # Pod operations - delete for restart
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs: ["delete"]
+  # ConfigMap updates
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs: ["patch", "update"]
+
+---
+# Bind the ops Role to the ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vibeteam-agent-ops
+  namespace: vibeteam
+  labels:
+    app.kubernetes.io/name: vibeteam
+    app.kubernetes.io/component: agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vibeteam-agent-ops
+subjects:
+  - kind: ServiceAccount
+    name: vibeteam-agent
+    namespace: vibeteam
