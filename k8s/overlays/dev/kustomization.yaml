@@ -9,6 +9,7 @@ resources:
 # Strategic merge patches for dev mode
 patchesStrategicMerge:
   - openhands-svc-patch.yaml
+  - gateway-patch.yaml
 
 # JSON patches for other deployments
 patches:
