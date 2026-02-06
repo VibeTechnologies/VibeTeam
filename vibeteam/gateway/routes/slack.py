@@ -253,33 +253,33 @@ A user has requested help via Slack.
 
 ### CRITICAL INSTRUCTIONS - READ CAREFULLY
 
-**DATA HAS ALREADY BEEN PROVIDED:** Sentry issues, error data, and other relevant context have been automatically injected above this task. Use this as a starting point for your investigation.
+**STEP 1 - Review Pre-Injected Data:**
+Sentry/monitoring data has been injected above. Use this as INITIAL context.
+
+**STEP 2 - RUN kubectl Commands (MANDATORY):**
+You MUST run kubectl commands to complete your investigation. Example:
+```bash
+kubectl get pods -n vibeteam
+kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -20
+kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
+```
+If you skip kubectl, your investigation is INCOMPLETE.
 
 **FORBIDDEN ACTIONS (will fail):**
 - DO NOT run Python code to import slack_sdk or use Slack tools
 - DO NOT try to read Slack threads or channels programmatically
-- DO NOT list team roles as options - only @mention ONE role if absolutely necessary
+- DO NOT list team roles - only @mention ONE role if hand off needed
 
-**AVAILABLE TOOLS:**
-- kubectl commands ARE available for infrastructure investigation (namespace: vibeteam)
-- Run kubectl get pods, events, logs for investigation
-- SupportEngineer: READ-ONLY kubectl (get, describe, logs)
-- ReleaseEngineer: Can TAKE ACTIONS (rollout undo, rollout restart, scale)
+**ROLE-SPECIFIC kubectl ACCESS:**
+- SupportEngineer: READ-ONLY (get, describe, logs) - INVESTIGATE only
+- ReleaseEngineer: WRITE ACCESS (rollout undo, rollout restart, scale) - TAKE ACTION
 
-**REQUIRED ACTIONS:**
-1. Analyze the Sentry issues/errors provided in the context above
-2. Run kubectl commands to investigate infrastructure state (pods, events, logs)
-3. Report SPECIFIC findings: issue IDs, error counts, pod status, kubectl output
-4. Provide analysis correlating Sentry data WITH infrastructure state
-5. If you need to hand off, @mention ONE specific role with concrete findings from your investigation
-
-### Expected Output Format
-Your response MUST include both Sentry data AND infrastructure findings:
-- "Found Sentry issue [ID]: [error message] - [count] events affecting [users]"
-- "kubectl get pods shows: [pod status findings]"
-- "kubectl logs shows: [relevant log patterns]"
-- "Root cause appears to be: [analysis based on BOTH data sources]"
-- "Recommended: [specific action] @RoleName [only if genuinely needed]"
+**REQUIRED OUTPUT:**
+Your response MUST include:
+1. Sentry findings: "Found Sentry issue [ID]: [message] - [count] events"
+2. kubectl findings: "kubectl get pods shows: [status]" / "kubectl logs shows: [patterns]"
+3. Root cause: Analysis correlating BOTH Sentry AND kubectl findings
+4. Action: If needed, @mention ReleaseEngineer with your kubectl findings
 """
 
     try:
