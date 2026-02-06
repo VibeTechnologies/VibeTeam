@@ -232,12 +232,28 @@ async def _run_agent_and_respond(
     user_id: str,
     max_handoff_depth: int = 3,
     current_depth: int = 0,
+    previous_roles: list[str] | None = None,
 ) -> None:
     """Run a specific agent and post response to Slack.
 
     Supports synchronous handoffs: if the agent mentions /RoleName in its response,
     that agent is immediately invoked (up to max_handoff_depth to prevent infinite loops).
+    
+    Args:
+        previous_roles: List of roles that have already responded in this chain.
+                       Used to prevent ping-pong handoffs (A -> B -> A).
     """
+    # Track which roles have already been involved
+    if previous_roles is None:
+        previous_roles = []
+    previous_roles = previous_roles + [role]  # Add current role to the chain
+    
+    # Build the "already involved" context for the agent
+    already_involved_text = ""
+    if len(previous_roles) > 1:
+        prev_names = [ROLE_DISPLAY_NAMES.get(r, r) for r in previous_roles[:-1]]
+        already_involved_text = f"\n- **Already responded:** {', '.join(prev_names)} (DO NOT hand back to them)"
+    
     # Build task for the agent
     task = f"""## Slack Request
 
@@ -249,7 +265,7 @@ A user has requested help via Slack.
 ### Context
 - User ID: {user_id}
 - Channel: {channel}
-- Thread: {thread_ts or "new thread"}
+- Thread: {thread_ts or "new thread"}{already_involved_text}
 
 ### CRITICAL INSTRUCTIONS - READ CAREFULLY
 
@@ -311,6 +327,14 @@ Your response MUST reference the actual data provided:
                 for handoff_role in handoff_roles:
                     if handoff_role == role:
                         # Skip self-handoffs
+                        logger.debug(f"Skipping self-handoff to {handoff_role}")
+                        continue
+                    if handoff_role in previous_roles:
+                        # Skip ping-pong handoffs (agent A -> B -> A)
+                        logger.warning(
+                            f"Skipping ping-pong handoff to {handoff_role} "
+                            f"(already in chain: {previous_roles})"
+                        )
                         continue
                     handoff_display = ROLE_DISPLAY_NAMES.get(handoff_role, handoff_role)
                     # Pass the original message + context about handoff
@@ -328,6 +352,7 @@ Your response MUST reference the actual data provided:
                         user_id=user_id,
                         max_handoff_depth=max_handoff_depth,
                         current_depth=current_depth + 1,
+                        previous_roles=previous_roles,
                     )
             elif handoff_roles:
                 logger.warning(
