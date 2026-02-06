@@ -274,12 +274,20 @@ If you skip kubectl, your investigation is INCOMPLETE.
 - SupportEngineer: READ-ONLY (get, describe, logs) - INVESTIGATE only
 - ReleaseEngineer: WRITE ACCESS (rollout undo, rollout restart, scale) - TAKE ACTION
 
+**HANDOFF DECISION LOGIC:**
+- If customer reports issue started AFTER A DEPLOYMENT → Recommend ROLLBACK to @ReleaseEngineer
+- If issue is clearly a CODE BUG (logic error, not deployment-related) → @SoftwareEngineer
+- When in doubt about recent deployments, PREFER ROLLBACK (safer for customers)
+
 **REQUIRED OUTPUT:**
 Your response MUST include:
 1. Sentry findings: "Found Sentry issue [ID]: [message] - [count] events"
 2. kubectl findings: "kubectl get pods shows: [status]" / "kubectl logs shows: [patterns]"
 3. Root cause: Analysis correlating BOTH Sentry AND kubectl findings
-4. Action: If needed, @mention ReleaseEngineer with your kubectl findings
+4. **RECOMMENDATION** (REQUIRED): One of:
+   - "Recommend ROLLBACK" → @ReleaseEngineer please rollback the deployment to restore service
+   - "Recommend CODE FIX" → @SoftwareEngineer please investigate [specific file/code]
+   - "No action needed" → Explain why issue is resolved or non-impactful
 """
 
     try:
