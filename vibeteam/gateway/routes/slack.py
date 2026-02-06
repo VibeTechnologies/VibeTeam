@@ -314,10 +314,12 @@ Your response MUST reference the actual data provided:
                         continue
                     handoff_display = ROLE_DISPLAY_NAMES.get(handoff_role, handoff_role)
                     # Pass the original message + context about handoff
+                    # Include enough of the response to capture actionable requests at the end
+                    # (previous 500 chars was truncating important handoff instructions)
                     handoff_message = (
                         f"[Handoff from {display_name}]\n\n"
                         f"Original request: {user_message}\n\n"
-                        f"Previous response: {response[:500]}..."
+                        f"Previous response: {response[:1500]}{'...' if len(response) > 1500 else ''}"
                     )
                     await _run_agent_and_respond(
                         role=handoff_role,
