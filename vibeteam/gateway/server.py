@@ -193,7 +193,7 @@ async def call_agent_service(
             response = await client.post(
                 f"{service_url}{endpoint}",
                 json=payload,
-                timeout=120.0,
+                timeout=600.0,  # 10 min for agents running kubectl commands
             )
             response.raise_for_status()
             return response.json()
