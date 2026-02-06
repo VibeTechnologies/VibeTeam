@@ -1,11 +1,11 @@
 # VibeTeam Agents Docker Image
-# Multi-stage build for smaller image size
+# Pulls latest code from git on startup for rapid iteration
 
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install build dependencies
+# Install dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -22,54 +22,29 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 # Install uv for dependency management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy package files
-COPY pyproject.toml uv.lock README.md ./
-COPY vibeteam/ ./vibeteam/
-COPY agents/ ./agents/
-COPY scripts/ ./scripts/
-COPY docs/ ./docs/
+# Clone repository (will be updated on startup)
+ARG GIT_REPO_URL=https://github.com/VibeTechnologies/VibeTeam.git
+ARG GIT_BRANCH=master
+RUN git clone --depth 1 --branch ${GIT_BRANCH} ${GIT_REPO_URL} /app/repo
+
+WORKDIR /app/repo
 
 # Install dependencies with uv
 RUN uv sync --frozen --no-dev
 
-# Production stage
-FROM python:3.12-slim
-
-WORKDIR /app
-
-# Install runtime dependencies (git for agent operations, curl for health checks)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy GitHub CLI from builder
-COPY --from=builder /usr/bin/gh /usr/bin/gh
-COPY --from=builder /usr/share/keyrings/githubcli-archive-keyring.gpg /usr/share/keyrings/
-
-# Copy uv and virtual environment from builder
-COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
-COPY --from=builder /app/.venv /app/.venv
-
-# Copy application code
-COPY --from=builder /app/vibeteam ./vibeteam
-COPY --from=builder /app/agents ./agents
-COPY --from=builder /app/scripts ./scripts
-COPY --from=builder /app/docs ./docs
-COPY --from=builder /app/pyproject.toml ./
+# Copy entrypoint script
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Set environment
-ENV PATH="/app/.venv/bin:$PATH"
-ENV PYTHONPATH="/app"
-
-# Create non-root user
-RUN useradd -m -u 1000 vibeteam
-USER vibeteam
+ENV PATH="/app/repo/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/repo"
+ENV GIT_REPO_URL=${GIT_REPO_URL}
+ENV GIT_BRANCH=${GIT_BRANCH}
 
 # Expose gateway port
 EXPOSE 8080
 
-# Default command runs the gateway server
-# Override with different commands for CLI usage or agent scripts
-ENTRYPOINT ["python", "-m", "vibeteam.gateway.server"]
-CMD []
+# Entrypoint pulls latest code, then runs command
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python", "-m", "vibeteam.gateway.server"]
