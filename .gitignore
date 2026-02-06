@@ -67,3 +67,4 @@ k8s/overlays/*/github-app-secret.env
 tmp/
 .kube/
 .deepeval/
+results

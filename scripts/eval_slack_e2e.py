@@ -194,8 +194,8 @@ class AzureOpenAIModel(DeepEvalBaseLLM if DEEPEVAL_AVAILABLE else object):
         self,
         api_key: str,
         api_base: str,
-        api_version: str = "2024-12-01-preview",
-        model: str = "gpt-5-2",
+        api_version: str = "2024-08-01-preview",
+        model: str = "gpt-5.2",
     ):
         self.api_key = api_key
         self.api_base = api_base.rstrip("/")
@@ -596,7 +596,7 @@ async def run_evaluation(
                 model = AzureOpenAIModel(
                     api_key=api_key,
                     api_base=api_base,
-                    model=os.environ.get("BENCHMARK_JUDGE_MODEL", "gpt-5-2"),
+                    model=os.environ.get("BENCHMARK_JUDGE_MODEL", os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2")),
                 )
 
                 transcript = build_transcript(conversation)
