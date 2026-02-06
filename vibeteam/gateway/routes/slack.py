@@ -253,26 +253,32 @@ A user has requested help via Slack.
 
 ### CRITICAL INSTRUCTIONS - READ CAREFULLY
 
-**DATA HAS ALREADY BEEN PROVIDED:** Sentry issues, error data, and other relevant context have been automatically injected above this task. DO NOT try to fetch this data yourself - ANALYZE WHAT IS ALREADY PROVIDED.
+**DATA HAS ALREADY BEEN PROVIDED:** Sentry issues, error data, and other relevant context have been automatically injected above this task. Use this as a starting point for your investigation.
 
 **FORBIDDEN ACTIONS (will fail):**
 - DO NOT run Python code to import slack_sdk or use Slack tools
-- DO NOT run kubectl commands (not available in your environment)
 - DO NOT try to read Slack threads or channels programmatically
 - DO NOT list team roles as options - only @mention ONE role if absolutely necessary
 
+**AVAILABLE TOOLS:**
+- kubectl commands ARE available for infrastructure investigation (namespace: vibeteam)
+- Run kubectl get pods, events, logs for investigation
+- SupportEngineer: READ-ONLY kubectl (get, describe, logs)
+- ReleaseEngineer: Can TAKE ACTIONS (rollout undo, rollout restart, scale)
+
 **REQUIRED ACTIONS:**
-1. Look at the Sentry issues/errors provided in the context above
-2. Identify which issues relate to the user's complaint (400 errors, gateway issues, etc.)
-3. Report SPECIFIC findings: issue IDs, error counts, affected endpoints, timestamps
-4. Provide analysis of what the data shows
-5. If you need to hand off, @mention ONE specific role with concrete context
+1. Analyze the Sentry issues/errors provided in the context above
+2. Run kubectl commands to investigate infrastructure state (pods, events, logs)
+3. Report SPECIFIC findings: issue IDs, error counts, pod status, kubectl output
+4. Provide analysis correlating Sentry data WITH infrastructure state
+5. If you need to hand off, @mention ONE specific role with concrete findings from your investigation
 
 ### Expected Output Format
-Your response MUST reference the actual data provided:
+Your response MUST include both Sentry data AND infrastructure findings:
 - "Found Sentry issue [ID]: [error message] - [count] events affecting [users]"
-- "The errors correlate with [specific pattern/timeframe]"
-- "Root cause appears to be: [analysis based on the data]"
+- "kubectl get pods shows: [pod status findings]"
+- "kubectl logs shows: [relevant log patterns]"
+- "Root cause appears to be: [analysis based on BOTH data sources]"
 - "Recommended: [specific action] @RoleName [only if genuinely needed]"
 """
 
