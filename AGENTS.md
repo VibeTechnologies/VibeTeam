@@ -125,14 +125,91 @@ VibeTeam/
 | `HealthConnector` | Endpoint monitoring |
 | `GmailConnector` | Email processing |
 
+## Deployment
+
+### Quick Deploy (Recommended)
+
+Deploy using kustomize overlays:
+
+```bash
+# Dev environment (with git-sync for hot reload)
+kubectl apply -k k8s/overlays/dev
+
+# Production environment
+kubectl apply -k k8s/overlays/prod
+```
+
+### Kustomize Structure
+
+```
+k8s/
+  base/                    # Base manifests
+    kustomization.yaml     # Resources: RBAC, services, deployments
+    agent-rbac.yaml        # ServiceAccount + RBAC for kubectl access
+    openhands-svc.yaml     # OpenHands agent deployment
+    vibeteam-gateway.yaml  # Gateway routing webhooks to agents
+    ...
+  overlays/
+    dev/                   # Dev overlay (git-sync sidecar)
+      kustomization.yaml
+      openhands-svc-patch.yaml
+    prod/                  # Production overlay
+```
+
+### Build & Push Docker Images
+
+Images are built automatically by GitHub Actions on push to master.
+Manual build (requires Docker):
+
+```bash
+# Build OpenHands image
+docker build -f agents/openhands/Dockerfile -t ghcr.io/vibetechnologies/vibeteam-openhands:latest .
+docker push ghcr.io/vibetechnologies/vibeteam-openhands:latest
+```
+
+### Restart Deployments
+
+After config changes, restart to pick up new values:
+
+```bash
+kubectl rollout restart deployment/openhands-svc -n vibeteam
+kubectl rollout status deployment/openhands-svc -n vibeteam --timeout=120s
+```
+
+### Required Kubernetes Secrets
+
+Create or update the `vibeteam-secrets` secret:
+
+```bash
+kubectl create secret generic vibeteam-secrets -n vibeteam \
+  --from-literal=AZURE_API_KEY="..." \
+  --from-literal=AZURE_API_BASE="https://YOUR-RESOURCE.openai.azure.com/" \
+  --from-literal=AZURE_OPENAI_DEPLOYMENT="gpt-5.2" \
+  --from-literal=GITHUB_TOKEN="..." \
+  --from-literal=SENTRY_AUTH_TOKEN="..." \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/deploy-dev.sh` | Build dev images and deploy to cluster |
+| `scripts/eval_slack_e2e.py` | End-to-end evaluation of agent responses |
+
 ## Environment Variables
 
-Required in `.env`:
+Required in `.env` (for local development and evaluation):
 ```
-# LLM
-AZURE_API_KEY=
-AZURE_API_BASE=
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com/
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_DEPLOYMENT=gpt-5.2
 AZURE_API_VERSION=2024-08-01-preview
+
+# Legacy names (also supported)
+AZURE_API_KEY=${AZURE_OPENAI_API_KEY}
+AZURE_API_BASE=${AZURE_OPENAI_ENDPOINT}
 
 # GitHub
 GITHUB_TOKEN=
@@ -154,11 +231,31 @@ DATABASE_URL=postgresql://...
 SENTRY_AUTH_TOKEN=
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
+
+# Evaluation
+BENCHMARK_JUDGE_MODEL=gpt-5.2  # Override judge model for evals
 ```
 
 ## Model Configuration
 
-VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-5-2` (hyphen, not dot).
+VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-5.2` (with dot).
+
+**Current deployment:** `gpt-5.2` on `vibebrowser-dev.openai.azure.com`
+
+## kubectl Access for Agents
+
+Agents have kubectl installed and RBAC configured for cluster access:
+
+- **ServiceAccount:** `vibeteam-agent`
+- **ClusterRole:** `vibeteam-agent-readonly` (read-only access to all resources)
+- **Role:** `vibeteam-agent-ops` (write access in `vibeteam` namespace for incident response)
+
+Agents can run kubectl commands to investigate infrastructure issues:
+```bash
+kubectl get pods -n vibeteam
+kubectl logs deployment/openhands-svc -n vibeteam --tail=50
+kubectl describe pod <pod-name> -n vibeteam
+```
 
 ## Customer Requests
 
