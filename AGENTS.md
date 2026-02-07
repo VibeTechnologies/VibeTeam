@@ -111,6 +111,100 @@ Do not consider infrastructure or agent code changes complete based solely on:
 
 The evaluation script is the source of truth for agent functionality.
 
+## Analyzing Evaluation Tests
+
+### Running Evaluations
+
+```bash
+# Unset any conflicting shell env vars first
+unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY AZURE_OPENAI_DEPLOYMENT
+
+# Run evaluation (uses .env file for credentials)
+uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
+
+# Available scenarios
+uv run python scripts/eval_slack_e2e.py --list-scenarios
+```
+
+### Pre-Flight Checks
+
+Before running evaluations, ensure infrastructure stability:
+
+```bash
+# 1. Check pods are running
+kubectl get pods -n vibeteam
+
+# 2. Pause rollouts to prevent mid-eval restarts (git-sync can trigger rolling updates)
+kubectl rollout pause deployment/vibeteam-gateway -n vibeteam
+kubectl rollout pause deployment/openhands-svc -n vibeteam
+
+# 3. Verify Azure credentials in .env match the deployment
+grep "AZURE_OPENAI" .env
+```
+
+### Understanding Evaluation Output
+
+The eval script produces:
+1. **Console output** - Real-time progress showing wait times and message detection
+2. **Report file** - Detailed markdown in `results/eval_reports/eval_<scenario>_<timestamp>.md`
+
+Key console indicators:
+- `Gateway accepted: routing to ['support_engineer']` - Request reached gateway
+- `New messages detected: N` - Agent responded
+- `Handoff detected in response!` - Agent mentioned another role (e.g., @ReleaseEngineer)
+- `Still waiting for handoff response...` - Waiting for secondary agent
+
+### Evaluation Metrics
+
+| Metric | Threshold | What It Measures |
+|--------|-----------|------------------|
+| **InvestigationQuality** | 0.6 | Did agent use internal tools (Sentry, kubectl) effectively? |
+| **TaskCompletion** | 0.6 | Was the issue meaningfully progressed toward resolution? |
+
+**Scoring guide for TaskCompletion:**
+- **0.0-0.2**: Nothing investigated, circular handoffs
+- **0.2-0.4**: Some diagnostic info but no progress
+- **0.4-0.6**: Used tools but inconclusive findings
+- **0.6-0.8**: Thorough investigation with actionable recommendation/handoff
+- **0.8-1.0**: Complete investigation with concrete action taken
+
+### Common Failure Modes
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `No agent response received` | Gateway restarted mid-request | Pause rollouts before eval |
+| `401 PermissionDenied` on eval | Wrong Azure credentials in shell | `unset AZURE_OPENAI_*` before running |
+| `Waiting...` forever | Agent service not processing | Check `kubectl logs deployment/openhands-svc` |
+| Score below threshold | Agent didn't use kubectl/Sentry | Check task injection in `slack.py` |
+| Handoff never completes | Gateway doesn't detect @mention | Check `parse_role_mentions()` in router |
+
+### Debugging Failed Evaluations
+
+1. **Read the report file** - Contains full conversation transcript
+   ```bash
+   cat results/eval_reports/eval_support_400_errors_*.md | tail -100
+   ```
+
+2. **Check gateway logs** for request processing:
+   ```bash
+   kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100 | grep -v "GET /health"
+   ```
+
+3. **Check agent logs** for tool execution:
+   ```bash
+   kubectl logs deployment/openhands-svc -n vibeteam --tail=200 | grep -v "GET /health"
+   ```
+
+4. **Verify the agent received correct instructions** - Check task injection in `vibeteam/gateway/routes/slack.py`
+
+### After Successful Evaluation
+
+Resume paused rollouts:
+```bash
+kubectl rollout resume deployment/vibeteam-gateway -n vibeteam
+kubectl rollout resume deployment/openhands-svc -n vibeteam
+```
+
 ## System Readiness
 
 Before running VibeTeam agents or after infrastructure changes, verify system readiness by following the playbook:
@@ -220,7 +314,7 @@ Create or update the `vibeteam-secrets` secret:
 kubectl create secret generic vibeteam-secrets -n vibeteam \
   --from-literal=AZURE_API_KEY="..." \
   --from-literal=AZURE_API_BASE="https://YOUR-RESOURCE.openai.azure.com/" \
-  --from-literal=AZURE_OPENAI_DEPLOYMENT="gpt-5.2" \
+  --from-literal=AZURE_OPENAI_DEPLOYMENT="gpt-4.1-mini" \
   --from-literal=GITHUB_TOKEN="..." \
   --from-literal=SENTRY_AUTH_TOKEN="..." \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -240,7 +334,7 @@ Required in `.env` (for local development and evaluation):
 # Azure OpenAI
 AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com/
 AZURE_OPENAI_API_KEY=...
-AZURE_OPENAI_DEPLOYMENT=gpt-5.2
+AZURE_OPENAI_DEPLOYMENT=gpt-4.1-mini
 AZURE_API_VERSION=2024-08-01-preview
 
 # Legacy names (also supported)
@@ -269,14 +363,14 @@ LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
 
 # Evaluation
-BENCHMARK_JUDGE_MODEL=gpt-5.2  # Override judge model for evals
+BENCHMARK_JUDGE_MODEL=gpt-4.1-mini  # Override judge model for evals
 ```
 
 ## Model Configuration
 
-VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-5.2` (with dot).
+VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-4.1-mini` (with dot).
 
-**Current deployment:** `gpt-5.2` on `vibebrowser-dev.openai.azure.com`
+**Current deployment:** `gpt-4.1-mini` on `vibebrowser-dev.openai.azure.com`
 
 ## kubectl Access for Agents
 

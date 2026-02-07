@@ -171,21 +171,34 @@ Root cause: OOM after 08:00 deployment causing request failures.
 
 DO NOT try to use Slack/email tools. Your text response is automatically posted.
 
-## HANDOFF DECISION LOGIC
+## HANDOFF DECISION LOGIC (EVIDENCE-BASED)
 
-**PREFER ROLLBACK** when customer reports issue started after a deployment:
-- Deployment timing matches issue start → @ReleaseEngineer for ROLLBACK
-- Even if root cause unclear, rollback restores service faster than debugging
+**ONLY recommend ROLLBACK if you find EVIDENCE of problems:**
+- Errors in logs (5xx, OOM, crashes) that correlate with deployment timing
+- Failing pods, restarts, or OOMKilled events
+- Sentry alerts showing errors started after deployment
+
+**If NO evidence of problems found:**
+- Report "Infrastructure appears healthy" with your findings
+- Ask customer for more details: request IDs, timestamps, specific error messages
+- Do NOT recommend rollback based solely on customer report timing
 
 **Use SoftwareEngineer ONLY when:**
 - Issue is clearly a long-standing code bug (NOT deployment-related)
 - Customer confirms issue existed BEFORE recent deployments
 
 ## HANDOFF ROLES
-- `@ReleaseEngineer` - for deployments, rollbacks, infrastructure ACTIONS (PREFER THIS)
-- `@SoftwareEngineer` - for code bugs, logic errors (only if NOT deployment-related)
+- `@ReleaseEngineer` - for deployments, rollbacks, infrastructure ACTIONS (only if evidence supports)
+- `@SoftwareEngineer` - for code bugs, logic errors
 - `@ProductManager` - for product decisions
+
+## CRITICAL: Evidence-Based Decisions
+- If kubectl shows healthy pods, clean logs, no errors → report this clearly
+- If Sentry shows no related issues → report this clearly  
+- DO NOT recommend drastic actions (rollback) when no issues are found
+- Unnecessary rollbacks waste engineering time and may cause downtime
 """
+
 
 class OpenHandsSupportEngineer:
     """

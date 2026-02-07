@@ -89,22 +89,39 @@ SCENARIOS = {
                 "CRITICAL: If agent just says 'tools failed, someone else please help' repeatedly, "
                 "score should be 0.2 or lower. External curl/HTTP checks alone are worth at most 0.3."
             ),
-            "TaskCompletion": (
-                "Was the customer's issue ACTUALLY RESOLVED or significantly progressed? "
-                "The user reported 400 errors affecting 500 users - was this fixed or meaningfully addressed? "
+            "EvidenceBasedDecision": (
+                "Did the agent make EVIDENCE-BASED decisions, not speculative ones? "
+                "CRITICAL: If investigation shows NO errors, NO issues, healthy pods, clean logs - "
+                "the agent should NOT recommend drastic actions like rollback. "
                 "REQUIRED FOR HIGH SCORE: "
-                "(1) The actual 400 errors were identified (not 401s or 404s - those are different); "
-                "(2) Root cause was determined with evidence; "
-                "(3) Either: issue was fixed, OR rollback was initiated, OR specific fix was implemented; "
-                "(4) Customer would see improvement after this interaction. "
+                "(1) Recommendations must be supported by actual findings from tools; "
+                "(2) If no evidence of problems found, agent should report 'infrastructure healthy, no action needed'; "
+                "(3) If recommending rollback, there MUST be evidence of issues (errors in logs, failing pods, Sentry alerts); "
+                "(4) Agent should ask customer for more details (request IDs, timestamps) if no issues found. "
                 "SCORING: "
-                "Score 0.0-0.2: Nothing resolved, just circular handoffs or 'please help' messages. "
-                "Score 0.2-0.4: Some diagnostic info gathered but no progress toward resolution. "
-                "Score 0.4-0.6: Root cause hypothesized but not confirmed, no action taken. "
-                "Score 0.6-0.8: Root cause confirmed, actionable fix identified but not implemented. "
-                "Score 0.8-1.0: Issue resolved or concrete fix deployed/initiated. "
-                "CRITICAL: Multiple agents repeating the same failed actions is a FAILURE (score ≤0.2). "
-                "Asking others to 'collect samples' or 'check logs' without doing it yourself is NOT resolution."
+                "Score 0.0-0.3: Recommended rollback/drastic action with NO evidence of problems. "
+                "Score 0.3-0.5: Made speculative recommendations not supported by findings. "
+                "Score 0.5-0.7: Recommendations loosely aligned with findings but some speculation. "
+                "Score 0.7-0.9: Recommendations clearly tied to evidence found. "
+                "Score 0.9-1.0: Perfect alignment - actions match evidence, no unnecessary escalation. "
+                "CRITICAL PENALTY: If agent found 'no errors, pods healthy, logs clean' but still recommended "
+                "rollback, score should be 0.3 or lower - this is reckless escalation."
+            ),
+            "HandoffCompletion": (
+                "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
+                "(2) The target agent must have taken meaningful action (not just acknowledged); "
+                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "SCORING: "
+                "Score 0.0-0.3: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.3-0.5: Handoff made, target acknowledged but took no action. "
+                "Score 0.5-0.7: Handoff made, target responded with partial action. "
+                "Score 0.7-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
+                "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
+                "If only one agent responded and they made a handoff that was never picked up, score 0.3 max."
             ),
         },
         "threshold": 0.60,
@@ -165,6 +182,50 @@ SCENARIOS = {
                 "Is the deployment DONE and verified? "
                 "REQUIRED: Staging environment running the new code, health checks passing. "
                 "Score 0.0-0.3 if deployment was not completed for any reason."
+            ),
+        },
+        "threshold": 0.60,
+    },
+    "stripe_webhook_failure": {
+        "name": "Support Engineer - Stripe Webhook Failure Investigation",
+        "message": (
+            "@SupportEngineer we got an email from Stripe about webhook failures. "
+            "The failing webhook endpoint is: https://api.vibebrowser.app/stripe/webhook. "
+            "Stripe has attempted 13 failed requests since January 29, 2026. "
+            "Error: 'other errors while sending the webhook event' - they need HTTP 200-299. "
+            "Stripe will stop sending events by February 7, 2026 if not fixed. "
+            "This affects subscriptions and checkout fulfillment. Please investigate urgently."
+        ),
+        "expected_agent": "support_engineer",
+        "evaluation_criteria": {
+            "InvestigationQuality": (
+                "Did the SupportEngineer ACTUALLY investigate the Stripe webhook failure? "
+                "This is a STRICT evaluation - attempting tools that fail is NOT success. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Check if the endpoint https://api.vibebrowser.app/stripe/webhook is reachable; "
+                "(2) Use kubectl to check pod status, logs, and events for the API service; "
+                "(3) Check Sentry for any errors related to /stripe/webhook endpoint; "
+                "(4) Identify the ROOT CAUSE (e.g., pod not running, service misconfigured, code error). "
+                "SCORING: "
+                "Score 0.0-0.2: No investigation or all tools failed with no useful findings. "
+                "Score 0.2-0.4: Some external checks but no internal tool usage (kubectl/Sentry). "
+                "Score 0.4-0.6: Used internal tools but findings were inconclusive. "
+                "Score 0.6-0.8: Identified the issue (e.g., endpoint returns error, pod issue). "
+                "Score 0.8-1.0: Full investigation with root cause and actionable recommendation."
+            ),
+            "TaskCompletion": (
+                "Was the Stripe webhook issue meaningfully investigated and progressed toward resolution? "
+                "This is URGENT - Stripe will disable webhooks if not fixed. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) The agent used internal tools (kubectl, Sentry, curl) to investigate; "
+                "(2) A clear diagnosis was provided based on evidence; "
+                "(3) Either: fix was applied, OR specific handoff to appropriate team with findings. "
+                "SCORING: "
+                "Score 0.0-0.2: Nothing investigated, just circular handoffs. "
+                "Score 0.2-0.4: Some diagnostic info but no actionable outcome. "
+                "Score 0.4-0.6: Investigation done but no clear next steps provided. "
+                "Score 0.6-0.8: Thorough investigation with handoff to ReleaseEngineer/SoftwareEngineer. "
+                "Score 0.8-1.0: Root cause identified and concrete action taken or specific fix recommended."
             ),
         },
         "threshold": 0.60,
@@ -412,7 +473,7 @@ def generate_eval_report(
 async def run_evaluation(
     scenario_name: str,
     channel: str | None = None,
-    wait_timeout: int = 180,
+    wait_timeout: int = 600,
     poll_interval: int = 5,
 ) -> dict[str, Any]:
     """
@@ -495,7 +556,9 @@ async def run_evaluation(
     start_time = time.time()
     last_message_count = 1  # We posted 1 message
     handoff_wait_time = 30  # Seconds to wait after detecting handoff mention
-    stable_time = 120  # Seconds with no new messages = conversation complete (increased for multi-agent)
+    stable_time = (
+        120  # Seconds with no new messages = conversation complete (increased for multi-agent)
+    )
     last_new_message_time = 0.0
 
     # Pattern to detect @/RoleName mentions (handoffs)
@@ -596,7 +659,10 @@ async def run_evaluation(
                 model = AzureOpenAIModel(
                     api_key=api_key,
                     api_base=api_base,
-                    model=os.environ.get("BENCHMARK_JUDGE_MODEL", os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2")),
+                    model=os.environ.get(
+                        "BENCHMARK_JUDGE_MODEL",
+                        os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2"),
+                    ),
                 )
 
                 transcript = build_transcript(conversation)
@@ -728,8 +794,8 @@ Examples:
     parser.add_argument(
         "--timeout",
         type=int,
-        default=180,
-        help="Timeout in seconds waiting for agent response (default: 180)",
+        default=600,
+        help="Timeout in seconds waiting for agent response (default: 600)",
     )
     parser.add_argument(
         "--poll-interval",
