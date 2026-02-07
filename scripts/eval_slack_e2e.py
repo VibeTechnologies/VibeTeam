@@ -495,7 +495,7 @@ async def run_evaluation(
     start_time = time.time()
     last_message_count = 1  # We posted 1 message
     handoff_wait_time = 30  # Seconds to wait after detecting handoff mention
-    stable_time = 10  # Seconds with no new messages = conversation complete
+    stable_time = 120  # Seconds with no new messages = conversation complete (increased for multi-agent)
     last_new_message_time = 0.0
 
     # Pattern to detect @/RoleName mentions (handoffs)

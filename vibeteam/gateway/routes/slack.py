@@ -317,6 +317,7 @@ Your response MUST include:
             # Check for handoffs in the response and execute them synchronously
             message_router = get_message_router()
             handoff_roles = message_router.parse_role_mentions(response)
+            logger.info(f"Checking for handoffs in response from {role}: found {handoff_roles}")
             if handoff_roles and current_depth < max_handoff_depth:
                 logger.info(
                     f"Detected handoff to: {handoff_roles} (depth {current_depth + 1}/{max_handoff_depth})"
@@ -325,7 +326,9 @@ Your response MUST include:
                 for handoff_role in handoff_roles:
                     if handoff_role == role:
                         # Skip self-handoffs
+                        logger.info(f"Skipping self-handoff to {role}")
                         continue
+                    logger.info(f"Executing handoff to {handoff_role}...")
                     handoff_display = ROLE_DISPLAY_NAMES.get(handoff_role, handoff_role)
                     # Pass the original message + full context about handoff
                     handoff_message = (
