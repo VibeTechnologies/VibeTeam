@@ -232,18 +232,12 @@ async def _run_agent_and_respond(
     user_id: str,
     max_handoff_depth: int = 3,
     current_depth: int = 0,
-    previous_agents: list[str] | None = None,
 ) -> None:
     """Run a specific agent and post response to Slack.
 
     Supports synchronous handoffs: if the agent mentions /RoleName in its response,
     that agent is immediately invoked (up to max_handoff_depth to prevent infinite loops).
-    Circular handoffs (back to a previous agent) are blocked.
     """
-    # Track which agents have been involved
-    if previous_agents is None:
-        previous_agents = []
-    previous_agents = previous_agents + [role]
     # Build task for the agent
     task = f"""## Slack Request
 
@@ -336,33 +330,13 @@ Your response MUST include:
                         # Skip self-handoffs
                         logger.info(f"Skipping self-handoff to {role}")
                         continue
-                    if handoff_role in previous_agents:
-                        # Block circular handoffs - don't go back to an agent who already responded
-                        logger.warning(
-                            f"Blocking circular handoff to {handoff_role} (already involved: {previous_agents})"
-                        )
-                        continue
                     logger.info(f"Executing handoff to {handoff_role}...")
                     handoff_display = ROLE_DISPLAY_NAMES.get(handoff_role, handoff_role)
-                    # Build list of agents to NOT hand back to
-                    blocked_agents_list = [
-                        ROLE_DISPLAY_NAMES.get(a, a)  # type: ignore[arg-type]
-                        for a in previous_agents
-                    ]
-                    blocked_agents = ", ".join(blocked_agents_list)
                     # Pass the original message + full context about handoff
-                    # Include clear instruction to NOT hand back
                     handoff_message = (
                         f"[Handoff from {display_name}]\n\n"
                         f"Original request: {user_message}\n\n"
-                        f"Previous agent's findings: {response}\n\n"
-                        f"**YOUR TASK:** {display_name} has completed their investigation and handed off to you. "
-                        f"You must either:\n"
-                        f"1. TAKE ACTION (rollback, restart, code fix) if the findings warrant it, OR\n"
-                        f"2. CLOSE THE LOOP - report final conclusion to the user\n\n"
-                        f"**DO NOT** hand back to any of these agents (they already did their part): {blocked_agents}\n"
-                        f"If you need a DIFFERENT agent, you may @mention them. "
-                        f"Otherwise, provide your final response and close this ticket."
+                        f"Previous response: {response}"
                     )
                     await _run_agent_and_respond(
                         role=handoff_role,
@@ -373,7 +347,6 @@ Your response MUST include:
                         user_id=user_id,
                         max_handoff_depth=max_handoff_depth,
                         current_depth=current_depth + 1,
-                        previous_agents=previous_agents,
                     )
             elif handoff_roles:
                 logger.warning(
