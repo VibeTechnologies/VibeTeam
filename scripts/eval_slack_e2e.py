@@ -154,6 +154,36 @@ SCENARIOS = {
                 "(2) Either: PR created with fix, OR detailed fix instructions, OR issue triaged with labels/assignment. "
                 "Score 0.0-0.3 if only suggestions without action taken."
             ),
+            "EvidenceBasedDecision": (
+                "Did the agent make EVIDENCE-BASED decisions, not speculative ones? "
+                "CRITICAL: The agent should base all recommendations on actual findings from code review or GitHub data. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Recommendations must be supported by actual findings from tools (GitHub, code search); "
+                "(2) If no bug is found in code, agent should say so rather than speculate; "
+                "(3) If recommending a fix, there MUST be evidence of the bug location. "
+                "SCORING: "
+                "Score 0.0-0.3: Made speculative fix suggestions without finding the actual bug. "
+                "Score 0.3-0.5: Some code review but recommendations not clearly tied to findings. "
+                "Score 0.5-0.7: Recommendations loosely aligned with findings but some speculation. "
+                "Score 0.7-0.9: Recommendations clearly tied to evidence found. "
+                "Score 0.9-1.0: Perfect alignment - actions match evidence, no unnecessary speculation."
+            ),
+            "HandoffCompletion": (
+                "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
+                "(2) The target agent must have taken meaningful action (not just acknowledged); "
+                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "SCORING: "
+                "Score 0.0-0.3: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.3-0.5: Handoff made, target acknowledged but took no action. "
+                "Score 0.5-0.7: Handoff made, target responded with partial action. "
+                "Score 0.7-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
+                "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
+                "If only one agent responded and they made a handoff that was never picked up, score 0.3 max."
+            ),
         },
         "threshold": 0.60,
     },
@@ -182,6 +212,36 @@ SCENARIOS = {
                 "Is the deployment DONE and verified? "
                 "REQUIRED: Staging environment running the new code, health checks passing. "
                 "Score 0.0-0.3 if deployment was not completed for any reason."
+            ),
+            "EvidenceBasedDecision": (
+                "Did the agent make EVIDENCE-BASED decisions during deployment? "
+                "CRITICAL: The agent should verify each step before proceeding to the next. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Verify PR is actually merged before deploying; "
+                "(2) Verify tests actually passed (not just trust the request); "
+                "(3) Confirm deployment success with actual kubectl output or health checks; "
+                "(4) If deployment fails, report actual error not speculation. "
+                "SCORING: "
+                "Score 0.0-0.3: Claimed deployment complete without verification evidence. "
+                "Score 0.3-0.5: Some verification but incomplete evidence chain. "
+                "Score 0.5-0.7: Most steps verified but some gaps. "
+                "Score 0.7-0.9: Full verification with kubectl output and health checks. "
+                "Score 0.9-1.0: Perfect - every step verified with evidence before proceeding."
+            ),
+            "HandoffCompletion": (
+                "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
+                "(2) The target agent must have taken meaningful action (not just acknowledged); "
+                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "SCORING: "
+                "Score 0.0-0.3: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.3-0.5: Handoff made, target acknowledged but took no action. "
+                "Score 0.5-0.7: Handoff made, target responded with partial action. "
+                "Score 0.7-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
+                "NOTE: For deployment tasks, handoffs should be rare - ReleaseEngineer should complete directly."
             ),
         },
         "threshold": 0.60,
@@ -226,6 +286,37 @@ SCENARIOS = {
                 "Score 0.4-0.6: Investigation done but no clear next steps provided. "
                 "Score 0.6-0.8: Thorough investigation with handoff to ReleaseEngineer/SoftwareEngineer. "
                 "Score 0.8-1.0: Root cause identified and concrete action taken or specific fix recommended."
+            ),
+            "EvidenceBasedDecision": (
+                "Did the agent make EVIDENCE-BASED decisions, not speculative ones? "
+                "CRITICAL: If investigation shows the endpoint IS working (returns 200), agent should NOT escalate. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Recommendations must be supported by actual findings from tools; "
+                "(2) If curl shows endpoint working, report that fact - don't assume it's broken; "
+                "(3) If recommending code changes, there MUST be evidence of code issues in logs/Sentry; "
+                "(4) Agent should check Stripe dashboard or request more details if local tests pass. "
+                "SCORING: "
+                "Score 0.0-0.3: Recommended fixes/escalation despite endpoint working correctly. "
+                "Score 0.3-0.5: Made speculative recommendations not supported by findings. "
+                "Score 0.5-0.7: Recommendations loosely aligned with findings but some speculation. "
+                "Score 0.7-0.9: Recommendations clearly tied to evidence found. "
+                "Score 0.9-1.0: Perfect alignment - if endpoint works, says so; if broken, provides evidence."
+            ),
+            "HandoffCompletion": (
+                "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
+                "(2) The target agent must have taken meaningful action (not just acknowledged); "
+                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "SCORING: "
+                "Score 0.0-0.3: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.3-0.5: Handoff made, target acknowledged but took no action. "
+                "Score 0.5-0.7: Handoff made, target responded with partial action. "
+                "Score 0.7-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
+                "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
+                "If only one agent responded and they made a handoff that was never picked up, score 0.3 max."
             ),
         },
         "threshold": 0.60,
