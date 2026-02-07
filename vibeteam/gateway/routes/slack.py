@@ -265,6 +265,17 @@ kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
 ```
 If you skip kubectl, your investigation is INCOMPLETE.
 
+**STEP 3 - TEST ENDPOINTS (MANDATORY for webhook/API issues):**
+For ANY issue related to webhooks, API endpoints, or external service integration:
+You MUST actually test the endpoint with curl to verify it works. Example:
+```bash
+# Test if endpoint exists and returns correct status
+curl -s -o /dev/null -w "%{http_code}" https://api.vibebrowser.app/stripe/webhook
+curl -s -i https://api.vibebrowser.app/health
+```
+DO NOT conclude "infrastructure is healthy" without testing the actual endpoint being reported as broken.
+A 404 response means the endpoint/route doesn't exist - this is a critical finding!
+
 **FORBIDDEN ACTIONS (will fail):**
 - DO NOT run Python code to import slack_sdk or use Slack tools
 - DO NOT try to read Slack threads or channels programmatically
@@ -284,10 +295,11 @@ If you skip kubectl, your investigation is INCOMPLETE.
 Your response MUST include:
 1. Sentry findings: "Found Sentry issue [ID]: [message] - [count] events" OR "No Sentry issues found"
 2. kubectl findings: "kubectl get pods shows: [status]" / "kubectl logs shows: [patterns]"
-3. Root cause: Analysis correlating BOTH Sentry AND kubectl findings
-4. **RECOMMENDATION** (REQUIRED - must match evidence):
+3. Endpoint test (if webhook/API issue): "curl shows: [HTTP status code and response]" - a 404 means the route doesn't exist!
+4. Root cause: Analysis correlating Sentry, kubectl, AND endpoint test findings
+5. **RECOMMENDATION** (REQUIRED - must match evidence):
    - If EVIDENCE of issues found: "Recommend ROLLBACK" → @ReleaseEngineer please rollback the deployment
-   - If CODE BUG identified: "Recommend CODE FIX" → @SoftwareEngineer please investigate [specific file/code]
+   - If CODE BUG identified (e.g., 404 endpoint): "Recommend CODE FIX" → @SoftwareEngineer please investigate [specific file/code]
    - If NO issues found: "Infrastructure appears healthy. No errors in Sentry, pods running normally, logs clean. Please ask customer for: request IDs, specific timestamps, exact error messages they see."
    - CRITICAL: Do NOT recommend rollback if no issues were found - this wastes engineering time and may cause unnecessary downtime
 """
@@ -308,13 +320,45 @@ Your response MUST include:
             )
         else:
             response = result.get("response", "I completed the task but have no output to share.")
-            # Truncate long responses for Slack
-            if len(response) > 3000:
-                response = response[:2900] + "\n\n... (truncated)"
 
-            # Prefix with role name
-            formatted_response = f"[{display_name}] {response}"
-            await send_slack_message(channel, formatted_response, thread_ts)
+            # Split long responses into multiple messages instead of truncating
+            # This preserves handoff mentions that might be at the end
+            MAX_CHUNK_SIZE = 2900  # Leave room for role prefix and some buffer
+
+            if len(response) <= MAX_CHUNK_SIZE:
+                # Short enough for single message
+                formatted_response = f"[{display_name}] {response}"
+                await send_slack_message(channel, formatted_response, thread_ts)
+            else:
+                # Split into multiple messages, trying to break at newlines
+                chunks = []
+                remaining = response
+                while remaining:
+                    if len(remaining) <= MAX_CHUNK_SIZE:
+                        chunks.append(remaining)
+                        break
+
+                    # Try to find a good break point (newline) within the chunk size
+                    break_point = remaining.rfind("\n", 0, MAX_CHUNK_SIZE)
+                    if break_point == -1 or break_point < MAX_CHUNK_SIZE // 2:
+                        # No good newline break, try space
+                        break_point = remaining.rfind(" ", 0, MAX_CHUNK_SIZE)
+                    if break_point == -1 or break_point < MAX_CHUNK_SIZE // 2:
+                        # No good break point, just cut at max size
+                        break_point = MAX_CHUNK_SIZE
+
+                    chunks.append(remaining[:break_point])
+                    remaining = remaining[break_point:].lstrip()
+
+                # Send each chunk as a separate message
+                for i, chunk in enumerate(chunks):
+                    if i == 0:
+                        # First chunk includes role prefix
+                        formatted_chunk = f"[{display_name}] {chunk}"
+                    else:
+                        # Continuation chunks
+                        formatted_chunk = f"[{display_name} (cont.)] {chunk}"
+                    await send_slack_message(channel, formatted_chunk, thread_ts)
 
             # Check for handoffs in the response and execute them synchronously
             message_router = get_message_router()

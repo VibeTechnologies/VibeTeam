@@ -62,12 +62,42 @@ The agents now properly:
 2. Provide detailed findings (issue ID, count, timestamps, correlation analysis)
 3. Make appropriate handoffs with specific context (not listing all roles)
 4. Follow the expected response format
+5. **Make evidence-based decisions** (don't recommend rollback without evidence)
+6. **Complete handoffs** (target agent responds and takes action)
 
-Sample output from evaluation (2026-02-05T22:10):
-- SupportEngineer analyzed Sentry data, found no 400-related issues
-- Handed off to ReleaseEngineer for deployment investigation
-- ReleaseEngineer confirmed analysis, handed off to SoftwareEngineer
-- SoftwareEngineer provided config/code review recommendations
+### Phase 3: Evidence-Based Evaluation (2026-02-07)
+
+Added new evaluation metrics to all scenarios:
+- **EvidenceBasedDecision**: Penalizes agents that recommend drastic actions (rollback) without evidence
+- **HandoffCompletion**: Penalizes incomplete handoffs where target agent never responds
+
+Latest evaluation results:
+- `support_400_errors`: InvestigationQuality 0.90, EvidenceBasedDecision 1.00, HandoffCompletion 0.90
+- `stripe_webhook_failure`: InvestigationQuality 0.90, EvidenceBasedDecision 0.90, HandoffCompletion 0.90
+
+Key improvements:
+- Agents now correctly report "no action needed" when investigation shows healthy infrastructure
+- Agents ask for customer details (request IDs, timestamps) instead of speculating
+- Handoffs include specific context for the target agent
+
+### Phase 4: Message Splitting & Endpoint Testing (2026-02-07)
+
+**Issue 1: Message Truncation Breaking Handoffs**
+- Problem: Responses > 3000 chars were truncated, cutting off handoff mentions (@ReleaseEngineer)
+- Fix: Split long messages into multiple Slack messages instead of truncating
+- File: `vibeteam/gateway/routes/slack.py` (lines 320-362)
+
+**Issue 2: Agents Not Testing Actual Endpoints**
+- Problem: Agent checked pods/logs but never ran `curl` to test the reported broken endpoint
+- The endpoint returns 404 - but agent concluded "infrastructure healthy"
+- Fix: Added STEP 3 to instructions requiring curl testing for webhook/API issues
+- File: `vibeteam/gateway/routes/slack.py` (lines 268-277, 295-296)
+
+Tasks:
+- [x] Replace truncation with message splitting
+- [x] Add curl endpoint testing requirement to agent instructions
+- [x] Update REQUIRED OUTPUT to include endpoint test findings
+- [ ] Deploy and run stripe_webhook_failure evaluation to verify
 
 ## Files to Modify
 
