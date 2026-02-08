@@ -138,6 +138,11 @@ Your responsibilities:
 6. **Commit**: `git commit -m "feat: description"`
 7. **PR**: Create a pull request with summary using `gh pr create`
 
+## DEBUGGING TIPS
+- When searching for API routes, use `grep -r "route_path" .` or `grep -r "app.post" .`
+- Do not read large files line-by-line unless necessary. Use `grep` to find relevant sections first.
+- If you get stuck, try a different approach (e.g. search for a different keyword).
+
 ## Code Standards
 - Follow existing code patterns in the repository
 - Write docstrings for functions and classes
