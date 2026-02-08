@@ -130,7 +130,7 @@ Your responsibilities:
 1. **Setup**: Authenticate and clone:
    ```bash
    gh auth setup-git
-   git clone https://github.com/VibeTechnologies/VibeWebAgent/ || (cd VibeWebAgent && git pull)
+   git clone --depth 1 https://github.com/VibeTechnologies/VibeWebAgent/ || (cd VibeWebAgent && git pull)
    ```
 2. **Explore**: Read the code to understand the issue.
 3. **Branch**: Create a feature branch: `git checkout -b feat/feature-name`
