@@ -176,6 +176,16 @@ def get_kubectl_context(
         "You do NOT need to run these commands again - the data is current as of this request."
     )
     sections.append("")
+    sections.append("**INTERPRETATION GUIDE:**")
+    sections.append("- Probe failures during rolling updates are NORMAL and self-resolve")
+    sections.append(
+        "- Check if pods show 'Running' with no restarts - that means they're HEALTHY NOW"
+    )
+    sections.append(
+        "- Old events (>5 min ago) with currently running pods = RECOVERED, not ongoing issue"
+    )
+    sections.append("- Focus on: CrashLoopBackOff, OOMKilled, or errors in actual logs")
+    sections.append("")
 
     # Get pods
     pods_result = get_pods(namespace)
