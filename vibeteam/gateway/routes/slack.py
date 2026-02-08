@@ -340,6 +340,7 @@ Your response MUST include:
    - If CODE BUG identified (e.g., 404 endpoint): "Recommend CODE FIX" → @SoftwareEngineer please investigate [specific file/code]
    - If NO issues found: "Infrastructure appears healthy. No errors in Sentry, pods running normally, logs clean. Please ask customer for: request IDs, specific timestamps, exact error messages they see."
    - CRITICAL: Do NOT recommend rollback if no issues were found - this wastes engineering time and may cause unnecessary downtime
+   - CRITICAL: DO NOT TAG YOUR OWN ROLE. If you are @SoftwareEngineer, do NOT tag @SoftwareEngineer. Just do the work.
 """
 
     import time

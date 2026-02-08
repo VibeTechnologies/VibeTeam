@@ -109,19 +109,21 @@ SCENARIOS = {
             ),
             "HandoffCompletion": (
                 "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: The agent should NOT hand off to themselves (e.g., SoftwareEngineer tagging @SoftwareEngineer). "
                 "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
                 "REQUIRED FOR HIGH SCORE: "
                 "(1) If handoff was made, the target agent MUST have responded in the conversation; "
                 "(2) The target agent must have taken meaningful action (not just acknowledged); "
                 "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
                 "SCORING: "
-                "Score 0.0-0.3: Handoff made but NO response from target agent - task left incomplete. "
-                "Score 0.3-0.5: Handoff made, target acknowledged but took no action. "
-                "Score 0.5-0.7: Handoff made, target responded with partial action. "
-                "Score 0.7-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.0-0.2: Self-handoff (e.g., tagging own role) or handoff with NO response. "
+                "Score 0.2-0.4: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
+                "Score 0.6-0.8: Handoff made, target responded with partial action. "
+                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
                 "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
                 "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
-                "If only one agent responded and they made a handoff that was never picked up, score 0.3 max."
+                "If only one agent responded and they made a handoff that was never picked up, score 0.2 max."
             ),
         },
         "threshold": 0.60,
@@ -170,19 +172,21 @@ SCENARIOS = {
             ),
             "HandoffCompletion": (
                 "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: The agent should NOT hand off to themselves (e.g., SoftwareEngineer tagging @SoftwareEngineer). "
                 "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
                 "REQUIRED FOR HIGH SCORE: "
                 "(1) If handoff was made, the target agent MUST have responded in the conversation; "
                 "(2) The target agent must have taken meaningful action (not just acknowledged); "
                 "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
                 "SCORING: "
-                "Score 0.0-0.3: Handoff made but NO response from target agent - task left incomplete. "
-                "Score 0.3-0.5: Handoff made, target acknowledged but took no action. "
-                "Score 0.5-0.7: Handoff made, target responded with partial action. "
-                "Score 0.7-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.0-0.2: Self-handoff (e.g., tagging own role) or handoff with NO response. "
+                "Score 0.2-0.4: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
+                "Score 0.6-0.8: Handoff made, target responded with partial action. "
+                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
                 "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
                 "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
-                "If only one agent responded and they made a handoff that was never picked up, score 0.3 max."
+                "If only one agent responded and they made a handoff that was never picked up, score 0.2 max."
             ),
         },
         "threshold": 0.60,
@@ -230,16 +234,18 @@ SCENARIOS = {
             ),
             "HandoffCompletion": (
                 "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: The agent should NOT hand off to themselves (e.g., ReleaseEngineer tagging @ReleaseEngineer). "
                 "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
                 "REQUIRED FOR HIGH SCORE: "
                 "(1) If handoff was made, the target agent MUST have responded in the conversation; "
                 "(2) The target agent must have taken meaningful action (not just acknowledged); "
                 "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
                 "SCORING: "
-                "Score 0.0-0.3: Handoff made but NO response from target agent - task left incomplete. "
-                "Score 0.3-0.5: Handoff made, target acknowledged but took no action. "
-                "Score 0.5-0.7: Handoff made, target responded with partial action. "
-                "Score 0.7-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.0-0.2: Self-handoff (e.g., tagging own role) or handoff with NO response. "
+                "Score 0.2-0.4: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
+                "Score 0.6-0.8: Handoff made, target responded with partial action. "
+                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
                 "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
                 "NOTE: For deployment tasks, handoffs should be rare - ReleaseEngineer should complete directly."
             ),
@@ -304,19 +310,21 @@ SCENARIOS = {
             ),
             "HandoffCompletion": (
                 "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: The agent should NOT hand off to themselves (e.g., SoftwareEngineer tagging @SoftwareEngineer). "
                 "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
                 "REQUIRED FOR HIGH SCORE: "
                 "(1) If handoff was made, the target agent MUST have responded in the conversation; "
                 "(2) The target agent must have taken meaningful action (not just acknowledged); "
                 "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
                 "SCORING: "
-                "Score 0.0-0.3: Handoff made but NO response from target agent - task left incomplete. "
-                "Score 0.3-0.5: Handoff made, target acknowledged but took no action. "
-                "Score 0.5-0.7: Handoff made, target responded with partial action. "
-                "Score 0.7-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.0-0.2: Self-handoff (e.g., tagging own role) or handoff with NO response. "
+                "Score 0.2-0.4: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
+                "Score 0.6-0.8: Handoff made, target responded with partial action. "
+                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
                 "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
                 "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
-                "If only one agent responded and they made a handoff that was never picked up, score 0.3 max."
+                "If only one agent responded and they made a handoff that was never picked up, score 0.2 max."
             ),
         },
         "threshold": 0.60,

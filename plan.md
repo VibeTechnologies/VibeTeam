@@ -213,6 +213,25 @@ Tasks:
 - **Result:** `SoftwareEngineer` response time dropped to **~12s** (4.5x faster)
 - Eval passed with perfect scores (InvestigationQuality 1.0, TaskCompletion 1.0)
 
+### Phase 8: Preventing Self-Handoffs (2026-02-08)
+
+**Problem:** Agents were sometimes handing off tasks to themselves (e.g., SoftwareEngineer tagging @SoftwareEngineer), creating unnecessary loops.
+
+**Implementation:**
+1. **Updated Evaluation Metrics:**
+   - Modified `scripts/eval_slack_e2e.py` to strictly penalize self-handoffs (score 0.0-0.2).
+   - Added specific checks for "tagging own role".
+
+2. **Updated Agent Prompts:**
+   - Modified `SoftwareEngineer`, `ReleaseEngineer`, `SupportEngineer`, `ProductManager`, and `MarketingManager` contexts.
+   - Added `CRITICAL: Agent Identity and Handoffs` section:
+     - "You are the **Role**."
+     - "DO NOT tag @Role in your response."
+     - "If you have completed the task, simply state that. Do not tag yourself."
+
+**Verification:**
+- Will monitor next evaluations for absence of self-handoffs.
+
 ## Files to Modify
 
 ### `vibeteam/gateway/routes/slack.py` (line 242-262)
