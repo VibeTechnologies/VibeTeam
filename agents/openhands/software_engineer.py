@@ -143,9 +143,11 @@ Your responsibilities:
 5. **Pull Requests**: Create and manage pull requests
 
 ## Development Workflow
-1. **Setup**: Authenticate and clone:
+1. **Setup**: Authenticate, configure git user, and clone:
    ```bash
    gh auth setup-git
+   git config --global user.email "agent@vibeteam.ai"
+   git config --global user.name "VibeTeam Agent"
    git clone --depth 1 https://github.com/VibeTechnologies/VibeWebAgent/ || (cd VibeWebAgent && git pull)
    ```
 2. **Explore**: Read the code to understand the issue.

@@ -232,6 +232,39 @@ Tasks:
 **Verification:**
 - Will monitor next evaluations for absence of self-handoffs.
 
+### Phase 9: CLI Output Redirection for Stability (2026-02-09)
+
+**Problem:** `github_issue` scenario was timing out (600s). The OpenHands agent would hang when running `gh issue view` or `gh issue list` directly in the terminal, likely due to TTY/buffer handling issues with large output or interactive prompts.
+
+**Implementation:**
+1. **Debugged:** Created `fix/github-issue-debug` branch and traced execution.
+2. **Fixed:** Updated `agents/openhands/software_engineer.py` system prompt.
+   - Added strict instruction: **"ALWAYS redirect output to a file"** for CLI tools like `gh`.
+   - Pattern: `gh issue list ... > issue_list.txt` then `cat issue_list.txt`.
+3. **Deployed:** Merged to `master` and redeployed.
+
+**Verification:**
+- `github_issue` scenario now passes in ~68s (down from timeout).
+- Agent correctly retrieves issue details and proposes a fix plan.
+
+### Phase 10: Fix GitHub Issue Investigation (2026-02-09)
+
+**Problem:** Agent was failing `github_issue` scenario due to:
+1. `bash: rg: command not found` (trying to use ripgrep which is not installed).
+2. `Authentication failed` when cloning repo (skipping `gh auth setup-git`).
+3. `fatal: unable to auto-detect email address` (missing git config).
+
+**Fixes:**
+1. **Enforce Grep:** Updated system prompt to explicitly say "`rg` is NOT available. USE GREP."
+2. **Enforce Auth:** Updated system prompt to mandate `gh auth setup-git` before cloning.
+3. **Verified:** Agent now successfully clones repo, searches with grep, and attempts to fix code.
+
+**Status:**
+- [x] Fix `rg` issue
+- [x] Fix `gh auth` issue
+- [x] Fix `git config` (email/name) identity
+- [ ] Verify fix with E2E evaluation
+
 ## Files to Modify
 
 ### `vibeteam/gateway/routes/slack.py` (line 242-262)
