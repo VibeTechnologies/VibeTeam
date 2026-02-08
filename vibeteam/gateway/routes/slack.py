@@ -311,7 +311,7 @@ A user has requested you to send a notification via Slack.
 - Thread: {thread_ts or "new thread"}
 
 ### INSTRUCTIONS
-1. **Action:** specificy the message requested.
+1. **Action:** Specify the message requested.
 2. **Tools:** You do NOT need to run kubectl, Sentry, or curl.
 3. **Format:** Just write the message clearly.
 4. **Handoffs:** If you need to hand off, use the standard format (e.g., @RoleName).
