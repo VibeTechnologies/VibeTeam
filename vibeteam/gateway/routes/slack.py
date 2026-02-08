@@ -265,16 +265,17 @@ kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
 ```
 If you skip kubectl, your investigation is INCOMPLETE.
 
-**STEP 3 - TEST ENDPOINTS (MANDATORY for webhook/API issues):**
-For ANY issue related to webhooks, API endpoints, or external service integration:
-You MUST actually test the endpoint with curl to verify it works. Example:
+**STEP 3 - TEST THE REPORTED ENDPOINT WITH CURL (MANDATORY):**
+If the user message contains a URL (like https://...), you MUST test it:
 ```bash
-# Test if endpoint exists and returns correct status
-curl -s -o /dev/null -w "%{http_code}" https://api.vibebrowser.app/stripe/webhook
-curl -s -i https://api.vibebrowser.app/health
+curl -s -o /dev/null -w "HTTP_STATUS:%{http_code}" <URL-from-user-message>
 ```
-DO NOT conclude "infrastructure is healthy" without testing the actual endpoint being reported as broken.
-A 404 response means the endpoint/route doesn't exist - this is a critical finding!
+Interpret the result:
+- HTTP_STATUS:404 = Route/endpoint doesn't exist → CODE BUG, hand off to @SoftwareEngineer
+- HTTP_STATUS:5xx = Server error → Check logs, possibly ROLLBACK
+- HTTP_STATUS:2xx = Endpoint is healthy
+CRITICAL: If you don't test the URL with curl, your investigation is INCOMPLETE.
+DO NOT conclude "infrastructure healthy" if you haven't tested the actual URL!
 
 **FORBIDDEN ACTIONS (will fail):**
 - DO NOT run Python code to import slack_sdk or use Slack tools
