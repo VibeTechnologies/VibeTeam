@@ -341,6 +341,26 @@ class OpenHandsSupportEngineer:
             if not skip_context_injection:
                 task_lower = task.lower()
 
+                # CRITICAL: Skip heavy infrastructure context for simple notification requests
+                # This prevents "over-investigation" where the agent reports on healthy logs
+                # when asked to just send a message.
+                is_notification = any(
+                    kw in task_lower
+                    for kw in [
+                        "notify",
+                        "announce",
+                        "tell the team",
+                        "tell the customer",
+                        "confirm to",
+                    ]
+                )
+                is_explicit_investigation = any(
+                    kw in task_lower
+                    for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
+                )
+
+                skip_infra_context = is_notification and not is_explicit_investigation
+
                 # Sentry context for error-related tasks
                 # Expanded to include infrastructure/incident keywords
                 sentry_keywords = [
@@ -372,7 +392,7 @@ class OpenHandsSupportEngineer:
                     "report",
                     "complaint",  # customer reports often relate to errors
                 ]
-                if any(kw in task_lower for kw in sentry_keywords):
+                if not skip_infra_context and any(kw in task_lower for kw in sentry_keywords):
                     sentry_ctx = fetch_sentry_context()
                     injected_context.append(sentry_ctx)
                     # Also inject kubectl context for infrastructure issues
