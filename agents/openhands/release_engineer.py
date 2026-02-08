@@ -22,6 +22,13 @@ from typing import Any
 
 from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.kubectl_tools import get_kubectl_context
+
+
+def fetch_kubectl_context() -> str:
+    """Fetch Kubernetes context using shared tools."""
+    return get_kubectl_context()
+
 
 # OpenHands imports - will fail gracefully if not installed
 try:
@@ -60,11 +67,16 @@ RELEASE_ENGINEER_CONTEXT = """You are Einstein, the Release Engineer for VibeTea
 You have FULL access to the production Kubernetes cluster. When you receive a handoff
 from SupportEngineer with investigation findings, YOUR JOB IS TO ACT.
 
+## PRE-FETCHED DATA AVAILABLE
+Look for the section starting with "## Pre-Fetched Kubernetes Context" below.
+This contains the CURRENT state of pods, events, logs, and rollout history.
+**USE THIS DATA FIRST** instead of running manual `kubectl` commands to verify state.
+
 ## CRITICAL: TAKE ACTION, DON'T JUST INVESTIGATE
 
 SupportEngineer has already investigated. When you receive a handoff:
-1. **Review their findings** (Sentry data, kubectl output, root cause)
-2. **Verify if needed** with a quick kubectl check
+1. **Review their findings** and the **Pre-Fetched Kubernetes Context** below
+2. **Verify if needed** (only if pre-fetched data is insufficient)
 3. **TAKE THE APPROPRIATE ACTION** - don't just recommend, DO IT
 
 ## ACTIONS YOU MUST TAKE (not just recommend)
@@ -209,6 +221,7 @@ class OpenHandsReleaseEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
+        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -219,6 +232,7 @@ class OpenHandsReleaseEngineer:
             context_type: Type of context (issue, pr, slack, ephemeral)
             context_id: ID for the context (issue number, PR number, etc.)
             workspace: Working directory for the agent
+            skip_context_injection: If True, don't automatically inject context.
 
         Returns:
             dict with response, session_key, and metadata
@@ -253,8 +267,30 @@ class OpenHandsReleaseEngineer:
                 workspace=workspace_path,
             )
 
-            # Prefix task with context for the agent
-            full_task = f"{RELEASE_ENGINEER_CONTEXT}\n\nTask: {task}"
+            # Inject relevant context (ReleaseEngineer almost always needs kubectl)
+            injected_context = []
+            if not skip_context_injection:
+                # Always inject kubectl context for Release Engineer as they deal with infra
+                kubectl_ctx = fetch_kubectl_context()
+                injected_context.append(kubectl_ctx)
+
+            # Build full task with context
+            context_str = "\n\n".join(injected_context) if injected_context else ""
+            if context_str:
+                context_block = f"""
+================================================================================
+INJECTED DATA FROM MONITORING SYSTEMS - THIS IS YOUR DATA, USE IT!
+================================================================================
+
+{context_str}
+
+================================================================================
+END OF INJECTED DATA - The above data has ALREADY been fetched for you
+================================================================================
+"""
+                full_task = f"{RELEASE_ENGINEER_CONTEXT}\n{context_block}\nTask: {task}"
+            else:
+                full_task = f"{RELEASE_ENGINEER_CONTEXT}\n\nTask: {task}"
 
             # Use send_message + run for the full agentic loop with tools
             conversation.send_message(full_task)
@@ -302,13 +338,20 @@ class OpenHandsReleaseEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
+        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Async version of run."""
         import asyncio
 
         return await asyncio.to_thread(
-            self.run, task, context_type, context_id, workspace, **kwargs
+            self.run,
+            task,
+            context_type,
+            context_id,
+            workspace,
+            skip_context_injection,
+            **kwargs,
         )
 
 

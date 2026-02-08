@@ -21,6 +21,13 @@ from typing import Any
 
 from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
+from agents.shared.kubectl_tools import get_kubectl_context
+
+
+def fetch_kubectl_context() -> str:
+    """Fetch Kubernetes context using shared tools."""
+    return get_kubectl_context()
+
 
 try:
     from openhands.sdk import LLM, Agent, LocalConversation, Tool
@@ -56,6 +63,11 @@ SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
 ## CRITICAL: Tool Usage Requirements
 You have access to shell commands. Use the `gh` CLI tool for all GitHub operations.
 The `gh` CLI is pre-installed and authenticated. ALWAYS use shell commands to get real data.
+
+## PRE-FETCHED DATA AVAILABLE
+For infrastructure-related tasks (pods, deployments, API errors), look for the
+"## Pre-Fetched Kubernetes Context" section below.
+**USE THIS DATA FIRST** instead of running manual `kubectl` commands to verify state.
 
 ## CRITICAL: Communication is Handled By the System
 
@@ -173,6 +185,7 @@ class OpenHandsSoftwareEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
+        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -183,6 +196,7 @@ class OpenHandsSoftwareEngineer:
             context_type: Type of context (issue, pr, slack, ephemeral)
             context_id: ID for the context (issue number, PR number, etc.)
             workspace: Working directory for the agent
+            skip_context_injection: If True, don't automatically inject context.
 
         Returns:
             dict with response, session_key, and metadata
@@ -216,9 +230,50 @@ class OpenHandsSoftwareEngineer:
                 workspace=workspace_path,
             )
 
+            # Inject context if keywords match
+            injected_context = []
+            if not skip_context_injection:
+                task_lower = task.lower()
+                # Keywords that suggest infrastructure/deployment work
+                infra_keywords = [
+                    "kubectl",
+                    "pod",
+                    "deployment",
+                    "cluster",
+                    "infrastructure",
+                    "error",
+                    "fail",
+                    "webhook",
+                    "stripe",
+                    "backend",
+                    "gateway",
+                    "api",
+                    "log",
+                ]
+                if any(kw in task_lower for kw in infra_keywords):
+                    kubectl_ctx = fetch_kubectl_context()
+                    injected_context.append(kubectl_ctx)
+
+            # Build full task with context
+            context_str = "\n\n".join(injected_context) if injected_context else ""
+            if context_str:
+                context_block = f"""
+================================================================================
+INJECTED DATA FROM MONITORING SYSTEMS - THIS IS YOUR DATA, USE IT!
+================================================================================
+
+{context_str}
+
+================================================================================
+END OF INJECTED DATA - The above data has ALREADY been fetched for you
+================================================================================
+"""
+                full_task = f"{SOFTWARE_ENGINEER_CONTEXT}\n{context_block}\nTask: {task}"
+            else:
+                full_task = f"{SOFTWARE_ENGINEER_CONTEXT}\n\nTask: {task}"
+
             # Use send_message + run for the full agentic loop with tools
             # (ask_agent is just a stateless single LLM call without tools)
-            full_task = f"{SOFTWARE_ENGINEER_CONTEXT}\n\nTask: {task}"
             conversation.send_message(full_task)
             conversation.run()
 
@@ -265,13 +320,20 @@ class OpenHandsSoftwareEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
+        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Async version of run."""
         import asyncio
 
         return await asyncio.to_thread(
-            self.run, task, context_type, context_id, workspace, **kwargs
+            self.run,
+            task,
+            context_type,
+            context_id,
+            workspace,
+            skip_context_injection,
+            **kwargs,
         )
 
 

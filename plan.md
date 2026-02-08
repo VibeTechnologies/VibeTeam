@@ -196,6 +196,21 @@ Tasks:
 - Consider pre-fetching in parallel with Sentry data
 - Could reduce stability wait to 10s for scenarios without handoffs
 
+### Phase 7: Expanding Kubectl Pre-Injection to All Agents (2026-02-08)
+
+**Goal:** Standardize response times by applying kubectl pre-injection to `ReleaseEngineer` and `SoftwareEngineer`.
+
+**Implementation:**
+- Modified `agents/openhands/release_engineer.py`:
+  - Always injects kubectl context (since their role is infra-centric)
+  - Updated prompt to prioritize pre-fetched data
+- Modified `agents/openhands/software_engineer.py`:
+  - Conditionally injects kubectl context based on keywords (pod, deployment, error, webhook, etc.)
+  - Updated prompt to mention pre-fetched data availability
+
+**Verification:**
+- Will run `stripe_webhook_failure` scenario to verify `SoftwareEngineer` speedup (previously ~54s)
+
 ## Files to Modify
 
 ### `vibeteam/gateway/routes/slack.py` (line 242-262)
