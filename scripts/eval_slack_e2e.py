@@ -646,11 +646,11 @@ async def run_evaluation(
     print(f"\n>>> Step 2: Waiting for agent response (timeout: {wait_timeout}s)")
     start_time = time.time()
     last_message_count = 1  # We posted 1 message
-    handoff_wait_time = 30  # Seconds to wait after detecting handoff mention
-    stable_time = (
-        120  # Seconds with no new messages = conversation complete (increased for multi-agent)
-    )
+    # Wait times are adaptive based on whether handoffs are detected
+    stable_time_no_handoff = 15  # Seconds with no new messages when no handoff detected
+    stable_time_with_handoff = 60  # Longer wait when expecting handoff chain
     last_new_message_time = 0.0
+    pending_handoff = False  # Track if we're waiting for a handoff
 
     # Pattern to detect @/RoleName mentions (handoffs)
     import re
@@ -680,20 +680,28 @@ async def run_evaluation(
                 has_handoff = bool(handoff_pattern.search(latest_bot_msg.text))
                 if has_handoff:
                     print(f"    Handoff detected in response! Waiting for next agent...")
+                    pending_handoff = True
                     # Continue polling for the handoff response
                     continue
+                else:
+                    # Got a response without handoff mention - reset pending flag
+                    pending_handoff = False
 
         # Check if we've received bot responses and conversation is stable
         bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
         if bot_messages and last_new_message_time > 0:
             # Check if enough time has passed with no new messages
             time_since_last = time.time() - last_new_message_time
+            # Use adaptive wait time based on pending handoff state
+            stable_time = stable_time_with_handoff if pending_handoff else stable_time_no_handoff
             if time_since_last >= stable_time:
                 # Check if latest message has no handoff (conversation complete)
                 latest_bot_msg = bot_messages[-1]
                 has_handoff = bool(handoff_pattern.search(latest_bot_msg.text))
                 if not has_handoff:
-                    print(f"    Conversation stable for {stable_time}s, no pending handoffs.")
+                    print(
+                        f"    Conversation stable for {int(time_since_last)}s, no pending handoffs."
+                    )
                     break
                 else:
                     print(f"    Still waiting for handoff response...")

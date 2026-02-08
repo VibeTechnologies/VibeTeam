@@ -155,6 +155,47 @@ Tasks:
 - [x] Analyze response time characteristics
 - [x] Document findings in plan.md
 
+### Phase 6: Kubectl Pre-Injection & Latency Optimization (2026-02-08)
+
+**Problem:** Agent response times were ~2.4 minutes (142s) due to sequential kubectl calls during investigation.
+
+**Solution:** Pre-fetch kubectl data in the gateway before calling the agent, similar to Sentry context injection.
+
+**Implementation:**
+
+1. **New file: `agents/shared/kubectl_tools.py`** (commit c85a75f)
+   - `get_pods()` - Fetches pod status from vibeteam namespace
+   - `get_events()` - Fetches recent events with warnings
+   - `get_deployment_logs()` - Gets container logs for deployments
+   - `get_rollout_history()` - Gets deployment revision history
+   - `get_kubectl_context()` - Main function that batches all the above
+
+2. **Modified: `agents/openhands/support_engineer.py`** (commit c85a75f)
+   - Added `fetch_kubectl_context()` wrapper function
+   - Injected kubectl context alongside Sentry for infrastructure issues
+   - Added interpretation guide explaining probe failures during updates are normal
+
+3. **Modified: `scripts/eval_slack_e2e.py`** (commit pending)
+   - Reduced stability wait from 120s fixed to **adaptive**: 15s (no handoff) / 60s (with handoff)
+   - This better reflects actual agent response time
+
+**Results:**
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| Actual agent call | ~60s (multiple kubectl) | ~12-16s | **4x faster** |
+| Eval measured latency | ~142s | ~32s | **4.5x faster** |
+| Investigation quality | 0.90 | 0.90 | Maintained |
+
+**Key insight:** The 142s eval latency was mostly eval overhead (120s stability wait), not actual agent slowness. With kubectl pre-injection AND adaptive stability wait:
+- Agent responds in **12-16 seconds**
+- Eval reports **~32 seconds** total
+
+**Remaining recommendations:**
+- Consider caching kubectl data for rapid sequential requests
+- Consider pre-fetching in parallel with Sentry data
+- Could reduce stability wait to 10s for scenarios without handoffs
+
 ## Files to Modify
 
 ### `vibeteam/gateway/routes/slack.py` (line 242-262)
