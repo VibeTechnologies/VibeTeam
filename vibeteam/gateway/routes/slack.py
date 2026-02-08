@@ -268,7 +268,7 @@ If you skip kubectl, your investigation is INCOMPLETE.
 **STEP 3 - TEST THE REPORTED ENDPOINT WITH CURL (MANDATORY):**
 If the user message contains a URL (like https://...), you MUST test it:
 ```bash
-curl -s -o /dev/null -w "HTTP_STATUS:%{http_code}" <URL-from-user-message>
+curl -s -o /dev/null -w "HTTP_STATUS:%{{http_code}}" <URL-from-user-message>
 ```
 Interpret the result:
 - HTTP_STATUS:404 = Route/endpoint doesn't exist → CODE BUG, hand off to @SoftwareEngineer
