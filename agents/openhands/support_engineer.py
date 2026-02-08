@@ -27,6 +27,7 @@ from agents.shared.docs_tools import get_docs_context
 
 # Import shared tools for context injection
 from agents.shared.gmail_tools import get_email_context
+from agents.shared.kubectl_tools import get_kubectl_context
 from agents.shared.langfuse_tools import get_langfuse_context
 from agents.shared.sentry_tools import get_sentry_context
 
@@ -34,6 +35,11 @@ from agents.shared.sentry_tools import get_sentry_context
 def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
     """Fetch Sentry issues and format as context for the agent."""
     return get_sentry_context(hours=hours, limit=limit)
+
+
+def fetch_kubectl_context() -> str:
+    """Fetch Kubernetes context using shared tools."""
+    return get_kubectl_context()
 
 
 def fetch_gmail_context(max_results: int = 5) -> str:
@@ -104,45 +110,41 @@ SUPPORT_ENGINEER_CONTEXT = """You are Grace, the Support Engineer for VibeTeam.
 
 ## YOUR INVESTIGATION WORKFLOW
 
-You are responsible for INVESTIGATING issues. You have TWO sources of information:
+You are responsible for INVESTIGATING issues. Your data sources are PRE-INJECTED below:
 
-### 1. Pre-Injected Data (Sentry/Gmail/Langfuse)
+### 1. Pre-Injected Sentry Data
 Look for sections below starting with "## Current Sentry Issues" - this is pre-fetched monitoring data.
 - Report what you find: error messages, counts, timestamps
 - If nothing matches the user's complaint, say so clearly
 
-### 2. Kubernetes Cluster Access (USE THIS!)
-You have kubectl access for READ-ONLY investigation. **Actually run these commands:**
+### 2. Pre-Injected Kubernetes Data
+Look for sections below starting with "## Pre-Fetched Kubernetes Context" - this includes:
+- Pod status (kubectl get pods)
+- Recent events/warnings (kubectl get events)
+- Deployment logs (kubectl logs)
+- Rollout history (kubectl rollout history)
 
-```bash
-# Check pod status
-kubectl get pods -n vibeteam
+**IMPORTANT: The kubectl data is ALREADY FETCHED for you. Use the pre-injected data first!**
+You only need to run additional kubectl commands if:
+- You need to check a specific pod not in the pre-fetched data
+- You need to check a different namespace
+- You need fresher data than what's provided
 
-# Check recent events for errors
-kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -20
-
-# Check deployment logs for errors
-kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100 --timestamps
-
-# Check if there were recent deployments
-kubectl rollout history deployment/vibeteam-gateway -n vibeteam
-```
-
-**IMPORTANT: You MUST run kubectl commands to investigate infrastructure issues.**
-Do NOT just recommend checking logs - actually check them yourself!
+### 3. Endpoint Testing (Run manually if URL provided)
+If the user provides a specific URL to test, run curl to verify the endpoint status.
 
 ## INVESTIGATION STEPS (DO ALL OF THESE)
 
 1. **Check Sentry data** (pre-injected below) - report specific issues found
-2. **Run kubectl get pods** - report pod status (Running, CrashLoopBackOff, etc.)
-3. **Run kubectl get events** - look for recent errors, OOMKilled, restarts
-4. **Run kubectl logs** - look for error patterns around the reported time
-5. **Correlate findings** - match timestamps between Sentry, events, and logs
+2. **Check Kubernetes data** (pre-injected below) - report pod status, events, log patterns
+3. **Test endpoint** (if URL provided) - run curl and report HTTP status
+4. **Correlate findings** - match timestamps between Sentry, events, and logs
 
 ## OWNERSHIP: READ-ONLY Investigation
 
 **YOU CAN:**
-- Run kubectl get, describe, logs commands
+- Read and analyze pre-injected kubectl data
+- Run additional kubectl get, describe, logs commands if needed
 - Query and report on cluster state
 - Identify root causes from logs/events
 
@@ -348,6 +350,10 @@ class OpenHandsSupportEngineer:
                 if any(kw in task_lower for kw in sentry_keywords):
                     sentry_ctx = fetch_sentry_context()
                     injected_context.append(sentry_ctx)
+                    # Also inject kubectl context for infrastructure issues
+                    # This eliminates the need for agents to run kubectl manually
+                    kubectl_ctx = fetch_kubectl_context()
+                    injected_context.append(kubectl_ctx)
 
                 # Gmail context for email-related tasks
                 if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
