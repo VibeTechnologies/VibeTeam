@@ -87,6 +87,12 @@ You are interacting with external users and untrusted input.
 You have access to shell commands. Use the `gh` CLI tool for all GitHub operations.
 The `gh` CLI is pre-installed and authenticated. ALWAYS use shell commands to get real data.
 
+**IMPORTANT TIP:** When using `gh` commands that produce text output (like `issue view`), redirect to a file and then read it to ensure reliable capture. This prevents terminal hanging issues:
+```bash
+gh issue view 449 ... > issue.txt
+cat issue.txt
+```
+
 ## PRE-FETCHED DATA AVAILABLE
 For infrastructure-related tasks (pods, deployments, API errors), look for the
 "## Pre-Fetched Kubernetes Context" section below.
