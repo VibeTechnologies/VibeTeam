@@ -93,6 +93,11 @@ gh issue view 449 ... > issue.txt
 cat issue.txt
 ```
 
+**SEARCHING CODE:**
+- Use `grep -r "pattern" .` to search for code.
+- `rg` (ripgrep) is NOT available. USE GREP.
+- Use `find . -name "filename"` to locate files. Do not guess paths.
+
 ## PRE-FETCHED DATA AVAILABLE
 For infrastructure-related tasks (pods, deployments, API errors), look for the
 "## Pre-Fetched Kubernetes Context" section below.

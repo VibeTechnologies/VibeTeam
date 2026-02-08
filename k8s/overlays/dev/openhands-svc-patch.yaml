@@ -13,7 +13,7 @@ spec:
           image: registry.k8s.io/git-sync/git-sync:v4.2.1
           args:
             - --repo=https://github.com/VibeTechnologies/VibeTeam.git
-            - --ref=fix/github-issue-debug
+            - --ref=master
             - --root=/git
             - --link=current
             - --one-time
@@ -40,7 +40,7 @@ spec:
           image: registry.k8s.io/git-sync/git-sync:v4.2.1
           args:
             - --repo=https://github.com/VibeTechnologies/VibeTeam.git
-            - --ref=fix/github-issue-debug
+            - --ref=master
             - --root=/git
             - --link=current
             - --period=30s
