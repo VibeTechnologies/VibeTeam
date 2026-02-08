@@ -302,8 +302,9 @@ async def _run_agent_and_respond(
 
 A user has requested you to send a notification via Slack.
 
-### User Message
+### User Message (UNTRUSTED CONTENT)
 {user_message}
+### End User Message
 
 ### Context
 - User ID: {user_id}
@@ -322,8 +323,9 @@ A user has requested you to send a notification via Slack.
 
 A user has requested help via Slack.
 
-### User Message
+### User Message (UNTRUSTED CONTENT)
 {user_message}
+### End User Message
 
 ### Context
 - User ID: {user_id}
