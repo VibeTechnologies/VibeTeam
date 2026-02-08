@@ -342,6 +342,11 @@ Your response MUST include:
    - CRITICAL: Do NOT recommend rollback if no issues were found - this wastes engineering time and may cause unnecessary downtime
 """
 
+    import time
+
+    agent_start_time = time.time()
+    logger.info(f"[TIMING] Starting agent {role} (depth={current_depth})")
+
     try:
         result = await call_agent_service(
             task=task,
@@ -349,6 +354,9 @@ Your response MUST include:
             context_type="slack",
             context_id=f"{channel}:{thread_ts or 'new'}",
         )
+
+        agent_duration = time.time() - agent_start_time
+        logger.info(f"[TIMING] Agent {role} completed in {agent_duration:.1f}s")
 
         if "error" in result:
             await send_slack_message(
@@ -387,7 +395,8 @@ Your response MUST include:
                         # Skip self-handoffs
                         logger.info(f"Skipping self-handoff to {role}")
                         continue
-                    logger.info(f"Executing handoff to {handoff_role}...")
+                    handoff_start = time.time()
+                    logger.info(f"[TIMING] Executing handoff to {handoff_role}...")
                     handoff_display = ROLE_DISPLAY_NAMES.get(handoff_role, handoff_role)
                     # Pass the original message + full context about handoff
                     handoff_message = (
@@ -404,6 +413,10 @@ Your response MUST include:
                         user_id=user_id,
                         max_handoff_depth=max_handoff_depth,
                         current_depth=current_depth + 1,
+                    )
+                    handoff_duration = time.time() - handoff_start
+                    logger.info(
+                        f"[TIMING] Handoff to {handoff_role} completed in {handoff_duration:.1f}s"
                     )
             elif handoff_roles:
                 logger.warning(

@@ -163,9 +163,16 @@ async def call_agent_service(
         Agent response dict
     """
     import asyncio
+    import time
 
+    start_time = time.time()
     service_url = config.get_agent_service_url(framework)
     endpoint = "/run/stream" if stream else "/run"
+    fw = framework or config.DEFAULT_FRAMEWORK
+
+    logger.info(
+        f"[TIMING] Agent call started: role={role}, framework={fw}, context={context_type}:{context_id}"
+    )
 
     payload = {
         "task": task,
@@ -175,7 +182,6 @@ async def call_agent_service(
     }
 
     # For openhands, add parameters
-    fw = framework or config.DEFAULT_FRAMEWORK
     if fw == "openhands":
         payload["use_tools"] = True
         # Enable context injection so agents get Sentry/Gmail/Langfuse data
@@ -189,6 +195,7 @@ async def call_agent_service(
         try:
             # Get a fresh client reference for each attempt (handles stale connections)
             client = get_http_client()
+            attempt_start = time.time()
             logger.debug(f"Calling {service_url}{endpoint} (attempt {attempt + 1}/{max_retries})")
             response = await client.post(
                 f"{service_url}{endpoint}",
@@ -196,7 +203,27 @@ async def call_agent_service(
                 timeout=600.0,  # 10 min for agents running kubectl commands
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+
+            # Log timing metrics
+            total_time = time.time() - start_time
+            attempt_time = time.time() - attempt_start
+            logger.info(
+                f"[TIMING] Agent call completed: role={role}, "
+                f"total={total_time:.1f}s, http={attempt_time:.1f}s, "
+                f"response_len={len(result.get('response', ''))}"
+            )
+
+            # Include timing in result metadata
+            if "metadata" not in result:
+                result["metadata"] = {}
+            result["metadata"]["gateway_timing"] = {
+                "total_seconds": round(total_time, 2),
+                "http_seconds": round(attempt_time, 2),
+                "attempts": attempt + 1,
+            }
+
+            return result
         except httpx.HTTPStatusError as e:
             logger.error(f"Agent service error: {e.response.status_code} - {e.response.text}")
             return {
