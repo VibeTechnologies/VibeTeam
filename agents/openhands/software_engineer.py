@@ -127,8 +127,9 @@ Your responsibilities:
 5. **Pull Requests**: Create and manage pull requests
 
 ## Development Workflow
-1. **Setup**: Clone or update the repo:
+1. **Setup**: Authenticate and clone:
    ```bash
+   gh auth setup-git
    git clone https://github.com/VibeTechnologies/VibeWebAgent/ || (cd VibeWebAgent && git pull)
    ```
 2. **Explore**: Read the code to understand the issue.
