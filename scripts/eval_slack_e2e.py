@@ -150,7 +150,7 @@ SCENARIOS = {
     "github_issue": {
         "name": "Software Engineer - GitHub Issue Triage",
         "message": (
-            "@SoftwareEngineer we have a new GitHub issue #42 reporting that the "
+            "@SoftwareEngineer we have a new GitHub issue #449 reporting that the "
             "browser extension crashes when clicking the record button. The user says "
             "it happens on Chrome 120 with the latest extension version. Please investigate."
         ),

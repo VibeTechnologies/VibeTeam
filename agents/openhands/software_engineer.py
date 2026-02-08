@@ -218,6 +218,33 @@ class OpenHandsSoftwareEngineer:
             },
         )
 
+    def _fetch_github_issue(self, issue_number: str) -> str:
+        """Fetch GitHub issue details using gh CLI."""
+        try:
+            import subprocess
+
+            # Ensure we look in the right repo
+            repo = "VibeTechnologies/VibeWebAgent"
+
+            # Fetch full issue details including body and comments
+            cmd = ["gh", "issue", "view", issue_number, "--repo", repo, "--comments"]
+
+            print(f"[SoftwareEngineer] Pre-fetching GitHub issue #{issue_number}")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+
+            if result.returncode == 0:
+                return f"""
+================================================================================
+PRE-FETCHED GITHUB ISSUE #{issue_number}
+================================================================================
+{result.stdout}
+================================================================================
+"""
+            else:
+                return f"[System] Failed to pre-fetch issue #{issue_number}: {result.stderr}"
+        except Exception as e:
+            return f"[System] Error pre-fetching issue #{issue_number}: {str(e)}"
+
     def run(
         self,
         task: str,
@@ -273,6 +300,16 @@ class OpenHandsSoftwareEngineer:
             injected_context = []
             if not skip_context_injection:
                 task_lower = task.lower()
+
+                # Check for GitHub Issue references (e.g., #449 or issue 449)
+                import re
+
+                issue_match = re.search(r"(?:issue|#)\s*(\d+)", task_lower)
+                if issue_match:
+                    issue_number = issue_match.group(1)
+                    github_ctx = self._fetch_github_issue(issue_number)
+                    injected_context.append(github_ctx)
+
                 # Keywords that suggest infrastructure/deployment work
                 infra_keywords = [
                     "kubectl",
