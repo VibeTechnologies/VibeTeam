@@ -28,6 +28,43 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Slack"])
 
+
+def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
+    """
+    Split a long message into chunks, trying to break at newlines or spaces.
+
+    Args:
+        text: The text to split
+        max_chunk_size: Maximum size of each chunk (default 2900 to leave room for prefix)
+
+    Returns:
+        List of text chunks
+    """
+    if len(text) <= max_chunk_size:
+        return [text]
+
+    chunks = []
+    remaining = text
+    while remaining:
+        if len(remaining) <= max_chunk_size:
+            chunks.append(remaining)
+            break
+
+        # Try to find a good break point (newline) within the chunk size
+        break_point = remaining.rfind("\n", 0, max_chunk_size)
+        if break_point == -1 or break_point < max_chunk_size // 2:
+            # No good newline break, try space
+            break_point = remaining.rfind(" ", 0, max_chunk_size)
+        if break_point == -1 or break_point < max_chunk_size // 2:
+            # No good break point, just cut at max size
+            break_point = max_chunk_size
+
+        chunks.append(remaining[:break_point])
+        remaining = remaining[break_point:].lstrip()
+
+    return chunks
+
+
 # Message router for /RoleName parsing
 _message_router: Router | None = None
 
@@ -324,42 +361,17 @@ Your response MUST include:
 
             # Split long responses into multiple messages instead of truncating
             # This preserves handoff mentions that might be at the end
-            MAX_CHUNK_SIZE = 2900  # Leave room for role prefix and some buffer
+            chunks = split_long_message(response)
 
-            if len(response) <= MAX_CHUNK_SIZE:
-                # Short enough for single message
-                formatted_response = f"[{display_name}] {response}"
-                await send_slack_message(channel, formatted_response, thread_ts)
-            else:
-                # Split into multiple messages, trying to break at newlines
-                chunks = []
-                remaining = response
-                while remaining:
-                    if len(remaining) <= MAX_CHUNK_SIZE:
-                        chunks.append(remaining)
-                        break
-
-                    # Try to find a good break point (newline) within the chunk size
-                    break_point = remaining.rfind("\n", 0, MAX_CHUNK_SIZE)
-                    if break_point == -1 or break_point < MAX_CHUNK_SIZE // 2:
-                        # No good newline break, try space
-                        break_point = remaining.rfind(" ", 0, MAX_CHUNK_SIZE)
-                    if break_point == -1 or break_point < MAX_CHUNK_SIZE // 2:
-                        # No good break point, just cut at max size
-                        break_point = MAX_CHUNK_SIZE
-
-                    chunks.append(remaining[:break_point])
-                    remaining = remaining[break_point:].lstrip()
-
-                # Send each chunk as a separate message
-                for i, chunk in enumerate(chunks):
-                    if i == 0:
-                        # First chunk includes role prefix
-                        formatted_chunk = f"[{display_name}] {chunk}"
-                    else:
-                        # Continuation chunks
-                        formatted_chunk = f"[{display_name} (cont.)] {chunk}"
-                    await send_slack_message(channel, formatted_chunk, thread_ts)
+            # Send each chunk as a separate message
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    # First chunk includes role prefix
+                    formatted_chunk = f"[{display_name}] {chunk}"
+                else:
+                    # Continuation chunks
+                    formatted_chunk = f"[{display_name} (cont.)] {chunk}"
+                await send_slack_message(channel, formatted_chunk, thread_ts)
 
             # Check for handoffs in the response and execute them synchronously
             message_router = get_message_router()
