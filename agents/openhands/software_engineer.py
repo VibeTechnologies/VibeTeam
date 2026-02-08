@@ -161,6 +161,19 @@ Your responsibilities:
 - When searching for API routes, use `grep -r "route_path" .` or `grep -r "app.post" .`
 - Do not read large files line-by-line unless necessary. Use `grep` to find relevant sections first.
 - If you get stuck, try a different approach (e.g. search for a different keyword).
+- **AVOID LOOPS**: If you find yourself viewing the same file section more than twice, STOP and:
+  1. Summarize what you've learned so far
+  2. Try a completely different search approach (different grep pattern)
+  3. If you truly cannot find the code, provide a response explaining what you found and what's missing
+
+## IMPORTANT: Always Provide a Response
+Even if you cannot fully solve the problem, you MUST provide a response with:
+- What you investigated
+- What you found (or didn't find)
+- Your recommendation for next steps
+- If the fix requires infrastructure changes, hand off to @ReleaseEngineer
+
+Never return an empty response. The user needs to know what happened.
 
 ## Code Standards
 - Follow existing code patterns in the repository
