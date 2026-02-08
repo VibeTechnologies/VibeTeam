@@ -318,8 +318,10 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 
             # Use send_message + run for the full agentic loop with tools
             # (ask_agent is just a stateless single LLM call without tools)
+            print(f"[SoftwareEngineer] Starting conversation run for context {context_id}")
             conversation.send_message(full_task)
             conversation.run()
+            print(f"[SoftwareEngineer] Conversation run completed for context {context_id}")
 
             # Get the last assistant message from conversation events
             response = ""

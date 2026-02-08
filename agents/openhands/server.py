@@ -145,6 +145,10 @@ async def health_check():
 @app.post("/run", response_model=RunResponse)
 async def run_task(request: RunRequest):
     """Execute a task with the OpenHands team."""
+    logger.info(
+        f"Received task request: role={request.role}, context={request.context_type}:{request.context_id}"
+    )
+    logger.info(f"Task content: {request.task[:100]}...")
     start_time = time.time()
 
     try:
