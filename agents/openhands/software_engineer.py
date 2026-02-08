@@ -93,6 +93,11 @@ gh issue view 449 ... > issue.txt
 cat issue.txt
 ```
 
+**AUTHENTICATION & CLONING:**
+- You **MUST** run `gh auth setup-git` before cloning any repository.
+- If `git clone` fails with authentication error, RUN `gh auth setup-git` and try again.
+- Use `git clone --depth 1` for faster cloning.
+
 **SEARCHING CODE:**
 - Use `grep -r "pattern" .` to search for code.
 - `rg` (ripgrep) is NOT available. USE GREP.
