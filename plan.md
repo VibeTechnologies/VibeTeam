@@ -93,11 +93,33 @@ Key improvements:
 - Fix: Added STEP 3 to instructions requiring curl testing for webhook/API issues
 - File: `vibeteam/gateway/routes/slack.py` (lines 268-277, 295-296)
 
+**Issue 3: f-string Bug with curl format**
+- Problem: `{http_code}` in curl format string was interpreted as Python variable, causing NameError
+- Fix: Escaped curly braces to `{{http_code}}`
+- Commit: `1022a33`
+
 Tasks:
 - [x] Replace truncation with message splitting
 - [x] Add curl endpoint testing requirement to agent instructions
 - [x] Update REQUIRED OUTPUT to include endpoint test findings
-- [ ] Deploy and run stripe_webhook_failure evaluation to verify
+- [x] Fix f-string escape for curl format
+- [x] Deploy and run stripe_webhook_failure evaluation to verify ✅
+
+**Evaluation Results (2026-02-08):**
+```
+Scenario: stripe_webhook_failure
+Status: ✅ PASSED
+- InvestigationQuality: 1.00
+- TaskCompletion: 0.90
+- EvidenceBasedDecision: 0.90
+- HandoffCompletion: 0.90
+```
+
+Agent now correctly:
+1. Tests the endpoint with curl → finds HTTP 404
+2. Identifies root cause: "route does not exist or is not registered"
+3. Recommends CODE FIX (not rollback)
+4. Hands off to @SoftwareEngineer
 
 ## Files to Modify
 
