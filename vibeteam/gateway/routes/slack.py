@@ -275,8 +275,50 @@ async def _run_agent_and_respond(
     Supports synchronous handoffs: if the agent mentions /RoleName in its response,
     that agent is immediately invoked (up to max_handoff_depth to prevent infinite loops).
     """
-    # Build task for the agent
-    task = f"""## Slack Request
+    # Check for notification/non-investigation intent
+    msg_lower = user_message.lower()
+    is_notification = any(
+        kw in msg_lower
+        for kw in ["notify", "announce", "tell the team", "tell the customer", "confirm to"]
+    )
+    is_explicit_investigation = any(
+        kw in msg_lower
+        for kw in [
+            "investigate",
+            "check",
+            "debug",
+            "analyze",
+            "why",
+            "error",
+            "fail",
+            "broken",
+            "down",
+        ]
+    )
+
+    if is_notification and not is_explicit_investigation:
+        # Simplified task for notifications - NO mandatory investigation steps
+        task = f"""## Slack Notification Request
+
+A user has requested you to send a notification via Slack.
+
+### User Message
+{user_message}
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_ts or "new thread"}
+
+### INSTRUCTIONS
+1. **Action:** specificy the message requested.
+2. **Tools:** You do NOT need to run kubectl, Sentry, or curl.
+3. **Format:** Just write the message clearly.
+4. **Handoffs:** If you need to hand off, use the standard format (e.g., @RoleName).
+"""
+    else:
+        # Build task for the agent (Standard Investigation)
+        task = f"""## Slack Request
 
 A user has requested help via Slack.
 
