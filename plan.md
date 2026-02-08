@@ -121,6 +121,40 @@ Agent now correctly:
 3. Recommends CODE FIX (not rollback)
 4. Hands off to @SoftwareEngineer
 
+### Phase 5: Handoff Investigation & Response Time Analysis (2026-02-08)
+
+**Handoff Verification:**
+- Investigated the `stripe_webhook_failure` scenario handoff to @SoftwareEngineer
+- Gateway logs confirmed: `Executing handoff to software_engineer...` at 02:26:26
+- SoftwareEngineer responded in Slack at 02:36:38 (10 minutes later)
+- The handoff completed successfully - eval timed out but agents worked correctly
+
+**Response Time Analysis:**
+- Single agent response: ~2.4 minutes (142891ms) for `support_400_errors`
+- Multi-tool investigation: ~10 minutes (605150ms) for `stripe_webhook_failure`
+
+**Why responses take 2-10 minutes:**
+1. **OpenHands agentic loop**: Multiple LLM → tool → LLM cycles
+2. **Tool execution**: Each kubectl/curl command requires network calls
+3. **Azure OpenAI latency**: Model inference time per LLM call
+4. **Thinking budget**: `reasoning_effort="medium"` still allows extended thinking
+
+**This is expected behavior** for agentic systems that investigate autonomously. The trade-off is:
+- Faster (no tools): Direct LLM response in seconds, but no real investigation
+- Slower (with tools): 2-10 min, but provides actual diagnostic data
+
+**Recommendations:**
+- Keep 600s eval timeout for multi-agent handoff scenarios
+- Consider streaming responses for better UX (show progress as agent works)
+- The current ~2.4 min for simple investigations is acceptable
+
+Tasks:
+- [x] Refactor split_long_message as standalone function (commit 8908778)
+- [x] Add unit tests for message splitting (9 tests, all passing)
+- [x] Verify handoff completion via Slack thread inspection
+- [x] Analyze response time characteristics
+- [x] Document findings in plan.md
+
 ## Files to Modify
 
 ### `vibeteam/gateway/routes/slack.py` (line 242-262)
