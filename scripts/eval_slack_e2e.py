@@ -128,6 +128,25 @@ SCENARIOS = {
         },
         "threshold": 0.60,
     },
+    "support_notify_check": {
+        "name": "Support Engineer - Notification Request",
+        "message": (
+            "@SupportEngineer please notify the team that the deployment of PR #123 "
+            "to staging is complete and verified."
+        ),
+        "expected_agent": "support_engineer",
+        "evaluation_criteria": {
+            "NotificationOnly": (
+                "Did the SupportEngineer JUST notify without investigating? "
+                "REQUIRED: "
+                "(1) Confirm the message acknowledges the request; "
+                "(2) Confirm NO investigation steps (Sentry/kubectl) were taken; "
+                "(3) Confirm the output is a clear notification message. "
+                "Score 0.0-0.3 if it tries to investigate or check Sentry."
+            ),
+        },
+        "threshold": 0.80,
+    },
     "github_issue": {
         "name": "Software Engineer - GitHub Issue Triage",
         "message": (
