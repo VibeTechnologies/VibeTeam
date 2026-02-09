@@ -19,6 +19,7 @@ on:
           - all
           - crewai
           - openhands
+          - autogen
 
 permissions:
   contents: read
