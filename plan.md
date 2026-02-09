@@ -348,6 +348,50 @@ To fix the `Author identity unknown` git error:
 - Restart pods.
 - Re-run evaluation.
 
+### Phase 14-15: GitHub Issue Investigation Fixes (2026-02-09)
+
+**Problem:** Agent was timing out or returning empty responses when investigating GitHub issues due to:
+1. `gh` commands hanging without output redirection
+2. Sequential file reading in 40-line chunks triggering stuck detector
+3. Repeated grep commands with same parameters
+
+**Fixes Applied:**
+
+1. **Mandatory gh Output Redirection** (commit 130e172)
+   - Changed from "IMPORTANT TIP" to "MANDATORY" section
+   - Added CORRECT/WRONG examples showing redirection pattern
+   - Updated all example gh commands to use `> /tmp/file.txt && cat /tmp/file.txt`
+
+2. **Stronger Anti-Looping Instructions** (commit d9bca2d)
+   - Added explicit time limit warning (~60 seconds)
+   - "CRITICAL: AVOID FILE READING LOOPS" section
+   - Instruction to use `grep -n` for line numbers
+
+3. **Strict Iteration Limit & GitHub Workflow** (commit 2644dc9)
+   - Added "⚠️ STRICT ITERATION LIMIT" section (max 10 tool calls)
+   - Warning about stuck detector terminating with empty output
+   - Step-by-step GitHub issue investigation workflow
+
+**Results:**
+
+| Run | Latency | IssueAnalysis | TaskCompletion | EvidenceBasedDecision | HandoffCompletion |
+|-----|---------|---------------|----------------|----------------------|-------------------|
+| Before fixes | Timeout (300s) | N/A | N/A | N/A | N/A |
+| After Phase 14 | Timeout (300s) | N/A | N/A | N/A | N/A |
+| After Phase 15 (empty) | 121s | 0.00 | 0.00 | 0.00 | 0.00 |
+| After Phase 15 (final) | **95s** | **0.60** ✅ | 0.30 ❌ | **0.70** ✅ | **1.00** ✅ |
+
+**Key Improvements:**
+- Agent no longer times out (95s vs 300s timeout)
+- Agent provides substantive analysis (Sentry, kubectl, endpoint tests)
+- Agent correctly identifies the issue is in browser extension UI code
+- Agent provides actionable recommendations
+
+**Remaining Issue:**
+- `TaskCompletion` fails because agent doesn't implement a fix (the browser extension code isn't in the repo)
+- This is a legitimate limitation - can't fix code that doesn't exist in the repository
+
+**Status:** ✅ SIGNIFICANT IMPROVEMENT - 3/4 metrics passing, agent functional
 
 
 
