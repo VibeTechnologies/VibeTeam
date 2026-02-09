@@ -43,7 +43,7 @@ case "$FRAMEWORK" in
         ;;
     all)
         build_and_push "crewai" "$PROJECT_DIR/agents/crewai/Dockerfile.dev" "$PROJECT_DIR"
-        # build_and_push "autogen" "$PROJECT_DIR/agents/autogen/Dockerfile.dev" "$PROJECT_DIR"
+        build_and_push "autogen" "$PROJECT_DIR/agents/autogen/Dockerfile.dev" "$PROJECT_DIR"
         ;;
     deploy)
         deploy_dev

@@ -28,6 +28,7 @@ spec:
         - name: openhands
           image: ghcr.io/vibetechnologies/vibeteam-openhands:dev
           imagePullPolicy: Always
+          workingDir: /code/current
           lifecycle:
             postStart:
               exec:
@@ -35,7 +36,7 @@ spec:
                   - /bin/sh
                   - -c
                   - |
-                    git config --global user.email "agent@vibeteam.ai" &&
+                    git config --global user.email "agent@vibebrowser.app" &&
                     git config --global user.name "VibeTeam Agent" &&
                     git config --global credential.https://github.com.helper "" &&
                     git config --global credential.https://github.com.helper "!/usr/bin/gh auth git-credential"

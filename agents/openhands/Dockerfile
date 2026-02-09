@@ -61,7 +61,7 @@ RUN useradd -m -u 1000 vibeteam
 USER vibeteam
 
 # Configure Git for the agent
-RUN git config --global user.email "agent@vibeteam.ai" \
+RUN git config --global user.email "agent@vibebrowser.app" \
     && git config --global user.name "VibeTeam Agent" \
     && gh auth setup-git
 
