@@ -325,9 +325,28 @@ To fix the `Author identity unknown` git error:
 
 **Status:**
 - [x] Fix local files
-- [ ] Push to master
-- [ ] Restart pods
+- [x] Push to master
+- [x] Restart pods
 - [ ] Verify with E2E evaluation
+
+### Phase 13: Fix SoftwareEngineer `rg` Command Failure (2026-02-09)
+
+**Problem:** In the latest verification run, the SoftwareEngineer agent started investigating but failed when trying to use `rg` (ripgrep), which is not installed in the container.
+`bash: rg: command not found`
+
+**Root Cause:**
+- Agent's prompt or training prefers `rg`.
+- Container environment (via Dockerfile) does not have `rg` installed.
+- Previous prompt instruction to "USE GREP" was ignored or insufficient.
+
+**Fix:**
+- Updated `agents/openhands/software_engineer.py` with stronger, capitalized warning: **"DO NOT USE `rg` or `ripgrep`. IT IS NOT INSTALLED. You MUST use `grep`."**
+- (Long term fix: Install `ripgrep` in Dockerfile, but that requires image rebuild).
+
+**Next Steps:**
+- Push prompt change.
+- Restart pods.
+- Re-run evaluation.
 
 
 

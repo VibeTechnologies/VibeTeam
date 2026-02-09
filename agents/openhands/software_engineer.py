@@ -100,7 +100,7 @@ cat issue.txt
 
 **SEARCHING CODE:**
 - Use `grep -r "pattern" .` to search for code.
-- `rg` (ripgrep) is NOT available. USE GREP.
+- **DO NOT USE `rg` or `ripgrep`**. It is NOT installed. You MUST use `grep`.
 - Use `find . -name "filename"` to locate files. Do not guess paths.
 
 ## PRE-FETCHED DATA AVAILABLE
