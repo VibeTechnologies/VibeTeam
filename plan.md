@@ -309,6 +309,27 @@ To fix the `Author identity unknown` git error:
 3. Hands off to @ReleaseEngineer for infrastructure fix
 4. Provides a detailed response with findings
 
+### Phase 12: Fix SoftwareEngineer Looping in GitHub Issue Scenario (2026-02-09)
+
+**Problem:** In the `github_issue` scenario, the agent successfully cloned the repo but failed the test (Score: 0.3/1.0). It got stuck in an infinite loop reading `content.js` repeatedly and failed to implement a code fix.
+
+**Root Causes:**
+1. Agent was not prioritizing code implementation over reading.
+2. Agent had no strict "anti-looping" constraints for file reading.
+3. Development cluster uses `git-sync` pointing to remote `master`, so local fixes weren't being picked up.
+
+**Fixes:**
+1. **Updated `software_engineer.py`:** Added "ANTI-LOOPING" rules and "CRITICAL: You Must IMPLEMENT Fixes" section.
+2. **Updated `Dockerfile` & `k8s/overlays/dev/openhands-svc-patch.yaml`:** Added global git configuration to ensure auth works (prerequisite).
+3. **Push to Master:** Committed and pushed changes so `git-sync` in the cluster picks them up.
+
+**Status:**
+- [x] Fix local files
+- [ ] Push to master
+- [ ] Restart pods
+- [ ] Verify with E2E evaluation
+
+
 
 
 ## Files to Modify

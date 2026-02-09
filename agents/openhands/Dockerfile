@@ -60,6 +60,11 @@ COPY --from=builder /app/agents /app/agents
 RUN useradd -m -u 1000 vibeteam
 USER vibeteam
 
+# Configure Git for the agent
+RUN git config --global user.email "agent@vibeteam.ai" \
+    && git config --global user.name "VibeTeam Agent" \
+    && gh auth setup-git
+
 # Environment variables (override at runtime)
 ENV AZURE_API_KEY=""
 ENV AZURE_API_BASE=""

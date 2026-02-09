@@ -1,0 +1,100 @@
+    58          *"CredentialManager"*|*"credential"*) echo "credential-manager" 
+;;
+    59          *"main"*|*"test-run"*) echo "main" ;;
+    60          *) echo "other" ;;
+
+
+Agent Action ───────────────────────────────────────────────────────────────────
+
+Predicted Security Risk: LOW
+
+Summary: View more lines in create-gh-report.sh script for context
+
+Action: FileEditorAction
+
+Arguments:
+  command: "view"
+  path: "/tmp/tmpqslg2ici/VibeWebAgent/scripts/create-gh-report.sh"
+  view_range: [70, 90]
+  kind: "FileEditorAction"
+
+Tokens: ↑ input 0 • cache hit N/A • ↓ output 0 • $ 0.00
+
+Observation ────────────────────────────────────────────────────────────────────
+
+Tool: file_editor
+Result:
+Here's the result of running `cat -n` on 
+/tmp/tmpqslg2ici/VibeWebAgent/scripts/create-gh-report.sh:
+    70          "google-workspace") echo "tests/google-workspace.test.js" ;;
+    71          "e2e") echo "tests/vibe-e2e.test.js" ;;
+    72          "mcp-server") echo "tests/mcp-server.test.js" ;;
+    73          "mcp-client") echo "tests/mcp-client.test.js" ;;
+    74          "mcp") echo "tests/mcp-external.test.js" ;;
+    75          "vision") echo "tests/vision-voice.test.js" ;;
+    76          "docs") echo "tests/docs-chat.test.js" ;;
+    77          "file-attachment") echo "tests/file-attachment.test.js" ;;
+    78          "eval") echo "tests/extension.eval.test.js" ;;
+    79          "credential-manager") echo "tests/credential-manager.test.js" ;;
+    80          "main") echo "tests/main.test.js" ;;
+    81          *) echo "tests/unknown.test.js" ;;
+    82      esac
+    83  }
+    84  
+    85  # Find the most recent test directory for each unique test type
+    86  echo "Finding the most recent test run for each test type..."
+    87  SEEN_TYPES=""
+    88  TEST_TYPES=""
+    89  TYPE_COUNT=0
+    90  
+
+
+INFO:     10.42.0.1:53450 - "GET /health HTTP/1.1" 200 OK
+Agent Action ───────────────────────────────────────────────────────────────────
+
+Predicted Security Risk: LOW
+
+Summary: View more lines in create-gh-report.sh script for context
+
+Action: FileEditorAction
+
+Arguments:
+  command: "view"
+  path: "/tmp/tmpqslg2ici/VibeWebAgent/scripts/create-gh-report.sh"
+  view_range: [100, 120]
+  kind: "FileEditorAction"
+
+Tokens: ↑ input 0 • cache hit N/A • ↓ output 0 • $ 0.00
+
+Observation ────────────────────────────────────────────────────────────────────
+
+Tool: file_editor
+Result:
+Here's the result of running `cat -n` on 
+/tmp/tmpqslg2ici/VibeWebAgent/scripts/create-gh-report.sh:
+   100          fi
+   101          
+   102          # Mark this type as seen
+   103          SEEN_TYPES="${SEEN_TYPES}|${test_type}|"
+   104          TEST_TYPES="${TEST_TYPES}${test_type}|${test_name}|${test_dir};"
+   105          TYPE_COUNT=$((TYPE_COUNT + 1))
+   106          
+   107          case "$test_type" in
+   108              "cli") echo "  CLI Test: $test_name" ;;
+   109              "extension") echo "  Extension Test: $test_name" ;;
+   110              "google-workspace") echo "  Google Workspace Test: 
+$test_name" ;;
+   111              "e2e") echo "  E2E Test: $test_name" ;;
+   112              "mcp-server") echo "  MCP Server Test: $test_name" ;;
+   113              "mcp-client") echo "  MCP Client Test: $test_name" ;;
+   114              "mcp") echo "  MCP External Test: $test_name" ;;
+   115              "vision") echo "  Vision/Voice Test: $test_name" ;;
+   116              "docs") echo "  Docs Chat Test: $test_name" ;;
+   117              "file-attachment") echo "  File Attachment Test: $test_name"
+;;
+   118              "eval") echo "  Eval Test: $test_name" ;;
+   119              "credential-manager") echo "  Credential Manager Test: 
+$test_name" ;;
+   120              "main") echo "  Main Test: $test_name" ;;
+
+
