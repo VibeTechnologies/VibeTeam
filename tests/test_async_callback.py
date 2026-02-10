@@ -545,6 +545,117 @@ class TestCallbackEndpoint:
             second_text = mock_send.call_args_list[1][0][1]
             assert "(cont.)" in second_text
 
+    def test_callback_rejects_invalid_secret(self, test_client):
+        """Callback with wrong secret is rejected when CALLBACK_SECRET is set."""
+        payload = {
+            "job_id": "job-bad-secret",
+            "status": "completed",
+            "response": "Some response",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "role": "support_engineer",
+                "display_name": "SupportEngineer",
+                "callback_secret": "wrong-secret",
+            },
+        }
+
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.CALLBACK_SECRET = "correct-secret"
+
+            response = test_client.post("/callback/agent", json=payload)
+            assert response.status_code == 403
+            assert "callback secret" in response.json()["detail"].lower()
+
+    def test_callback_accepts_valid_secret(self, test_client):
+        """Callback with correct secret is accepted when CALLBACK_SECRET is set."""
+        payload = {
+            "job_id": "job-good-secret",
+            "status": "completed",
+            "response": "Investigation complete.",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "support_engineer",
+                "display_name": "SupportEngineer",
+                "max_handoff_depth": 3,
+                "current_depth": 0,
+                "callback_secret": "my-secret-123",
+            },
+        }
+
+        with (
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ),
+            patch("vibeteam.gateway.routes.slack.get_message_router") as mock_router_fn,
+        ):
+            mock_config.CALLBACK_SECRET = "my-secret-123"
+            mock_router = mock_router_fn.return_value
+            mock_router.parse_role_mentions.return_value = []
+
+            response = test_client.post("/callback/agent", json=payload)
+            assert response.status_code == 200
+            assert response.json()["status"] == "ok"
+
+    def test_callback_no_auth_when_secret_empty(self, test_client):
+        """Callback auth is skipped when CALLBACK_SECRET is empty (dev mode)."""
+        payload = {
+            "job_id": "job-no-auth",
+            "status": "completed",
+            "response": "Done.",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "support_engineer",
+                "display_name": "SupportEngineer",
+                "max_handoff_depth": 3,
+                "current_depth": 0,
+                # No callback_secret field — should still work in dev mode
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ),
+            patch("vibeteam.gateway.routes.slack.get_message_router") as mock_router_fn,
+        ):
+            mock_router = mock_router_fn.return_value
+            mock_router.parse_role_mentions.return_value = []
+
+            response = test_client.post("/callback/agent", json=payload)
+            assert response.status_code == 200
+            assert response.json()["status"] == "ok"
+
 
 # ==============================================================================
 # Tests for _submit_agent_async
@@ -598,6 +709,45 @@ class TestSubmitAgentAsync:
             assert call_kwargs["role"] == "support_engineer"
             assert "callback/agent" in call_kwargs["callback_url"]
             assert call_kwargs["callback_metadata"]["channel"] == "C_TEST"
+
+    @pytest.mark.asyncio
+    async def test_submit_includes_callback_secret(self):
+        """_submit_agent_async includes CALLBACK_SECRET in callback_metadata."""
+        from vibeteam.gateway.routes.slack import _submit_agent_async
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.call_agent_service_async",
+                new_callable=AsyncMock,
+                return_value={"job_id": "test-job-secret", "status": "accepted"},
+            ) as mock_call,
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+        ):
+            mock_config.GATEWAY_URL = "http://vibeteam-gateway:8080"
+            mock_config.CALLBACK_SECRET = "super-secret-value"
+
+            await _submit_agent_async(
+                role="support_engineer",
+                display_name="SupportEngineer",
+                user_message="check errors",
+                channel="C_TEST",
+                thread_ts="ts_1234",
+                message_ts="msg_ts_1234",
+                user_id="U_USER",
+            )
+
+            call_kwargs = mock_call.call_args[1]
+            assert call_kwargs["callback_metadata"]["callback_secret"] == "super-secret-value"
 
     @pytest.mark.asyncio
     async def test_submit_failure_adds_x_reaction(self):

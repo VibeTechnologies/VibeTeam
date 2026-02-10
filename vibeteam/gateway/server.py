@@ -63,6 +63,11 @@ class GatewayConfig:
     # In K8s, the gateway is accessible at http://vibeteam-gateway:8080 via service DNS
     GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://vibeteam-gateway:8080")
 
+    # Shared secret for authenticating agent callbacks to /callback/agent.
+    # The gateway sends this in callback_metadata; the agent echoes it back.
+    # If empty, callback authentication is disabled (dev/test mode).
+    CALLBACK_SECRET = os.environ.get("CALLBACK_SECRET", "")
+
     @classmethod
     def get_agent_service_url(cls, framework: str | None = None) -> str:
         """Get the URL for the specified agent framework."""

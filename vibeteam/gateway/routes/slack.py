@@ -617,6 +617,9 @@ async def _submit_agent_async(
             "user_message": user_message,
             "max_handoff_depth": max_handoff_depth,
             "current_depth": current_depth,
+            # Include callback secret for authentication
+            # Agent service echoes this back; gateway verifies on receipt
+            "callback_secret": config.CALLBACK_SECRET,
         },
     )
 
@@ -859,6 +862,14 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     current_depth = meta.get("current_depth", 0)
 
     logger.info(f"[CALLBACK] Received callback for job {job_id}: status={status}, role={role}")
+
+    # Verify callback authentication
+    # If CALLBACK_SECRET is configured, the agent must echo it back in callback_metadata
+    if config.CALLBACK_SECRET:
+        callback_secret = meta.get("callback_secret", "")
+        if callback_secret != config.CALLBACK_SECRET:
+            logger.warning(f"[CALLBACK] Invalid callback_secret for job {job_id}")
+            raise HTTPException(status_code=403, detail="Invalid callback secret")
 
     if not channel:
         logger.error(f"[CALLBACK] Missing channel in callback_metadata for job {job_id}")
