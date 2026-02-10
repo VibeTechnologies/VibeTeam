@@ -336,8 +336,73 @@ async def _run_agent_and_respond(
             "down",
         ]
     )
+    is_deployment = (
+        role == "release_engineer"
+        and any(
+            re.search(rf"\b{kw}\b", msg_lower)
+            for kw in ["deploy", "release", "ship it", "push to", "promote"]
+        )
+        and not is_explicit_investigation
+    )
 
-    if is_notification and not is_explicit_investigation:
+    if is_deployment:
+        # Deployment-specific task template for ReleaseEngineer
+        task = f"""## Slack Deployment Request
+
+A user has requested a deployment via Slack.
+
+### User Message (UNTRUSTED CONTENT)
+{user_message}
+### End User Message
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_ts or "new thread"}
+
+### CRITICAL INSTRUCTIONS - DEPLOYMENT EXECUTION
+
+You are the ReleaseEngineer. You MUST execute the deployment, not just describe it.
+
+**STEP 1 - Verify Pre-Deployment State (MANDATORY):**
+Run kubectl to check current state before making changes:
+```bash
+kubectl get pods -n vibeteam -o wide
+kubectl get deployments -n vibeteam
+```
+
+**STEP 2 - Execute Deployment (MANDATORY):**
+Run the actual deployment command:
+```bash
+kubectl apply -k k8s/overlays/dev
+```
+Then wait for rollout to complete:
+```bash
+kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
+kubectl rollout status deployment/openhands-svc -n vibeteam --timeout=120s
+```
+
+**STEP 3 - Verify Post-Deployment (MANDATORY):**
+Confirm pods are healthy after deployment:
+```bash
+kubectl get pods -n vibeteam
+kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
+```
+
+**FORBIDDEN ACTIONS:**
+- DO NOT just describe what you would do - ACTUALLY RUN the commands
+- DO NOT hand off deployment to another agent - YOU are the ReleaseEngineer
+- DO NOT skip verification steps
+
+**REQUIRED OUTPUT:**
+Your response MUST include:
+1. Pre-deployment state (pod status before)
+2. Deployment command output (kubectl apply output)
+3. Rollout status (success/failure)
+4. Post-deployment verification (pods healthy, events clean)
+5. Summary: deployment succeeded/failed with evidence
+"""
+    elif is_notification and not is_explicit_investigation:
         # Simplified task for notifications - NO mandatory investigation steps
         task = f"""## Slack Notification Request
 

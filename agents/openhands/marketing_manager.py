@@ -110,6 +110,11 @@ class OpenHandsMarketingManager:
         return Agent(
             llm=llm,
             mcp_config=mcp_config if mcp_config.get("mcpServers") else None,
+            # Use our custom template that renders agent_context into the system prompt.
+            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
+            system_prompt_filename=os.path.join(
+                os.path.dirname(__file__), "prompts", "agent_system.j2"
+            ),
             system_prompt_kwargs={
                 "agent_context": MARKETING_MANAGER_CONTEXT,
             },
