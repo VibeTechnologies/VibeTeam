@@ -28,15 +28,16 @@ class MockFinishAction:
 class MockActionEvent:
     """Mimics openhands ActionEvent wrapping an action object.
 
-    In the real OpenHands SDK, ActionEvent has a `thought` field at the event
-    level (not on the action object itself). Actions like TerminalAction only
-    have [command, is_input, timeout, reset] — no thought.  The LLM's
-    reasoning is stored in ActionEvent.thought.
+    In the real OpenHands SDK, ActionEvent has `thought` and `summary` fields
+    at the event level.  Actions like TerminalAction only have
+    [command, is_input, timeout, reset] — no thought.  The LLM's reasoning
+    is stored in ActionEvent.thought; the summary is a short description.
     """
 
-    def __init__(self, action, thought: str = ""):
+    def __init__(self, action, thought: str = "", summary: str = ""):
         self.action = action
         self.thought = thought
+        self.summary = summary
 
     # The extraction function checks type(event).__name__
     # so we need the class name to be "ActionEvent"
@@ -88,6 +89,26 @@ class MockCmdRunAction:
 
 
 MockCmdRunAction.__name__ = "CmdRunAction"
+
+
+class MockThinkAction:
+    """Mimics an OpenHands ThinkAction which stores the agent's reasoning."""
+
+    def __init__(self, thought: str = ""):
+        self.thought = thought
+
+
+MockThinkAction.__name__ = "ThinkAction"
+
+
+class MockTerminalAction:
+    """Mimics a TerminalAction with only command-related fields (no thought)."""
+
+    def __init__(self, command: str = ""):
+        self.command = command
+
+
+MockTerminalAction.__name__ = "TerminalAction"
 
 
 # ---------------------------------------------------------------------------
@@ -344,3 +365,116 @@ class TestActionThoughtFallback:
         result = extract_response_from_events(events)
         # Should extract from the last ActionEvent (event2), skipping ObservationEvent
         assert result == "The issue is in the auth module, line 42."
+
+
+class TestThinkActionFallback:
+    """Test fallback extraction from ThinkAction.thought."""
+
+    def test_extracts_from_think_action(self):
+        """When agent used think() but never called finish(), extract its reasoning."""
+        think_action = MockThinkAction(
+            thought="After reviewing the code, the bug is in auth.py line 42."
+        )
+        think_event = MockActionEvent(think_action)
+
+        # Also add a terminal action after the think
+        term_action = MockTerminalAction(command="grep -r 'auth' src/")
+        term_event = MockActionEvent(term_action)
+
+        events = [think_event, term_event, MockOtherEvent()]
+
+        result = extract_response_from_events(events)
+        assert result == "After reviewing the code, the bug is in auth.py line 42."
+
+    def test_think_action_not_used_when_finish_present(self):
+        """FinishAction should still take priority over ThinkAction."""
+        think_action = MockThinkAction(thought="Internal reasoning")
+        think_event = MockActionEvent(think_action)
+
+        finish_action = MockFinishAction(message="Final answer via finish()")
+        finish_action.__class__.__name__ = "FinishAction"
+        finish_event = MockActionEvent(finish_action)
+
+        events = [think_event, finish_event]
+
+        result = extract_response_from_events(events)
+        assert result == "Final answer via finish()"
+
+    def test_most_recent_think_action_wins(self):
+        """When multiple ThinkActions exist, the most recent should be used."""
+        think1 = MockThinkAction(thought="Initial analysis")
+        event1 = MockActionEvent(think1)
+
+        think2 = MockThinkAction(thought="Deeper investigation reveals root cause in line 99.")
+        event2 = MockActionEvent(think2)
+
+        events = [event1, MockOtherEvent(), event2]
+
+        result = extract_response_from_events(events)
+        assert result == "Deeper investigation reveals root cause in line 99."
+
+
+class TestSummaryFallback:
+    """Test fallback that composes response from event summaries."""
+
+    def test_composes_from_summaries_when_no_other_response(self):
+        """When all other fallbacks fail, compose from event summaries."""
+        events = []
+        summaries = [
+            "Check pod status in vibeteam namespace",
+            "Check recent events in vibeteam namespace",
+            "Check logs of vibeteam-gateway deployment",
+        ]
+        for s in summaries:
+            action = MockTerminalAction(command="kubectl ...")
+            event = MockActionEvent(action, thought="", summary=s)
+            events.append(event)
+            events.append(MockOtherEvent())  # observation
+
+        result = extract_response_from_events(events)
+        assert "I investigated but ran out of iterations" in result
+        for s in summaries:
+            assert s in result
+
+    def test_summaries_not_used_when_finish_present(self):
+        """FinishAction should take priority over summary composition."""
+        action = MockTerminalAction(command="kubectl get pods")
+        term_event = MockActionEvent(action, summary="Check pods")
+
+        finish_action = MockFinishAction(message="Investigation complete")
+        finish_action.__class__.__name__ = "FinishAction"
+        finish_event = MockActionEvent(finish_action)
+
+        events = [term_event, finish_event]
+
+        result = extract_response_from_events(events)
+        assert result == "Investigation complete"
+
+    def test_summaries_limited_to_8(self):
+        """At most 8 summaries should be collected."""
+        events = []
+        for i in range(15):
+            action = MockTerminalAction(command=f"cmd{i}")
+            event = MockActionEvent(action, summary=f"Step {i}")
+            events.append(event)
+
+        result = extract_response_from_events(events)
+        # Should contain the last 8 summaries (7-14)
+        assert "Step 14" in result
+        assert "Step 7" in result
+        # Should NOT contain early summaries
+        assert "Step 6" not in result
+
+    def test_empty_summaries_skipped(self):
+        """Events with empty summaries should be skipped."""
+        action1 = MockTerminalAction()
+        event1 = MockActionEvent(action1, summary="")
+
+        action2 = MockTerminalAction()
+        event2 = MockActionEvent(action2, summary="Checked the logs")
+
+        events = [event1, event2]
+
+        result = extract_response_from_events(events)
+        assert "Checked the logs" in result
+        assert result.count("- ") == 1  # only one bullet point

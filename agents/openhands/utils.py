@@ -73,7 +73,26 @@ def extract_response_from_events(events: list[Any]) -> str:
                 break
 
     if not response:
-        # Fallback: extract the last ActionEvent's thought field.
+        # Fallback 1: Look for ThinkAction — agent used think() tool which
+        # stores its reasoning in action.thought.  This is separate from the
+        # ActionEvent.thought field (which gpt-4.1-mini rarely populates).
+        for event in reversed(events):
+            event_type = type(event).__name__
+            if event_type == "ActionEvent":
+                action = getattr(event, "action", None)
+                action_name = type(action).__name__ if action else ""
+                if action_name == "ThinkAction":
+                    thought = getattr(action, "thought", "")
+                    if thought:
+                        logger.info(
+                            "Extracted response from ThinkAction.thought fallback (%d chars)",
+                            len(thought),
+                        )
+                        response = thought
+                        break
+
+    if not response:
+        # Fallback 2: extract the last ActionEvent's thought field.
         # When the agent hits max_iterations without calling finish(), the last
         # action's thought often contains the LLM's summary/reasoning.
         # NOTE: thought is on the ActionEvent itself, NOT on the action object.
@@ -93,6 +112,31 @@ def extract_response_from_events(events: list[Any]) -> str:
                     )
                     response = thought
                     break
+
+    if not response:
+        # Fallback 3: Compose from event summaries.
+        # OpenHands events have a .summary field (e.g. "Check pod status in vibeteam namespace").
+        # Collect the last few action summaries to give a sense of what the agent investigated.
+        summaries: list[str] = []
+        for event in reversed(events):
+            event_type = type(event).__name__
+            if event_type == "ActionEvent":
+                summary = getattr(event, "summary", "")
+                if summary:
+                    summaries.append(summary)
+                if len(summaries) >= 8:
+                    break
+        if summaries:
+            summaries.reverse()
+            response = (
+                "I investigated but ran out of iterations before completing. "
+                "Here's what I did:\n" + "\n".join(f"- {s}" for s in summaries)
+            )
+            logger.info(
+                "Composed response from %d event summaries (%d chars)",
+                len(summaries),
+                len(response),
+            )
 
     if not response:
         # Log event types for debugging when no response is found
