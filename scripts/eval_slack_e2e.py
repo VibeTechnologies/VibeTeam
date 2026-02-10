@@ -786,6 +786,16 @@ async def run_evaluation(
         api_key = os.environ.get("AZURE_OPENAI_API_KEY", os.environ.get("AZURE_API_KEY"))
         api_base = os.environ.get("AZURE_OPENAI_ENDPOINT", os.environ.get("AZURE_API_BASE"))
 
+        # Warn if credentials appear to be from wrong environment
+        if api_base and "vibebrowser" not in api_base.lower():
+            print(f"    WARNING: Azure endpoint '{api_base}' doesn't contain 'vibebrowser'.")
+            print("    This may be a shell env var overriding .env. Try:")
+            print(
+                "    unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY AZURE_API_BASE AZURE_API_KEY"
+            )
+            print("    export $(grep -v '^#' .env | grep -E '^AZURE_' | xargs)")
+            print("")
+
         if api_key and api_base:
             try:
                 model = AzureOpenAIModel(
