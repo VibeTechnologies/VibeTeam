@@ -131,6 +131,11 @@ class OpenHandsProductManager:
         """Create Agent with LLM."""
         return Agent(
             llm=llm,
+            # Use our custom template that renders agent_context into the system prompt.
+            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
+            system_prompt_filename=os.path.join(
+                os.path.dirname(__file__), "prompts", "agent_system.j2"
+            ),
             system_prompt_kwargs={
                 "agent_context": PRODUCT_MANAGER_CONTEXT,
             },

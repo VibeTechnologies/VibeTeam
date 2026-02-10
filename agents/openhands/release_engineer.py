@@ -56,9 +56,9 @@ except ImportError:
     FileEditorTool = None
 
 
-# Note: OpenHands uses Jinja2 templates for system prompts.
-# For custom prompts, you can extend Agent and override system_prompt_filename
-# or provide system_prompt_kwargs for template variables.
+# OpenHands uses Jinja2 templates for system prompts.
+# We use agents/openhands/prompts/agent_system.j2 as a custom template
+# that renders agent_context into the system prompt via system_prompt_kwargs.
 
 RELEASE_ENGINEER_CONTEXT = """You are Einstein, the Release Engineer for VibeTeam.
 
@@ -74,9 +74,10 @@ You have FULL access to the production Kubernetes cluster. When you receive a ha
 from SupportEngineer with investigation findings, YOUR JOB IS TO ACT.
 
 ## PRE-FETCHED DATA AVAILABLE
-Look for the section starting with "## Pre-Fetched Kubernetes Context" below.
+Look for the section starting with "PRE-FETCHED KUBERNETES STATE" below.
 This contains the CURRENT state of pods, events, logs, and rollout history.
-**USE THIS DATA FIRST** instead of running manual `kubectl` commands to verify state.
+**USE THIS DATA** to understand the current state, but you still MUST run kubectl
+commands for any write operations (deploy, rollback, restart, scale).
 
 ## CRITICAL: TAKE ACTION, DON'T JUST INVESTIGATE
 
@@ -86,6 +87,24 @@ SupportEngineer has already investigated. When you receive a handoff:
 3. **TAKE THE APPROPRIATE ACTION** - don't just recommend, DO IT
 
 ## ACTIONS YOU MUST TAKE (not just recommend)
+
+### Deploy New Code (PR merged, deploy to staging/production)
+```bash
+# Step 1: Verify current state BEFORE deployment
+kubectl get pods -n vibeteam -o wide
+kubectl get deployments -n vibeteam
+
+# Step 2: Apply the latest manifests
+kubectl apply -k k8s/overlays/dev
+
+# Step 3: Wait for rollout to complete
+kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
+kubectl rollout status deployment/openhands-svc -n vibeteam --timeout=120s
+
+# Step 4: Verify pods are healthy AFTER deployment
+kubectl get pods -n vibeteam
+kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
+```
 
 ### Rollback a Deployment
 ```bash
@@ -151,6 +170,22 @@ kubectl get deployments -n vibeteam
 
 ## RESPONSE FORMAT AFTER TAKING ACTION
 
+### For Deployments:
+```
+**Deployment Executed:**
+- Ran: `kubectl apply -k k8s/overlays/dev`
+- Rollout: `kubectl rollout status deployment/vibeteam-gateway -n vibeteam` → Complete
+- Rollout: `kubectl rollout status deployment/openhands-svc -n vibeteam` → Complete
+
+**Verification:**
+- Pods: All Running (kubectl get pods output)
+- Events: No warnings or errors
+- Health: Endpoints responding normally
+
+Deployment to staging complete. Team notified.
+```
+
+### For Rollbacks/Incident Response:
 ```
 Received handoff about [issue].
 
@@ -214,8 +249,11 @@ class OpenHandsReleaseEngineer:
                 Tool(name=TerminalTool.name),
                 Tool(name=FileEditorTool.name),
             ],
-            # OpenHands uses template-based system prompts
-            # We pass context as kwargs for custom templates
+            # Use our custom template that renders agent_context into the system prompt.
+            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
+            system_prompt_filename=os.path.join(
+                os.path.dirname(__file__), "prompts", "agent_system.j2"
+            ),
             system_prompt_kwargs={
                 "agent_context": RELEASE_ENGINEER_CONTEXT,
             },
@@ -285,13 +323,16 @@ class OpenHandsReleaseEngineer:
             if context_str:
                 context_block = f"""
 ================================================================================
-INJECTED DATA FROM MONITORING SYSTEMS - THIS IS YOUR DATA, USE IT!
+PRE-FETCHED KUBERNETES STATE (for reference - current as of this request)
 ================================================================================
 
 {context_str}
 
 ================================================================================
-END OF INJECTED DATA - The above data has ALREADY been fetched for you
+END OF PRE-FETCHED STATE
+NOTE: This is READ-ONLY state data. You still MUST run kubectl commands for any
+WRITE operations (apply, rollout, restart, scale, undo). Do NOT skip actions
+just because you have the current state above.
 ================================================================================
 """
                 full_task = f"{RELEASE_ENGINEER_CONTEXT}\n{context_block}\nTask: {task}"

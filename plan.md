@@ -1,15 +1,31 @@
 # Current Work Plan
 
-## Blocked: Slack App Webhook URL Configuration
+## In Progress: Fix release_deploy eval — system prompt template (Issue A)
 
-**Status:** Blocked on manual Slack admin access.
-**PR:** #54 (merged — manifest fix is on master)
+**Status:** Code changes complete, needs commit, deploy, and eval verification.
+**Branch:** master (uncommitted changes)
 
-### Manual Steps Required
-1. Go to https://api.slack.com/apps/A0AAZGWEAVA/event-subscriptions
-2. Change **Request URL** to: `https://webhook.team.vibebrowser.app/slack/events`
-3. Go to https://api.slack.com/apps/A0AAZGWEAVA/interactivity
-4. Change **Request URL** to: `https://webhook.team.vibebrowser.app/slack/interactive`
+### Problem
+The `release_deploy` eval failed because agents narrate what they'd do instead of actually running kubectl commands. Root cause: `system_prompt_kwargs` with `agent_context` was silently dropped because no custom `system_prompt_filename` was provided. The default OpenHands template (`system_prompt.j2`) ignores unknown kwargs.
+
+### Fix Applied
+- [x] Created `agents/openhands/prompts/agent_system.j2` — custom Jinja2 template that renders `{{ agent_context }}` (the agent persona/instructions) into the system prompt
+- [x] Wired `system_prompt_filename` in all 5 agent constructors:
+  - `release_engineer.py` — `system_prompt_filename=os.path.join(os.path.dirname(__file__), "prompts", "agent_system.j2")`
+  - `software_engineer.py` — same
+  - `support_engineer.py` — same
+  - `marketing_manager.py` — same
+  - `product_manager.py` — same
+- [x] Enhanced ReleaseEngineer context: added deployment playbook, deployment response format, clearer context block preamble
+- [x] Added deployment-specific task template in `slack.py` with explicit step-by-step kubectl instructions
+- [x] Added `tests/test_task_routing.py` (301 lines) for task routing/detection logic
+
+### Remaining Steps
+- [ ] Commit all changes
+- [ ] Deploy to cluster (build Docker image, push, restart deployments)
+- [ ] Run `release_deploy` eval: `uv run python scripts/eval_slack_e2e.py --scenario release_deploy --channel C0AATPSADB8 --timeout 600`
+- [ ] Verify no regression: run `support_400_errors` and `stripe_webhook_failure` evals
+- [ ] Update eval results table below
 
 ---
 
