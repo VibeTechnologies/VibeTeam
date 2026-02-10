@@ -485,21 +485,11 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             conversation.run()
             print(f"[SoftwareEngineer] Conversation run completed for context {context_id}")
 
-            # Get the last assistant message from conversation events
-            response = ""
-            for event in reversed(conversation.state.events):
-                # Check for MessageEvent with agent source
-                if event.kind == "MessageEvent" and getattr(event, "source", None) == "agent":
-                    # MessageEvent has llm_message with content
-                    if hasattr(event, "llm_message") and event.llm_message:
-                        llm_msg = event.llm_message
-                        if hasattr(llm_msg, "content") and llm_msg.content:
-                            # Content is a list of content blocks
-                            for block in llm_msg.content:
-                                if hasattr(block, "text"):
-                                    response = block.text
-                                    break
-                    break
+            # Extract the agent's final response from conversation events
+            # Uses shared extraction that handles both FinishAction and MessageEvent
+            from agents.openhands.utils import extract_response_from_events
+
+            response = extract_response_from_events(conversation.state.events)
 
             session.add_message("user", task)
             session.add_message("assistant", response)
