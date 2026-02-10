@@ -13,6 +13,9 @@
 - [x] SoftwareEngineer: "VERIFY YOUR FIX" instructions (curl after config fix, run tests after code fix)
 - [x] SoftwareEngineer: "DO NOT FABRICATE ROOT CAUSES" anti-hallucination guardrails
 - [x] All 87 existing tests pass, ruff lint clean
+- [x] 27 unit tests for rescore mode + handoff timeout (`tests/test_eval_rescore.py`)
+- [x] Live validation: all 4 metrics >= 0.90 on `stripe_webhook_failure` thread
+- [x] CI passes (lint, test, unit tests, docker build)
 
 ### Files Changed
 
@@ -20,6 +23,12 @@
 |------|-------------|
 | `scripts/eval_slack_e2e.py` | `--thread-ts` rescore mode, `--handoff-timeout`, auto-extend timeout, stable_time 60→300 |
 | `agents/openhands/software_engineer.py` | VERIFY YOUR FIX + DO NOT FABRICATE ROOT CAUSES sections |
+| `tests/test_eval_rescore.py` | **NEW** — 27 unit tests for rescore mode + handoff timeout |
+
+### PR Status
+
+**PR #60:** Open, CI passing, ready for review.
+- https://github.com/VibeTechnologies/VibeTeam/pull/60
 
 ### Usage
 
@@ -36,9 +45,18 @@ uv run python scripts/eval_slack_e2e.py \
   --handoff-timeout 900
 ```
 
+### Live Rescore Results (thread 1770710833.425539)
+
+| Metric | Score | Threshold | Status |
+|--------|-------|-----------|--------|
+| InvestigationQuality | 1.00 | 0.60 | Pass |
+| TaskCompletion | 1.00 | 0.60 | Pass |
+| EvidenceBasedDecision | 0.90 | 0.60 | Pass |
+| HandoffCompletion | 0.90 | 0.60 | Pass |
+
 ### Remaining
 
-- [ ] Merge PR, deploy, run full eval to verify SoftwareEngineer improvements
+- [ ] Merge PR #60, deploy, run full eval to verify SoftwareEngineer improvements
 
 ---
 
