@@ -242,84 +242,19 @@ sequenceDiagram
     end
 ```
 
-### Three Duplicate Role-Parsing Systems
+### Three Duplicate Role-Parsing Systems — RESOLVED
 
-There are **three separate implementations** that map text to agent roles. They use different syntax, support different aliases, and could diverge if roles are added or renamed.
+**Status:** Consolidated in PR #59 (merged `a285377`).
 
-#### System 1: Gateway Router (regex-based)
+The three separate role-parsing implementations (gateway router regex, OpenHands team string matching, and Slack tools display name dict) have been replaced by a single `RoleResolver` module at `agents/shared/role_resolver.py`. All consumers now import from this single source of truth:
 
-**File:** `vibeteam/router/router.py:52-57` + `vibeteam/router/models.py:85-97`
+- `vibeteam/router/models.py` — re-exports `ROLE_MENTION_MAP`, `ROLE_DISPLAY_NAMES`, `AgentRole`
+- `vibeteam/router/router.py` — delegates to `role_resolver.parse_role_mentions()`
+- `agents/openhands/team.py` — delegates to `role_resolver.parse_first_role_mention()`
+- `agents/shared/slack_tools.py` — uses `ROLE_DISPLAY_NAMES` + `ROLE_MENTION_MAP`
+- `scripts/eval_slack_e2e.py` — imports `ROLE_PATTERN` from `role_resolver`
 
-```python
-ROLE_PATTERN = re.compile(
-    r"[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|"
-    r"ProductManager|MarketingManager|"
-    r"SWE|Release|Support|PM|Marketing)",
-    re.IGNORECASE,
-)
-```
-
-- **Prefix:** `@` or `/`
-- **Returns:** list of all matches (deduped)
-- **Short forms:** SWE, Release, Support, PM, Marketing
-- **Persona names:** Not supported
-- **Used by:** Gateway webhook handler + handoff detection
-
-#### System 2: OpenHands Team (string `in` matching)
-
-**File:** `agents/openhands/team.py:48-87`
-
-```python
-release_patterns = ["@releaseengineer", "@release", "@einstein"]
-marketing_patterns = ["@marketingmanager", "@marketing", "@ada"]
-support_patterns = ["@supportengineer", "@support", "@grace"]
-product_patterns = ["@productmanager", "@product", "@pm"]
-software_patterns = ["@softwareengineer", "@swe", "@dev"]
-```
-
-- **Prefix:** `@` only (no `/`)
-- **Returns:** first match only (not a list)
-- **Short forms:** release, support, swe, pm, product, dev
-- **Persona names:** einstein, ada, grace, maya (not listed but implied), alan (not listed)
-- **Used by:** openhands-svc to select which agent class to instantiate
-
-#### System 3: Slack Tools Display Names
-
-**File:** `agents/shared/slack_tools.py:652-662`
-
-```python
-display_names = {
-    "swe": "SoftwareEngineer",
-    "release": "ReleaseEngineer",
-    "support": "SupportEngineer",
-    "pm": "ProductManager",
-    "marketer": "MarketingManager",  # <-- "marketer" not "marketing"
-    "supervisor": "ProductManager",  # <-- extra alias
-}
-```
-
-- **Purpose:** Maps internal agent keys to display names for Slack message prefixes
-- **Anomalies:** Uses "marketer" (not "marketing"), includes "supervisor" alias
-
-#### Divergence Risks
-
-| Feature | Gateway Router | OpenHands Team | Slack Tools |
-|---------|---------------|----------------|-------------|
-| `/` prefix | Yes | No | N/A |
-| `@` prefix | Yes | Yes | N/A |
-| Persona names (einstein, grace...) | No | Yes | No |
-| `@dev` alias | No | Yes | No |
-| `@product` alias | No | Yes | No |
-| `marketer` key | No | No | Yes |
-| `supervisor` key | No | No | Yes |
-| Multi-match | Yes (list) | No (first) | N/A |
-
-**Concrete risk:** If a user says `@einstein please deploy`, the gateway router will NOT recognize it (no match → keyword fallback), but the OpenHands team parser WILL map it to `release_engineer`. These two systems route independently — the gateway already picked a role before openhands-svc even sees the message. So the openhands team parser is effectively redundant for Slack-originated requests, since the gateway already resolved the role and passes it as `role=` in the `/run` payload.
-
-**Recommendation:** Consolidate into a single `RoleResolver` class in `agents/shared/` that all three systems import. This would:
-1. Eliminate divergence risk
-2. Make persona name support consistent
-3. Single place to add new roles/aliases
+The consolidated module supports all aliases (full names, short forms like swe/pm, persona names like einstein/grace/ada, and extras like dev/product/marketer/supervisor) with a single dynamically-built regex using `\b` word boundaries. 37 unit tests in `tests/test_role_resolver.py` cover all alias categories and edge cases.
 
 ### Agent Architecture Comparison
 

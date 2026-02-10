@@ -49,6 +49,7 @@ load_dotenv()
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from agents.shared.role_resolver import ROLE_PATTERN
 from vibeteam.connectors.slack import SlackConnector
 
 # Try to import DeepEval
@@ -724,10 +725,6 @@ async def run_evaluation(
     last_new_message_time = 0.0
     pending_handoff = False  # Track if we're waiting for a handoff
 
-    # Pattern to detect @/RoleName mentions (handoffs)
-    # Uses the consolidated ROLE_PATTERN from role_resolver (single source of truth)
-    from agents.shared.role_resolver import ROLE_PATTERN as handoff_pattern
-
     while time.time() - start_time < wait_timeout:
         await asyncio.sleep(poll_interval)
 
@@ -744,7 +741,7 @@ async def run_evaluation(
             bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
             if bot_messages:
                 latest_bot_msg = bot_messages[-1]
-                has_handoff = bool(handoff_pattern.search(latest_bot_msg.text))
+                has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
                 if has_handoff:
                     print("    Handoff detected in response! Waiting for next agent...")
                     pending_handoff = True
@@ -764,7 +761,7 @@ async def run_evaluation(
             if time_since_last >= stable_time:
                 # Check if latest message has no handoff (conversation complete)
                 latest_bot_msg = bot_messages[-1]
-                has_handoff = bool(handoff_pattern.search(latest_bot_msg.text))
+                has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
                 if not has_handoff:
                     print(
                         f"    Conversation stable for {int(time_since_last)}s, no pending handoffs."
