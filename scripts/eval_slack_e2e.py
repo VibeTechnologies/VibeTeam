@@ -62,6 +62,221 @@ except ImportError:
 # ==============================================================================
 
 SCENARIOS = {
+    "support_400_errors": {
+        "name": "Support Engineer - API 400 Errors Investigation",
+        "message": (
+            "@SupportEngineer there is a request from a user who sees the issue with "
+            "Vibe API Gateway returning 400 errors. Customer ACME Corp reports this "
+            "started after the deployment at 8am. Multiple customers affected, about "
+            "500 users. This seems infrastructure-related. Please investigate."
+        ),
+        "expected_agent": "support_engineer",
+        "evaluation_criteria": {
+            "InvestigationQuality": (
+                "Did the SupportEngineer ACTUALLY investigate and RESOLVE the issue? "
+                "This is a STRICT evaluation - attempting tools that fail is NOT success. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Successfully query Sentry and report SPECIFIC error counts, patterns, stack traces; "
+                "(2) Successfully access Kubernetes/infrastructure to check deployment state; "
+                "(3) Identify the ROOT CAUSE with evidence from internal tools (not just external HTTP checks); "
+                "(4) Take concrete action OR provide findings that enable resolution. "
+                "SCORING: "
+                "Score 0.0-0.2: No investigation or all tools failed with no useful findings. "
+                "Score 0.2-0.4: Tools failed but agent made reasonable external observations. "
+                "Score 0.4-0.6: Some tools worked, partial findings, but no root cause identified. "
+                "Score 0.6-0.8: Tools worked, root cause identified, but no resolution. "
+                "Score 0.8-1.0: Full investigation with tools, root cause found, and resolution provided. "
+                "CRITICAL: If agent just says 'tools failed, someone else please help' repeatedly, "
+                "score should be 0.2 or lower. External curl/HTTP checks alone are worth at most 0.3."
+            ),
+            "EvidenceBasedDecision": (
+                "Did the agent make EVIDENCE-BASED decisions, not speculative ones? "
+                "CRITICAL: If investigation shows NO errors, NO issues, healthy pods, clean logs - "
+                "the agent should NOT recommend drastic actions like rollback. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Recommendations must be supported by actual findings from tools; "
+                "(2) If no evidence of problems found, agent should report 'infrastructure healthy, no action needed'; "
+                "(3) If recommending rollback, there MUST be evidence of issues (errors in logs, failing pods, Sentry alerts); "
+                "(4) Agent should ask customer for more details (request IDs, timestamps) if no issues found. "
+                "SCORING: "
+                "Score 0.0-0.3: Recommended rollback/drastic action with NO evidence of problems. "
+                "Score 0.3-0.5: Made speculative recommendations not supported by findings. "
+                "Score 0.5-0.7: Recommendations loosely aligned with findings but some speculation. "
+                "Score 0.7-0.9: Recommendations clearly tied to evidence found. "
+                "Score 0.9-1.0: Perfect alignment - actions match evidence, no unnecessary escalation. "
+                "CRITICAL PENALTY: If agent found 'no errors, pods healthy, logs clean' but still recommended "
+                "rollback, score should be 0.3 or lower - this is reckless escalation."
+            ),
+            "HandoffCompletion": (
+                "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: The agent should NOT hand off to themselves (e.g., SoftwareEngineer tagging @SoftwareEngineer). "
+                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
+                "(2) The target agent must have taken meaningful action (not just acknowledged); "
+                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "SCORING: "
+                "Score 0.0-0.2: Self-handoff (e.g., tagging own role) or handoff with NO response. "
+                "Score 0.2-0.4: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
+                "Score 0.6-0.8: Handoff made, target responded with partial action. "
+                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
+                "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
+                "If only one agent responded and they made a handoff that was never picked up, score 0.2 max."
+            ),
+        },
+        "threshold": 0.60,
+    },
+    "support_notify_check": {
+        "name": "Support Engineer - Notification Request",
+        "message": (
+            "@SupportEngineer please notify the team that the deployment of PR #123 "
+            "to staging is complete and verified."
+        ),
+        "expected_agent": "support_engineer",
+        "evaluation_criteria": {
+            "NotificationOnly": (
+                "Did the SupportEngineer JUST notify without investigating? "
+                "REQUIRED: "
+                "(1) Confirm the message acknowledges the request; "
+                "(2) Confirm NO investigation steps (Sentry/kubectl) were taken; "
+                "(3) Confirm the output is a clear notification message. "
+                "Score 0.0-0.3 if it tries to investigate or check Sentry."
+            ),
+        },
+        "threshold": 0.80,
+    },
+    "github_issue": {
+        "name": "Software Engineer - GitHub Issue Triage",
+        "message": (
+            "@SoftwareEngineer we have a new GitHub issue #449 reporting that the "
+            "browser extension crashes when clicking the record button. The user says "
+            "it happens on Chrome 120 with the latest extension version. Please investigate."
+        ),
+        "expected_agent": "software_engineer",
+        "evaluation_criteria": {
+            "IssueAnalysis": (
+                "Did the SoftwareEngineer ACTUALLY investigate the GitHub issue? "
+                "REQUIRED: "
+                "(1) Successfully fetch and read the GitHub issue content; "
+                "(2) Analyze the code related to the record button functionality; "
+                "(3) Identify potential causes based on code analysis, not speculation. "
+                "SCORING: "
+                "Score 0.0-0.3: Failed to access GitHub or code, only generic suggestions. "
+                "Score 0.3-0.6: Accessed issue but superficial analysis without code review. "
+                "Score 0.6-0.8: Reviewed relevant code, identified likely cause. "
+                "Score 0.8-1.0: Full analysis with specific code references and fix proposal."
+            ),
+            "TaskCompletion": (
+                "Was the issue investigated and a clear path forward provided? "
+                "REQUIRED: "
+                "(1) Specific diagnosis with evidence from investigation (Sentry, kubectl, code search); "
+                "(2) Either: PR created with fix, OR detailed fix instructions, OR clear identification of where the issue lies with next steps. "
+                "IMPORTANT: If the relevant code is not in the repository, identifying this limitation and providing "
+                "recommendations for what code to investigate externally counts as partial completion (0.5-0.7). "
+                "Score 0.0-0.3 if only generic suggestions without investigation. "
+                "Score 0.3-0.5 if investigated but no actionable findings. "
+                "Score 0.5-0.7 if identified the issue location/cause but couldn't fix (e.g., code not in repo). "
+                "Score 0.7-0.9 if provided detailed fix instructions or triaged properly. "
+                "Score 0.9-1.0 if PR created or issue fully resolved."
+            ),
+            "EvidenceBasedDecision": (
+                "Did the agent make EVIDENCE-BASED decisions, not speculative ones? "
+                "CRITICAL: The agent should base all recommendations on actual findings from code review or GitHub data. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Recommendations must be supported by actual findings from tools (GitHub, code search); "
+                "(2) If no bug is found in code, agent should say so rather than speculate; "
+                "(3) If recommending a fix, there MUST be evidence of the bug location. "
+                "SCORING: "
+                "Score 0.0-0.3: Made speculative fix suggestions without finding the actual bug. "
+                "Score 0.3-0.5: Some code review but recommendations not clearly tied to findings. "
+                "Score 0.5-0.7: Recommendations loosely aligned with findings but some speculation. "
+                "Score 0.7-0.9: Recommendations clearly tied to evidence found. "
+                "Score 0.9-1.0: Perfect alignment - actions match evidence, no unnecessary speculation."
+            ),
+            "HandoffCompletion": (
+                "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: The agent should NOT hand off to themselves (e.g., SoftwareEngineer tagging @SoftwareEngineer). "
+                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
+                "(2) The target agent must have taken meaningful action (not just acknowledged); "
+                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "SCORING: "
+                "Score 0.0-0.2: Self-handoff (e.g., tagging own role) or handoff with NO response. "
+                "Score 0.2-0.4: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
+                "Score 0.6-0.8: Handoff made, target responded with partial action. "
+                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
+                "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
+                "If only one agent responded and they made a handoff that was never picked up, score 0.2 max."
+            ),
+        },
+        "threshold": 0.60,
+    },
+    "release_deploy": {
+        "name": "Release Engineer - Deployment Request",
+        "message": (
+            "@ReleaseEngineer we need to deploy the latest changes to staging. "
+            "The PR #123 has been merged and all tests are passing. Please proceed "
+            "with the staging deployment and notify the team when done."
+        ),
+        "expected_agent": "release_engineer",
+        "evaluation_criteria": {
+            "DeploymentExecution": (
+                "Did the ReleaseEngineer ACTUALLY deploy to staging? "
+                "REQUIRED: "
+                "(1) Verify PR #123 status and test results; "
+                "(2) Execute the actual deployment command/pipeline; "
+                "(3) Confirm deployment succeeded with evidence (pod status, health checks). "
+                "SCORING: "
+                "Score 0.0-0.3: No deployment attempted or all commands failed. "
+                "Score 0.3-0.6: Deployment attempted but failed or couldn't verify. "
+                "Score 0.6-0.8: Deployment succeeded but incomplete verification. "
+                "Score 0.8-1.0: Full deployment with verification and notification."
+            ),
+            "TaskCompletion": (
+                "Is the deployment DONE and verified? "
+                "REQUIRED: Staging environment running the new code, health checks passing. "
+                "Score 0.0-0.3 if deployment was not completed for any reason."
+            ),
+            "EvidenceBasedDecision": (
+                "Did the agent make EVIDENCE-BASED decisions during deployment? "
+                "CRITICAL: The agent should verify each step before proceeding to the next. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Verify PR is actually merged before deploying; "
+                "(2) Verify tests actually passed (not just trust the request); "
+                "(3) Confirm deployment success with actual kubectl output or health checks; "
+                "(4) If deployment fails, report actual error not speculation. "
+                "SCORING: "
+                "Score 0.0-0.3: Claimed deployment complete without verification evidence. "
+                "Score 0.3-0.5: Some verification but incomplete evidence chain. "
+                "Score 0.5-0.7: Most steps verified but some gaps. "
+                "Score 0.7-0.9: Full verification with kubectl output and health checks. "
+                "Score 0.9-1.0: Perfect - every step verified with evidence before proceeding."
+            ),
+            "HandoffCompletion": (
+                "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: The agent should NOT hand off to themselves (e.g., ReleaseEngineer tagging @ReleaseEngineer). "
+                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
+                "(2) The target agent must have taken meaningful action (not just acknowledged); "
+                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "SCORING: "
+                "Score 0.0-0.2: Self-handoff (e.g., tagging own role) or handoff with NO response. "
+                "Score 0.2-0.4: Handoff made but NO response from target agent - task left incomplete. "
+                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
+                "Score 0.6-0.8: Handoff made, target responded with partial action. "
+                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
+                "NOTE: For deployment tasks, handoffs should be rare - ReleaseEngineer should complete directly."
+            ),
+        },
+        "threshold": 0.60,
+    },
     "stripe_webhook_failure": {
         "name": "Support Engineer - Stripe Webhook Failure Investigation",
         "message": (
