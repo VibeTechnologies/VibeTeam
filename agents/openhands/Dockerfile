@@ -61,9 +61,11 @@ RUN useradd -m -u 1000 vibeteam
 USER vibeteam
 
 # Configure Git for the agent
+# Note: gh auth setup-git requires authentication, so we configure the
+# credential helper directly. At runtime, GITHUB_TOKEN env var enables gh auth.
 RUN git config --global user.email "agent@vibebrowser.app" \
     && git config --global user.name "VibeTeam Agent" \
-    && gh auth setup-git
+    && git config --global credential.https://github.com.helper '!/usr/bin/gh auth git-credential'
 
 # Environment variables (override at runtime)
 ENV AZURE_API_KEY=""
