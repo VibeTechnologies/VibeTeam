@@ -7,13 +7,15 @@ with Swarm orchestration. Compatible with LibreChat and other OpenAI-compatible 
 
 import logging
 import os
+import shutil
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
 from vibeteam.swarm import SwarmOrchestrator, create_swarm_orchestrator
+from agents.shared.docs_tools import _get_uploads_dir, rebuild_index
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +311,53 @@ async def list_models() -> dict[str, Any]:
             }
         ],
     }
+
+
+class UploadResponse(BaseModel):
+    """Response model for document upload."""
+
+    filename: str
+    size: int
+    message: str
+
+
+@app.post("/v1/docs/upload", response_model=UploadResponse)
+async def upload_doc(
+    file: UploadFile = File(...), session_id: str | None = Form(None)
+) -> UploadResponse:
+    """Upload a document to the knowledge base."""
+    try:
+        # Determine upload path
+        uploads_dir = _get_uploads_dir()
+
+        # If session_id is provided, create a subdirectory
+        if session_id:
+            target_dir = os.path.join(uploads_dir, session_id)
+            os.makedirs(target_dir, exist_ok=True)
+        else:
+            target_dir = uploads_dir
+
+        # Clean filename
+        # Ensure we don't have directory traversal or unsafe chars
+        safe_filename = os.path.basename(file.filename) if file.filename else "unnamed_file"
+        file_path = os.path.join(target_dir, safe_filename)
+
+        # Save file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Rebuild index to include new file
+        rebuild_index()
+
+        return UploadResponse(
+            filename=safe_filename,
+            size=os.path.getsize(file_path),
+            message=f"File {safe_filename} uploaded and indexed successfully",
+        )
+
+    except Exception as e:
+        logger.exception("Upload error")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ============================================================================

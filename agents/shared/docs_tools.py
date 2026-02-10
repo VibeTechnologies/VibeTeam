@@ -134,6 +134,15 @@ def _get_docs_root() -> str:
     return os.getcwd()
 
 
+def _get_uploads_dir() -> str:
+    """Get the directory for user-uploaded documents."""
+    root = _get_docs_root()
+    uploads_dir = os.environ.get("DOCS_UPLOADS_DIR", os.path.join(root, "data", "uploads"))
+    if not os.path.exists(uploads_dir):
+        os.makedirs(uploads_dir, exist_ok=True)
+    return uploads_dir
+
+
 def _find_markdown_files(root_dir: str | None = None) -> list[str]:
     """Find all markdown files in the documentation directories."""
     if root_dir is None:
@@ -141,6 +150,7 @@ def _find_markdown_files(root_dir: str | None = None) -> list[str]:
 
     all_files = []
 
+    # 1. Standard docs directories
     for docs_dir in DEFAULT_DOCS_DIRS:
         search_path = os.path.join(root_dir, docs_dir)
         if os.path.isdir(search_path):
@@ -162,6 +172,14 @@ def _find_markdown_files(root_dir: str | None = None) -> list[str]:
 
                 if not excluded:
                     all_files.append(f)
+
+    # 2. Uploaded files (also supporting .txt, .pdf converted to text, etc. - for now just .md and .txt)
+    uploads_dir = _get_uploads_dir()
+    if os.path.isdir(uploads_dir):
+        for ext in ["*.md", "*.txt"]:
+            pattern = os.path.join(uploads_dir, "**", ext)
+            files = glob(pattern, recursive=True)
+            all_files.extend(files)
 
     # Normalize paths and deduplicate
     normalized = [os.path.normpath(f) for f in all_files]
@@ -400,6 +418,34 @@ def search_docs(query: str, max_results: int = 5) -> str:
 def search_docs_sync(query: str, max_results: int = 5) -> str:
     """Synchronous version of search_docs (same implementation)."""
     return search_docs(query, max_results)
+
+
+def list_uploaded_docs() -> list[str]:
+    """List all user-uploaded documents.
+
+    Returns:
+        List of filenames (relative to uploads directory)
+    """
+    uploads_dir = _get_uploads_dir()
+    if not os.path.exists(uploads_dir):
+        return []
+
+    files = []
+    for ext in ["*.md", "*.txt"]:
+        pattern = os.path.join(uploads_dir, "**", ext)
+        found = glob(pattern, recursive=True)
+        files.extend(found)
+
+    # Return relative paths for display
+    rel_files = []
+    for f in files:
+        try:
+            rel = os.path.relpath(f, uploads_dir)
+            rel_files.append(rel)
+        except ValueError:
+            rel_files.append(os.path.basename(f))
+
+    return sorted(list(set(rel_files)))
 
 
 def list_docs() -> str:

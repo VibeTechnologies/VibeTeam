@@ -14,7 +14,6 @@ from vibeteam.agents import (
     MarketerAgent,
     ProductManagerAgent,
     ReleaseEngineerAgent,
-    ReliabilityEngineerAgent,
     SoftwareEngineerAgent,
     SupportEngineerAgent,
 )
@@ -35,7 +34,6 @@ AGENT_REGISTRY: dict[str, type[BaseVibeAgent]] = {
     "swe": SoftwareEngineerAgent,
     "marketer": MarketerAgent,
     "support": SupportEngineerAgent,
-    "sre": ReliabilityEngineerAgent,
     "release": ReleaseEngineerAgent,
 }
 

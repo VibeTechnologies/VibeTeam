@@ -73,7 +73,6 @@ from vibeteam.agents import (
     MarketerAgent,
     ProductManagerAgent,
     ReleaseEngineerAgent,
-    ReliabilityEngineerAgent,
     SoftwareEngineerAgent,
     SupervisorAgent,
     SupportEngineerAgent,
@@ -99,7 +98,6 @@ __all__ = [
     "SoftwareEngineerAgent",
     "MarketerAgent",
     "SupportEngineerAgent",
-    "ReliabilityEngineerAgent",
     "ReleaseEngineerAgent",
     "SupervisorAgent",
 ]
