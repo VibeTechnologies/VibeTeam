@@ -60,6 +60,54 @@ class RunResponse(BaseModel):
     metadata: dict[str, Any] = {}
 
 
+class AsyncRunRequest(BaseModel):
+    """Request to run a task asynchronously with callback."""
+
+    task: str = Field(..., description="The task to execute")
+    role: str | None = Field(
+        None,
+        description="Specific agent role (support_engineer, release_engineer, marketing_manager, product_manager, software_engineer)",
+    )
+    context_type: str = Field("api", description="Context type (issue, pr, slack, email, api)")
+    context_id: str | None = Field(None, description="Context ID for session tracking")
+    session_id: str | None = Field(None, description="Resume existing session")
+    workspace: str | None = Field(None, description="Working directory for OpenHands")
+    use_tools: bool = Field(
+        True, description="Enable TerminalTool and FileEditorTool for agentic exploration"
+    )
+    skip_context_injection: bool = Field(
+        False, description="Skip automatic context injection from Sentry/Gmail/etc"
+    )
+    callback_url: str = Field(..., description="URL to POST results to when agent completes")
+    callback_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Opaque metadata passed through to the callback (e.g. channel, thread_ts)",
+    )
+
+
+class AsyncRunResponse(BaseModel):
+    """Immediate response from async task submission."""
+
+    job_id: str
+    status: str = "accepted"
+    message: str = "Task accepted, will callback when complete"
+
+
+class CallbackPayload(BaseModel):
+    """Payload sent to callback_url when agent completes."""
+
+    job_id: str
+    status: str  # "completed" or "failed"
+    response: str = ""
+    error: str | None = None
+    session_id: str = ""
+    session_key: str = ""
+    framework: str = "openhands"
+    agents_used: list[str] = []
+    metadata: dict[str, Any] = {}
+    callback_metadata: dict[str, Any] = {}
+
+
 class SessionResponse(BaseModel):
     """Session details response."""
 
@@ -233,6 +281,146 @@ async def run_task(request: RunRequest):
     except Exception as e:
         logger.error(f"Task execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+async def _execute_and_callback(
+    job_id: str,
+    request: AsyncRunRequest,
+) -> None:
+    """Execute agent task in background and POST results to callback_url.
+
+    This runs as a fire-and-forget asyncio task. On completion or failure,
+    it sends the result to request.callback_url.
+    """
+    import httpx
+
+    start_time = time.time()
+    context_id = request.context_id or str(uuid.uuid4())[:8]
+
+    try:
+        team = get_team()
+        role = request.role
+
+        logger.info(f"[job={job_id}] Starting agent execution: role={role}")
+
+        if role:
+            agent = team._get_agent(role)
+            result = await asyncio.to_thread(
+                agent.run,
+                task=request.task,
+                context_type=request.context_type,
+                context_id=context_id,
+                workspace=request.workspace,
+                use_tools=request.use_tools,
+                skip_context_injection=request.skip_context_injection,
+            )
+        else:
+            result = await team.run_async(
+                task=request.task,
+                context_type=request.context_type,
+                context_id=context_id,
+                workspace=request.workspace,
+            )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+        agent_role = result.get("agent", role or "team")
+        session_key = f"openhands:{agent_role}:{request.context_type}:{context_id}"
+
+        # Save to PostgreSQL
+        try:
+            store = get_postgres_store()
+            await store.save(
+                {
+                    "key": session_key,
+                    "framework": "openhands",
+                    "role": agent_role,
+                    "context_type": request.context_type,
+                    "context_id": context_id,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": request.task,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                        {
+                            "role": "assistant",
+                            "content": result.get("response", ""),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    ],
+                }
+            )
+        except Exception as e:
+            logger.warning(f"[job={job_id}] Failed to save session to PostgreSQL: {e}")
+
+        # Build callback payload
+        payload = CallbackPayload(
+            job_id=job_id,
+            status="completed",
+            response=result.get("response", ""),
+            session_id=result.get("session_id", context_id),
+            session_key=session_key,
+            agents_used=[agent_role],
+            metadata={
+                "latency_ms": latency_ms,
+                "message_count": 2,
+                "workspace": request.workspace,
+            },
+            callback_metadata=request.callback_metadata,
+        )
+
+        logger.info(
+            f"[job={job_id}] Agent completed in {latency_ms}ms, "
+            f"response_len={len(payload.response)}, sending callback"
+        )
+
+    except Exception as e:
+        logger.error(f"[job={job_id}] Agent execution failed: {e}")
+        payload = CallbackPayload(
+            job_id=job_id,
+            status="failed",
+            error=str(e),
+            callback_metadata=request.callback_metadata,
+        )
+
+    # POST result to callback URL
+    try:
+        async with httpx.AsyncClient() as client:
+            cb_response = await client.post(
+                request.callback_url,
+                json=payload.model_dump(),
+                timeout=30.0,
+            )
+            logger.info(
+                f"[job={job_id}] Callback sent to {request.callback_url}: "
+                f"status={cb_response.status_code}"
+            )
+    except Exception as e:
+        logger.error(f"[job={job_id}] Failed to send callback to {request.callback_url}: {e}")
+
+
+@app.post("/run/async", response_model=AsyncRunResponse)
+async def run_task_async(request: AsyncRunRequest):
+    """Accept a task and execute it asynchronously.
+
+    Returns a job_id immediately. When the agent completes (or fails),
+    the result is POSTed to request.callback_url.
+    """
+    job_id = str(uuid.uuid4())
+
+    logger.info(
+        f"[job={job_id}] Async task accepted: role={request.role}, "
+        f"callback={request.callback_url}, context={request.context_type}:{request.context_id}"
+    )
+
+    # Fire and forget — agent runs in background
+    asyncio.create_task(_execute_and_callback(job_id, request))
+
+    return AsyncRunResponse(
+        job_id=job_id,
+        status="accepted",
+        message="Task accepted, will callback when complete",
+    )
 
 
 @app.post("/run/stream")

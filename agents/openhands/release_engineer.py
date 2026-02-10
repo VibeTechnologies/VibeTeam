@@ -143,6 +143,7 @@ kubectl get deployment openhands-svc -n vibeteam -o jsonpath='{.spec.template.sp
 # Step 4: Update image tag (replace <TAG> with actual commit SHA, version, or "latest")
 # This triggers a safe rolling update that does NOT immediately kill your pod.
 kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<TAG> -n vibeteam
+kubectl set image deployment/openhands-svc openhands=ghcr.io/vibetechnologies/vibeteam-openhands:<TAG> -n vibeteam
 
 # Step 5: Monitor rollout (non-destructive, just watches)
 kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
