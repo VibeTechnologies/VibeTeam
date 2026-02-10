@@ -267,7 +267,7 @@ class OpenHandsSoftwareEngineer:
 
         self.config = config or SOFTWARE_ENGINEER_CONFIG
 
-    def _create_llm(self) -> "LLM":
+    def _create_llm(self) -> LLM:
         """Create LLM with Azure configuration.
 
         Uses AzureLLM which forces completion API since Azure OpenAI
@@ -285,7 +285,7 @@ class OpenHandsSoftwareEngineer:
             max_output_tokens=4096,
         )
 
-    def _create_agent(self, llm: "LLM") -> "Agent":
+    def _create_agent(self, llm: LLM) -> Agent:
         """Create Agent with LLM and tools."""
         return Agent(
             llm=llm,

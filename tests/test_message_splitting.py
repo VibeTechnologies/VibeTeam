@@ -5,8 +5,6 @@ Ensures long messages are split correctly without losing content,
 especially handoff mentions at the end.
 """
 
-import pytest
-
 from vibeteam.gateway.routes.slack import split_long_message
 
 

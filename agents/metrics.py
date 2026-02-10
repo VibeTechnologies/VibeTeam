@@ -56,7 +56,7 @@ class TaskMetrics:
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TaskMetrics":
+    def from_dict(cls, data: dict[str, Any]) -> TaskMetrics:
         """Create from dictionary."""
         data = data.copy()
         if isinstance(data.get("timestamp"), str):
@@ -373,7 +373,7 @@ class MetricsContext:
         self._errors: list[str] = []
         self._response_preview = ""
 
-    def __enter__(self) -> "MetricsContext":
+    def __enter__(self) -> MetricsContext:
         self._start_time = time.perf_counter()
         return self
 

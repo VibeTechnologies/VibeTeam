@@ -38,11 +38,11 @@ except ImportError:
 
 
 # Global browser instance for reuse
-_browser_instance: "Browser | None" = None
+_browser_instance: Browser | None = None
 _playwright_instance = None
 
 
-async def _get_browser() -> "Browser":
+async def _get_browser() -> Browser:
     """Get or create a browser instance."""
     global _browser_instance, _playwright_instance
 

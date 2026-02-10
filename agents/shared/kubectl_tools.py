@@ -13,7 +13,6 @@ Requirements:
 import logging
 import subprocess
 from dataclasses import dataclass
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +106,7 @@ def get_events(namespace: str = DEFAULT_NAMESPACE, limit: int = 20) -> KubectlRe
             "-n",
             namespace,
             "--sort-by=.lastTimestamp",
-            f"--field-selector=type!=Normal",  # Only warning/error events
+            "--field-selector=type!=Normal",  # Only warning/error events
         ]
     )
 

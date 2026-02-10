@@ -300,6 +300,7 @@ class TestSentryToolsNoVibeteamDependency:
         ):
             # Re-import sentry_tools - should work without vibeteam
             import importlib
+
             import agents.shared.sentry_tools as st
 
             importlib.reload(st)

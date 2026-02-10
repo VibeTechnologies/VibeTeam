@@ -43,7 +43,7 @@ class SessionState:
         role: str,
         context_type: str,
         context_id: str,
-    ) -> "SessionState":
+    ) -> SessionState:
         """Create a new session state."""
         now = datetime.now(timezone.utc).isoformat()
         return cls(
@@ -80,7 +80,7 @@ class SessionState:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SessionState":
+    def from_dict(cls, data: dict[str, Any]) -> SessionState:
         """Create from dictionary."""
         return cls(**data)
 

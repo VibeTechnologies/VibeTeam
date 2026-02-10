@@ -89,7 +89,7 @@ class OpenHandsMarketingManager:
 
         self.config = config or MARKETING_MANAGER_CONFIG
 
-    def _create_llm(self) -> "LLM":
+    def _create_llm(self) -> LLM:
         """Create LLM with Azure configuration."""
         model_name = self.config.llm.model or "gpt-4.1-mini"
         if not model_name.startswith("azure/"):
@@ -103,7 +103,7 @@ class OpenHandsMarketingManager:
             max_output_tokens=4096,
         )
 
-    def _create_agent(self, llm: "LLM") -> "Agent":
+    def _create_agent(self, llm: LLM) -> Agent:
         """Create Agent with MCP config if available."""
         mcp_config = get_mcp_config_dict(self.config.mcp_servers)
 
