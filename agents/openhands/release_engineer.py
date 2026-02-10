@@ -422,18 +422,11 @@ just because you have the current state above.
             conversation.send_message(full_task)
             conversation.run()
 
-            # Get the last assistant message from conversation events
-            response = ""
-            for event in reversed(conversation.state.events):
-                if event.kind == "MessageEvent" and getattr(event, "source", None) == "agent":
-                    if hasattr(event, "llm_message") and event.llm_message:
-                        llm_msg = event.llm_message
-                        if hasattr(llm_msg, "content") and llm_msg.content:
-                            for block in llm_msg.content:
-                                if hasattr(block, "text"):
-                                    response = block.text
-                                    break
-                    break
+            # Extract the agent's final response from conversation events
+            # Uses shared extraction that handles both FinishAction and MessageEvent
+            from agents.openhands.utils import extract_response_from_events
+
+            response = extract_response_from_events(conversation.state.events)
 
             # Update session
             session.add_message("user", task)
