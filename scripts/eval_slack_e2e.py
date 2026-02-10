@@ -15,6 +15,7 @@ This script runs a true end-to-end evaluation:
 Usage:
     python scripts/eval_slack_e2e.py --scenario support_400_errors
     python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --timeout 300
+    python scripts/eval_slack_e2e.py --scenario support_400_errors --use-async
     python scripts/eval_slack_e2e.py --message "@SupportEngineer check Sentry for errors"
     python scripts/eval_slack_e2e.py --channel C0123456789 --skip-eval
     python scripts/eval_slack_e2e.py --list-scenarios
@@ -597,6 +598,7 @@ async def run_evaluation(
     skip_eval: bool = False,
     existing_thread_ts: str | None = None,
     handoff_timeout_extension: int = 600,
+    use_async: bool = False,
 ) -> dict[str, Any]:
     """
     Run a full E2E evaluation:
@@ -619,6 +621,9 @@ async def run_evaluation(
             conversation collection and evaluation.
         handoff_timeout_extension: Seconds to extend wait_timeout when a handoff is
             detected (default: 600). Applied once per handoff detection.
+        use_async: If True, trigger gateway in async mode (POST /run/async →
+            POST /callback/agent). This exercises the full async callback lifecycle
+            including CALLBACK_SECRET verification. Default: False (sync mode).
     """
     # Get scenario config
     if custom_message:
@@ -685,7 +690,8 @@ async def run_evaluation(
         print("    Posted successfully!")
 
         # Step 1b: Trigger the gateway to process this message
-        print("\n>>> Step 1b: Triggering gateway to process message")
+        mode_label = "ASYNC" if use_async else "SYNC"
+        print(f"\n>>> Step 1b: Triggering gateway to process message ({mode_label} mode)")
         default_prod_url = "https://webhook.team.vibebrowser.app"
         resolved_gateway_url = gateway_url or os.environ.get("GATEWAY_URL", default_prod_url)
         trigger_url = f"{resolved_gateway_url}/slack/trigger"
@@ -705,19 +711,26 @@ async def run_evaluation(
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
+                trigger_payload: dict[str, Any] = {
+                    "channel": channel,
+                    "thread_ts": thread_ts,
+                    "text": user_message,
+                    "user_id": "eval_script",
+                }
+                if use_async:
+                    trigger_payload["use_async"] = True
+
                 response = await client.post(
                     trigger_url,
-                    json={
-                        "channel": channel,
-                        "thread_ts": thread_ts,
-                        "text": user_message,
-                        "user_id": "eval_script",
-                    },
+                    json=trigger_payload,
                     headers=headers,
                 )
                 if response.status_code == 200:
                     result = response.json()
-                    print(f"    Gateway accepted: routing to {result.get('roles', [])}")
+                    mode = result.get("mode", "sync")
+                    print(
+                        f"    Gateway accepted: routing to {result.get('roles', [])} (mode={mode})"
+                    )
                 else:
                     print(f"    WARNING: Gateway returned {response.status_code}: {response.text}")
         except Exception as e:
@@ -978,6 +991,7 @@ Examples:
   python scripts/eval_slack_e2e.py --channel C0123456789 --skip-eval
   python scripts/eval_slack_e2e.py --list-scenarios
   python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --thread-ts 1770710833.425539 --channel C0AATPSADB8
+  python scripts/eval_slack_e2e.py --scenario support_400_errors --use-async
         """,
     )
     parser.add_argument(
@@ -1036,6 +1050,15 @@ Examples:
             "Ignored in --thread-ts mode."
         ),
     )
+    parser.add_argument(
+        "--use-async",
+        action="store_true",
+        help=(
+            "Use async callback flow (POST /run/async -> POST /callback/agent) "
+            "instead of the default synchronous path. This exercises the full "
+            "async lifecycle including CALLBACK_SECRET verification."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -1071,6 +1094,7 @@ Examples:
                 skip_eval=args.skip_eval,
                 existing_thread_ts=args.thread_ts,
                 handoff_timeout_extension=args.handoff_timeout,
+                use_async=args.use_async,
             )
         )
 
