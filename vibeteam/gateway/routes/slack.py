@@ -369,13 +369,24 @@ A user has requested a deployment via Slack.
 ### response NEVER reaches Slack. The eval/user sees a timeout.
 ###
 ### FORBIDDEN (kills your in-flight request):
-###   kubectl apply -k k8s/overlays/dev
-###   kubectl apply -k k8s/base/
+###   kubectl apply -k (ANY path)
 ###   kubectl rollout restart deployment/vibeteam-gateway -n vibeteam
 ###   kubectl rollout restart deployment/openhands-svc -n vibeteam
 ###   kubectl delete pod/deployment for gateway or openhands
 ###
 ### SAFE ALTERNATIVE: kubectl set image (rolling update, safe)
+### =================================================================
+
+### =================================================================
+### CRITICAL: YOU HAVE NO LOCAL REPOSITORY FILES
+### =================================================================
+###
+### You run in a temporary sandbox with NO access to the source code.
+### DO NOT try to: ls, cat, find, or access k8s/, Dockerfile, or any repo files.
+### Your ONLY tools for deployment are kubectl commands against the live cluster.
+### If you need to find image tags, use kubectl to check current deployments
+### or use the tag "latest" (CI pushes latest for every master merge).
+###
 ### =================================================================
 
 ### CRITICAL INSTRUCTIONS - DEPLOYMENT EXECUTION
@@ -392,25 +403,30 @@ kubectl get deployments -n vibeteam -o wide
 **STEP 2 - Check Current Image Tags (MANDATORY):**
 ```bash
 kubectl get deployment vibeteam-gateway -n vibeteam -o jsonpath='{{.spec.template.spec.containers[0].image}}'
+echo ""
 kubectl get deployment openhands-svc -n vibeteam -o jsonpath='{{.spec.template.spec.containers[0].image}}'
+echo ""
 ```
 
-**STEP 3 - Execute Deployment (MANDATORY):**
+**STEP 3 - Determine Target Image Tag (MANDATORY):**
+Our CI/CD tags images with the short git commit SHA (7 chars).
+CI also pushes "latest" for every master merge.
+If the user doesn't specify a tag, use "latest".
+
+**STEP 4 - Execute Deployment (MANDATORY):**
 Use `kubectl set image` to update the container image to the requested tag:
 ```bash
-kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<NEW_TAG> -n vibeteam
-kubectl set image deployment/openhands-svc openhands=ghcr.io/vibetechnologies/vibeteam-openhands:<NEW_TAG> -n vibeteam
+kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<TAG> -n vibeteam
 ```
-If no specific tag is given in the user message, check the latest tag or ask.
 Do NOT run `kubectl apply -k` — it modifies pod specs and kills your own pod.
+Do NOT deploy openhands-svc unless explicitly requested (it hosts YOUR runtime).
 
 Then monitor rollout (safe, read-only):
 ```bash
 kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
-kubectl rollout status deployment/openhands-svc -n vibeteam --timeout=120s
 ```
 
-**STEP 4 - Verify Post-Deployment (MANDATORY):**
+**STEP 5 - Verify Post-Deployment (MANDATORY):**
 Confirm pods are healthy after deployment:
 ```bash
 kubectl get pods -n vibeteam
@@ -420,6 +436,7 @@ kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
 **FORBIDDEN ACTIONS:**
 - DO NOT run `kubectl apply -k` (kills your pod)
 - DO NOT run `kubectl rollout restart` on gateway or openhands-svc (kills your pod)
+- DO NOT look for local files (k8s/, Dockerfile, etc.) — you have NO local repo
 - DO NOT just describe what you would do - ACTUALLY RUN the commands
 - DO NOT hand off deployment to another agent - YOU are the ReleaseEngineer
 - DO NOT skip verification steps
@@ -428,10 +445,11 @@ kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
 Your response MUST include:
 1. Pre-deployment state (pod status before)
 2. Current image tags (what's running now)
-3. Deployment command output (kubectl set image output)
-4. Rollout status (success/failure)
-5. Post-deployment verification (pods healthy, events clean)
-6. Summary: deployment succeeded/failed with evidence
+3. Target image tag and how you determined it
+4. Deployment command output (kubectl set image output)
+5. Rollout status (success/failure)
+6. Post-deployment verification (pods healthy, events clean)
+7. Summary: deployment succeeded/failed with evidence
 """
     elif is_notification and not is_explicit_investigation:
         # Simplified task for notifications - NO mandatory investigation steps
