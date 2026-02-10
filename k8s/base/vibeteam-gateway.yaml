@@ -101,6 +101,15 @@ spec:
                   name: vibeteam-secrets
                   key: SENTRY_CLIENT_SECRET
                   optional: true
+            # Async callback configuration
+            - name: GATEWAY_URL
+              value: "http://vibeteam-gateway:8080"
+            - name: CALLBACK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: CALLBACK_SECRET
+                  optional: true
           resources:
             requests:
               cpu: 100m
