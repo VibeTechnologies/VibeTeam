@@ -17,14 +17,14 @@ import os
 import re
 import threading
 import time
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from vibeteam.gateway.server import call_agent_service, config
-from vibeteam.router import Router, UnifiedMessage
-from vibeteam.router.models import ROLE_DISPLAY_NAMES, route_by_keywords
+from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
+from vibeteam.router import Router
+from vibeteam.router.models import ROLE_DISPLAY_NAMES, AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -289,83 +289,19 @@ async def remove_reaction(
         return False
 
 
-async def run_agent_for_slack(
-    user_message: str,
-    channel: str,
-    thread_ts: str | None,
-    user_id: str,
-) -> None:
+# ==============================================================================
+# Task prompt classification and building
+# ==============================================================================
+
+
+def classify_task_template(role: str, user_message: str) -> str:
+    """Classify a message into a task template type.
+
+    Returns:
+        'deployment', 'notification', or 'investigation'
     """
-    Run the appropriate agent based on Slack message and respond.
-
-    Uses the Router to parse /RoleName mentions and route to specific agents.
-    Falls back to keyword-based routing if no role is mentioned.
-    """
-    logger.info(f"Processing Slack message from {user_id}: {user_message[:100]}")
-
-    # Generate a thread_id if none provided (for new threads)
-    effective_thread_id = thread_ts or f"new-{channel}-{int(time.time())}"
-
-    # Create unified message for router
-    message_router = get_message_router()
-    unified = UnifiedMessage(
-        source="slack",
-        thread_id=effective_thread_id,
-        channel_id=channel,
-        content=user_message,
-        author_id=user_id,
-        author_name=user_id,
-        is_bot=False,
-        message_id=thread_ts or effective_thread_id,
-    )
-
-    # Parse /RoleName mentions
-    role_mentions = message_router.parse_role_mentions(user_message)
-
-    if role_mentions:
-        # Route to mentioned roles
-        for role in role_mentions:
-            display_name = ROLE_DISPLAY_NAMES.get(role, role)
-            await _run_agent_and_respond(
-                role=role,
-                display_name=display_name,
-                user_message=user_message,
-                channel=channel,
-                thread_ts=thread_ts,
-                user_id=user_id,
-            )
-    else:
-        # Fall back to keyword-based routing (shared with openhands team.py)
-        role = route_by_keywords(user_message)
-
-        display_name = ROLE_DISPLAY_NAMES.get(role, role)
-        await _run_agent_and_respond(
-            role=role,
-            display_name=display_name,
-            user_message=user_message,
-            channel=channel,
-            thread_ts=thread_ts,
-            user_id=user_id,
-        )
-
-
-async def _run_agent_and_respond(
-    role: str,
-    display_name: str,
-    user_message: str,
-    channel: str,
-    thread_ts: str | None,
-    user_id: str,
-    max_handoff_depth: int = 3,
-    current_depth: int = 0,
-) -> None:
-    """Run a specific agent and post response to Slack.
-
-    Supports synchronous handoffs: if the agent mentions /RoleName in its response,
-    that agent is immediately invoked (up to max_handoff_depth to prevent infinite loops).
-    """
-    # Check for notification/non-investigation intent
     msg_lower = user_message.lower()
+
     is_notification = any(
         kw in msg_lower
         for kw in ["notify", "announce", "tell the team", "tell the customer", "confirm to"]
@@ -394,8 +330,40 @@ async def _run_agent_and_respond(
     )
 
     if is_deployment:
-        # Deployment-specific task template for ReleaseEngineer
-        task = f"""## Slack Deployment Request
+        return "deployment"
+    elif is_notification and not is_explicit_investigation:
+        return "notification"
+    else:
+        return "investigation"
+
+
+def _build_task_prompt(
+    role: str,
+    user_message: str,
+    user_id: str,
+    channel: str,
+    thread_ts: str | None,
+) -> str:
+    """Build the task prompt for an agent based on role and message classification.
+
+    Extracts the large task template logic from _run_agent_and_respond into a
+    standalone, testable function.
+
+    Args:
+        role: Agent role (e.g., 'release_engineer', 'support_engineer')
+        user_message: The user's message text
+        user_id: Slack user ID
+        channel: Slack channel ID
+        thread_ts: Thread timestamp (or None for new threads)
+
+    Returns:
+        The complete task prompt string for the agent
+    """
+    template = classify_task_template(role, user_message)
+    thread_display = thread_ts or "new thread"
+
+    if template == "deployment":
+        return f"""## Slack Deployment Request
 
 A user has requested a deployment via Slack.
 
@@ -406,7 +374,7 @@ A user has requested a deployment via Slack.
 ### Context
 - User ID: {user_id}
 - Channel: {channel}
-- Thread: {thread_ts or "new thread"}
+- Thread: {thread_display}
 
 ### =================================================================
 ### CRITICAL SAFETY RULE: DO NOT DESTROY YOUR OWN INFRASTRUCTURE
@@ -417,10 +385,13 @@ A user has requested a deployment via Slack.
 ### response NEVER reaches Slack. The eval/user sees a timeout.
 ###
 ### FORBIDDEN (kills your in-flight request):
-###   kubectl apply -k (ANY path)
+###   kubectl apply -k (ANY path) — modifies pod specs, kills your pod
 ###   kubectl rollout restart deployment/vibeteam-gateway -n vibeteam
 ###   kubectl rollout restart deployment/openhands-svc -n vibeteam
 ###   kubectl delete pod/deployment for gateway or openhands
+###
+### CRITICAL: YOU HAVE NO LOCAL REPOSITORY FILES
+### DO NOT look for local files (k8s/, Dockerfile, etc.) — you have NO local repo
 ###
 ### SAFE ALTERNATIVE: kubectl set image (rolling update, safe)
 ### =================================================================
@@ -437,57 +408,58 @@ A user has requested a deployment via Slack.
 ###
 ### =================================================================
 
-### CRITICAL INSTRUCTIONS - DEPLOYMENT EXECUTION
+### CRITICAL INSTRUCTIONS — DEPLOYMENT EXECUTION
 
 You are the ReleaseEngineer. You MUST execute the deployment, not just describe it.
 
-**STEP 1 - Verify Pre-Deployment State (MANDATORY):**
+**STEP 1 — Verify Pre-Deployment State (MANDATORY):**
 Run kubectl to check current state before making changes:
 ```bash
 kubectl get pods -n vibeteam -o wide
 kubectl get deployments -n vibeteam -o wide
 ```
 
-**STEP 2 - Check Current Image Tags (MANDATORY):**
+**STEP 2 — Check Current Image Tags (MANDATORY):**
 ```bash
-kubectl get deployment vibeteam-gateway -n vibeteam -o jsonpath='{{.spec.template.spec.containers[0].image}}'
-echo ""
-kubectl get deployment openhands-svc -n vibeteam -o jsonpath='{{.spec.template.spec.containers[0].image}}'
-echo ""
+kubectl get deployment vibeteam-gateway -n vibeteam -o jsonpath='{{{{.spec.template.spec.containers[0].image}}}}'
+kubectl get deployment openhands-svc -n vibeteam -o jsonpath='{{{{.spec.template.spec.containers[0].image}}}}'
 ```
 
-**STEP 3 - Determine Target Image Tag (MANDATORY):**
-Our CI/CD tags images with the short git commit SHA (7 chars).
-CI also pushes "latest" for every master merge.
-If the user doesn't specify a tag, use "latest".
+**STEP 3 — Determine Target Tag (MANDATORY):**
+Identify what image tag to deploy. If the user specifies a tag, use it.
+Otherwise check the latest available tag from the container registry.
 
-**STEP 4 - Execute Deployment (MANDATORY):**
-Use `kubectl set image` to update the container image to the requested tag:
+**STEP 4 — Execute Deployment (MANDATORY):**
+Use `kubectl set image` to update ONE deployment at a time:
 ```bash
-kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<TAG> -n vibeteam
+kubectl set image deployment/<DEPLOYMENT> <CONTAINER>=ghcr.io/vibetechnologies/<IMAGE>:<NEW_TAG> -n vibeteam
 ```
 Do NOT run `kubectl apply -k` — it modifies pod specs and kills your own pod.
 Do NOT deploy openhands-svc unless explicitly requested (it hosts YOUR runtime).
 
 Then monitor rollout (safe, read-only):
 ```bash
-kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
+kubectl rollout status deployment/<DEPLOYMENT> -n vibeteam --timeout=120s
 ```
 
-**STEP 5 - Verify Post-Deployment (MANDATORY):**
+**STEP 5 — Verify Post-Deployment (MANDATORY):**
 Confirm pods are healthy after deployment:
 ```bash
 kubectl get pods -n vibeteam
 kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
 ```
 
+**STEP 6 — Report Results (MANDATORY):**
+Summarize deployment outcome clearly.
+
 **FORBIDDEN ACTIONS:**
-- DO NOT run `kubectl apply -k` (kills your pod)
-- DO NOT run `kubectl rollout restart` on gateway or openhands-svc (kills your pod)
+- DO NOT run `kubectl apply -k` (ANY path) — kills your pod
+- DO NOT run `kubectl rollout restart` on gateway or openhands-svc — kills your pod
 - DO NOT look for local files (k8s/, Dockerfile, etc.) — you have NO local repo
-- DO NOT just describe what you would do - ACTUALLY RUN the commands
-- DO NOT hand off deployment to another agent - YOU are the ReleaseEngineer
+- DO NOT just describe what you would do — ACTUALLY RUN the commands
+- DO NOT hand off deployment to another agent — YOU are the ReleaseEngineer
 - DO NOT skip verification steps
+- DO NOT look for local files (k8s/, Dockerfile, etc.) — you have NO local repo
 
 **REQUIRED OUTPUT:**
 Your response MUST include:
@@ -499,9 +471,9 @@ Your response MUST include:
 6. Post-deployment verification (pods healthy, events clean)
 7. Summary: deployment succeeded/failed with evidence
 """
-    elif is_notification and not is_explicit_investigation:
-        # Simplified task for notifications - NO mandatory investigation steps
-        task = f"""## Slack Notification Request
+
+    elif template == "notification":
+        return f"""## Slack Notification Request
 
 A user has requested you to send a notification via Slack.
 
@@ -512,7 +484,7 @@ A user has requested you to send a notification via Slack.
 ### Context
 - User ID: {user_id}
 - Channel: {channel}
-- Thread: {thread_ts or "new thread"}
+- Thread: {thread_display}
 
 ### INSTRUCTIONS
 1. **Action:** Specify the message requested.
@@ -520,9 +492,10 @@ A user has requested you to send a notification via Slack.
 3. **Format:** Just write the message clearly.
 4. **Handoffs:** If you need to hand off, use the standard format (e.g., @RoleName).
 """
+
     else:
-        # Build task for the agent (Standard Investigation)
-        task = f"""## Slack Request
+        # Investigation (default)
+        return f"""## Slack Request
 
 A user has requested help via Slack.
 
@@ -533,14 +506,14 @@ A user has requested help via Slack.
 ### Context
 - User ID: {user_id}
 - Channel: {channel}
-- Thread: {thread_ts or "new thread"}
+- Thread: {thread_display}
 
-### CRITICAL INSTRUCTIONS - READ CAREFULLY
+### CRITICAL INSTRUCTIONS — READ CAREFULLY
 
-**STEP 1 - Review Pre-Injected Data:**
+**STEP 1 — Review Pre-Injected Data:**
 Sentry/monitoring data has been injected above. Use this as INITIAL context.
 
-**STEP 2 - RUN kubectl Commands (MANDATORY):**
+**STEP 2 — RUN kubectl Commands (MANDATORY):**
 You MUST run kubectl commands to complete your investigation. Example:
 ```bash
 kubectl get pods -n vibeteam
@@ -549,10 +522,10 @@ kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
 ```
 If you skip kubectl, your investigation is INCOMPLETE.
 
-**STEP 3 - TEST THE REPORTED ENDPOINT WITH CURL (MANDATORY):**
+**STEP 3 — TEST THE REPORTED ENDPOINT WITH CURL (MANDATORY):**
 If the user message contains a URL (like https://...), you MUST test it:
 ```bash
-curl -s -o /dev/null -w "HTTP_STATUS:%{{http_code}}" <URL-from-user-message>
+curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" <URL-from-user-message>
 ```
 Interpret the result:
 - HTTP_STATUS:404 = Route/endpoint doesn't exist → CODE BUG, hand off to @SoftwareEngineer
@@ -564,33 +537,197 @@ DO NOT conclude "infrastructure healthy" if you haven't tested the actual URL!
 **FORBIDDEN ACTIONS (will fail):**
 - DO NOT run Python code to import slack_sdk or use Slack tools
 - DO NOT try to read Slack threads or channels programmatically
-- DO NOT list team roles - only @mention ONE role if hand off needed
+- DO NOT list team roles — only @mention ONE role if hand off needed
 
 **ROLE-SPECIFIC kubectl ACCESS:**
-- SupportEngineer: READ-ONLY (get, describe, logs) - INVESTIGATE only
-- ReleaseEngineer: WRITE ACCESS (rollout undo, rollout restart, scale) - TAKE ACTION
+- SupportEngineer: READ-ONLY (get, describe, logs) — INVESTIGATE only
+- ReleaseEngineer: WRITE ACCESS (rollout undo, rollout restart, scale) — TAKE ACTION
 
 **HANDOFF DECISION LOGIC (EVIDENCE-BASED):**
 - ONLY recommend ROLLBACK if you find EVIDENCE of problems (errors in logs, failing pods, Sentry alerts)
 - If investigation shows NO errors, healthy pods, clean logs → report "infrastructure healthy, no action needed"
 - If no evidence of problems but customer reports issues → ask for more details (request IDs, timestamps, specific endpoints)
-- NEVER recommend rollback based solely on customer report timing - you need actual evidence
+- NEVER recommend rollback based solely on customer report timing — you need actual evidence
 
 **REQUIRED OUTPUT:**
 Your response MUST include:
-1. Sentry findings: "Found Sentry issue [ID]: [message] - [count] events" OR "No Sentry issues found"
+1. Sentry findings: "Found Sentry issue [ID]: [message] — [count] events" OR "No Sentry issues found"
 2. kubectl findings: "kubectl get pods shows: [status]" / "kubectl logs shows: [patterns]"
-3. Endpoint test (if webhook/API issue): "curl shows: [HTTP status code and response]" - a 404 means the route doesn't exist!
+3. Endpoint test (if webhook/API issue): "curl shows: [HTTP status code and response]" — a 404 means the route doesn't exist!
 4. Root cause: Analysis correlating Sentry, kubectl, AND endpoint test findings
-5. **RECOMMENDATION** (REQUIRED - must match evidence):
+5. **RECOMMENDATION** (REQUIRED — must match evidence):
    - If EVIDENCE of issues found: "Recommend ROLLBACK" → @ReleaseEngineer please rollback the deployment
    - If CODE BUG identified (e.g., 404 endpoint): "Recommend CODE FIX" → @SoftwareEngineer please investigate [specific file/code]
    - If NO issues found: "Infrastructure appears healthy. No errors in Sentry, pods running normally, logs clean. Please ask customer for: request IDs, specific timestamps, exact error messages they see."
-   - CRITICAL: Do NOT recommend rollback if no issues were found - this wastes engineering time and may cause unnecessary downtime
+   - CRITICAL: Do NOT recommend rollback if no issues were found — this wastes engineering time and may cause unnecessary downtime
    - CRITICAL: DO NOT TAG YOUR OWN ROLE. If you are @SoftwareEngineer, do NOT tag @SoftwareEngineer. Just do the work.
 """
 
-    import time
+
+# ==============================================================================
+# Async agent submission
+# ==============================================================================
+
+
+async def _submit_agent_async(
+    role: str,
+    display_name: str,
+    user_message: str,
+    channel: str,
+    thread_ts: str | None,
+    message_ts: str,
+    user_id: str,
+    max_handoff_depth: int = 3,
+    current_depth: int = 0,
+) -> None:
+    """Submit an agent task asynchronously via /run/async.
+
+    Transitions reactions (eyes → spinner), submits the task, and returns immediately.
+    The agent service will POST results to /callback/agent when done.
+    """
+    task = _build_task_prompt(
+        role=role,
+        user_message=user_message,
+        user_id=user_id,
+        channel=channel,
+        thread_ts=thread_ts,
+    )
+
+    # Transition reactions: add spinner, remove eyes
+    await add_reaction(channel, message_ts, "arrows_counterclockwise")
+    await remove_reaction(channel, message_ts, "eyes")
+
+    # Build callback URL
+    callback_url = f"{config.GATEWAY_URL}/callback/agent"
+
+    # Submit async task
+    result = await call_agent_service_async(
+        task=task,
+        role=role,
+        context_type="slack",
+        context_id=f"{channel}:{thread_ts or 'new'}",
+        callback_url=callback_url,
+        callback_metadata={
+            "channel": channel,
+            "thread_ts": thread_ts,
+            "message_ts": message_ts,
+            "user_id": user_id,
+            "role": role,
+            "display_name": display_name,
+            "user_message": user_message,
+            "max_handoff_depth": max_handoff_depth,
+            "current_depth": current_depth,
+        },
+    )
+
+    if "error" in result:
+        # Remove spinner, add X, post error
+        await remove_reaction(channel, message_ts, "arrows_counterclockwise")
+        await add_reaction(channel, message_ts, "x")
+        await send_slack_message(
+            channel,
+            f"[{display_name}] Sorry, I couldn't reach the agent service: {result['error']}",
+            thread_ts,
+        )
+        logger.error(f"[ASYNC] Failed to submit task for {role}: {result['error']}")
+    else:
+        job_id = result.get("job_id", "unknown")
+        logger.info(
+            f"[ASYNC] Submitted job {job_id} for {role} in {channel} (depth={current_depth})"
+        )
+
+
+# ==============================================================================
+# Main entry point for Slack → agent routing
+# ==============================================================================
+
+
+async def run_agent_for_slack(
+    user_message: str,
+    channel: str,
+    thread_ts: str | None,
+    user_id: str,
+    message_ts: str | None = None,
+    use_async: bool = True,
+) -> None:
+    """
+    Run the appropriate agent based on Slack message and respond.
+
+    Uses the Router to parse /RoleName mentions and route to specific agents.
+    Falls back to keyword-based routing if no role is mentioned.
+
+    Args:
+        user_message: The user's Slack message
+        channel: Slack channel ID
+        thread_ts: Thread timestamp (or None for new threads)
+        user_id: Slack user ID
+        message_ts: Message timestamp (needed for async reaction management)
+        use_async: If True and message_ts is available, use async callback flow
+    """
+    logger.info(f"Processing Slack message from {user_id}: {user_message[:100]}")
+
+    # Route the message
+    message_router = get_message_router()
+
+    # Parse /RoleName mentions
+    role_mentions = message_router.parse_role_mentions(user_message)
+
+    if not role_mentions:
+        # Fall back to keyword-based routing (shared with openhands team.py)
+        role_mentions = [route_by_keywords(user_message)]
+
+    # Determine effective message_ts for reaction management
+    effective_message_ts = message_ts or thread_ts or ""
+
+    for role in role_mentions:
+        display_name = ROLE_DISPLAY_NAMES.get(cast(AgentRole, role), role)
+
+        if use_async and effective_message_ts:
+            await _submit_agent_async(
+                role=role,
+                display_name=display_name,
+                user_message=user_message,
+                channel=channel,
+                thread_ts=thread_ts,
+                message_ts=effective_message_ts,
+                user_id=user_id,
+            )
+        else:
+            await _run_agent_and_respond(
+                role=role,
+                display_name=display_name,
+                user_message=user_message,
+                channel=channel,
+                thread_ts=thread_ts,
+                user_id=user_id,
+            )
+
+
+async def _run_agent_and_respond(
+    role: str,
+    display_name: str,
+    user_message: str,
+    channel: str,
+    thread_ts: str | None,
+    user_id: str,
+    max_handoff_depth: int = 3,
+    current_depth: int = 0,
+) -> None:
+    """Run a specific agent synchronously and post response to Slack.
+
+    This is the sync path — used by /slack/trigger and as fallback when
+    message_ts is unavailable for async reaction management.
+
+    Supports synchronous handoffs: if the agent mentions /RoleName in its response,
+    that agent is immediately invoked (up to max_handoff_depth to prevent infinite loops).
+    """
+    task = _build_task_prompt(
+        role=role,
+        user_message=user_message,
+        user_id=user_id,
+        channel=channel,
+        thread_ts=thread_ts,
+    )
 
     agent_start_time = time.time()
     logger.info(f"[TIMING] Starting agent {role} (depth={current_depth})")
@@ -645,7 +782,9 @@ Your response MUST include:
                         continue
                     handoff_start = time.time()
                     logger.info(f"[TIMING] Executing handoff to {handoff_role}...")
-                    handoff_display = ROLE_DISPLAY_NAMES.get(handoff_role, handoff_role)
+                    handoff_display = ROLE_DISPLAY_NAMES.get(
+                        cast(AgentRole, handoff_role), handoff_role
+                    )
                     # Pass the original message + full context about handoff
                     handoff_message = (
                         f"[Handoff from {display_name}]\n\n"
@@ -678,6 +817,123 @@ Your response MUST include:
             f"[{display_name}] Sorry, I encountered an unexpected error. Please try again later.",
             thread_ts,
         )
+
+
+# ==============================================================================
+# Callback endpoint for async agent results
+# ==============================================================================
+
+
+@router.post("/callback/agent")
+async def handle_agent_callback(request: Request) -> dict[str, Any]:
+    """Handle callback from agent service when an async job completes.
+
+    The agent service POSTs here with:
+    - job_id, status, response/error
+    - callback_metadata (Slack context: channel, thread_ts, message_ts, role, etc.)
+
+    This endpoint:
+    1. Removes the spinner reaction
+    2. Posts the response (or error) to Slack
+    3. Checks for handoff mentions and submits new async jobs if needed
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from None
+
+    job_id = payload.get("job_id", "unknown")
+    status = payload.get("status", "unknown")
+    response_text = payload.get("response", "")
+    error = payload.get("error", "")
+    meta = payload.get("callback_metadata", {})
+
+    channel = meta.get("channel", "")
+    thread_ts = meta.get("thread_ts")
+    message_ts = meta.get("message_ts", "")
+    role = meta.get("role", "unknown")
+    display_name = meta.get("display_name", role)
+    user_message = meta.get("user_message", "")
+    user_id = meta.get("user_id", "")
+    max_handoff_depth = meta.get("max_handoff_depth", 3)
+    current_depth = meta.get("current_depth", 0)
+
+    logger.info(f"[CALLBACK] Received callback for job {job_id}: status={status}, role={role}")
+
+    if not channel:
+        logger.error(f"[CALLBACK] Missing channel in callback_metadata for job {job_id}")
+        return {"status": "error", "detail": "missing channel in callback_metadata"}
+
+    # Remove spinner reaction
+    if message_ts:
+        await remove_reaction(channel, message_ts, "arrows_counterclockwise")
+
+    if status == "failed" or error:
+        # Failure path
+        if message_ts:
+            await add_reaction(channel, message_ts, "x")
+        error_msg = error or "Unknown error"
+        await send_slack_message(
+            channel,
+            f"[{display_name}] Sorry, I encountered an error: {error_msg}",
+            thread_ts,
+        )
+        return {"status": "ok", "job_id": job_id, "outcome": "error_posted"}
+
+    # Success path
+    if message_ts:
+        await add_reaction(channel, message_ts, "white_check_mark")
+
+    response = response_text or "I completed the task but have no output to share."
+
+    # Split long responses into multiple messages
+    chunks = split_long_message(response)
+
+    for i, chunk in enumerate(chunks):
+        if i == 0:
+            formatted_chunk = f"[{display_name}] {chunk}"
+        else:
+            formatted_chunk = f"[{display_name} (cont.)] {chunk}"
+        await send_slack_message(channel, formatted_chunk, thread_ts)
+
+    # Check for handoffs in the response
+    message_router = get_message_router()
+    handoff_roles = message_router.parse_role_mentions(response)
+
+    if handoff_roles and current_depth < max_handoff_depth:
+        for handoff_role in handoff_roles:
+            if handoff_role == role:
+                logger.info(f"[CALLBACK] Skipping self-handoff to {role}")
+                continue
+
+            handoff_display = ROLE_DISPLAY_NAMES.get(cast(AgentRole, handoff_role), handoff_role)
+            handoff_message = (
+                f"[Handoff from {display_name}]\n\n"
+                f"Original request: {user_message}\n\n"
+                f"Previous response: {response}"
+            )
+            await _submit_agent_async(
+                role=handoff_role,
+                display_name=handoff_display,
+                user_message=handoff_message,
+                channel=channel,
+                thread_ts=thread_ts,
+                message_ts=message_ts,
+                user_id=user_id,
+                max_handoff_depth=max_handoff_depth,
+                current_depth=current_depth + 1,
+            )
+    elif handoff_roles:
+        logger.warning(
+            f"[CALLBACK] Max handoff depth ({max_handoff_depth}) reached for job {job_id}"
+        )
+
+    return {"status": "ok", "job_id": job_id, "outcome": "response_posted"}
+
+
+# ==============================================================================
+# Slack event handlers
+# ==============================================================================
 
 
 @router.post("/slack/events")
@@ -735,11 +991,13 @@ async def handle_slack_events(
         # Remove the bot mention from the text
         clean_text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
 
-        # React with 👀 to show we're looking at the message
+        # React with eyes to show we're looking at the message
         await add_reaction(channel, message_ts, "eyes")
 
         # Process in background
-        asyncio.create_task(run_agent_for_slack(clean_text, channel, thread_ts, user_id))
+        asyncio.create_task(
+            run_agent_for_slack(clean_text, channel, thread_ts, user_id, message_ts=message_ts)
+        )
 
         return {"status": "accepted", "event": "app_mention"}
 
@@ -751,11 +1009,13 @@ async def handle_slack_events(
         message_ts = event.get("ts", "")
         thread_ts = event.get("thread_ts") or message_ts
 
-        # React with 👀 to show we're looking at the message
+        # React with eyes to show we're looking at the message
         await add_reaction(channel, message_ts, "eyes")
 
         # Process in background
-        asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id))
+        asyncio.create_task(
+            run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
+        )
 
         return {"status": "accepted", "event": "message.im"}
 
@@ -768,11 +1028,13 @@ async def handle_slack_events(
         thread_ts = event.get("thread_ts") or message_ts
         user_id = event.get("bot_id", "bot")  # Use bot_id as user_id for bot messages
 
-        # React with 👀 to show we're processing the message
+        # React with eyes to show we're processing the message
         await add_reaction(channel, message_ts, "eyes")
 
         # Process in background
-        asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id))
+        asyncio.create_task(
+            run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
+        )
 
         return {"status": "accepted", "event": "message.bot_with_role_mention"}
 
@@ -855,8 +1117,8 @@ async def trigger_agent_for_slack(
 
     logger.info(f"Trigger API: routing to {role_mentions} in {channel}")
 
-    # Process in background (same as webhook handler)
-    asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id))
+    # Process in background (sync path — trigger is used by eval scripts)
+    asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id, use_async=False))
 
     return {
         "status": "accepted",

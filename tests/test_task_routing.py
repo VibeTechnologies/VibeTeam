@@ -7,49 +7,7 @@ is selected based on message content and target role.
 
 from __future__ import annotations
 
-import re
-
-
-def classify_task_template(role: str, user_message: str) -> str:
-    """
-    Reproduce the task template selection logic from slack.py _run_agent_and_respond.
-
-    Returns: "deployment", "notification", or "investigation"
-    """
-    msg_lower = user_message.lower()
-    is_notification = any(
-        kw in msg_lower
-        for kw in ["notify", "announce", "tell the team", "tell the customer", "confirm to"]
-    )
-    is_explicit_investigation = any(
-        kw in msg_lower
-        for kw in [
-            "investigate",
-            "check",
-            "debug",
-            "analyze",
-            "why",
-            "error",
-            "fail",
-            "broken",
-            "down",
-        ]
-    )
-    is_deployment = (
-        role == "release_engineer"
-        and any(
-            re.search(rf"\b{kw}\b", msg_lower)
-            for kw in ["deploy", "release", "ship it", "push to", "promote"]
-        )
-        and not is_explicit_investigation
-    )
-
-    if is_deployment:
-        return "deployment"
-    elif is_notification and not is_explicit_investigation:
-        return "notification"
-    else:
-        return "investigation"
+from vibeteam.gateway.routes.slack import classify_task_template
 
 
 class TestDeploymentDetection:
