@@ -5,8 +5,9 @@ This package provides a multi-agent system with specialized roles:
 - ProductManager: Defines requirements, roadmap, user stories
 - SoftwareEngineer: Implements features, fixes bugs, writes tests
 - Marketer: Creates content, social media posts, announcements
-- SupportEngineer: Handles user issues, error investigation, documentation
-- ReleaseEngineer: Manages deployments, versioning, releases, infrastructure
+- SupportEngineer: Handles user issues, documentation, FAQ
+- ReliabilityEngineer: Monitors production, handles incidents
+- ReleaseEngineer: Manages deployments, versioning, releases
 
 Usage:
     from vibeteam import VibeTeam, AgentType
@@ -65,41 +66,40 @@ def _init_langfuse() -> bool:
 # Initialize Langfuse on import
 _langfuse_enabled = _init_langfuse()
 
-# Base exports (always available)
+# Primary exports - OpenHands-based (v3.x)
+# Agent exports for direct usage
+from vibeteam.agents import (
+    BaseVibeAgent,
+    MarketerAgent,
+    ProductManagerAgent,
+    ReleaseEngineerAgent,
+    ReliabilityEngineerAgent,
+    SoftwareEngineerAgent,
+    SupervisorAgent,
+    SupportEngineerAgent,
+)
+from vibeteam.orchestrator import AgentType, TaskResult, VibeTeam
+from vibeteam.state import SharedMessageState
+from vibeteam.swarm import SwarmOrchestrator, create_swarm_orchestrator
+
 __all__ = [
     # Core
     "__version__",
+    # Orchestrator
+    "VibeTeam",
+    "AgentType",
+    "TaskResult",
+    # Swarm
+    "SwarmOrchestrator",
+    "create_swarm_orchestrator",
+    "SharedMessageState",
+    # Agents
+    "BaseVibeAgent",
+    "ProductManagerAgent",
+    "SoftwareEngineerAgent",
+    "MarketerAgent",
+    "SupportEngineerAgent",
+    "ReliabilityEngineerAgent",
+    "ReleaseEngineerAgent",
+    "SupervisorAgent",
 ]
-
-# Primary exports - OpenHands-based (v3.x)
-# Agent exports for direct usage - optional import for standalone connector usage
-try:
-    from vibeteam.agents import (  # noqa: F401
-        BaseVibeAgent,
-        MarketerAgent,
-        ProductManagerAgent,
-        ReleaseEngineerAgent,
-        SoftwareEngineerAgent,
-        SupportEngineerAgent,
-    )
-    from vibeteam.orchestrator import AgentType, TaskResult, VibeTeam  # noqa: F401
-
-    __all__.extend(
-        [
-            # Orchestrator
-            "VibeTeam",
-            "AgentType",
-            "TaskResult",
-            # Agents
-            "BaseVibeAgent",
-            "ProductManagerAgent",
-            "SoftwareEngineerAgent",
-            "MarketerAgent",
-            "SupportEngineerAgent",
-            "ReleaseEngineerAgent",
-        ]
-    )
-except ImportError:
-    # Running in standalone mode (e.g., Docker containers with only connectors)
-    # Agents and orchestrator not available
-    logger.debug("vibeteam.agents/orchestrator not available - running in connector-only mode")

@@ -32,7 +32,7 @@ def main() -> None:
 @click.option(
     "--agent",
     "-a",
-    type=click.Choice(["pm", "swe", "marketer", "support", "release"]),
+    type=click.Choice(["pm", "swe", "marketer", "support", "sre", "release"]),
     help="Specific agent to use (auto-routes if not specified)",
 )
 @click.option(
@@ -95,8 +95,9 @@ def agents() -> None:
         "pm": ("Product Manager", "Requirements, roadmap, Langfuse analysis"),
         "swe": ("Software Engineer", "Implementation, testing, Torvalds Protocol"),
         "marketer": ("Marketer", "Social media, content, announcements"),
-        "support": ("Support Engineer", "Customer issues, error investigation, Sentry"),
-        "release": ("Release Engineer", "Deployments, versioning, infrastructure"),
+        "support": ("Support Engineer", "Customer issues, documentation, FAQ"),
+        "sre": ("Reliability Engineer", "Monitoring, incidents, Sentry"),
+        "release": ("Release Engineer", "Deployments, versioning, changelogs"),
     }
 
     for key, (name, desc) in agent_info.items():
@@ -105,8 +106,7 @@ def agents() -> None:
 
 @main.command()
 @click.argument(
-    "agent_key",
-    type=click.Choice(["pm", "swe", "marketer", "support", "release"]),
+    "agent_key", type=click.Choice(["pm", "swe", "marketer", "support", "sre", "release"])
 )
 @click.option(
     "--model",
@@ -181,8 +181,8 @@ def pm_analyze(hours: int, dry_run: bool) -> None:
         resp = requests.get(
             url,
             auth=(langfuse_public, langfuse_secret),
-            params=params,
-            timeout=30,  # type: ignore[arg-type]
+            params=params,  # type: ignore[arg-type]
+            timeout=30,
         )
         resp.raise_for_status()
         traces = resp.json().get("data", [])
@@ -421,9 +421,7 @@ def release_check() -> None:
 @click.option("--repo", default="VibeTechnologies/VibeWebAgent", help="GitHub repo")
 @click.option("--dry-run", is_flag=True, help="Don't create PRs, just analyze")
 @click.option(
-    "--workdir",
-    default="/tmp/swe-workspace",
-    help="Working directory for git operations",
+    "--workdir", default="/tmp/swe-workspace", help="Working directory for git operations"
 )
 def swe_issues(label: str, repo: str, dry_run: bool, workdir: str) -> None:
     """Software Engineer: Analyze issues and create PRs with fixes."""
@@ -628,10 +626,7 @@ The agent analyzed this issue but could not automatically apply fixes.
                 continue
 
             # Commit changes
-            run_cmd(
-                ["git", "config", "user.email", "swe-agent@vibebrowser.app"],
-                cwd=str(repo_dir),
-            )
+            run_cmd(["git", "config", "user.email", "swe-agent@vibebrowser.app"], cwd=str(repo_dir))
             run_cmd(["git", "config", "user.name", "VibeTeam SWE-Agent"], cwd=str(repo_dir))
             run_cmd(["git", "add", "-A"], cwd=str(repo_dir))
 
@@ -698,6 +693,70 @@ Automated fix for #{issue_num}
         import traceback
 
         traceback.print_exc()
+        sys.exit(1)
+
+
+# =============================================================================
+# Supervisor API Commands
+# =============================================================================
+
+
+@main.command(name="serve")
+@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
+@click.option("--port", "-p", default=8000, type=int, help="Port to listen on")
+@click.option("--reload", is_flag=True, help="Enable auto-reload for development")
+def serve(host: str, port: int, reload: bool) -> None:
+    """Start the Supervisor Chat API server."""
+    console.print(f"[bold blue]VibeTeam Supervisor API v{__version__}[/bold blue]")
+    console.print(f"Starting server on {host}:{port}")
+    console.print("\n[bold]Endpoints:[/bold]")
+    console.print("  POST /v1/chat           - VibeTeam chat")
+    console.print("  POST /v1/chat/completions - OpenAI-compatible")
+    console.print("  GET  /v1/models         - List models")
+    console.print("  GET  /health            - Health check")
+    console.print("")
+
+    import uvicorn
+
+    uvicorn.run(
+        "vibeteam.api.main:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
+
+
+@main.command(name="chat")
+@click.argument("message")
+@click.option(
+    "--model",
+    "-m",
+    default="azure/gpt-4.1",
+    help="LLM model to use",
+)
+def chat_cli(message: str, model: str) -> None:
+    """Chat with the VibeTeam Supervisor."""
+    console.print("[bold blue]VibeTeam Supervisor[/bold blue]")
+    console.print(f"[dim]Model: {model}[/dim]\n")
+
+    from vibeteam.swarm import create_swarm_orchestrator
+
+    orchestrator = create_swarm_orchestrator(model=model)
+
+    console.print(f"[cyan]You:[/cyan] {message}\n")
+
+    try:
+        response = asyncio.run(orchestrator.run(message))
+        console.print(f"[green]Supervisor:[/green] {response}\n")
+
+        # Show agents used
+        agents_used = orchestrator.get_agents_used()
+        if agents_used:
+            console.print(f"[dim]Agents involved: {', '.join(agents_used)}[/dim]")
+        console.print(f"[dim]Iterations: {orchestrator.iteration_count}[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
 
 
