@@ -66,10 +66,15 @@ class FakeAgentFinishAction:
 
 
 class FakeActionEvent:
-    """Mimic openhands ActionEvent wrapping an action."""
+    """Mimic openhands ActionEvent wrapping an action.
 
-    def __init__(self, action):
+    In the real SDK, ActionEvent has a `thought` field at the event level.
+    Actions like TerminalAction don't have thought — it's on the event.
+    """
+
+    def __init__(self, action, thought: str = ""):
         self.action = action
+        self.thought = thought
 
 
 class FakeObservationEvent:

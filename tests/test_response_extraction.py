@@ -26,10 +26,17 @@ class MockFinishAction:
 
 
 class MockActionEvent:
-    """Mimics openhands ActionEvent wrapping an action object."""
+    """Mimics openhands ActionEvent wrapping an action object.
 
-    def __init__(self, action):
+    In the real OpenHands SDK, ActionEvent has a `thought` field at the event
+    level (not on the action object itself). Actions like TerminalAction only
+    have [command, is_input, timeout, reset] — no thought.  The LLM's
+    reasoning is stored in ActionEvent.thought.
+    """
+
+    def __init__(self, action, thought: str = ""):
         self.action = action
+        self.thought = thought
 
     # The extraction function checks type(event).__name__
     # so we need the class name to be "ActionEvent"
@@ -271,20 +278,22 @@ class TestActionThoughtFallback:
     """Test fallback extraction from non-finish ActionEvent.thought."""
 
     def test_extracts_thought_from_last_action_when_no_finish(self):
-        """When agent hits max_iterations without finish(), use last action's thought."""
-        action = MockCmdRunAction(thought="I have analyzed the issue and found the root cause.")
-        event = MockActionEvent(action)
+        """When agent hits max_iterations without finish(), use last ActionEvent's thought."""
+        action = MockCmdRunAction()
+        event = MockActionEvent(
+            action, thought="I have analyzed the issue and found the root cause."
+        )
 
         result = extract_response_from_events([event])
         assert result == "I have analyzed the issue and found the root cause."
 
     def test_skips_empty_thoughts(self):
         """Actions with empty thoughts should be skipped in fallback."""
-        action_empty = MockCmdRunAction(thought="")
-        event_empty = MockActionEvent(action_empty)
+        action_empty = MockCmdRunAction()
+        event_empty = MockActionEvent(action_empty, thought="")
 
-        action_with = MockCmdRunAction(thought="Found the bug in the login handler.")
-        event_with = MockActionEvent(action_with)
+        action_with = MockCmdRunAction()
+        event_with = MockActionEvent(action_with, thought="Found the bug in the login handler.")
 
         # Chronological: action_with first, then empty
         events = [event_with, event_empty]
@@ -295,8 +304,8 @@ class TestActionThoughtFallback:
 
     def test_finish_action_takes_priority_over_thought_fallback(self):
         """FinishAction should still take priority even when other actions have thoughts."""
-        cmd_action = MockCmdRunAction(thought="Internal tool reasoning")
-        cmd_event = MockActionEvent(cmd_action)
+        cmd_action = MockCmdRunAction()
+        cmd_event = MockActionEvent(cmd_action, thought="Internal tool reasoning")
 
         finish_action = MockFinishAction(message="Final answer")
         finish_action.__class__.__name__ = "FinishAction"
@@ -309,8 +318,8 @@ class TestActionThoughtFallback:
 
     def test_message_event_takes_priority_over_thought_fallback(self):
         """MessageEvent should take priority over action thought fallback."""
-        cmd_action = MockCmdRunAction(thought="Internal tool reasoning")
-        cmd_event = MockActionEvent(cmd_action)
+        cmd_action = MockCmdRunAction()
+        cmd_event = MockActionEvent(cmd_action, thought="Internal tool reasoning")
 
         msg = MockLLMMessage(content=[MockContentBlock(text="Agent message")])
         msg_event = MockMessageEvent(source="agent", llm_message=msg)
@@ -323,12 +332,12 @@ class TestActionThoughtFallback:
     def test_thought_fallback_with_observation_events(self):
         """Simulates typical max_iterations scenario: alternating actions and observations."""
         other1 = MockOtherEvent()  # ObservationEvent
-        action1 = MockCmdRunAction(thought="Let me check the logs")
-        event1 = MockActionEvent(action1)
+        action1 = MockCmdRunAction()
+        event1 = MockActionEvent(action1, thought="Let me check the logs")
 
         other2 = MockOtherEvent()
-        action2 = MockCmdRunAction(thought="The issue is in the auth module, line 42.")
-        event2 = MockActionEvent(action2)
+        action2 = MockCmdRunAction()
+        event2 = MockActionEvent(action2, thought="The issue is in the auth module, line 42.")
 
         events = [event1, other1, event2, other2]
 

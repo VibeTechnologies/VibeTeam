@@ -45,8 +45,8 @@ def extract_response_from_events(events: list[Any]) -> str:
                     )
                     response = message
                     break
-                # Fallback to thought
-                thought = getattr(action, "thought", "")
+                # Fallback to thought (check both action and event)
+                thought = getattr(action, "thought", "") or getattr(event, "thought", "")
                 if thought:
                     logger.info(
                         "Extracted response from %s.thought (%d chars)",
@@ -76,21 +76,23 @@ def extract_response_from_events(events: list[Any]) -> str:
         # Fallback: extract the last ActionEvent's thought field.
         # When the agent hits max_iterations without calling finish(), the last
         # action's thought often contains the LLM's summary/reasoning.
+        # NOTE: thought is on the ActionEvent itself, NOT on the action object.
+        # e.g. TerminalAction has [command, is_input, timeout, reset] but no thought.
         for event in reversed(events):
             event_type = type(event).__name__
             if event_type == "ActionEvent":
-                action = getattr(event, "action", None)
-                if action:
-                    thought = getattr(action, "thought", "")
-                    if thought:
-                        logger.info(
-                            "Extracted response from last ActionEvent.thought fallback "
-                            "(%s, %d chars)",
-                            type(action).__name__,
-                            len(thought),
-                        )
-                        response = thought
-                        break
+                # thought lives on the ActionEvent, not on event.action
+                thought = getattr(event, "thought", "")
+                if thought:
+                    action = getattr(event, "action", None)
+                    action_name = type(action).__name__ if action else "?"
+                    logger.info(
+                        "Extracted response from last ActionEvent.thought fallback (%s, %d chars)",
+                        action_name,
+                        len(thought),
+                    )
+                    response = thought
+                    break
 
     if not response:
         # Log event types for debugging when no response is found
