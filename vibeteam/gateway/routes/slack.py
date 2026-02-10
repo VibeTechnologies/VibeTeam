@@ -24,7 +24,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibeteam.gateway.server import call_agent_service, config
 from vibeteam.router import Router, UnifiedMessage
-from vibeteam.router.models import ROLE_DISPLAY_NAMES
+from vibeteam.router.models import ROLE_DISPLAY_NAMES, route_by_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -287,18 +287,8 @@ async def run_agent_for_slack(
                 user_id=user_id,
             )
     else:
-        # Fall back to keyword-based routing
-        message_lower = user_message.lower()
-        role = "support_engineer"  # default
-
-        if any(kw in message_lower for kw in ["sentry", "error", "crash", "exception"]):
-            role = "release_engineer"
-        elif any(
-            kw in message_lower for kw in ["fix", "implement", "code", "bug", "pr", "pull request"]
-        ):
-            role = "software_engineer"
-        elif any(kw in message_lower for kw in ["release", "deploy", "version"]):
-            role = "release_engineer"
+        # Fall back to keyword-based routing (shared with openhands team.py)
+        role = route_by_keywords(user_message)
 
         display_name = ROLE_DISPLAY_NAMES.get(role, role)
         await _run_agent_and_respond(

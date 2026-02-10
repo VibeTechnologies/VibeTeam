@@ -14,7 +14,7 @@ from agents.openhands.product_manager import OpenHandsProductManager
 from agents.openhands.release_engineer import OpenHandsReleaseEngineer
 from agents.openhands.software_engineer import OpenHandsSoftwareEngineer
 from agents.openhands.support_engineer import OpenHandsSupportEngineer
-from agents.shared.role_resolver import parse_first_role_mention
+from agents.shared.role_resolver import parse_first_role_mention, route_by_keywords
 
 
 class OpenHandsTeam:
@@ -60,104 +60,11 @@ class OpenHandsTeam:
     def route_by_keywords(self, text: str) -> str:
         """
         Route to agent based on keywords if no @mention found.
+
+        Delegates to agents.shared.role_resolver.route_by_keywords
+        which is the single source of truth for keyword routing.
         """
-        text_lower = text.lower()
-
-        # Release Engineer keywords (check first - deploy/release are specific)
-        if any(
-            kw in text_lower
-            for kw in [
-                "deploy",
-                "release",
-                "k8s",
-                "kubernetes",
-                "pipeline",
-                "ci/cd",
-                "build",
-                "version",
-                "tag",
-                "infrastructure",
-                "production",
-            ]
-        ):
-            return "release_engineer"
-
-        # Software Engineer keywords
-        if any(
-            kw in text_lower
-            for kw in [
-                "code",
-                "implement",
-                "refactor",
-                "debug",
-                "fix bug",
-                "pull request",
-                "pr",
-                "review code",
-                "test",
-                "unit test",
-                "function",
-                "class",
-                "api",
-            ]
-        ):
-            return "software_engineer"
-
-        # Product Manager keywords
-        if any(
-            kw in text_lower
-            for kw in [
-                "roadmap",
-                "prioritize",
-                "feature",
-                "user story",
-                "requirements",
-                "stakeholder",
-                "product manager",
-                "backlog",
-                "sprint",
-                "prd",
-            ]
-        ):
-            return "product_manager"
-
-        # Marketing Manager keywords
-        if any(
-            kw in text_lower
-            for kw in [
-                "post",
-                "tweet",
-                "linkedin",
-                "social",
-                "blog",
-                "announcement",
-                "marketing",
-                "content",
-                "brand",
-            ]
-        ):
-            return "marketing_manager"
-
-        # Support Engineer keywords
-        if any(
-            kw in text_lower
-            for kw in [
-                "email",
-                "customer",
-                "support",
-                "ticket",
-                "calendar",
-                "meeting",
-                "sentry",
-                "error",
-                "langfuse",
-                "schedule",
-            ]
-        ):
-            return "support_engineer"
-
-        # Default to support engineer
-        return "support_engineer"
+        return route_by_keywords(text)
 
     def run(
         self,

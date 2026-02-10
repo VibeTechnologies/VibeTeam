@@ -5,11 +5,13 @@ Single source of truth for:
 - Role mention parsing (@RoleName, /RoleName, persona names)
 - Role name normalization (mention text -> snake_case role)
 - Display name mapping (snake_case role -> PascalCase display name)
+- Keyword-based routing (fallback when no @mention)
 
-Previously this logic was duplicated across 4 locations:
+Previously this logic was duplicated across multiple locations:
 - vibeteam/router/models.py (ROLE_MENTION_MAP, ROLE_DISPLAY_NAMES)
 - vibeteam/router/router.py (ROLE_PATTERN regex + parse_role_mentions)
-- agents/openhands/team.py (parse_mention with string matching)
+- vibeteam/gateway/routes/slack.py (keyword routing fallback)
+- agents/openhands/team.py (parse_mention + route_by_keywords)
 - tests/e2e/test_slack_routing.py (ROLE_PATTERN + ROLE_MAP copy)
 
 All consumers should now import from this module.
@@ -124,3 +126,129 @@ def parse_first_role_mention(text: str) -> AgentRole | None:
 def get_display_name(role: AgentRole) -> str:
     """Get the PascalCase display name for a role."""
     return ROLE_DISPLAY_NAMES.get(role, role.replace("_", " ").title())
+
+
+# ---------------------------------------------------------------------------
+# Keyword-based routing (fallback when no @mention found)
+# ---------------------------------------------------------------------------
+
+# Ordered by specificity: more specific roles first, default (support) last.
+# Keywords use word-boundary regex matching to avoid false positives
+# (e.g., "pr" should not match inside "sprint" or "prioritize").
+KEYWORD_ROUTING: list[tuple[AgentRole, list[str]]] = [
+    (
+        "release_engineer",
+        [
+            "deploy",
+            "release",
+            "k8s",
+            "kubernetes",
+            "pipeline",
+            "ci/cd",
+            "build",
+            "version",
+            "infrastructure",
+            "production",
+            "sentry",
+            "error",
+            "crash",
+            "exception",
+        ],
+    ),
+    (
+        "software_engineer",
+        [
+            "code",
+            "implement",
+            "refactor",
+            "debug",
+            "fix bug",
+            "pull request",
+            "review code",
+            "unit test",
+            "function",
+            "class",
+            "api",
+            "bug",
+        ],
+    ),
+    (
+        "product_manager",
+        [
+            "roadmap",
+            "prioritize",
+            "feature request",
+            "user story",
+            "requirements",
+            "stakeholder",
+            "product manager",
+            "backlog",
+            "sprint",
+            "prd",
+        ],
+    ),
+    (
+        "marketing_manager",
+        [
+            "tweet",
+            "linkedin",
+            "social media",
+            "blog",
+            "announcement",
+            "marketing",
+            "brand",
+        ],
+    ),
+    (
+        "support_engineer",
+        [
+            "email",
+            "customer",
+            "support",
+            "ticket",
+            "calendar",
+            "meeting",
+            "langfuse",
+            "schedule",
+        ],
+    ),
+]
+
+# Pre-compile keyword patterns with word boundaries for each role.
+_KEYWORD_PATTERNS: list[tuple[AgentRole, re.Pattern[str]]] = [
+    (
+        role,
+        re.compile(
+            r"|".join(rf"\b{re.escape(kw)}\b" for kw in keywords),
+            re.IGNORECASE,
+        ),
+    )
+    for role, keywords in KEYWORD_ROUTING
+]
+
+DEFAULT_ROLE: AgentRole = "support_engineer"
+
+
+def route_by_keywords(text: str) -> AgentRole:
+    """
+    Route to an agent role based on keyword matching.
+
+    Used as a fallback when no @mention is found in the message.
+    Checks keywords in order of specificity (release > software >
+    product > marketing > support) and returns the first match.
+    Falls back to support_engineer if no keywords match.
+
+    Uses word-boundary regex to prevent false positives from substring
+    matches (e.g., "pr" won't match inside "sprint" or "prioritize").
+
+    Args:
+        text: Message text to analyze.
+
+    Returns:
+        The matched agent role.
+    """
+    for role, pattern in _KEYWORD_PATTERNS:
+        if pattern.search(text):
+            return role
+
+    return DEFAULT_ROLE

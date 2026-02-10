@@ -13,6 +13,7 @@ from agents.shared.role_resolver import (
     ROLE_DISPLAY_NAMES,
     ROLE_MENTION_MAP,
     AgentRole,
+    route_by_keywords,
 )
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "MessageSource",
     "UnifiedMessage",
     "ThreadSubscription",
+    "route_by_keywords",
 ]
 
 # Message sources

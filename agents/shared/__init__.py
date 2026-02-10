@@ -69,6 +69,7 @@ from agents.shared.role_resolver import (
     get_display_name,
     parse_first_role_mention,
     parse_role_mentions,
+    route_by_keywords,
 )
 from agents.shared.slack_tools import (
     clear_slack_context,
@@ -152,4 +153,5 @@ __all__ = [
     "parse_role_mentions",
     "parse_first_role_mention",
     "get_display_name",
+    "route_by_keywords",
 ]

@@ -9,12 +9,14 @@ from __future__ import annotations
 import pytest
 
 from agents.shared.role_resolver import (
+    KEYWORD_ROUTING,
     ROLE_DISPLAY_NAMES,
     ROLE_MENTION_MAP,
     ROLE_PATTERN,
     get_display_name,
     parse_first_role_mention,
     parse_role_mentions,
+    route_by_keywords,
 )
 
 
@@ -213,3 +215,127 @@ class TestRolePattern:
 
     def test_pattern_rejects_bare_text(self):
         assert ROLE_PATTERN.search("SoftwareEngineer") is None
+
+
+class TestRouteByKeywords:
+    """Verify keyword-based routing works correctly."""
+
+    # -- Release Engineer --
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "please deploy this to production",
+            "the k8s cluster is down",
+            "kubernetes pod restarting",
+            "ci/cd pipeline failed",
+            "we need a new release",
+            "check sentry for errors",
+            "there's a crash in production",
+            "exception in the infrastructure",
+            "can you tag a new version",
+            "the build is broken",
+        ],
+    )
+    def test_release_engineer_keywords(self, text):
+        assert route_by_keywords(text) == "release_engineer"
+
+    # -- Software Engineer --
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "please implement this feature",
+            "code review needed",
+            "refactor the auth module",
+            "there's a bug in the login",
+            "create a pull request",
+            "write a unit test for this",
+            "fix this function",
+            "the api is returning wrong data",
+            "debug the class constructor",
+        ],
+    )
+    def test_software_engineer_keywords(self, text):
+        assert route_by_keywords(text) == "software_engineer"
+
+    # -- Product Manager --
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "update the roadmap",
+            "prioritize the backlog",
+            "write a user story",
+            "what are the requirements",
+            "create a prd for this",
+            "sprint planning",
+            "stakeholder meeting notes",
+            "file a feature request",
+        ],
+    )
+    def test_product_manager_keywords(self, text):
+        assert route_by_keywords(text) == "product_manager"
+
+    # -- Marketing Manager --
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "write a blog about the launch",
+            "tweet about the new feature",
+            "linkedin announcement",
+            "social media strategy",
+            "brand guidelines",
+            "marketing campaign plan",
+        ],
+    )
+    def test_marketing_manager_keywords(self, text):
+        assert route_by_keywords(text) == "marketing_manager"
+
+    # -- Support Engineer --
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "check the customer email",
+            "support ticket needs review",
+            "schedule a meeting",
+            "calendar invite for tomorrow",
+            "check langfuse traces",
+        ],
+    )
+    def test_support_engineer_keywords(self, text):
+        assert route_by_keywords(text) == "support_engineer"
+
+    # -- Default fallback --
+    def test_default_is_support_engineer(self):
+        assert route_by_keywords("hello there") == "support_engineer"
+        assert route_by_keywords("what's up") == "support_engineer"
+        assert route_by_keywords("") == "support_engineer"
+
+    # -- Case insensitivity --
+    def test_case_insensitive(self):
+        assert route_by_keywords("DEPLOY TO PRODUCTION") == "release_engineer"
+        assert route_by_keywords("Please Implement") == "software_engineer"
+        assert route_by_keywords("UPDATE ROADMAP") == "product_manager"
+
+    # -- Word boundary prevents false positives --
+    def test_word_boundary_prevents_substring_matches(self):
+        """Keywords should match whole words, not substrings."""
+        # "sprint" and "prioritize" should match product_manager (explicit keywords),
+        # not software_engineer via accidental "pr" substring
+        assert route_by_keywords("prioritize the backlog") == "product_manager"
+        assert route_by_keywords("sprint planning") == "product_manager"
+        # "prd" should match product_manager, not software_engineer via "pr"
+        assert route_by_keywords("create a prd") == "product_manager"
+
+    # -- All roles are covered --
+    def test_all_roles_have_keywords(self):
+        """Every AgentRole should be reachable via keyword routing."""
+        roles_in_routing = {role for role, _ in KEYWORD_ROUTING}
+        # Default role doesn't need explicit keywords
+        roles_in_routing.add("support_engineer")
+        expected_roles = {
+            "software_engineer",
+            "release_engineer",
+            "support_engineer",
+            "product_manager",
+            "marketing_manager",
+        }
+        assert roles_in_routing == expected_roles
