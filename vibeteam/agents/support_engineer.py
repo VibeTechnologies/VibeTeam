@@ -33,7 +33,7 @@ Use your tools to investigate issues before escalating.
    - You've confirmed a deployment issue using Sentry
    - Rollback or deployment action is needed
    - CI/CD pipeline issues are blocking
-   
+
 2. **@SoftwareEngineer** - Hand off when:
    - You've identified a code bug in Sentry traces
    - A fix is needed in the codebase

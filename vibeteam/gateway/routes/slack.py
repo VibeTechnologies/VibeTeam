@@ -598,7 +598,7 @@ async def trigger_agent_for_slack(request: Request) -> dict[str, Any]:
     try:
         body = await request.json()
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from None
 
     channel = body.get("channel")
     thread_ts = body.get("thread_ts")

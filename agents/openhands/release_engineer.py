@@ -191,7 +191,7 @@ class OpenHandsReleaseEngineer:
 
         self.config = config or RELEASE_ENGINEER_CONFIG
 
-    def _create_llm(self) -> "LLM":
+    def _create_llm(self) -> LLM:
         """Create LLM with Azure configuration."""
         model_name = self.config.llm.model or "gpt-4.1-mini"
         # OpenHands uses litellm format: azure/<deployment>
@@ -206,7 +206,7 @@ class OpenHandsReleaseEngineer:
             max_output_tokens=4096,  # Critical for Azure GPT-4 models
         )
 
-    def _create_agent(self, llm: "LLM") -> "Agent":
+    def _create_agent(self, llm: LLM) -> Agent:
         """Create Agent with LLM and tools."""
         return Agent(
             llm=llm,

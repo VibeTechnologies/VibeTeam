@@ -448,7 +448,7 @@ def get_slack_thread_context(
             context = f"=== Recent Slack Messages ({ch}) ===\n\n"
 
         if not messages:
-            return f"Slack: No messages found"
+            return "Slack: No messages found"
 
         for msg in messages:
             user = msg.user or "bot"

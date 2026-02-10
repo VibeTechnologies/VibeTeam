@@ -232,7 +232,7 @@ DO NOT try to use Slack/email tools. Your text response is automatically posted.
 
 ## CRITICAL: Evidence-Based Decisions
 - If kubectl shows healthy pods, clean logs, no errors → DO NOT hand off, just report findings
-- If Sentry shows no related issues → report this clearly  
+- If Sentry shows no related issues → report this clearly
 - DO NOT recommend drastic actions (rollback) when no issues are found
 - Unnecessary rollbacks waste engineering time and may cause downtime
 """
@@ -251,7 +251,7 @@ class OpenHandsSupportEngineer:
 
         self.config = config or SUPPORT_ENGINEER_CONFIG
 
-    def _create_llm(self) -> "LLM":
+    def _create_llm(self) -> LLM:
         """Create LLM with Azure configuration."""
         model_name = self.config.llm.model or "gpt-4.1-mini"
         if not model_name.startswith("azure/"):
@@ -268,7 +268,7 @@ class OpenHandsSupportEngineer:
             extended_thinking_budget=10000,
         )
 
-    def _create_agent(self, llm: "LLM", use_tools: bool = True) -> "Agent":
+    def _create_agent(self, llm: LLM, use_tools: bool = True) -> Agent:
         """Create Agent with LLM and optionally tools.
 
         Args:

@@ -140,16 +140,16 @@ UNIT_TASKS = {
     "U1": {
         "agent": "release_engineer",
         "task": "List all files in /tmp directory",
-        "success_criteria": lambda r: "/tmp" in r.lower()
-        or "file" in r.lower()
-        or "dir" in r.lower(),
+        "success_criteria": lambda r: (
+            "/tmp" in r.lower() or "file" in r.lower() or "dir" in r.lower()
+        ),
     },
     "U2": {
         "agent": "release_engineer",
         "task": "Create a file at {path}/test.txt with content 'Hello World'",
-        "success_criteria": lambda r: "success" in r.lower()
-        or "created" in r.lower()
-        or "wrote" in r.lower(),
+        "success_criteria": lambda r: (
+            "success" in r.lower() or "created" in r.lower() or "wrote" in r.lower()
+        ),
     },
     "U3": {
         "agent": "release_engineer",
@@ -174,9 +174,9 @@ UNIT_TASKS = {
     "U7": {
         "agent": "support_engineer",
         "task": "Draft an email response to a customer asking about account password reset",
-        "success_criteria": lambda r: "password" in r.lower()
-        or "reset" in r.lower()
-        or "email" in r.lower(),
+        "success_criteria": lambda r: (
+            "password" in r.lower() or "reset" in r.lower() or "email" in r.lower()
+        ),
     },
 }
 
@@ -184,15 +184,17 @@ INTEGRATION_TASKS = {
     "I1": {
         "agents": ["release_engineer", "marketing_manager"],
         "task": "Deploy version 2.0 to production and draft an announcement tweet",
-        "success_criteria": lambda r: ("deploy" in r.lower() or "version" in r.lower())
-        and ("tweet" in r.lower() or "post" in r.lower() or "announce" in r.lower()),
+        "success_criteria": lambda r: (
+            ("deploy" in r.lower() or "version" in r.lower())
+            and ("tweet" in r.lower() or "post" in r.lower() or "announce" in r.lower())
+        ),
     },
     "I2": {
         "agents": ["support_engineer", "release_engineer"],
         "task": "There's a critical error in production. Identify the issue from Sentry and prepare a hotfix",
-        "success_criteria": lambda r: "error" in r.lower()
-        or "fix" in r.lower()
-        or "issue" in r.lower(),
+        "success_criteria": lambda r: (
+            "error" in r.lower() or "fix" in r.lower() or "issue" in r.lower()
+        ),
     },
     "I3": {
         "agents": ["release_engineer", "marketing_manager", "support_engineer"],
