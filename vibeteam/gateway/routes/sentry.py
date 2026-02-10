@@ -2,7 +2,7 @@
 Sentry Webhook Handlers.
 
 Handles Sentry webhook events for error monitoring:
-- issue.created: Triage new errors and route to Release Engineer
+- issue.created: Triage new errors and route to Support Engineer
 """
 
 import asyncio
@@ -93,10 +93,14 @@ def classify_sentry_issue(issue: dict[str, Any]) -> str:
     return "NEEDS_INVESTIGATION"
 
 
-async def run_release_engineer_agent(issue_data: dict[str, Any], classification: str) -> None:
-    """Run the Release Engineer agent on a Sentry issue."""
+async def run_support_engineer_agent(issue_data: dict[str, Any], classification: str) -> None:
+    """Run the Support Engineer agent on a Sentry issue.
+
+    Per AGENTS.md Service Ownership Matrix, Sentry is owned by SupportEngineer
+    with escalation to ReleaseEngineer (infra) or SoftwareEngineer (code).
+    """
     issue_id = issue_data.get("shortId", "unknown")
-    logger.info(f"Starting Release Engineer agent for Sentry issue {issue_id}")
+    logger.info(f"Starting Support Engineer agent for Sentry issue {issue_id}")
 
     # Build task for the agent
     task = f"""## Sentry Error Triage
@@ -138,18 +142,18 @@ Please triage this error and take appropriate action.
     try:
         result = await call_agent_service(
             task=task,
-            role="release_engineer",
+            role="support_engineer",
             context_type="sentry",
             context_id=issue_id,
         )
 
         if "error" in result:
-            logger.error(f"Release Engineer agent failed for {issue_id}: {result['error']}")
+            logger.error(f"Support Engineer agent failed for {issue_id}: {result['error']}")
         else:
-            logger.info(f"Release Engineer agent completed for {issue_id}")
+            logger.info(f"Support Engineer agent completed for {issue_id}")
 
     except Exception as e:
-        logger.exception(f"Failed to run Release Engineer agent: {e}")
+        logger.exception(f"Failed to run Support Engineer agent: {e}")
 
 
 @router.post("/webhook/sentry")
@@ -161,7 +165,7 @@ async def handle_sentry_webhook(
     Handle incoming Sentry webhook events.
 
     Sentry webhooks are triggered when new issues are created or existing
-    issues receive new events. We route these to the Release Engineer agent
+    issues receive new events. We route these to the Support Engineer agent
     for triage.
     """
     payload_bytes = await request.body()
@@ -196,8 +200,8 @@ async def handle_sentry_webhook(
             "short_id": issue.get("shortId"),
         }
 
-    # Trigger Release Engineer agent in background
-    asyncio.create_task(run_release_engineer_agent(issue, classification))
+    # Trigger Support Engineer agent (Sentry owner per AGENTS.md)
+    asyncio.create_task(run_support_engineer_agent(issue, classification))
 
     return {
         "status": "accepted",
