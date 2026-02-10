@@ -1,0 +1,93 @@
+---
+# Gmail Processor - Daemon that polls for support emails and processes them
+# Runs process_emails.py in --daemon mode, checking every 5 minutes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gmail-processor
+  namespace: vibeteam
+  labels:
+    app: gmail-processor
+    team: vibeteam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gmail-processor
+  template:
+    metadata:
+      labels:
+        app: gmail-processor
+        team: vibeteam
+    spec:
+      serviceAccountName: vibeteam-agent
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      initContainers:
+        # Copy token to writable volume so OAuth refresh can update it
+        - name: copy-token
+          image: ghcr.io/vibetechnologies/vibeteam:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              cp /gmail-secrets/gmail-token.json /gmail-writable/gmail-token.json 2>/dev/null || true
+              cp /gmail-secrets/gmail-credentials.json /gmail-writable/gmail-credentials.json 2>/dev/null || true
+              echo "Gmail credentials copied to writable volume"
+          volumeMounts:
+            - name: gmail-secrets
+              mountPath: /gmail-secrets
+              readOnly: true
+            - name: gmail-writable
+              mountPath: /gmail-writable
+      containers:
+        - name: gmail-processor
+          image: ghcr.io/vibetechnologies/vibeteam:latest
+          command: ["python", "scripts/process_emails.py"]
+          args:
+            - "--daemon"
+            - "--interval"
+            - "300"
+            - "--max-emails"
+            - "10"
+            - "--credentials"
+            - "/gmail/gmail-credentials.json"
+            - "--token"
+            - "/gmail/gmail-token.json"
+          env:
+            # Azure OpenAI (for future AI-powered responses)
+            - name: AZURE_OPENAI_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_BASE
+                  optional: true
+            - name: AZURE_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_KEY
+                  optional: true
+            - name: AZURE_OPENAI_DEPLOYMENT
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_OPENAI_DEPLOYMENT
+                  optional: true
+          volumeMounts:
+            - name: gmail-writable
+              mountPath: /gmail
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: gmail-secrets
+          secret:
+            secretName: gmail-oauth-secret
+            optional: false
+        - name: gmail-writable
+          emptyDir: {}
+      restartPolicy: Always
