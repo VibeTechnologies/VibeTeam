@@ -174,11 +174,12 @@ Created three specialized OpenCode primary agents in `~/.config/opencode/agents/
 ### Improvement Checklist
 
 - [ ] Validate mermaid diagram renders correctly
-- [ ] Consolidate 3 role-parsing systems into single RoleResolver
-- [ ] Parallelize kubectl context injection (sequential → concurrent)
+- [x] Consolidate 4 role-parsing systems into single RoleResolver (`agents/shared/role_resolver.py`)
+- [x] Parallelize kubectl context injection (sequential → concurrent via ThreadPoolExecutor)
 - [ ] Skip non-existent deployments in kubectl context
-- [ ] Pull real [TIMING] metrics from logs to validate latency estimates
-- [ ] Verify /slack/trigger test actually produced agent response
+- [x] Pull real [TIMING] metrics from logs to validate latency estimates
+- [x] Verify /slack/trigger test actually produced agent response
+- [x] Write unit tests for role resolver (37 tests in `tests/test_role_resolver.py`)
 
 ### End-to-End Flow Diagram
 

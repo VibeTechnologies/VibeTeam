@@ -12,6 +12,8 @@ Requirements:
 
 import logging
 import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -115,8 +117,13 @@ def get_deployment_logs(
     deployment: str,
     namespace: str = DEFAULT_NAMESPACE,
     tail: int = 50,
+    timeout: int = 10,
 ) -> KubectlResult:
-    """Get recent logs from a deployment."""
+    """Get recent logs from a deployment.
+
+    Uses a shorter timeout (10s) since log fetching is non-critical
+    and deployments that don't exist will hang until timeout.
+    """
     return run_kubectl(
         [
             "logs",
@@ -125,15 +132,20 @@ def get_deployment_logs(
             namespace,
             f"--tail={tail}",
             "--timestamps",
-        ]
+        ],
+        timeout=timeout,
     )
 
 
 def get_rollout_history(
     deployment: str,
     namespace: str = DEFAULT_NAMESPACE,
+    timeout: int = 10,
 ) -> KubectlResult:
-    """Get rollout history for a deployment."""
+    """Get rollout history for a deployment.
+
+    Uses a shorter timeout (10s) since rollout history is supplementary.
+    """
     return run_kubectl(
         [
             "rollout",
@@ -141,8 +153,32 @@ def get_rollout_history(
             f"deployment/{deployment}",
             "-n",
             namespace,
-        ]
+        ],
+        timeout=timeout,
     )
+
+
+def _extract_deployment_names(pods_output: str) -> set[str]:
+    """
+    Extract deployment names from 'kubectl get pods' output.
+
+    Parses pod names like 'vibeteam-gateway-7f589ff7f9-7zvvp' to extract
+    the deployment prefix (e.g., 'vibeteam-gateway'). Uses the convention
+    that pod names are '{deployment}-{replicaset-hash}-{pod-hash}'.
+
+    Returns a set of deployment name prefixes found in the pods output.
+    """
+    names: set[str] = set()
+    for line in pods_output.strip().split("\n"):
+        if not line or line.startswith("NAME"):
+            continue
+        pod_name = line.split()[0] if line.split() else ""
+        # Pod name format: {deployment}-{rs-hash}-{pod-hash}
+        # Remove the last two segments (pod-hash and rs-hash)
+        parts = pod_name.rsplit("-", 2)
+        if len(parts) >= 3:
+            names.add(parts[0])
+    return names
 
 
 def get_kubectl_context(
@@ -153,8 +189,15 @@ def get_kubectl_context(
     """
     Fetch comprehensive kubectl context for agent injection.
 
-    This pre-fetches common kubectl data to reduce agent response time.
-    The agent no longer needs to run these commands individually.
+    Two-phase approach for minimal latency:
+    1. Fetch pods first to discover which deployments actually exist
+    2. Fetch events, logs, and rollout history in parallel (only for existing deployments)
+
+    Previously: 7 sequential calls x 30s timeout = up to 210s worst case.
+    Now: ~1s (pods) + ~10s (parallel logs/events) = ~11s worst case.
+
+    Non-existent deployments (e.g., autogen-svc, crewai-svc when not running)
+    are automatically skipped, avoiding hanging until timeout.
 
     Args:
         namespace: Kubernetes namespace
@@ -167,6 +210,49 @@ def get_kubectl_context(
     if deployments is None:
         deployments = KEY_DEPLOYMENTS
 
+    t0 = time.monotonic()
+
+    # Phase 1: Fetch pods first (fast, ~1s) to discover which deployments exist.
+    # This avoids wasting time on kubectl logs for non-existent deployments
+    # (which hang until the full timeout).
+    pods_result = get_pods(namespace)
+
+    # Filter deployments to only those that have running pods
+    if pods_result.success and pods_result.stdout.strip():
+        active_deployments = _extract_deployment_names(pods_result.stdout)
+        filtered = [d for d in deployments if d in active_deployments]
+        skipped = set(deployments) - set(filtered)
+        if skipped:
+            logger.info(f"Skipping kubectl logs for non-existent deployments: {skipped}")
+        deployments = filtered
+
+    # Phase 2: Fetch events, logs, and rollout history in parallel
+    futures: dict = {}
+    with ThreadPoolExecutor(max_workers=1 + len(deployments)) as pool:
+        futures["events"] = pool.submit(get_events, namespace)
+        for dep in deployments:
+            futures[f"logs:{dep}"] = pool.submit(get_deployment_logs, dep, namespace, log_tail)
+        futures["rollout:vibeteam-gateway"] = pool.submit(
+            get_rollout_history, "vibeteam-gateway", namespace
+        )
+
+        # Collect results
+        results: dict[str, KubectlResult] = {}
+        for key, fut in futures.items():
+            try:
+                results[key] = fut.result(timeout=15)
+            except Exception as e:
+                results[key] = KubectlResult(command=key, stdout="", stderr=str(e), return_code=-1)
+
+    # Store pods result alongside the parallel results
+    results["pods"] = pods_result
+
+    elapsed = time.monotonic() - t0
+    logger.info(
+        f"[TIMING] kubectl context fetched in {elapsed:.1f}s ({len(deployments)} deployments)"
+    )
+
+    # Format output
     sections = []
     sections.append("## Pre-Fetched Kubernetes Context")
     sections.append("")
@@ -186,8 +272,8 @@ def get_kubectl_context(
     sections.append("- Focus on: CrashLoopBackOff, OOMKilled, or errors in actual logs")
     sections.append("")
 
-    # Get pods
-    pods_result = get_pods(namespace)
+    # Pods
+    pods_result = results["pods"]
     sections.append("### kubectl get pods -n vibeteam")
     sections.append("```")
     if pods_result.success:
@@ -197,8 +283,8 @@ def get_kubectl_context(
     sections.append("```")
     sections.append("")
 
-    # Get events (warnings/errors only)
-    events_result = get_events(namespace)
+    # Events
+    events_result = results["events"]
     sections.append("### kubectl get events -n vibeteam (warnings/errors)")
     sections.append("```")
     if events_result.success:
@@ -212,13 +298,12 @@ def get_kubectl_context(
     sections.append("```")
     sections.append("")
 
-    # Get logs for key deployments
+    # Deployment logs
     for deployment in deployments:
-        logs_result = get_deployment_logs(deployment, namespace, log_tail)
+        logs_result = results[f"logs:{deployment}"]
         sections.append(f"### kubectl logs deployment/{deployment} -n vibeteam --tail={log_tail}")
         sections.append("```")
         if logs_result.success:
-            # Truncate very long logs
             log_lines = logs_result.stdout.strip().split("\n")
             if len(log_lines) > log_tail:
                 log_lines = log_lines[-log_tail:]
@@ -228,8 +313,8 @@ def get_kubectl_context(
         sections.append("```")
         sections.append("")
 
-    # Get rollout history for gateway
-    history_result = get_rollout_history("vibeteam-gateway", namespace)
+    # Rollout history
+    history_result = results["rollout:vibeteam-gateway"]
     sections.append("### kubectl rollout history deployment/vibeteam-gateway")
     sections.append("```")
     if history_result.success:
