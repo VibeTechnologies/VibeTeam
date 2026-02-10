@@ -164,7 +164,9 @@ class SlackConnector:
         """Get the bot's user ID (lazy loaded)."""
         if self._bot_user_id is None:
             response = self.client.auth_test()
-            self._bot_user_id = response["user_id"]
+            user_id = response["user_id"]
+            assert isinstance(user_id, str), "auth_test must return user_id as str"
+            self._bot_user_id = user_id
         return self._bot_user_id
 
     def _resolve_channel(self, channel: str) -> str:
@@ -260,9 +262,10 @@ class SlackConnector:
             kwargs["metadata"] = metadata
 
         response = self.client.chat_postMessage(**kwargs)
+        ts: str = str(response["ts"])
 
         return SlackMessage(
-            ts=response["ts"],
+            ts=ts,
             channel=channel_id,
             user=self.bot_user_id,
             text=text,

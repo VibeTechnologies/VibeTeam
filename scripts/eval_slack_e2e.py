@@ -40,7 +40,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from dotenv import load_dotenv
@@ -56,15 +56,21 @@ from vibeteam.connectors.slack import SlackConnector
 
 # Try to import DeepEval
 DEEPEVAL_AVAILABLE = False
+DeepEvalBaseLLM: type = object  # default base class when deepeval not installed
 try:
     from deepeval.metrics import GEval
-    from deepeval.models.base_model import DeepEvalBaseLLM
+    from deepeval.models.base_model import DeepEvalBaseLLM  # type: ignore[assignment]
     from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
     print("WARNING: DeepEval not installed. Install with: uv add deepeval")
     print("         Evaluation will be skipped, only conversation will be collected.")
+
+    if TYPE_CHECKING:
+        from deepeval.metrics import GEval as GEval
+        from deepeval.test_case import LLMTestCase as LLMTestCase
+        from deepeval.test_case import LLMTestCaseParams as LLMTestCaseParams
 
 
 # ==============================================================================
@@ -383,7 +389,7 @@ ROLE_DISPLAY = {
 # ==============================================================================
 
 
-class AzureOpenAIModel(DeepEvalBaseLLM if DEEPEVAL_AVAILABLE else object):
+class AzureOpenAIModel(DeepEvalBaseLLM):  # type: ignore[misc]
     """Azure OpenAI model wrapper for DeepEval G-Eval."""
 
     def __init__(
@@ -910,10 +916,10 @@ async def run_evaluation(
                         }
                     )
 
-                    status = "✅" if metric.score >= metric.threshold else "❌"
-                    print(
-                        f"      {status} Score: {metric.score:.2f} (threshold: {metric.threshold})"
-                    )
+                    score = metric.score if metric.score is not None else 0.0
+                    threshold = metric.threshold if metric.threshold is not None else 0.0
+                    status = "✅" if score >= threshold else "❌"
+                    print(f"      {status} Score: {score:.2f} (threshold: {threshold})")
 
             except Exception as e:
                 print(f"    ERROR: Evaluation failed: {e}")
