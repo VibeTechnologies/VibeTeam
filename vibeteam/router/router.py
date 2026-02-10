@@ -7,7 +7,7 @@ and thread subscriptions.
 
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from agents.shared.role_resolver import (
@@ -19,6 +19,7 @@ from agents.shared.role_resolver import (
 from vibeteam.router.db import SubscriptionDB, get_subscription_db
 from vibeteam.router.models import (
     AgentRole,
+    MessageSource,
     ThreadSubscription,
     UnifiedMessage,
 )
@@ -31,8 +32,8 @@ class RouteResult:
     """Result of routing a message."""
 
     message: UnifiedMessage
-    mentioned_roles: list[AgentRole]  # Roles explicitly mentioned in this message
-    subscribed_roles: list[AgentRole]  # All roles subscribed to this thread
+    mentioned_roles: Sequence[AgentRole]  # Roles explicitly mentioned in this message
+    subscribed_roles: Sequence[AgentRole]  # All roles subscribed to this thread
     is_new_thread: bool  # True if this message started a new thread
 
 
@@ -125,7 +126,7 @@ class Router:
             source=message.source,
             thread_id=message.thread_id,
         )
-        subscribed_roles = [s.agent_role for s in subscriptions]
+        subscribed_roles: list[AgentRole] = [s.agent_role for s in subscriptions]
 
         # 4. Forward to each subscribed agent
         is_new_thread = len(subscriptions) == len(mentioned_roles)
@@ -213,7 +214,7 @@ class Router:
 
     async def get_subscriptions(
         self,
-        source: str,
+        source: MessageSource,
         thread_id: str,
     ) -> list[ThreadSubscription]:
         """Get all subscriptions for a thread."""

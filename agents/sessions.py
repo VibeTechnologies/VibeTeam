@@ -156,14 +156,14 @@ class LocalSessionStore(SessionStore):
 class RedisSessionStore(SessionStore):
     """Redis session storage."""
 
-    client: Any  # redis.Redis - typed as Any to avoid type checker issues
+    client: Any  # redis.Redis - typed as Any to avoid import issues with optional dep
     ttl: int
 
     def __init__(self, redis_url: str, ttl_seconds: int = 86400 * 7):
         try:
-            import redis
+            import redis as redis_lib  # optional dependency  # pyright: ignore[reportMissingImports]
 
-            self.client = redis.from_url(redis_url)
+            self.client = redis_lib.from_url(redis_url)
             self.ttl = ttl_seconds
         except ImportError as err:
             raise ImportError("redis package required for RedisSessionStore") from err
