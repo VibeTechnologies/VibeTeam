@@ -100,14 +100,15 @@ kubectl logs -f deployment/vibeteam-gateway -n vibeteam | grep -i slack
 
 All agent evaluation scenarios now pass. The final verification was completed on 2026-02-10.
 
-### github_issue Scenario Results
+### All Scenarios Pass ✅
 
-| Metric | Score | Threshold | Status |
-|--------|-------|-----------|--------|
-| IssueAnalysis | 0.70 | 0.60 | ✅ Pass |
-| TaskCompletion | 0.80 | 0.60 | ✅ Pass |
-| EvidenceBasedDecision | 0.70 | 0.60 | ✅ Pass |
-| HandoffCompletion | 0.90 | 0.60 | ✅ Pass |
+| Scenario | Status | Key Metrics |
+|----------|--------|-------------|
+| `support_400_errors` | ✅ PASSED | InvestigationQuality: 0.90, EvidenceBasedDecision: 1.00 |
+| `support_notify_check` | ✅ PASSED | NotificationOnly: 1.00 |
+| `github_issue` | ✅ PASSED | IssueAnalysis: 0.70, TaskCompletion: 0.80 |
+| `release_deploy` | ✅ PASSED | DeploymentExecution: 0.90, TaskCompletion: 1.00 |
+| `stripe_webhook_failure` | ✅ PASSED | InvestigationQuality: 0.90, TaskCompletion: 0.90 |
 
 ### Key Fixes Applied
 
@@ -115,6 +116,7 @@ All agent evaluation scenarios now pass. The final verification was completed on
 2. **Strict iteration limit**: Max 10 tool calls to prevent stuck loops
 3. **Anti-looping instructions**: Agents stop if viewing same file twice
 4. **Mandatory gh output redirection**: Prevents terminal hanging
+5. **Credential warning**: Added warning to eval script if Azure endpoint looks wrong
 
 ### Running Evaluations
 
@@ -122,9 +124,11 @@ All agent evaluation scenarios now pass. The final verification was completed on
 # Unset any shell env vars that might override .env
 unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY AZURE_API_BASE AZURE_API_KEY
 
-# Load from .env and run
+# Load from .env and run all scenarios
 export $(grep -v '^#' .env | grep -E '^AZURE_' | xargs)
-uv run python scripts/eval_slack_e2e.py --scenario github_issue --channel C0AATPSADB8 --timeout 180
+for scenario in support_400_errors support_notify_check github_issue release_deploy stripe_webhook_failure; do
+  uv run python scripts/eval_slack_e2e.py --scenario $scenario --channel C0AATPSADB8 --timeout 180
+done
 ```
 
 ---
