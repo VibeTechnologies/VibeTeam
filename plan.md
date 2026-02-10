@@ -1,16 +1,33 @@
 # Current Work Plan
 
-## Active: Slack Webhook URL Fix
+## Active: GitHub App Auth & Sentry Webhooks (PR #53)
 
-**Status:** Blocked on manual Slack app configuration update.
-**PR:** #54 (fix/slack-webhook-url)
+**Status:** Draft PR, merges cleanly, 13 commits behind master.
+**PR:** #53 (copilot/integrate-github-app-auth)
+**Issue:** #49
 
-**Root Cause:** Slack app webhook URL was misconfigured:
-- Wrong: `https://team.vibebrowser.app/slack/events` (routes to OpenHands, doesn't handle Slack)
-- Correct: `https://webhook.team.vibebrowser.app/slack/events` (routes to vibeteam-gateway)
+### What PR #53 Adds
+- `GitHubConnector` support for both PAT and GitHub App auth
+- Auto-refreshing installation tokens (1hr TTL, 5min buffer)
+- `vibeteam/utils/github_app.py` — JWT generation + token exchange
+- 13 unit tests (all passing on branch)
+- Docs: `docs/github-app-setup.md`, `docs/webhook-routing.md`
 
-### Remaining Manual Steps
+### Remaining Work
+- [ ] Rebase onto master (no conflicts expected)
+- [ ] Fix any new lint issues from rebase
+- [ ] Add integration tests for webhook routing (Sentry → agent)
+- [ ] Test GitHub issue assignment → agent routing end-to-end
+- [ ] Merge to master
 
+---
+
+## Blocked: Slack App Webhook URL Configuration
+
+**Status:** Blocked on manual Slack admin access.
+**PR:** #54 (merged — manifest fix is on master)
+
+### Manual Steps Required
 1. Go to https://api.slack.com/apps/A0AAZGWEAVA/event-subscriptions
 2. Change **Request URL** to: `https://webhook.team.vibebrowser.app/slack/events`
 3. Go to https://api.slack.com/apps/A0AAZGWEAVA/interactivity
@@ -30,10 +47,7 @@
 
 | PR | Title | Status | Notes |
 |----|-------|--------|-------|
-| #55 | feat: add Documentation Knowledge Base tool | Ready for review | Cherry-pick of closed #25 |
-| #54 | fix(slack): correct webhook URLs | Ready for review | Blocked on manual Slack config |
-| #53 | [WIP] GitHub App auth + Sentry webhooks | Draft | Replacement for closed #50 |
-| #51 | feat: User Document Upload for Knowledge Base | Ready for review | Depends on #55 |
+| #53 | [WIP] GitHub App auth + Sentry webhooks | Draft | Merges cleanly, needs rebase |
 
 ---
 
@@ -60,7 +74,7 @@ sequenceDiagram
     GW->>Router: parse_role_mentions(text)
     Router-->>GW: ["support_engineer"] (or empty)
     alt No role mentions
-        GW->>GW: Keyword fallback routing<br/>(slack.py:290-301)
+        GW->>GW: route_by_keywords(text)<br/>(from role_resolver.py)
     end
     GW->>Slack: Add reaction
 
@@ -70,9 +84,9 @@ sequenceDiagram
     OH->>Team: team.run(task, context_type, context_id)
 
     Note over Team,Agent: 4. AGENT ROUTING (openhands-svc)
-    Team->>Team: parse_mention(task) → role<br/>(team.py:48-87)
+    Team->>Team: parse_mention(task) → role<br/>(team.py uses role_resolver)
     alt No @mention found
-        Team->>Team: route_by_keywords(task)<br/>(team.py:89-189)
+        Team->>Team: route_by_keywords(task)<br/>(from role_resolver.py)
     end
     Team->>Agent: agent.run(task, context_type, context_id)
 
@@ -112,9 +126,11 @@ sequenceDiagram
 
 **Key difference:** `send_message()` + `run()` = full agentic loop with tool access. `ask_agent()` = single LLM call, text-only output.
 
-### Role Resolution
+### Role Resolution & Keyword Routing
 
-Consolidated into `agents/shared/role_resolver.py` (PR #59). Single source of truth for all role mention parsing. Supports full names, short forms (swe/pm), persona names (einstein/grace/ada), and extras (dev/product/marketer/supervisor). 37 unit tests.
+Consolidated into `agents/shared/role_resolver.py`:
+- **Role mention parsing** (PR #59) — Supports full names, short forms (swe/pm), persona names (einstein/grace/ada), and extras (dev/product/marketer/supervisor). 37 unit tests.
+- **Keyword routing** (`652cfc6`) — Single `route_by_keywords()` function used by both gateway and openhands-svc. Word-boundary regex prevents false positives. ~50 parametrized tests covering all 5 roles.
 
 ### kubectl Context (Parallelized)
 
@@ -129,12 +145,24 @@ Reduced from worst-case 210s (sequential) to ~11s (parallel).
 
 ## Completed Work
 
-| PR | Title | Key Changes |
-|----|-------|-------------|
+| PR/Commit | Title | Key Changes |
+|-----------|-------|-------------|
+| `652cfc6` | refactor: consolidate keyword routing into role_resolver | Single `route_by_keywords()` in role_resolver.py, word-boundary regex, replaced 100-line method in team.py + 12-line inline in slack.py, ~50 tests |
 | #59 | refactor: consolidate role parsing, parallelize kubectl, merge eval scripts | RoleResolver module, ThreadPoolExecutor kubectl, deleted eval_slack_agent.py |
+| #55 | feat: add Documentation Knowledge Base tool for agents | Docs tools for agent knowledge base |
+| #54 | fix(slack): correct webhook URLs to use webhook.team subdomain | Manifest fix (blocked on manual Slack config) |
 | #57 | fix: secure /slack/trigger endpoint, fix dead code, align role mentions | SLACK_TRIGGER_SECRET, dead code cleanup |
 | #56 | fix(eval): improve Azure credential handling | Credential warnings, all 5 eval scenarios pass |
 | #52 | fix(ci): ruff lint errors | CI lint fixes |
+
+### Closed PRs (superseded)
+
+| PR | Reason |
+|----|--------|
+| #51 | Superseded — doc upload feature in #55; branch 13 behind master, 42 lint errors |
+| #50 | Superseded by #53 (WIP rewrite) |
+| #25 | Superseded by #55 (cherry-pick) |
+| #58 | Correctly closed — /slack/trigger is correct design |
 
 ### Eval Results (all passing)
 
@@ -145,13 +173,6 @@ Reduced from worst-case 210s (sequential) to ~11s (parallel).
 | github_issue | - (IssueAnalysis: 0.70) | 0.80 |
 | release_deploy | - (DeploymentExecution: 0.90) | 1.00 |
 | stripe_webhook_failure | 0.90 | 0.90 |
-
-### Design Notes
-
-- `/slack/trigger` endpoint is correct design for eval/programmatic triggering (Slack bots can't receive their own messages as webhook events)
-- PR #58 (remove /slack/trigger) was correctly closed
-- PR #25 closed (superseded by #55 cherry-pick)
-- PR #50 closed (superseded by #53 WIP rewrite)
 
 ---
 Last updated: 2026-02-10
