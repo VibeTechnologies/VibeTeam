@@ -21,6 +21,7 @@ User reported that Slack messages to `@ReleaseEngineer` weren't getting response
 - [x] Update `templates/slack-app/manifest.yaml` with correct URLs
 - [x] Verify Kubernetes cluster is healthy (all pods running)
 - [x] Commit manifest.yaml fix to git (1b71032)
+- [x] Create PR for Slack fix: https://github.com/VibeTechnologies/VibeTeam/pull/54
 - [ ] **MANUAL:** Update Slack app Event Subscriptions URL
 - [ ] **MANUAL:** Update Slack app Interactivity URL  
 - [ ] Verify Slack events arrive at gateway (check logs)
@@ -66,26 +67,32 @@ kubectl logs -f deployment/vibeteam-gateway -n vibeteam | grep -i slack
 
 ---
 
-## Deferred: PR #25 (Documentation Knowledge Base)
+## Completed: PR #25 Cherry-Pick (Documentation Knowledge Base)
 
-**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/25
-**Branch:** `feat/docs-knowledge-base`
-**Status:** OPEN with major conflicts
+**Original PR:** https://github.com/VibeTechnologies/VibeTeam/pull/25 (has major conflicts)
+**New PR:** https://github.com/VibeTechnologies/VibeTeam/pull/55
 
-### What PR #25 adds
-- `vibeteam/tools/docs.py` - DocsTool for agent documentation search
-- `vibeteam/connectors/docs.py` - DocsConnector for indexing
-- Git repo auto-sync for documentation
-- Docs sync CLI command
+### What was done
+- [x] Cherry-picked `vibeteam/connectors/docs.py` from PR #25
+- [x] Cherry-picked `vibeteam/tools/docs.py` from PR #25
+- [x] Fixed lint errors (unused imports, f-string)
+- [x] Updated `__init__.py` files to export new classes
+- [x] Verified imports work correctly
+- [x] Created PR #55 as replacement for PR #25
 
-### Why it has conflicts
-Master was restructured: `vibeteam/roles/` was deleted in favor of `agents/` directory.
-The PR diff shows 69 files changed with deletions of old role files.
+### Next steps for PR #25
+- PR #25 can be closed after PR #55 is merged
+- The CLI command (`vibeteam docs sync`) from PR #25 was not cherry-picked (lower priority)
 
-### Recommended approach
-1. Cherry-pick the new docs files from PR #25
-2. Adapt them to current codebase structure
-3. Close PR #25 and open fresh PR
+---
+
+## Open PRs
+
+| PR | Title | Status |
+|----|-------|--------|
+| #54 | fix(slack): correct webhook URLs | Ready for review |
+| #55 | feat: add Documentation Knowledge Base tool | Ready for review |
+| #25 | feat: Documentation Knowledge Base (original) | Can close after #55 merges |
 
 ---
 Last updated: 2026-02-09
