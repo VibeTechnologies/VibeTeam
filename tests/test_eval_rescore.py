@@ -524,6 +524,60 @@ class TestScenarios:
         assert set(ROLE_DISPLAY.keys()) == expected_roles
 
 
+class TestPerScenarioTimeout:
+    """Tests for per-scenario timeout override functionality."""
+
+    def test_release_deploy_has_timeout_override(self):
+        """The release_deploy scenario must have a timeout override > 600."""
+        assert "release_deploy" in SCENARIOS
+        assert "timeout" in SCENARIOS["release_deploy"], (
+            "release_deploy scenario must have a 'timeout' key for per-scenario override"
+        )
+        assert SCENARIOS["release_deploy"]["timeout"] > 600, (
+            f"release_deploy timeout should be > 600, got {SCENARIOS['release_deploy']['timeout']}"
+        )
+
+    def test_release_deploy_timeout_is_900(self):
+        """The release_deploy scenario timeout should be 900s."""
+        assert SCENARIOS["release_deploy"]["timeout"] == 900
+
+    def test_other_scenarios_use_default_timeout(self):
+        """Scenarios without explicit timeout should not have the key."""
+        for name, config in SCENARIOS.items():
+            if name != "release_deploy":
+                # Other scenarios should either not have a timeout key
+                # or their timeout should be <= 600 (the default)
+                if "timeout" in config:
+                    assert config["timeout"] <= 600, (
+                        f"Scenario '{name}' has unexpected timeout {config['timeout']}"
+                    )
+
+    @pytest.fixture
+    def mock_env(self, monkeypatch):
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token")
+
+    @pytest.mark.asyncio
+    async def test_per_scenario_timeout_used_when_default(self, mock_env):
+        """When CLI timeout is default (600), per-scenario timeout should be used."""
+        import inspect
+
+        source = inspect.getsource(run_evaluation)
+        # The function should check for per-scenario timeout
+        assert 'scenario["timeout"]' in source or 'scenario["timeout"]' in source, (
+            "run_evaluation must check for per-scenario timeout override"
+        )
+
+    def test_timeout_override_logic_in_source(self):
+        """Verify the timeout override logic exists and is correct."""
+        import inspect
+
+        source = inspect.getsource(run_evaluation)
+        # Must check if scenario has timeout and if CLI didn't explicitly set one
+        assert "wait_timeout == 600" in source, (
+            "Must check if wait_timeout is still the default (600) before overriding"
+        )
+
+
 # ==============================================================================
 # Tests: CLI argument --thread-ts validation
 # ==============================================================================

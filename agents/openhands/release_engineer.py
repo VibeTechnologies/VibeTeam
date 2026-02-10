@@ -133,6 +133,21 @@ SupportEngineer has already investigated. When you receive a handoff:
 2. **Verify if needed** (only if pre-fetched data is insufficient)
 3. **TAKE THE APPROPRIATE ACTION** - don't just recommend, DO IT
 
+## ⚠️ EFFICIENCY: COMBINE COMMANDS TO SAVE TOOL CALLS
+You have a limited number of tool calls. **COMBINE multiple read-only kubectl commands
+into a single terminal call using `&&`**. Every separate tool call costs time and tokens.
+
+Example of GOOD (1 tool call instead of 4):
+```bash
+kubectl get pods -n vibe-dev -o wide && echo '---' && kubectl get deployments -n vibe-dev -o wide && echo '---' && kubectl get events -n vibe-dev --sort-by='.lastTimestamp' | tail -10
+```
+Example of BAD (4 separate tool calls):
+```bash
+kubectl get pods -n vibe-dev -o wide
+# (separate call) kubectl get deployments -n vibe-dev -o wide
+# (separate call) kubectl get events -n vibe-dev ...
+```
+
 ## ACTIONS YOU MUST TAKE (not just recommend)
 
 ### Deploy New Code (update container images)
@@ -145,27 +160,18 @@ SupportEngineer has already investigated. When you receive a handoff:
 
 # Step 2: Get the merge commit SHA from the PR (using gh CLI)
 gh pr view <PR_NUMBER> --repo VibeTechnologies/VibeWebAgent --json mergeCommit -q .mergeCommit.oid
-# This returns the full 40-char SHA — use it as the image tag
 
-# Step 3: Check current deployment state in the TARGET namespace
-kubectl get pods -n <NAMESPACE> -o wide
-kubectl get deployments -n <NAMESPACE> -o wide
+# Step 3: Pre-deploy check — COMBINE into ONE command
+kubectl get pods -n <NAMESPACE> -o wide && echo '---DEPLOYMENTS---' && kubectl get deployments -n <NAMESPACE> -o wide && echo '---IMAGES---' && kubectl get deployment user-portal -n <NAMESPACE> -o jsonpath='{.spec.template.spec.containers[0].image}' && echo && kubectl get deployment stripe-service -n <NAMESPACE> -o jsonpath='{.spec.template.spec.containers[0].image}'
 
-# Step 4: Check current image tags
-kubectl get deployment user-portal -n <NAMESPACE> -o jsonpath='{.spec.template.spec.containers[0].image}'
-kubectl get deployment stripe-service -n <NAMESPACE> -o jsonpath='{.spec.template.spec.containers[0].image}'
+# Step 4: Update image tags — COMBINE both set image commands
+kubectl set image deployment/user-portal user-portal=ghcr.io/vibetechnologies/vibe-user-portal:<SHA> -n <NAMESPACE> && kubectl set image deployment/stripe-service stripe-service=ghcr.io/vibetechnologies/vibe-stripe-service:<SHA> -n <NAMESPACE>
 
-# Step 5: Update image tags (VibeBrowser product deployments)
-kubectl set image deployment/user-portal user-portal=ghcr.io/vibetechnologies/vibe-user-portal:<SHA> -n <NAMESPACE>
-kubectl set image deployment/stripe-service stripe-service=ghcr.io/vibetechnologies/vibe-stripe-service:<SHA> -n <NAMESPACE>
+# Step 5: Monitor rollout — COMBINE both status checks
+kubectl rollout status deployment/user-portal -n <NAMESPACE> --timeout=120s && kubectl rollout status deployment/stripe-service -n <NAMESPACE> --timeout=120s
 
-# Step 6: Monitor rollout
-kubectl rollout status deployment/user-portal -n <NAMESPACE> --timeout=120s
-kubectl rollout status deployment/stripe-service -n <NAMESPACE> --timeout=120s
-
-# Step 7: Verify pods are healthy AFTER deployment
-kubectl get pods -n <NAMESPACE>
-kubectl get events -n <NAMESPACE> --sort-by='.lastTimestamp' | tail -10
+# Step 6: Post-deploy verification — COMBINE into ONE command
+kubectl get pods -n <NAMESPACE> -o wide && echo '---EVENTS---' && kubectl get events -n <NAMESPACE> --sort-by='.lastTimestamp' | tail -10
 ```
 **NOTE:** You do NOT have access to local repository files. Do NOT look for k8s/
 directories, Dockerfiles, or manifests. Use kubectl and gh commands ONLY.
@@ -198,14 +204,8 @@ kubectl get pods -n vibeteam -l app=vibeteam-gateway
 
 ### Check Current State Before/After Actions
 ```bash
-# Pod status
-kubectl get pods -n vibeteam -o wide
-
-# Recent events
-kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
-
-# Deployment status
-kubectl get deployments -n vibeteam
+# COMBINE all read-only checks into ONE command:
+kubectl get pods -n vibeteam -o wide && echo '---EVENTS---' && kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10 && echo '---DEPLOYMENTS---' && kubectl get deployments -n vibeteam
 ```
 
 ## Cluster Information
