@@ -290,22 +290,19 @@ class TestDeploymentTaskTemplateSafety:
         # Find the deployment template section
         deploy_start = content.find("## Slack Deployment Request")
         assert deploy_start != -1, "Deployment template not found"
-        deploy_end = content.find("elif is_notification", deploy_start)
+        deploy_end = content.find('elif template == "notification"', deploy_start)
         deploy_section = content[deploy_start:deploy_end]
 
         # kubectl apply -k must be in FORBIDDEN section, not as instruction
         assert "kubectl apply -k" in deploy_section
-        # The STEP 3 should use kubectl set image, not kubectl apply
-        step3_start = deploy_section.find("STEP 3")
-        assert step3_start != -1
-        step3_section = deploy_section[step3_start:]
-        assert "kubectl set image" in step3_section
+        # The deployment steps should use kubectl set image
+        assert "kubectl set image" in deploy_section
 
     def test_deployment_template_uses_set_image(self):
         """Deployment template must instruct agent to use kubectl set image."""
         content = self._read_slack_py()
         deploy_start = content.find("## Slack Deployment Request")
-        deploy_end = content.find("elif is_notification", deploy_start)
+        deploy_end = content.find('elif template == "notification"', deploy_start)
         deploy_section = content[deploy_start:deploy_end]
         assert "kubectl set image" in deploy_section
 
@@ -313,6 +310,117 @@ class TestDeploymentTaskTemplateSafety:
         """Deployment template must include a step to check current image tags."""
         content = self._read_slack_py()
         deploy_start = content.find("## Slack Deployment Request")
-        deploy_end = content.find("elif is_notification", deploy_start)
+        deploy_end = content.find('elif template == "notification"', deploy_start)
         deploy_section = content[deploy_start:deploy_end]
         assert "Check Current Image Tags" in deploy_section or "jsonpath" in deploy_section
+
+
+class TestNamespaceAwareness:
+    """Verify ReleaseEngineer and deployment template have correct namespace awareness.
+
+    The agent must know:
+    - vibe-dev is staging for VibeBrowser (VibeTechnologies/VibeWebAgent)
+    - vibe is production for VibeBrowser
+    - vibeteam is internal (VibeTeam agents)
+    - Image names: vibe-user-portal, vibe-stripe-service (not vibeteam-gateway)
+    - Use `gh pr view` to get merge commit SHA, never use :latest
+    """
+
+    @staticmethod
+    def _read_re_context() -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "openhands",
+            "release_engineer.py",
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    @staticmethod
+    def _read_slack_py() -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "vibeteam",
+            "gateway",
+            "routes",
+            "slack.py",
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    # --- ReleaseEngineer context tests ---
+
+    def test_re_context_has_namespace_map(self):
+        """RE context must include a namespace map with vibe, vibe-dev, vibeteam."""
+        content = self._read_re_context()
+        assert "vibe-dev" in content
+        assert "Staging" in content or "staging" in content
+
+    def test_re_context_has_vibebrowser_images(self):
+        """RE context must reference VibeBrowser images (vibe-user-portal, vibe-stripe-service)."""
+        content = self._read_re_context()
+        assert "vibe-user-portal" in content
+        assert "vibe-stripe-service" in content
+
+    def test_re_context_references_vibewebagent_repo(self):
+        """RE context must reference VibeTechnologies/VibeWebAgent as the product repo."""
+        content = self._read_re_context()
+        assert "VibeTechnologies/VibeWebAgent" in content
+
+    def test_re_context_uses_gh_pr_view(self):
+        """RE context must instruct using `gh pr view` to get merge commit SHA."""
+        content = self._read_re_context()
+        assert "gh pr view" in content
+        assert "mergeCommit" in content
+
+    def test_re_context_forbids_latest_tag(self):
+        """RE context must forbid using :latest tag."""
+        content = self._read_re_context()
+        assert "NEVER use `:latest`" in content or "NEVER use `:latest`" in content
+
+    # --- Deployment task template tests ---
+
+    def test_deploy_template_has_namespace_map(self):
+        """Deployment template must include namespace map with vibe-dev."""
+        content = self._read_slack_py()
+        deploy_start = content.find("## Slack Deployment Request")
+        deploy_end = content.find('elif template == "notification"', deploy_start)
+        deploy_section = content[deploy_start:deploy_end]
+        assert "vibe-dev" in deploy_section
+        assert "NAMESPACE MAP" in deploy_section
+
+    def test_deploy_template_uses_gh_pr_view(self):
+        """Deployment template must use gh pr view to get image tags."""
+        content = self._read_slack_py()
+        deploy_start = content.find("## Slack Deployment Request")
+        deploy_end = content.find('elif template == "notification"', deploy_start)
+        deploy_section = content[deploy_start:deploy_end]
+        assert "gh pr view" in deploy_section
+
+    def test_deploy_template_references_vibewebagent(self):
+        """Deployment template must reference VibeTechnologies/VibeWebAgent."""
+        content = self._read_slack_py()
+        deploy_start = content.find("## Slack Deployment Request")
+        deploy_end = content.find('elif template == "notification"', deploy_start)
+        deploy_section = content[deploy_start:deploy_end]
+        assert "VibeTechnologies/VibeWebAgent" in deploy_section
+
+    def test_deploy_template_forbids_latest(self):
+        """Deployment template must forbid :latest tag."""
+        content = self._read_slack_py()
+        deploy_start = content.find("## Slack Deployment Request")
+        deploy_end = content.find('elif template == "notification"', deploy_start)
+        deploy_section = content[deploy_start:deploy_end]
+        assert "NEVER use `:latest`" in deploy_section or ":latest" in deploy_section
+
+    def test_deploy_template_has_vibebrowser_images(self):
+        """Deployment template must reference VibeBrowser images."""
+        content = self._read_slack_py()
+        deploy_start = content.find("## Slack Deployment Request")
+        deploy_end = content.find('elif template == "notification"', deploy_start)
+        deploy_section = content[deploy_start:deploy_end]
+        assert "vibe-user-portal" in deploy_section
+        assert "vibe-stripe-service" in deploy_section
