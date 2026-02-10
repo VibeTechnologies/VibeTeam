@@ -55,6 +55,30 @@ class TestDocsUpload:
         results = search_docs("test document content")
         assert "test_doc.txt" in results or "test document content" in results
 
+    def test_upload_markdown_file(self, api_client, clean_uploads):
+        # Create a dummy markdown file
+        content = b"# New Feature\n\nThis is a markdown document describing a new feature.\nKey point: The magic number is 42."
+        files = {"file": ("feature.md", content, "text/plain")}
+
+        response = api_client.post("/v1/docs/upload", files=files)
+
+        assert response.status_code == 200
+
+        # Verify file exists
+        uploads_dir = _get_uploads_dir()
+        file_path = os.path.join(uploads_dir, "feature.md")
+        assert os.path.exists(file_path)
+
+        # Verify search finds it with markdown parsing
+        # The search_docs function uses title extraction and snippet generation
+        results = search_docs("magic number")
+
+        # Should find the key point
+        assert "feature.md" in results
+        assert "magic number is 42" in results
+        # Should extract title
+        assert "New Feature" in results
+
     def test_upload_with_session_id(self, api_client, clean_uploads):
         content = b"Session specific content"
         files = {"file": ("session_doc.txt", content, "text/plain")}
