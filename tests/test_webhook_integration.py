@@ -990,7 +990,7 @@ class TestSentryAgentRouting:
             # Verify the agent was called with correct parameters
             mock_agent.assert_called_once()
             call_kwargs = mock_agent.call_args[1]
-            assert call_kwargs["role"] == "release_engineer"
+            assert call_kwargs["role"] == "support_engineer"
             assert call_kwargs["context_type"] == "sentry"
             assert call_kwargs["context_id"] == "VIBETEAM-999"
             assert "TypeError: x is not a function" in call_kwargs["task"]
