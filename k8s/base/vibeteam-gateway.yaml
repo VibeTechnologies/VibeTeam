@@ -115,6 +115,13 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5
+          volumeMounts:
+            - name: docs-uploads
+              mountPath: /app/data/uploads
+      volumes:
+        - name: docs-uploads
+          persistentVolumeClaim:
+            claimName: docs-uploads-pvc
 ---
 apiVersion: v1
 kind: Service

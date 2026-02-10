@@ -7,6 +7,7 @@ resources:
   - agent-rbac.yaml
   # Infrastructure
   - postgres.yaml
+  - docs-uploads-pvc.yaml
   # Gateway (routes webhooks to agent microservices)
   - vibeteam-gateway.yaml
   # Agent Microservices (FastAPI servers handling all agent roles)

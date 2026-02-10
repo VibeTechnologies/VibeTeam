@@ -1,0 +1,13 @@
+# Docs Uploads PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: docs-uploads-pvc
+  namespace: vibeteam
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard

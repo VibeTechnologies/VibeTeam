@@ -11,7 +11,7 @@ import shutil
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from vibeteam.swarm import SwarmOrchestrator, create_swarm_orchestrator
@@ -323,7 +323,9 @@ class UploadResponse(BaseModel):
 
 @app.post("/v1/docs/upload", response_model=UploadResponse)
 async def upload_doc(
-    file: UploadFile = File(...), session_id: str | None = Form(None)
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    session_id: str | None = Form(None),
 ) -> UploadResponse:
     """Upload a document to the knowledge base."""
     try:
@@ -346,13 +348,13 @@ async def upload_doc(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Rebuild index to include new file
-        rebuild_index()
+        # Rebuild index in background
+        background_tasks.add_task(rebuild_index)
 
         return UploadResponse(
             filename=safe_filename,
             size=os.path.getsize(file_path),
-            message=f"File {safe_filename} uploaded and indexed successfully",
+            message=f"File {safe_filename} uploaded and queued for indexing",
         )
 
     except Exception as e:

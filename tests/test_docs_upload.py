@@ -36,7 +36,7 @@ class TestDocsUpload:
         assert response.status_code == 200
         data = response.json()
         assert data["filename"] == "test_doc.txt"
-        assert "uploaded and indexed" in data["message"]
+        assert "uploaded and queued for indexing" in data["message"]
 
         # Verify file exists
         uploads_dir = _get_uploads_dir()
