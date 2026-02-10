@@ -13,6 +13,7 @@ API Docs: https://docs.github.com/en/rest
 
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -118,26 +119,85 @@ class GitHubConnector:
         token: str | None = None,
         owner: str = DEFAULT_OWNER,
         repo: str = DEFAULT_REPO,
+        app_id: str | None = None,
+        private_key: str | None = None,
+        installation_id: str | None = None,
     ):
         """
         Initialize GitHub connector.
 
+        Supports both Personal Access Token (PAT) and GitHub App authentication.
+        GitHub App authentication is preferred for production use due to:
+        - Short-lived tokens (1 hour)
+        - Higher rate limits
+        - Fine-grained permissions
+
         Args:
-            token: GitHub token (or from GITHUB_TOKEN env)
+            token: GitHub PAT (or from GITHUB_TOKEN env). Used if App credentials not provided.
             owner: Repository owner
             repo: Repository name
+            app_id: GitHub App ID (or from GITHUB_APP_ID env)
+            private_key: GitHub App private key in PEM format (or from GITHUB_APP_PRIVATE_KEY env)
+            installation_id: GitHub App installation ID (or from GITHUB_APP_INSTALLATION_ID env)
         """
-        self.token = token or os.environ.get("GITHUB_TOKEN")
         self.owner = owner
         self.repo = repo
 
-        if not self.token:
-            raise ValueError("GitHub token required. Set GITHUB_TOKEN env var or pass token.")
+        # GitHub App credentials (preferred)
+        self.app_id = app_id or os.environ.get("GITHUB_APP_ID")
+        self.private_key = private_key or os.environ.get("GITHUB_APP_PRIVATE_KEY")
+        self.installation_id = installation_id or os.environ.get("GITHUB_APP_INSTALLATION_ID")
+
+        # Token management
+        self.token = token or os.environ.get("GITHUB_TOKEN")
+        self._token_expiry: float = 0  # Unix timestamp when token expires
+        self._use_app_auth = bool(self.app_id and self.private_key and self.installation_id)
+
+        # Validate we have at least one auth method
+        if not self._use_app_auth and not self.token:
+            raise ValueError(
+                "GitHub authentication required. Either provide:\n"
+                "  1. GitHub App credentials (app_id, private_key, installation_id), or\n"
+                "  2. Personal Access Token (token or GITHUB_TOKEN env var)"
+            )
+
+    def _ensure_token(self) -> str:
+        """
+        Ensure we have a valid token, generating a new one if needed.
+
+        Returns:
+            Valid GitHub token
+        """
+        if self._use_app_auth:
+            # Check if token is expired or will expire soon (5 minute buffer)
+            now = time.time()
+            if not self.token or now >= (self._token_expiry - 300):
+                self._refresh_app_token()
+            return self.token or ""
+
+        # PAT doesn't expire, just return it
+        return self.token or ""
+
+    def _refresh_app_token(self) -> None:
+        """Generate a new installation token from GitHub App credentials."""
+        try:
+            from vibeteam.utils.github_app import get_installation_token
+
+            self.token = get_installation_token(
+                str(self.app_id),
+                str(self.private_key),
+                str(self.installation_id),
+            )
+            # Installation tokens are valid for 1 hour
+            self._token_expiry = time.time() + 3600
+        except Exception as e:
+            raise RuntimeError(f"Failed to refresh GitHub App token: {e}")
 
     def _headers(self) -> dict:
         """Get request headers with auth."""
+        token = self._ensure_token()
         return {
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
