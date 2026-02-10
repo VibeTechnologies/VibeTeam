@@ -3,6 +3,7 @@ VibeTeam Connectors - External service integrations.
 """
 
 from vibeteam.connectors.discord import DiscordConnector
+from vibeteam.connectors.docs import DocsConnector, DocsSource
 from vibeteam.connectors.github import GitHubConnector
 from vibeteam.connectors.gmail import GmailConnector
 from vibeteam.connectors.health import HealthConnector
@@ -12,6 +13,8 @@ from vibeteam.connectors.slack import SlackConnector
 
 __all__ = [
     "DiscordConnector",
+    "DocsConnector",
+    "DocsSource",
     "GitHubConnector",
     "GmailConnector",
     "HealthConnector",
