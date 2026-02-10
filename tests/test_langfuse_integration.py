@@ -19,7 +19,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-
 # ---------------------------------------------------------------------------
 # 1. vibeteam/__init__.py — _init_langfuse()
 # ---------------------------------------------------------------------------
@@ -1058,12 +1057,12 @@ class TestCrossLayerConsistency:
     def test_env_var_names_consistent(self):
         """All layers should read the same env var names."""
         # Read the source to verify env var usage
-        import vibeteam.__init__ as init_mod
-        import vibeteam.tracing as tracing_mod
-
         # All modules should check LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY
         # This is a documentation/consistency test
         import inspect
+
+        import vibeteam.__init__ as init_mod
+        import vibeteam.tracing as tracing_mod
 
         init_source = inspect.getsource(init_mod._init_langfuse)
         assert "LANGFUSE_PUBLIC_KEY" in init_source
