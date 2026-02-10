@@ -7,8 +7,10 @@ Tests the complete flow from webhook event to agent response.
 import hashlib
 import hmac
 import json
+import os
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -295,6 +297,328 @@ class TestGitHubWebhookRouting:
         data = response.json()
         assert data["status"] == "ignored"
 
+    def test_pr_review_comment_with_role_mention(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """pull_request_review_comment with /SupportEngineer → accepted, triggers agent."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "pull_request": {"number": 55},
+            "comment": {
+                "body": "This change might break support flows.\n/SupportEngineer please review.",
+                "user": {"login": "reviewer-human"},
+            },
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        with patch(
+            "vibeteam.gateway.routes.github.call_agent_service",
+            new_callable=AsyncMock,
+            return_value={"response": "Reviewed the PR"},
+        ) as mock_agent:
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "pull_request_review_comment",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "support_engineer" in data["message"].lower()
+        assert "55" in data["message"]
+
+    def test_pr_review_comment_bot_own_ignored(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """Bot's own pull_request_review_comment → ignored with reason own_comment."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "pull_request": {"number": 56},
+            "comment": {
+                "body": "I've reviewed this code change.",
+                "user": {"login": "vibeteam-bot[bot]"},
+            },
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        response = test_client.post(
+            "/webhook",
+            content=payload_str,
+            headers={
+                "X-GitHub-Event": "pull_request_review_comment",
+                "X-Hub-Signature-256": signature,
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"
+        assert data["reason"] == "own_comment"
+
+    def test_pr_review_comment_no_role_ignored(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """PR review comment without /RoleName → falls through to ignored."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "pull_request": {"number": 57},
+            "comment": {
+                "body": "This looks good to me, nice refactor!",
+                "user": {"login": "reviewer-human"},
+            },
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        response = test_client.post(
+            "/webhook",
+            content=payload_str,
+            headers={
+                "X-GitHub-Event": "pull_request_review_comment",
+                "X-Hub-Signature-256": signature,
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"
+        assert data["event"] == "pull_request_review_comment.created"
+
+    def test_bot_mention_fallback_to_swe(self, test_client, github_webhook_secret, monkeypatch):
+        """issue_comment with @vibeteam-bot (no /RoleName) → triggers SWE agent."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "issue": {
+                "number": 300,
+                "title": "Need bot help",
+                "body": "Something is broken",
+            },
+            "comment": {
+                "body": "Hey @vibeteam-bot can you look at this?",
+                "user": {"login": "human-user"},
+            },
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        with patch(
+            "vibeteam.gateway.routes.github.call_agent_service",
+            new_callable=AsyncMock,
+            return_value={"response": "Looking into it"},
+        ) as mock_agent:
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issue_comment",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "mention" in data["message"].lower()
+
+    def test_vibeteam_mention_fallback_to_swe(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """issue_comment with @VibeTeam (no /RoleName) → triggers SWE agent."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "issue": {
+                "number": 301,
+                "title": "VibeTeam mention test",
+                "body": "Testing @VibeTeam mention",
+            },
+            "comment": {
+                "body": "Hey @VibeTeam can you investigate this issue?",
+                "user": {"login": "human-user"},
+            },
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        with patch(
+            "vibeteam.gateway.routes.github.call_agent_service",
+            new_callable=AsyncMock,
+            return_value={"response": "Investigating"},
+        ):
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issue_comment",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "mention" in data["message"].lower()
+
+    def test_issue_comment_no_mention_no_role_ignored(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """issue_comment with neither /RoleName nor @bot mention → falls through to ignored."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "issue": {
+                "number": 302,
+                "title": "Some discussion",
+                "body": "A regular issue",
+            },
+            "comment": {
+                "body": "I think we should use a different approach here.",
+                "user": {"login": "human-user"},
+            },
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        response = test_client.post(
+            "/webhook",
+            content=payload_str,
+            headers={
+                "X-GitHub-Event": "issue_comment",
+                "X-Hub-Signature-256": signature,
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"
+        assert data["event"] == "issue_comment.created"
+
+    def test_no_secret_skips_verification(self, test_client, monkeypatch):
+        """When GITHUB_WEBHOOK_SECRET is empty, verification is skipped and request passes."""
+        from vibeteam.gateway.routes import github
+
+        original_secret = github.config.GITHUB_WEBHOOK_SECRET
+        github.config.GITHUB_WEBHOOK_SECRET = ""
+
+        try:
+            monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+            payload = {
+                "action": "opened",
+                "issue": {"number": 400},
+                "repository": {"full_name": "owner/repo"},
+            }
+            payload_str = json.dumps(payload)
+
+            # No signature header sent — should still pass because secret is empty
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issues",
+                    "Content-Type": "application/json",
+                },
+            )
+
+            # Request should NOT be rejected — it falls through to ignored (unhandled event)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ignored"
+        finally:
+            github.config.GITHUB_WEBHOOK_SECRET = original_secret
+
+    def test_is_assigned_to_bot_by_user_id(self, test_client, github_webhook_secret, monkeypatch):
+        """Issue assigned to user matching GITHUB_BOT_USER_ID env var → accepted."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+        monkeypatch.setenv("GITHUB_BOT_USER_ID", "77777")
+
+        payload = {
+            "action": "assigned",
+            "issue": {
+                "number": 401,
+                "title": "User ID assignment test",
+                "body": "Testing user ID matching",
+                "html_url": "https://github.com/owner/repo/issues/401",
+            },
+            # Login does NOT match bot, but user ID does
+            "assignee": {"login": "some-other-name", "id": 77777},
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.call_agent_service",
+                new_callable=AsyncMock,
+                return_value={"response": "Working on it"},
+            ),
+            patch(
+                "vibeteam.gateway.routes.github.post_acknowledgment",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.github.post_github_comment",
+                new_callable=AsyncMock,
+            ),
+        ):
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issues",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "401" in data["message"]
+
 
 class TestSentryWebhookRouting:
     """Test Sentry webhook routing to agents."""
@@ -424,6 +748,48 @@ class TestSentryWebhookRouting:
             )
 
             assert response.status_code == 401
+        finally:
+            server.config.SENTRY_CLIENT_SECRET = original_secret
+
+    def test_no_secret_skips_sentry_verification(self, test_client):
+        """When SENTRY_CLIENT_SECRET is empty, verification is skipped and request passes."""
+        from vibeteam.gateway import server
+
+        original_secret = server.config.SENTRY_CLIENT_SECRET
+        server.config.SENTRY_CLIENT_SECRET = ""
+
+        try:
+            payload = {
+                "action": "created",
+                "data": {
+                    "issue": {
+                        "id": "no-secret-1",
+                        "shortId": "VIBETEAM-NS1",
+                        "title": "TypeError: null is not an object",
+                        "count": 10,
+                        "userCount": 5,
+                    }
+                },
+            }
+            payload_str = json.dumps(payload)
+
+            with patch(
+                "vibeteam.gateway.routes.sentry.call_agent_service",
+                new_callable=AsyncMock,
+                return_value={"response": "Triaged"},
+            ):
+                response = test_client.post(
+                    "/webhook/sentry",
+                    content=payload_str,
+                    headers={
+                        # No signature header — should still pass
+                        "Content-Type": "application/json",
+                    },
+                )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "accepted"
         finally:
             server.config.SENTRY_CLIENT_SECRET = original_secret
 
@@ -1060,6 +1426,66 @@ class TestGitHubHandoff:
         assert mock_comment.call_count == 1
         assert "Done analysis" in mock_comment.call_args_list[0][0][2]
 
+    def test_handoff_agent_empty_response_no_comment(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """When run_agent_for_github gets empty response, no comment is posted for that agent."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+        monkeypatch.setenv("GITHUB_APP_ID", "")
+
+        payload = {
+            "action": "assigned",
+            "issue": {
+                "number": 104,
+                "title": "Empty response test",
+                "body": "Testing empty response path",
+                "html_url": "https://github.com/owner/repo/issues/104",
+            },
+            "assignee": {"login": "vibeteam-bot[bot]", "id": 12345},
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        # SWE agent succeeds with handoff mention, handoff agent returns empty response
+        agent_responses = [
+            {"response": "Code analyzed. /ReleaseEngineer check deployment."},
+            {"response": ""},  # Empty response
+        ]
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.call_agent_service",
+                new_callable=AsyncMock,
+                side_effect=agent_responses,
+            ) as mock_agent,
+            patch(
+                "vibeteam.gateway.routes.github.post_acknowledgment",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.github.post_github_comment",
+                new_callable=AsyncMock,
+            ) as mock_comment,
+        ):
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issues",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        assert mock_agent.call_count == 2
+        # Only SWE comment posted; handoff agent's empty response → no comment
+        assert mock_comment.call_count == 1
+        assert "Code analyzed" in mock_comment.call_args_list[0][0][2]
+
 
 class TestSentryErrorHandling:
     """Test Sentry webhook error and edge-case paths."""
@@ -1169,6 +1595,149 @@ class TestSentryErrorHandling:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "accepted"
+
+
+class TestGitHubHelperFunctions:
+    """Unit tests for helper functions in github.py (error paths, edge cases)."""
+
+    @pytest.mark.asyncio
+    async def test_get_installation_token_missing_config(self):
+        """get_installation_token returns None when GITHUB_APP_ID/key/installation_id are empty."""
+        from vibeteam.gateway.routes.github import get_installation_token
+
+        with patch("vibeteam.gateway.routes.github.config") as mock_config:
+            mock_config.GITHUB_APP_ID = ""
+            mock_config.GITHUB_APP_PRIVATE_KEY = ""
+            mock_config.GITHUB_APP_INSTALLATION_ID = ""
+
+            result = await get_installation_token()
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_installation_token_import_error(self):
+        """get_installation_token returns None when github_app utility is not available."""
+        from vibeteam.gateway.routes.github import get_installation_token
+
+        with patch("vibeteam.gateway.routes.github.config") as mock_config:
+            mock_config.GITHUB_APP_ID = "12345"
+            mock_config.GITHUB_APP_PRIVATE_KEY = "fake-key"
+            mock_config.GITHUB_APP_INSTALLATION_ID = "67890"
+
+            # Force ImportError on the dynamic import inside get_installation_token
+            with patch.dict("sys.modules", {"vibeteam.utils.github_app": None}):
+                import sys
+
+                # Remove any cached module to force fresh import
+                sys.modules.pop("vibeteam.utils.github_app", None)
+
+                with patch(
+                    "builtins.__import__",
+                    side_effect=ImportError("No module named 'vibeteam.utils.github_app'"),
+                ):
+                    result = await get_installation_token()
+                    assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_installation_token_generic_exception(self):
+        """get_installation_token returns None when get_installation_token raises."""
+        from vibeteam.gateway.routes import github as github_module
+
+        with (
+            patch.object(github_module.config, "GITHUB_APP_ID", "12345"),
+            patch.object(github_module.config, "GITHUB_APP_PRIVATE_KEY", "fake-key"),
+            patch.object(github_module.config, "GITHUB_APP_INSTALLATION_ID", "67890"),
+        ):
+            with patch(
+                "vibeteam.utils.github_app.get_installation_token",
+                side_effect=RuntimeError("JWT signing failed"),
+            ):
+                result = await github_module.get_installation_token()
+                assert result is None
+
+    @pytest.mark.asyncio
+    async def test_post_github_comment_no_token(self):
+        """post_github_comment silently returns when no token is available."""
+        from vibeteam.gateway.routes.github import post_github_comment
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.get_installation_token",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.dict(os.environ, {}, clear=False),
+        ):
+            # Remove GITHUB_TOKEN if present
+            os.environ.pop("GITHUB_TOKEN", None)
+
+            # Should not raise — silently skips
+            await post_github_comment("owner/repo", 1, "test body")
+
+    @pytest.mark.asyncio
+    async def test_post_acknowledgment_no_token(self):
+        """post_acknowledgment silently returns when no token is available."""
+        from vibeteam.gateway.routes.github import post_acknowledgment
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.get_installation_token",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.dict(os.environ, {}, clear=False),
+        ):
+            os.environ.pop("GITHUB_TOKEN", None)
+
+            # Should not raise — silently skips
+            await post_acknowledgment("owner/repo", 1)
+
+    @pytest.mark.asyncio
+    async def test_post_github_comment_api_error(self):
+        """post_github_comment catches httpx errors without crashing."""
+        from vibeteam.gateway.routes.github import post_github_comment
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.get_installation_token",
+                new_callable=AsyncMock,
+                return_value="fake-token",
+            ),
+            patch("vibeteam.gateway.routes.github.httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post.side_effect = httpx.HTTPStatusError(
+                "403 Forbidden",
+                request=httpx.Request(
+                    "POST", "https://api.github.com/repos/owner/repo/issues/1/comments"
+                ),
+                response=httpx.Response(403),
+            )
+
+            # Should not raise — exception is caught
+            await post_github_comment("owner/repo", 1, "test body")
+
+    @pytest.mark.asyncio
+    async def test_post_acknowledgment_api_error(self):
+        """post_acknowledgment catches httpx errors without crashing."""
+        from vibeteam.gateway.routes.github import post_acknowledgment
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.get_installation_token",
+                new_callable=AsyncMock,
+                return_value="fake-token",
+            ),
+            patch("vibeteam.gateway.routes.github.httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post.side_effect = httpx.ConnectError("Connection refused")
+
+            # Should not raise — exception is caught
+            await post_acknowledgment("owner/repo", 1)
 
 
 @pytest.mark.integration
