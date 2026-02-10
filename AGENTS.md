@@ -138,8 +138,13 @@ kubectl get pods -n vibeteam
 kubectl rollout pause deployment/vibeteam-gateway -n vibeteam
 kubectl rollout pause deployment/openhands-svc -n vibeteam
 
-# 3. Verify Azure credentials in .env match the deployment
-grep "AZURE_OPENAI" .env
+# 3. CRITICAL: Unset shell env vars that may override .env file
+# Shell env vars like AZURE_OPENAI_ENDPOINT take precedence over .env
+unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY AZURE_API_BASE AZURE_API_KEY
+
+# 4. Load credentials from .env and verify
+export $(grep -v '^#' .env | grep -E '^AZURE_' | xargs)
+echo "Using endpoint: $AZURE_OPENAI_ENDPOINT"  # Should show vibebrowser-dev.openai.azure.com
 ```
 
 ### Understanding Evaluation Output
