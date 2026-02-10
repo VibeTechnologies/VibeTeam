@@ -59,6 +59,10 @@ class GatewayConfig:
     # Sentry configuration
     SENTRY_CLIENT_SECRET = os.environ.get("SENTRY_CLIENT_SECRET", "")
 
+    # Gateway self-URL (for callback URLs sent to agent services)
+    # In K8s, the gateway is accessible at http://vibeteam-gateway:8080 via service DNS
+    GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://vibeteam-gateway:8080")
+
     @classmethod
     def get_agent_service_url(cls, framework: str | None = None) -> str:
         """Get the URL for the specified agent framework."""
@@ -265,6 +269,86 @@ async def call_agent_service(
     return {
         "error": f"Failed to connect to agent service: {last_error}",
     }
+
+
+async def call_agent_service_async(
+    task: str,
+    role: str | None = None,
+    framework: str | None = None,
+    context_type: str = "api",
+    context_id: str | None = None,
+    callback_url: str = "",
+    callback_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Submit a task to the agent service asynchronously.
+
+    Unlike call_agent_service(), this returns immediately with a job_id.
+    The agent service runs the task in the background and POSTs results
+    to callback_url when done.
+
+    Args:
+        task: Task description
+        role: Agent role
+        framework: Agent framework
+        context_type: Context type for session tracking
+        context_id: Context ID for session tracking
+        callback_url: URL where agent should POST results
+        callback_metadata: Opaque data passed through to callback
+
+    Returns:
+        {"job_id": "...", "status": "accepted"} or {"error": "..."}
+    """
+    import time
+
+    start_time = time.time()
+    service_url = config.get_agent_service_url(framework)
+    fw = framework or config.DEFAULT_FRAMEWORK
+
+    logger.info(
+        f"[ASYNC] Submitting task: role={role}, framework={fw}, "
+        f"context={context_type}:{context_id}, callback={callback_url}"
+    )
+
+    payload: dict[str, Any] = {
+        "task": task,
+        "role": role,
+        "context_type": context_type,
+        "context_id": context_id,
+        "callback_url": callback_url,
+        "callback_metadata": callback_metadata or {},
+    }
+
+    # For openhands, add parameters
+    if fw == "openhands":
+        payload["use_tools"] = True
+        payload["skip_context_injection"] = False
+
+    try:
+        client = get_http_client()
+        response = await client.post(
+            f"{service_url}/run/async",
+            json=payload,
+            timeout=30.0,  # Should return immediately — 30s is generous
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        elapsed = time.time() - start_time
+        logger.info(
+            f"[ASYNC] Task accepted in {elapsed:.1f}s: job_id={result.get('job_id')}, role={role}"
+        )
+        return result
+
+    except httpx.HTTPStatusError as e:
+        logger.error(f"[ASYNC] Agent service error: {e.response.status_code} - {e.response.text}")
+        return {
+            "error": f"Agent service error: {e.response.status_code}",
+            "detail": e.response.text,
+        }
+    except httpx.RequestError as e:
+        logger.error(f"[ASYNC] Failed to connect to {service_url}: {e}")
+        return {"error": f"Failed to connect to agent service: {e}"}
 
 
 async def call_scheduler_service(

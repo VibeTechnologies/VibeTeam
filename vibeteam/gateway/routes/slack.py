@@ -241,6 +241,54 @@ async def add_reaction(
         return False
 
 
+async def remove_reaction(
+    channel: str,
+    timestamp: str,
+    emoji: str = "eyes",
+) -> bool:
+    """Remove an emoji reaction from a Slack message.
+
+    Args:
+        channel: Channel ID where the message is
+        timestamp: Message timestamp (ts)
+        emoji: Emoji name without colons (default: "eyes" for 👀)
+
+    Returns:
+        True if reaction was removed successfully
+    """
+    if not config.SLACK_BOT_TOKEN:
+        logger.warning("SLACK_BOT_TOKEN not set, cannot remove reaction")
+        return False
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://slack.com/api/reactions.remove",
+                headers={
+                    "Authorization": f"Bearer {config.SLACK_BOT_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "channel": channel,
+                    "timestamp": timestamp,
+                    "name": emoji,
+                },
+            )
+            result = response.json()
+            if not result.get("ok"):
+                # "no_reaction" just means we didn't have this reaction — not an error
+                if result.get("error") != "no_reaction":
+                    logger.warning(f"Slack reactions.remove error: {result.get('error')}")
+                return result.get("error") == "no_reaction"
+            else:
+                logger.info(f"Removed :{emoji}: reaction from message in {channel}")
+                return True
+
+    except Exception as e:
+        logger.exception(f"Failed to remove Slack reaction: {e}")
+        return False
+
+
 async def run_agent_for_slack(
     user_message: str,
     channel: str,
