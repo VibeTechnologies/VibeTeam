@@ -357,7 +357,7 @@ class OpenHandsSupportEngineer:
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
-                max_iterations=50,
+                max_iteration_per_run=50,
             )
 
             # Inject relevant context based on task keywords (unless skipped)

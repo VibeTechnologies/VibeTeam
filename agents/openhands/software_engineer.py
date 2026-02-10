@@ -435,7 +435,7 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
-                max_iterations=50,
+                max_iteration_per_run=50,
             )
 
             # Inject context if keywords match
