@@ -78,21 +78,25 @@ AGENT_TIMEOUT = 120
 # Maximum handoff chain depth
 MAX_HANDOFFS = 3
 
-# Role name pattern
+# Role name pattern (must match vibeteam/router/router.py ROLE_PATTERN)
 ROLE_PATTERN = re.compile(
-    r"[/@](SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager|SWE|PM)",
+    r"[/@](SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager|"
+    r"SWE|Release|Support|PM|Marketing)",
     re.IGNORECASE,
 )
 
-# Role name normalization
+# Role name normalization (must match vibeteam/router/models.py ROLE_MENTION_MAP)
 ROLE_MAP = {
     "softwareengineer": "software_engineer",
     "swe": "software_engineer",
     "releaseengineer": "release_engineer",
+    "release": "release_engineer",
     "supportengineer": "support_engineer",
+    "support": "support_engineer",
     "productmanager": "product_manager",
     "pm": "product_manager",
     "marketingmanager": "marketing_manager",
+    "marketing": "marketing_manager",
 }
 
 ROLE_DISPLAY = {

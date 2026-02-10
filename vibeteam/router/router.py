@@ -48,9 +48,11 @@ class Router:
     """
 
     # Pattern to match role mentions: @RoleName or /RoleName
+    # Includes short forms (SWE, PM, etc.) that map via ROLE_MENTION_MAP
     ROLE_PATTERN = re.compile(
         r"[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|"
-        r"ProductManager|MarketingManager)",
+        r"ProductManager|MarketingManager|"
+        r"SWE|Release|Support|PM|Marketing)",
         re.IGNORECASE,
     )
 

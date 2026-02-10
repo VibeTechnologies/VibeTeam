@@ -51,6 +51,11 @@ class GatewayConfig:
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 
+    # Trigger API authentication (for /slack/trigger, /discord/trigger, etc.)
+    # Set this to a shared secret to protect trigger endpoints from unauthorized access.
+    # The eval script and other callers must send this as a Bearer token.
+    SLACK_TRIGGER_SECRET = os.environ.get("SLACK_TRIGGER_SECRET", "")
+
     # Sentry configuration
     SENTRY_CLIENT_SECRET = os.environ.get("SENTRY_CLIENT_SECRET", "")
 
