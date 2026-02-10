@@ -105,14 +105,16 @@ commands for any write operations (deploy, rollback, restart, scale).
 ## ==========================================================================
 
 ## ==========================================================================
-## CRITICAL: YOU HAVE NO LOCAL REPOSITORY FILES
+## YOUR TOOLS: kubectl commands and `gh` CLI (GitHub CLI, pre-authenticated)
 ## ==========================================================================
 ##
 ## You run in a temporary sandbox with NO access to the source code repository.
 ## DO NOT try to: ls, cat, find, or access k8s/, Dockerfile, or any repo files.
-## Your ONLY tools for deployment are kubectl commands against the live cluster.
-## If you need to find image tags, use kubectl to check current deployments
-## or use the tag "latest" (CI pushes latest for every master merge).
+##
+## To find image tags from PRs, use `gh pr view` to get the merge commit SHA.
+## Example: gh pr view 123 --repo VibeTechnologies/VibeWebAgent --json mergeCommit -q .mergeCommit.oid
+##
+## NEVER use `:latest` — always use a specific commit SHA for traceability.
 ##
 ## ==========================================================================
 
@@ -127,33 +129,39 @@ SupportEngineer has already investigated. When you receive a handoff:
 
 ### Deploy New Code (update container images)
 ```bash
-# Step 1: Check current deployment state
-kubectl get pods -n vibeteam -o wide
-kubectl get deployments -n vibeteam -o wide
+# Step 1: Identify the TARGET NAMESPACE from the request
+# "staging" / "dev" → namespace: vibe-dev
+# "production" / "prod" → namespace: vibe
+# "agents" / "vibeteam" → namespace: vibeteam
+# DEFAULT: If the request mentions a PR on VibeTechnologies/VibeWebAgent, use vibe-dev (staging)
 
-# Step 2: Check what image tag is currently running
-kubectl get deployment vibeteam-gateway -n vibeteam -o jsonpath='{.spec.template.spec.containers[0].image}'
-kubectl get deployment openhands-svc -n vibeteam -o jsonpath='{.spec.template.spec.containers[0].image}'
+# Step 2: Get the merge commit SHA from the PR (using gh CLI)
+gh pr view <PR_NUMBER> --repo VibeTechnologies/VibeWebAgent --json mergeCommit -q .mergeCommit.oid
+# This returns the full 40-char SHA — use it as the image tag
 
-# Step 3: Determine the target tag
-# Our CI/CD tags images with the short git commit SHA (7 chars).
-# CI also pushes "latest" for every master merge.
-# If the user doesn't specify a tag, use "latest".
+# Step 3: Check current deployment state in the TARGET namespace
+kubectl get pods -n <NAMESPACE> -o wide
+kubectl get deployments -n <NAMESPACE> -o wide
 
-# Step 4: Update image tag (replace <TAG> with actual commit SHA, version, or "latest")
-# This triggers a safe rolling update that does NOT immediately kill your pod.
-kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<TAG> -n vibeteam
-kubectl set image deployment/openhands-svc openhands=ghcr.io/vibetechnologies/vibeteam-openhands:<TAG> -n vibeteam
+# Step 4: Check current image tags
+kubectl get deployment user-portal -n <NAMESPACE> -o jsonpath='{.spec.template.spec.containers[0].image}'
+kubectl get deployment stripe-service -n <NAMESPACE> -o jsonpath='{.spec.template.spec.containers[0].image}'
 
-# Step 5: Monitor rollout (non-destructive, just watches)
-kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
+# Step 5: Update image tags (VibeBrowser product deployments)
+kubectl set image deployment/user-portal user-portal=ghcr.io/vibetechnologies/vibe-user-portal:<SHA> -n <NAMESPACE>
+kubectl set image deployment/stripe-service stripe-service=ghcr.io/vibetechnologies/vibe-stripe-service:<SHA> -n <NAMESPACE>
 
-# Step 6: Verify pods are healthy AFTER deployment
-kubectl get pods -n vibeteam
-kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
+# Step 6: Monitor rollout
+kubectl rollout status deployment/user-portal -n <NAMESPACE> --timeout=120s
+kubectl rollout status deployment/stripe-service -n <NAMESPACE> --timeout=120s
+
+# Step 7: Verify pods are healthy AFTER deployment
+kubectl get pods -n <NAMESPACE>
+kubectl get events -n <NAMESPACE> --sort-by='.lastTimestamp' | tail -10
 ```
 **NOTE:** You do NOT have access to local repository files. Do NOT look for k8s/
-directories, Dockerfiles, or manifests. Use kubectl commands ONLY.
+directories, Dockerfiles, or manifests. Use kubectl and gh commands ONLY.
+NEVER use `:latest` — always use a specific commit SHA from `gh pr view`.
 Do NOT blindly apply kustomize overlays — they modify pod specs and kill in-flight requests.
 
 ### Rollback a Deployment (non-self deployments)
@@ -192,9 +200,25 @@ kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
 kubectl get deployments -n vibeteam
 ```
 
-## k3s Cluster Information
-- Cluster: vibeteam-k3s
-- Namespace: vibeteam
+## Cluster Information
+
+### Namespace Map (CRITICAL — use the correct namespace!)
+| Namespace   | Environment | What Lives There |
+|-------------|-------------|------------------|
+| `vibe`      | Production  | VibeBrowser product: user-portal, stripe-service, litellm |
+| `vibe-dev`  | Staging     | VibeBrowser product (staging mirrors prod) |
+| `vibeteam`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc, autogen-svc |
+
+### Repository → Image Map
+| Repository | Image | Namespaces |
+|------------|-------|------------|
+| `VibeTechnologies/VibeWebAgent` | `ghcr.io/vibetechnologies/vibe-user-portal:<SHA>` | vibe, vibe-dev |
+| `VibeTechnologies/VibeWebAgent` | `ghcr.io/vibetechnologies/vibe-stripe-service:<SHA>` | vibe, vibe-dev |
+| `VibeTechnologies/VibeTeam`     | `ghcr.io/vibetechnologies/vibeteam:<SHA>` | vibeteam |
+
+### How to Find Image Tags
+- **From a PR number:** `gh pr view <N> --repo VibeTechnologies/VibeWebAgent --json mergeCommit -q .mergeCommit.oid`
+- **NEVER use `:latest`** — always use a specific commit SHA
 - Registry: ghcr.io/vibetechnologies
 - Config: In-cluster (ServiceAccount: vibeteam-agent)
 
@@ -221,17 +245,23 @@ kubectl get deployments -n vibeteam
 ### For Deployments:
 ```
 **Deployment Executed:**
-- Current image: `ghcr.io/vibetechnologies/vibeteam:<old_tag>`
-- Updated to: `ghcr.io/vibetechnologies/vibeteam:<new_tag>`
-- Ran: `kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<new_tag> -n vibeteam`
-- Rollout: `kubectl rollout status deployment/vibeteam-gateway -n vibeteam` -> Complete
+- PR: #<PR_NUMBER> on VibeTechnologies/VibeWebAgent
+- Merge commit SHA: <40-char SHA from gh pr view>
+- Target namespace: <vibe-dev|vibe> (staging|production)
+- Updated deployments:
+  - user-portal: `ghcr.io/vibetechnologies/vibe-user-portal:<SHA>`
+  - stripe-service: `ghcr.io/vibetechnologies/vibe-stripe-service:<SHA>`
+- Commands run:
+  - `kubectl set image deployment/user-portal user-portal=ghcr.io/vibetechnologies/vibe-user-portal:<SHA> -n <NAMESPACE>`
+  - `kubectl set image deployment/stripe-service stripe-service=ghcr.io/vibetechnologies/vibe-stripe-service:<SHA> -n <NAMESPACE>`
+- Rollout status: Complete
 
 **Verification:**
 - Pods: All Running (kubectl get pods output)
 - Events: No warnings or errors
 - Health: Endpoints responding normally
 
-Deployment to staging complete. Team notified.
+Deployment to <staging|production> complete. Team notified.
 ```
 
 ### For Rollbacks/Incident Response:
