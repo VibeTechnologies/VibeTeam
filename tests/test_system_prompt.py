@@ -171,3 +171,146 @@ class TestTemplateContent:
         """The template must contain a clear instruction to execute, not describe."""
         content = self._read_template()
         assert "MUST actually run" in content or "MUST run" in content
+
+
+class TestReleaseEngineerSafetyGuardrails:
+    """Verify the ReleaseEngineer context has self-infrastructure safety guardrails."""
+
+    @staticmethod
+    def _read_re_context() -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "openhands",
+            "release_engineer.py",
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    def test_has_safety_rule_header(self):
+        """Must have the critical safety rule about self-infrastructure."""
+        content = self._read_re_context()
+        assert "DO NOT DESTROY YOUR OWN INFRASTRUCTURE" in content
+
+    def test_forbids_kubectl_apply_k_overlays(self):
+        """Must explicitly forbid kubectl apply -k k8s/overlays/dev."""
+        content = self._read_re_context()
+        # The command must appear in a FORBIDDEN context, not as an instruction to run
+        assert "kubectl apply -k k8s/overlays/dev" in content
+        # Must NOT appear outside a forbidden/warning block as a command to execute
+        lines = content.split("\n")
+        for line in lines:
+            stripped = line.strip()
+            if "kubectl apply -k k8s/overlays/dev" in stripped:
+                # Line should be in a comment/forbidden section, not a "Step 2" instruction
+                assert (
+                    stripped.startswith("#")
+                    or "FORBIDDEN" in stripped
+                    or "replaces pod" in stripped
+                ), f"Unsafe line found: {stripped}"
+
+    def test_forbids_kubectl_rollout_restart_gateway(self):
+        """Must explicitly forbid kubectl rollout restart on gateway."""
+        content = self._read_re_context()
+        assert "kubectl rollout restart deployment/vibeteam-gateway" in content
+        # Verify it's in the forbidden section
+        lines = content.split("\n")
+        for line in lines:
+            stripped = line.strip()
+            if "kubectl rollout restart deployment/vibeteam-gateway" in stripped:
+                assert stripped.startswith("#"), f"Unsafe line found: {stripped}"
+
+    def test_forbids_kubectl_rollout_restart_openhands(self):
+        """Must explicitly forbid kubectl rollout restart on openhands-svc."""
+        content = self._read_re_context()
+        assert "kubectl rollout restart deployment/openhands-svc" in content
+
+    def test_recommends_kubectl_set_image(self):
+        """Must recommend kubectl set image as the safe alternative."""
+        content = self._read_re_context()
+        assert "kubectl set image" in content
+
+    def test_no_restart_pods_section(self):
+        """The 'Restart Pods' section that told agents to restart gateway must be gone."""
+        content = self._read_re_context()
+        # Should NOT have a section header like "### Restart Pods"
+        assert "### Restart Pods" not in content
+
+    def test_deploy_section_uses_set_image(self):
+        """The 'Deploy New Code' section must use kubectl set image, not kubectl apply."""
+        content = self._read_re_context()
+        # Find the deploy section
+        deploy_start = content.find("### Deploy New Code")
+        assert deploy_start != -1, "Deploy section not found"
+        # Find the next section header
+        next_section = content.find("###", deploy_start + 1)
+        deploy_section = (
+            content[deploy_start:next_section] if next_section != -1 else content[deploy_start:]
+        )
+        assert "kubectl set image" in deploy_section
+        # Must NOT contain kubectl apply -k as an instruction
+        for line in deploy_section.split("\n"):
+            stripped = line.strip()
+            if "kubectl apply -k" in stripped and not stripped.startswith("#"):
+                pytest.fail(f"Deploy section contains unsafe kubectl apply: {stripped}")
+
+    def test_has_self_destructive_actions_section(self):
+        """Must document which actions are self-destructive."""
+        content = self._read_re_context()
+        assert "SELF-DESTRUCTIVE ACTIONS" in content
+
+
+class TestDeploymentTaskTemplateSafety:
+    """Verify the deployment task template in slack.py has safety guardrails."""
+
+    @staticmethod
+    def _read_slack_py() -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "vibeteam",
+            "gateway",
+            "routes",
+            "slack.py",
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    def test_has_safety_rule_in_deployment_template(self):
+        """Deployment task template must warn about self-infrastructure destruction."""
+        content = self._read_slack_py()
+        assert "DO NOT DESTROY YOUR OWN INFRASTRUCTURE" in content
+
+    def test_deployment_template_forbids_kubectl_apply_k(self):
+        """Deployment template must list kubectl apply -k as forbidden."""
+        content = self._read_slack_py()
+        # Find the deployment template section
+        deploy_start = content.find("## Slack Deployment Request")
+        assert deploy_start != -1, "Deployment template not found"
+        deploy_end = content.find("elif is_notification", deploy_start)
+        deploy_section = content[deploy_start:deploy_end]
+
+        # kubectl apply -k must be in FORBIDDEN section, not as instruction
+        assert "kubectl apply -k" in deploy_section
+        # The STEP 3 should use kubectl set image, not kubectl apply
+        step3_start = deploy_section.find("STEP 3")
+        assert step3_start != -1
+        step3_section = deploy_section[step3_start:]
+        assert "kubectl set image" in step3_section
+
+    def test_deployment_template_uses_set_image(self):
+        """Deployment template must instruct agent to use kubectl set image."""
+        content = self._read_slack_py()
+        deploy_start = content.find("## Slack Deployment Request")
+        deploy_end = content.find("elif is_notification", deploy_start)
+        deploy_section = content[deploy_start:deploy_end]
+        assert "kubectl set image" in deploy_section
+
+    def test_deployment_template_has_image_check_step(self):
+        """Deployment template must include a step to check current image tags."""
+        content = self._read_slack_py()
+        deploy_start = content.find("## Slack Deployment Request")
+        deploy_end = content.find("elif is_notification", deploy_start)
+        deploy_section = content[deploy_start:deploy_end]
+        assert "Check Current Image Tags" in deploy_section or "jsonpath" in deploy_section

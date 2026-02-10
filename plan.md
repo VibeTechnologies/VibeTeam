@@ -180,21 +180,28 @@ Last updated: 2026-02-10
 
 ## In-Progress Work
 
-### Branch: `fix/release-deploy-eval`
+### Branch: `fix/release-deploy-self-destruct`
 
-**Goals:**
-1. Fix `release_deploy` eval failure (DeploymentExecution: 0.40 → target ≥0.60)
-2. Fix `github_issue` eval timeout (agent ReadTimeout at 600s)
+**Root Cause:** ReleaseEngineer agent kills its own infrastructure when executing deployment
+commands (`kubectl apply -k k8s/overlays/dev` and `kubectl rollout restart`) which replace
+the vibeteam-gateway/openhands-svc pods that are processing the agent's own request.
+The in-flight request dies and the response never reaches Slack, causing eval timeouts.
+
+**Fix:** Replace destructive commands with safe `kubectl set image` approach and add
+critical safety guardrails to prevent self-infrastructure destruction.
 
 **Changes:**
-- [x] ReleaseEngineer prompt: Added deployment playbook (kubectl apply -k, rollout status, verification)
-- [x] ReleaseEngineer prompt: Updated response format with deployment-specific template
-- [x] ReleaseEngineer: Changed pre-fetched data preamble to not discourage write operations
-- [x] Gateway `slack.py`: Added deployment task template (detects deploy/release/ship/promote for RE role)
-- [x] Gateway `slack.py`: Word-boundary regex for deployment keywords (avoids false-positive on @ReleaseEngineer)
-- [x] Gateway `server.py`: Increased agent HTTP timeout from 600s to 900s (15 min)
-- [x] Gateway `server.py`: No retry on ReadTimeout (agent is processing, not down)
-- [x] SWE prompt: Updated time limit from 60s to 10 minutes, added prioritize-analysis-first guidance
-- [x] 31 new unit tests for task routing logic (deployment, notification, investigation classification)
+- [x] `release_engineer.py`: Added CRITICAL SAFETY RULE section forbidding self-destructive commands
+- [x] `release_engineer.py`: Replaced `kubectl apply -k` with `kubectl set image` in deploy playbook
+- [x] `release_engineer.py`: Removed "Restart Pods" section (was: `kubectl rollout restart deployment/vibeteam-gateway`)
+- [x] `release_engineer.py`: Added SELF-DESTRUCTIVE ACTIONS section documenting unsafe operations
+- [x] `release_engineer.py`: Updated response format to use `kubectl set image` output
+- [x] `slack.py`: Added CRITICAL SAFETY RULE block to deployment task template
+- [x] `slack.py`: Replaced `kubectl apply -k` with `kubectl set image` in deployment steps
+- [x] `slack.py`: Added Step 2 for checking current image tags before deployment
+- [x] `slack.py`: Updated FORBIDDEN ACTIONS and REQUIRED OUTPUT sections
+- [x] `test_system_prompt.py`: Added 12 new tests for safety guardrails (RE context + deployment template)
+- [x] All 357 tests pass (77 skipped integration tests)
 - [ ] Deploy and run release_deploy eval to verify fix
+- [ ] Run regression evals (support_400_errors, stripe_webhook_failure)
 - [ ] Deploy and run github_issue eval to verify fix
