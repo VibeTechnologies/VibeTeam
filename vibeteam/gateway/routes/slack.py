@@ -1109,8 +1109,19 @@ async def trigger_agent_for_slack(
         "channel": "C0AATPSADB8",
         "thread_ts": "1234567890.123456",
         "text": "@SupportEngineer please investigate the issue",
-        "user_id": "eval_script"
+        "user_id": "eval_script",
+        "use_async": false
     }
+
+    Fields:
+    - channel (required): Slack channel ID
+    - text (required): Message text with @RoleName mention
+    - thread_ts (optional): Thread timestamp to post in
+    - user_id (optional): Identifier for the caller (default: "trigger_api")
+    - use_async (optional, default: false): If true, uses the async callback flow
+      (POST /run/async → agent processes → POST /callback/agent) instead of the
+      synchronous path. Useful for testing the full async lifecycle including
+      CALLBACK_SECRET verification.
     """
     # Rate limiting
     if not _trigger_rate_limiter.allow():
@@ -1144,6 +1155,7 @@ async def trigger_agent_for_slack(
     thread_ts = body.get("thread_ts")
     text = body.get("text", "")
     user_id = body.get("user_id", "trigger_api")
+    use_async = body.get("use_async", False)
 
     if not channel:
         raise HTTPException(status_code=400, detail="channel is required")
@@ -1160,14 +1172,18 @@ async def trigger_agent_for_slack(
             detail="text must contain @RoleName mention (e.g., @SupportEngineer)",
         )
 
-    logger.info(f"Trigger API: routing to {role_mentions} in {channel}")
+    mode = "async" if use_async else "sync"
+    logger.info(f"Trigger API: routing to {role_mentions} in {channel} (mode={mode})")
 
-    # Process in background (sync path — trigger is used by eval scripts)
-    asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id, use_async=False))
+    # Process in background
+    # use_async=True exercises the full /run/async → /callback/agent flow
+    # use_async=False (default) uses the synchronous path
+    asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id, use_async=use_async))
 
     return {
         "status": "accepted",
         "channel": channel,
         "thread_ts": thread_ts,
         "roles": role_mentions,
+        "mode": mode,
     }

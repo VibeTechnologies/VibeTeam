@@ -198,3 +198,58 @@ class TestTriggerRateLimit:
             response = client.post("/slack/trigger", json=VALID_PAYLOAD)
             assert response.status_code == 429
             assert "Rate limit exceeded" in response.json()["detail"]
+
+
+class TestTriggerAsyncMode:
+    """Test /slack/trigger use_async parameter."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_rate_limiter(self):
+        """Reset rate limiter before each test so prior tests don't cause 429s."""
+        from vibeteam.gateway.routes.slack import _trigger_rate_limiter
+
+        _trigger_rate_limiter.reset()
+
+    def test_default_mode_is_sync(self, client: TestClient, _patch_run_agent):
+        """Without use_async, mode should be 'sync' and run_agent called with use_async=False."""
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_BOT_TOKEN = "xoxb-test"
+            response = client.post("/slack/trigger", json=VALID_PAYLOAD)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["mode"] == "sync"
+        # Verify run_agent_for_slack was called with use_async=False
+        _patch_run_agent.assert_called_once()
+        _, kwargs = _patch_run_agent.call_args
+        assert kwargs.get("use_async") is False
+
+    def test_async_mode_returns_async(self, client: TestClient, _patch_run_agent):
+        """With use_async=true, mode should be 'async' and run_agent called with use_async=True."""
+        payload = {**VALID_PAYLOAD, "use_async": True}
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_BOT_TOKEN = "xoxb-test"
+            response = client.post("/slack/trigger", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["mode"] == "async"
+        # Verify run_agent_for_slack was called with use_async=True
+        _patch_run_agent.assert_called_once()
+        _, kwargs = _patch_run_agent.call_args
+        assert kwargs.get("use_async") is True
+
+    def test_async_false_explicit(self, client: TestClient, _patch_run_agent):
+        """With use_async=false explicitly, mode should be 'sync'."""
+        payload = {**VALID_PAYLOAD, "use_async": False}
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_BOT_TOKEN = "xoxb-test"
+            response = client.post("/slack/trigger", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["mode"] == "sync"
+        # Verify run_agent_for_slack was called with use_async=False
+        _patch_run_agent.assert_called_once()
+        _, kwargs = _patch_run_agent.call_args
+        assert kwargs.get("use_async") is False
