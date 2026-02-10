@@ -459,7 +459,6 @@ Summarize deployment outcome clearly.
 - DO NOT just describe what you would do — ACTUALLY RUN the commands
 - DO NOT hand off deployment to another agent — YOU are the ReleaseEngineer
 - DO NOT skip verification steps
-- DO NOT look for local files (k8s/, Dockerfile, etc.) — you have NO local repo
 
 **REQUIRED OUTPUT:**
 Your response MUST include:
