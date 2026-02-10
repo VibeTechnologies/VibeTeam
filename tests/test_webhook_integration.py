@@ -8,7 +8,7 @@ import asyncio
 import hashlib
 import hmac
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,11 +36,14 @@ def sentry_client_secret():
 
 def generate_github_signature(payload: str, secret: str) -> str:
     """Generate GitHub webhook signature."""
-    return "sha256=" + hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256,
-    ).hexdigest()
+    return (
+        "sha256="
+        + hmac.new(
+            secret.encode(),
+            payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+    )
 
 
 def generate_sentry_signature(payload: str, secret: str) -> str:
@@ -258,7 +261,6 @@ class TestSentryWebhookRouting:
     def test_invalid_sentry_signature_rejected(self, test_client):
         """Test that Sentry webhooks with invalid signatures are rejected."""
         # Patch the gateway config directly
-        from vibeteam.gateway.routes import sentry
         from vibeteam.gateway import server
 
         original_secret = server.config.SENTRY_CLIENT_SECRET

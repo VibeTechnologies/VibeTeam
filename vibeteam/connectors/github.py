@@ -191,7 +191,7 @@ class GitHubConnector:
             # Installation tokens are valid for 1 hour
             self._token_expiry = time.time() + 3600
         except Exception as e:
-            raise RuntimeError(f"Failed to refresh GitHub App token: {e}")
+            raise RuntimeError(f"Failed to refresh GitHub App token: {e}") from e
 
     def _headers(self) -> dict:
         """Get request headers with auth."""

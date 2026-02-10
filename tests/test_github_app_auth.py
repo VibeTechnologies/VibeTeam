@@ -11,7 +11,6 @@ Tests cover:
 
 import hashlib
 import hmac
-import json
 import os
 import time
 from unittest.mock import MagicMock, patch
@@ -21,7 +20,6 @@ import requests
 
 from vibeteam.connectors.github import GitHubConnector
 from vibeteam.utils import github_app
-
 
 # ==============================================================================
 # GitHub App Authentication Tests
@@ -179,8 +177,12 @@ XudEjwN5+bLM5SHOoNhfOho=
         connector = GitHubConnector()
         assert connector.token == "ghp_from_env"
 
-    def test_init_without_auth_raises_error(self):
+    def test_init_without_auth_raises_error(self, monkeypatch):
         """Test that initialization without auth raises ValueError."""
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_APP_ID", raising=False)
+        monkeypatch.delenv("GITHUB_APP_PRIVATE_KEY", raising=False)
+        monkeypatch.delenv("GITHUB_APP_INSTALLATION_ID", raising=False)
         with pytest.raises(ValueError, match="GitHub authentication required"):
             GitHubConnector(token=None)
 
@@ -306,11 +308,14 @@ class TestWebhookSignatures:
         payload = b'{"action":"opened","number":1}'
 
         # Generate valid signature
-        signature = "sha256=" + hmac.new(
-            secret.encode(),
-            payload,
-            hashlib.sha256,
-        ).hexdigest()
+        signature = (
+            "sha256="
+            + hmac.new(
+                secret.encode(),
+                payload,
+                hashlib.sha256,
+            ).hexdigest()
+        )
 
         assert verify_signature(payload, signature, secret)
 
