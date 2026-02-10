@@ -95,4 +95,37 @@ kubectl logs -f deployment/vibeteam-gateway -n vibeteam | grep -i slack
 | #25 | feat: Documentation Knowledge Base (original) | Can close after #55 merges |
 
 ---
-Last updated: 2026-02-09
+
+## Completed: OpenHands Agent Evaluation Fix (2026-02-10)
+
+All agent evaluation scenarios now pass. The final verification was completed on 2026-02-10.
+
+### github_issue Scenario Results
+
+| Metric | Score | Threshold | Status |
+|--------|-------|-----------|--------|
+| IssueAnalysis | 0.70 | 0.60 | ✅ Pass |
+| TaskCompletion | 0.80 | 0.60 | ✅ Pass |
+| EvidenceBasedDecision | 0.70 | 0.60 | ✅ Pass |
+| HandoffCompletion | 0.90 | 0.60 | ✅ Pass |
+
+### Key Fixes Applied
+
+1. **Dev overlay with git-sync**: Applied `k8s/overlays/dev` to enable hot reload of agent code
+2. **Strict iteration limit**: Max 10 tool calls to prevent stuck loops
+3. **Anti-looping instructions**: Agents stop if viewing same file twice
+4. **Mandatory gh output redirection**: Prevents terminal hanging
+
+### Running Evaluations
+
+```bash
+# Unset any shell env vars that might override .env
+unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY AZURE_API_BASE AZURE_API_KEY
+
+# Load from .env and run
+export $(grep -v '^#' .env | grep -E '^AZURE_' | xargs)
+uv run python scripts/eval_slack_e2e.py --scenario github_issue --channel C0AATPSADB8 --timeout 180
+```
+
+---
+Last updated: 2026-02-10
