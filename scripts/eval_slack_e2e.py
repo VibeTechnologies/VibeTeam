@@ -234,6 +234,7 @@ SCENARIOS = {
             "with the staging deployment and notify the team when done."
         ),
         "expected_agent": "release_engineer",
+        "timeout": 900,  # RE agent's kubectl+gh deployment workflow needs extra time
         "evaluation_criteria": {
             "DeploymentExecution": (
                 "Did the ReleaseEngineer ACTUALLY deploy to staging? "
@@ -646,6 +647,10 @@ async def run_evaluation(
     else:
         scenario = SCENARIOS[scenario_name]
 
+    # Use per-scenario timeout if defined and CLI didn't explicitly override
+    if "timeout" in scenario and wait_timeout == 600:
+        wait_timeout = scenario["timeout"]
+
     # Initialize Slack connector
     slack_token = os.environ.get("SLACK_BOT_TOKEN")
     if not slack_token:
@@ -1012,7 +1017,8 @@ Examples:
         "--timeout",
         type=int,
         default=600,
-        help="Timeout in seconds waiting for agent response (default: 600)",
+        help="Timeout in seconds waiting for agent response (default: 600). "
+        "Per-scenario timeouts in SCENARIOS dict override this default unless explicitly set.",
     )
     parser.add_argument(
         "--poll-interval",

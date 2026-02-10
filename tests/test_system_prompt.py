@@ -262,6 +262,36 @@ class TestReleaseEngineerSafetyGuardrails:
         content = self._read_re_context()
         assert "SELF-DESTRUCTIVE ACTIONS" in content
 
+    def test_has_command_combining_instruction(self):
+        """Must instruct agent to combine kubectl commands using &&."""
+        content = self._read_re_context()
+        assert "COMBINE" in content
+        assert "&&" in content
+        # Should have explicit efficiency section
+        assert "EFFICIENCY" in content or "SAVE TOOL CALLS" in content.upper()
+
+    def test_deploy_steps_use_combined_commands(self):
+        """The deploy steps should show combined commands, not separate ones."""
+        content = self._read_re_context()
+        deploy_start = content.find("### Deploy New Code")
+        assert deploy_start != -1
+        next_section = content.find("###", deploy_start + 1)
+        deploy_section = (
+            content[deploy_start:next_section] if next_section != -1 else content[deploy_start:]
+        )
+        # Pre-deploy check should be combined into ONE command
+        assert "Pre-deploy check" in deploy_section or "COMBINE" in deploy_section
+        # Should have && in the deployment steps (combined commands)
+        bash_blocks = [
+            line
+            for line in deploy_section.split("\n")
+            if "kubectl" in line and "&&" in line and not line.strip().startswith("#")
+        ]
+        assert len(bash_blocks) >= 2, (
+            f"Expected at least 2 combined kubectl commands in deploy section, "
+            f"found {len(bash_blocks)}"
+        )
+
 
 class TestDeploymentTaskTemplateSafety:
     """Verify the deployment task template in slack.py has safety guardrails."""
@@ -424,3 +454,86 @@ class TestNamespaceAwareness:
         deploy_section = content[deploy_start:deploy_end]
         assert "vibe-user-portal" in deploy_section
         assert "vibe-stripe-service" in deploy_section
+
+
+class TestSoftwareEngineerCodeFirstInvestigation:
+    """Verify the SoftwareEngineer prompt prioritizes code investigation over infra checks.
+
+    The IssueAnalysis eval rubric requires: '(2) Analyze the code related to the record
+    button functionality.' When the SWE agent checks infra first (Sentry, kubectl, health
+    endpoints) instead of searching the repo, IssueAnalysis scores drop to 0.40.
+    """
+
+    @staticmethod
+    def _read_swe_context() -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "openhands",
+            "software_engineer.py",
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    def test_has_code_first_investigation_priority(self):
+        """Must explicitly say to investigate code FIRST, infra SECOND."""
+        content = self._read_swe_context()
+        assert "CODE FIRST" in content or "code FIRST" in content
+
+    def test_code_first_appears_before_prefetched_data(self):
+        """The code-first instruction must appear BEFORE the pre-fetched data section."""
+        content = self._read_swe_context()
+        code_first_pos = content.find("CODE FIRST")
+        if code_first_pos == -1:
+            code_first_pos = content.find("code FIRST")
+        prefetched_pos = content.find("PRE-FETCHED DATA")
+        assert code_first_pos != -1, "CODE FIRST instruction not found"
+        assert prefetched_pos != -1, "PRE-FETCHED DATA section not found"
+        assert code_first_pos < prefetched_pos, (
+            "CODE FIRST instruction must appear before PRE-FETCHED DATA section"
+        )
+
+    def test_mentions_extension_directories(self):
+        """Must list common browser extension directory names to search."""
+        content = self._read_swe_context()
+        # Should mention at least some of these extension-related directories
+        extension_dirs = ["extension/", "chrome/", "popup/", "content/"]
+        found = sum(1 for d in extension_dirs if d in content)
+        assert found >= 2, (
+            f"Expected at least 2 extension directory hints, found {found}. "
+            f"Checked: {extension_dirs}"
+        )
+
+    def test_has_find_command_for_frontend_code(self):
+        """Must include a find command example for locating TypeScript/JavaScript files."""
+        content = self._read_swe_context()
+        assert "find" in content and (".ts" in content or "*.ts" in content)
+
+    def test_has_skip_infra_for_ui_bugs(self):
+        """Must tell agent to SKIP infra checks for UI/extension bugs."""
+        content = self._read_swe_context()
+        # Should have a directive about skipping infra for non-deployment bugs
+        assert "SKIP" in content or "skip infra" in content.lower()
+        # Must mention that crashes/UI issues don't need infra checks
+        assert "crash" in content.lower() or "UI" in content
+
+    def test_github_issue_workflow_includes_find_and_grep(self):
+        """The GitHub Issue Investigation workflow must include both find and grep."""
+        content = self._read_swe_context()
+        workflow_start = content.find("### For GitHub Issue Investigation")
+        assert workflow_start != -1, "GitHub Issue Investigation workflow not found"
+        # Find the next section
+        next_section = content.find("###", workflow_start + 5)
+        if next_section == -1:
+            next_section = content.find("## ", workflow_start + 5)
+        workflow = (
+            content[workflow_start:next_section] if next_section != -1 else content[workflow_start:]
+        )
+        assert "grep" in workflow, "Workflow must include grep for code search"
+        assert "find" in workflow, "Workflow must include find for file discovery"
+
+    def test_mentions_infra_only_for_deployment_bugs(self):
+        """Must clarify that infra checks are only for deployment-related bugs."""
+        content = self._read_swe_context()
+        assert "deployment-related" in content.lower() or "deployment related" in content.lower()
