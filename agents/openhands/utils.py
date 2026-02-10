@@ -73,12 +73,39 @@ def extract_response_from_events(events: list[Any]) -> str:
                 break
 
     if not response:
+        # Fallback: extract the last ActionEvent's thought field.
+        # When the agent hits max_iterations without calling finish(), the last
+        # action's thought often contains the LLM's summary/reasoning.
+        for event in reversed(events):
+            event_type = type(event).__name__
+            if event_type == "ActionEvent":
+                action = getattr(event, "action", None)
+                if action:
+                    thought = getattr(action, "thought", "")
+                    if thought:
+                        logger.info(
+                            "Extracted response from last ActionEvent.thought fallback "
+                            "(%s, %d chars)",
+                            type(action).__name__,
+                            len(thought),
+                        )
+                        response = thought
+                        break
+
+    if not response:
         # Log event types for debugging when no response is found
-        event_types = [type(e).__name__ for e in events[-10:]] if events else []
+        event_summary = []
+        for e in events[-10:] if events else []:
+            etype = type(e).__name__
+            if etype == "ActionEvent":
+                action = getattr(e, "action", None)
+                aname = type(action).__name__ if action else "?"
+                etype = f"ActionEvent({aname})"
+            event_summary.append(etype)
         logger.warning(
-            "No response extracted from %d events. Last 10 event types: %s",
+            "No response extracted from %d events. Last 10: %s",
             len(events),
-            event_types,
+            event_summary,
         )
 
     return response

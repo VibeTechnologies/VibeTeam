@@ -73,6 +73,16 @@ class MockOtherEvent:
 MockOtherEvent.__name__ = "ObservationEvent"
 
 
+class MockCmdRunAction:
+    """Mimics a non-finish action (like CmdRunAction) with a thought field."""
+
+    def __init__(self, thought: str = ""):
+        self.thought = thought
+
+
+MockCmdRunAction.__name__ = "CmdRunAction"
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -255,3 +265,73 @@ class TestEdgeCases:
         result = extract_response_from_events(events)
         # Reverse: action_event checked first but empty, then msg_event matches
         assert result == "Fallback response"
+
+
+class TestActionThoughtFallback:
+    """Test fallback extraction from non-finish ActionEvent.thought."""
+
+    def test_extracts_thought_from_last_action_when_no_finish(self):
+        """When agent hits max_iterations without finish(), use last action's thought."""
+        action = MockCmdRunAction(thought="I have analyzed the issue and found the root cause.")
+        event = MockActionEvent(action)
+
+        result = extract_response_from_events([event])
+        assert result == "I have analyzed the issue and found the root cause."
+
+    def test_skips_empty_thoughts(self):
+        """Actions with empty thoughts should be skipped in fallback."""
+        action_empty = MockCmdRunAction(thought="")
+        event_empty = MockActionEvent(action_empty)
+
+        action_with = MockCmdRunAction(thought="Found the bug in the login handler.")
+        event_with = MockActionEvent(action_with)
+
+        # Chronological: action_with first, then empty
+        events = [event_with, event_empty]
+
+        result = extract_response_from_events(events)
+        # Reverse: empty skipped, then action_with matches
+        assert result == "Found the bug in the login handler."
+
+    def test_finish_action_takes_priority_over_thought_fallback(self):
+        """FinishAction should still take priority even when other actions have thoughts."""
+        cmd_action = MockCmdRunAction(thought="Internal tool reasoning")
+        cmd_event = MockActionEvent(cmd_action)
+
+        finish_action = MockFinishAction(message="Final answer")
+        finish_action.__class__.__name__ = "FinishAction"
+        finish_event = MockActionEvent(finish_action)
+
+        events = [cmd_event, finish_event]
+
+        result = extract_response_from_events(events)
+        assert result == "Final answer"
+
+    def test_message_event_takes_priority_over_thought_fallback(self):
+        """MessageEvent should take priority over action thought fallback."""
+        cmd_action = MockCmdRunAction(thought="Internal tool reasoning")
+        cmd_event = MockActionEvent(cmd_action)
+
+        msg = MockLLMMessage(content=[MockContentBlock(text="Agent message")])
+        msg_event = MockMessageEvent(source="agent", llm_message=msg)
+
+        events = [cmd_event, msg_event]
+
+        result = extract_response_from_events(events)
+        assert result == "Agent message"
+
+    def test_thought_fallback_with_observation_events(self):
+        """Simulates typical max_iterations scenario: alternating actions and observations."""
+        other1 = MockOtherEvent()  # ObservationEvent
+        action1 = MockCmdRunAction(thought="Let me check the logs")
+        event1 = MockActionEvent(action1)
+
+        other2 = MockOtherEvent()
+        action2 = MockCmdRunAction(thought="The issue is in the auth module, line 42.")
+        event2 = MockActionEvent(action2)
+
+        events = [event1, other1, event2, other2]
+
+        result = extract_response_from_events(events)
+        # Should extract from the last ActionEvent (event2), skipping ObservationEvent
+        assert result == "The issue is in the auth module, line 42."
