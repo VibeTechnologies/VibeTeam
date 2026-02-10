@@ -205,7 +205,7 @@ async def call_agent_service(
             response = await client.post(
                 f"{service_url}{endpoint}",
                 json=payload,
-                timeout=600.0,  # 10 min for agents running kubectl commands
+                timeout=900.0,  # 15 min for agents running agentic loops
             )
             response.raise_for_status()
             result = response.json()
@@ -238,6 +238,14 @@ async def call_agent_service(
         except httpx.RequestError as e:
             last_error = e
             error_type = type(e).__name__
+            # Don't retry on ReadTimeout - the agent is processing, not down.
+            # Retrying would just queue another 15-min wait.
+            if isinstance(e, httpx.ReadTimeout):
+                logger.error(
+                    f"Agent call timed out after {time.time() - start_time:.0f}s "
+                    f"[{error_type}] to {service_url}: {e}"
+                )
+                break
             if attempt < max_retries - 1:
                 logger.warning(
                     f"Connection failed (attempt {attempt + 1}/{max_retries}) "

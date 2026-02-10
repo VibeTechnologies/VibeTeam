@@ -1,31 +1,27 @@
 # Current Work Plan
 
-## In Progress: Fix release_deploy eval — system prompt template (Issue A)
+## Status: PR in progress — fix release_deploy eval + github_issue timeout
 
-**Status:** Code changes complete, needs commit, deploy, and eval verification.
-**Branch:** master (uncommitted changes)
+**Branch:** `fix/release-deploy-eval` (from `master`)
+**Working tree:** Modified
+**Open PRs:** Pending
+**Deployments:** All running (gateway, openhands-svc, openhands-agents, autogen, crewai, scheduler)
 
-### Problem
-The `release_deploy` eval failed because agents narrate what they'd do instead of actually running kubectl commands. Root cause: `system_prompt_kwargs` with `agent_context` was silently dropped because no custom `system_prompt_filename` was provided. The default OpenHands template (`system_prompt.j2`) ignores unknown kwargs.
+---
 
-### Fix Applied
-- [x] Created `agents/openhands/prompts/agent_system.j2` — custom Jinja2 template that renders `{{ agent_context }}` (the agent persona/instructions) into the system prompt
-- [x] Wired `system_prompt_filename` in all 5 agent constructors:
-  - `release_engineer.py` — `system_prompt_filename=os.path.join(os.path.dirname(__file__), "prompts", "agent_system.j2")`
-  - `software_engineer.py` — same
-  - `support_engineer.py` — same
-  - `marketing_manager.py` — same
-  - `product_manager.py` — same
-- [x] Enhanced ReleaseEngineer context: added deployment playbook, deployment response format, clearer context block preamble
-- [x] Added deployment-specific task template in `slack.py` with explicit step-by-step kubectl instructions
-- [x] Added `tests/test_task_routing.py` (301 lines) for task routing/detection logic
+## Open Issues
 
-### Remaining Steps
-- [ ] Commit all changes
-- [ ] Deploy to cluster (build Docker image, push, restart deployments)
-- [ ] Run `release_deploy` eval: `uv run python scripts/eval_slack_e2e.py --scenario release_deploy --channel C0AATPSADB8 --timeout 600`
-- [ ] Verify no regression: run `support_400_errors` and `stripe_webhook_failure` evals
-- [ ] Update eval results table below
+| Issue | Title | Status | Notes |
+|-------|-------|--------|-------|
+| #48 | Verify Langfuse Integration | Open | Needs end-to-end validation |
+| #47 | User Document Upload for Knowledge Base | Open | Feature request — upload PDFs/docs via API |
+| #22 | Complete VibeTeam Integration Setup | Open | Umbrella issue — most items done, some remain |
+
+## Blocked
+
+| Item | Blocker |
+|------|---------|
+| Slack webhook delivery | Needs human with Slack admin access to update URLs at https://api.slack.com/apps/A0AAZGWEAVA/event-subscriptions to `https://webhook.team.vibebrowser.app/slack/events` |
 
 ---
 
@@ -58,7 +54,7 @@ sequenceDiagram
 
     Note over GW,OH: 3. AGENT INVOCATION
     GW->>GW: Build task prompt with<br/>investigation instructions<br/>(slack.py:372-439)
-    GW->>OH: POST /run {task, role, context_type, context_id}<br/>(3 retries, 600s timeout)
+    GW->>OH: POST /run {task, role, context_type, context_id}<br/>(no retry on ReadTimeout, 900s timeout)
     OH->>Team: team.run(task, context_type, context_id)
 
     Note over Team,Agent: 4. AGENT ROUTING (openhands-svc)
@@ -102,6 +98,10 @@ sequenceDiagram
 | **ProductManager** | Maya | `ask_agent()` (single LLM call) | None | None |
 | **MarketingManager** | Ada | `ask_agent()` (single LLM call) | None (MCP config exists) | Browser context (URL fetch, web search) |
 
+### System Prompt Template
+
+All 5 agents use `agents/openhands/prompts/agent_system.j2` which renders `{{ agent_context }}` (persona + instructions) into the OpenHands system prompt. This was fixed in PR #63 — previously `agent_context` was silently dropped because the default OpenHands template ignores unknown kwargs.
+
 ### Role Resolution & Keyword Routing
 
 Consolidated into `agents/shared/role_resolver.py`:
@@ -123,18 +123,49 @@ Reduced from worst-case 210s (sequential) to ~11s (parallel).
 
 | PR/Commit | Title | Key Changes |
 |-----------|-------|-------------|
+| #63 | fix(agents): wire custom system prompt template | `agent_system.j2` template, all 5 agents wired, ReleaseEngineer deployment playbook |
+| #62 | test: cover remaining webhook code paths | 17 new tests: PR review comments, bot mentions, helper error paths. Total: 50 pass |
+| #61 | test: comprehensive webhook coverage improvements | 8 new tests: missing signatures, bot own comment, unhandled events, SWE exceptions |
 | #60 | fix(eval): rescore mode, handoff timeout, agent verification | `--thread-ts` rescore, `--handoff-timeout`, SWE anti-hallucination guardrails, 27 new tests |
 | #53 | feat: GitHub App auth + Sentry webhook routing | GitHubConnector App auth, Sentry classification, webhook routing, 33 integration tests |
-| `687f328` | docs: update plan.md | keyword routing done, close PR #51, track PR #53 |
 | `652cfc6` | refactor: consolidate keyword routing into role_resolver | Single `route_by_keywords()` in role_resolver.py, word-boundary regex |
-| #59 | refactor: consolidate role parsing, parallelize kubectl, merge eval scripts | RoleResolver module, ThreadPoolExecutor kubectl, deleted eval_slack_agent.py |
+| #59 | refactor: consolidate role parsing, parallelize kubectl, merge eval scripts | RoleResolver module, ThreadPoolExecutor kubectl |
 | #55 | feat: add Documentation Knowledge Base tool for agents | Docs tools for agent knowledge base |
 | #54 | fix(slack): correct webhook URLs to use webhook.team subdomain | Manifest fix (blocked on manual Slack config) |
 | #57 | fix: secure /slack/trigger endpoint, fix dead code, align role mentions | SLACK_TRIGGER_SECRET, dead code cleanup |
 | #56 | fix(eval): improve Azure credential handling | Credential warnings, all 5 eval scenarios pass |
 | #52 | fix(ci): ruff lint errors | CI lint fixes |
+| `3ed0fbe` | fix(docker): pin kubectl version to v1.31.4 | Avoid flaky dl.k8s.io/release/stable.txt |
+| `bee0b7c` | fix(docker): replace gh auth setup-git | Direct credential helper config for runtime GITHUB_TOKEN |
 
-### Eval Results (all passing)
+### Closed Issues
+
+| Issue | Title | Reason |
+|-------|-------|--------|
+| #44 | Integrate DeepEval for robust agent benchmarking | Completed — DeepEval fully integrated in eval scripts + test harness |
+| #31 | Multi-Agent System Product Requirements | Completed — docs/requirements.md + docs/design.md |
+| #24 | Documentation Knowledge Base for Agents | Completed — PR #55 |
+
+### Closed PRs (superseded)
+
+| PR | Reason |
+|----|--------|
+| #51 | Superseded by #55 (doc upload feature) |
+| #50 | Superseded by #53 (WIP rewrite) |
+| #25 | Superseded by #55 (cherry-pick) |
+| #58 | Correctly closed — /slack/trigger is correct design |
+
+### Eval Results (post-deploy 2026-02-10)
+
+| Scenario | Key Metrics | Status | Notes |
+|----------|------------|--------|-------|
+| support_400_errors | InvestigationQuality: 0.90, EvidenceBasedDecision: 1.00 | ✅ PASS | |
+| support_notify_check | NotificationOnly: 1.00 | ✅ PASS | |
+| github_issue | N/A — agent timeout | ❌ FAIL | Gateway→openhands ReadTimeout at 600s; agent was still in agentic loop. Fix: increased timeout to 900s, no retry on ReadTimeout |
+| release_deploy | DeploymentExecution: 0.40, TaskCompletion: 0.00 | ❌ FAIL | Agent narrated instead of executing kubectl commands. Fix: deployment task template + deployment playbook in RE prompt |
+| stripe_webhook_failure | InvestigationQuality: 1.00, TaskCompletion: 0.90 | ✅ PASS | |
+
+### Eval Results (pre-PR #63, for reference)
 
 | Scenario | InvestigationQuality | TaskCompletion |
 |----------|---------------------|----------------|
@@ -146,3 +177,24 @@ Reduced from worst-case 210s (sequential) to ~11s (parallel).
 
 ---
 Last updated: 2026-02-10
+
+## In-Progress Work
+
+### Branch: `fix/release-deploy-eval`
+
+**Goals:**
+1. Fix `release_deploy` eval failure (DeploymentExecution: 0.40 → target ≥0.60)
+2. Fix `github_issue` eval timeout (agent ReadTimeout at 600s)
+
+**Changes:**
+- [x] ReleaseEngineer prompt: Added deployment playbook (kubectl apply -k, rollout status, verification)
+- [x] ReleaseEngineer prompt: Updated response format with deployment-specific template
+- [x] ReleaseEngineer: Changed pre-fetched data preamble to not discourage write operations
+- [x] Gateway `slack.py`: Added deployment task template (detects deploy/release/ship/promote for RE role)
+- [x] Gateway `slack.py`: Word-boundary regex for deployment keywords (avoids false-positive on @ReleaseEngineer)
+- [x] Gateway `server.py`: Increased agent HTTP timeout from 600s to 900s (15 min)
+- [x] Gateway `server.py`: No retry on ReadTimeout (agent is processing, not down)
+- [x] SWE prompt: Updated time limit from 60s to 10 minutes, added prioritize-analysis-first guidance
+- [x] 31 new unit tests for task routing logic (deployment, notification, investigation classification)
+- [ ] Deploy and run release_deploy eval to verify fix
+- [ ] Deploy and run github_issue eval to verify fix
