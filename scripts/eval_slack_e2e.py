@@ -20,6 +20,8 @@ Environment Variables:
     SLACK_DEFAULT_CHANNEL: Default channel for posting (required)
     AZURE_API_KEY: Azure OpenAI API key for G-Eval
     AZURE_API_BASE: Azure OpenAI endpoint
+    GATEWAY_URL: Gateway URL to trigger agents (default: https://webhook.team.vibebrowser.app)
+    SLACK_TRIGGER_SECRET: Bearer token for /slack/trigger auth (optional, must match gateway config)
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -429,22 +432,6 @@ class AzureOpenAIModel(DeepEvalBaseLLM if DEEPEVAL_AVAILABLE else object):
 # ==============================================================================
 
 
-def detect_agent_role(text: str) -> str | None:
-    """Detect which agent role is being addressed in the message."""
-    text_lower = text.lower()
-    if "/supportengineer" in text_lower or "support_engineer" in text_lower:
-        return "support_engineer"
-    if "/softwareengineer" in text_lower or "/swe" in text_lower:
-        return "software_engineer"
-    if "/releaseengineer" in text_lower or "/sre" in text_lower:
-        return "release_engineer"
-    if "/productmanager" in text_lower or "/pm" in text_lower:
-        return "product_manager"
-    if "/marketingmanager" in text_lower:
-        return "marketing_manager"
-    return None
-
-
 def build_transcript(messages: list[tuple[str, str]]) -> str:
     """Build transcript from (role, text) pairs."""
     lines = []
@@ -599,6 +586,7 @@ async def run_evaluation(
     channel: str | None = None,
     wait_timeout: int = 600,
     poll_interval: int = 5,
+    gateway_url: str | None = None,
 ) -> dict[str, Any]:
     """
     Run a full E2E evaluation:
@@ -606,6 +594,13 @@ async def run_evaluation(
     2. Wait for bot response
     3. Evaluate with DeepEval
     4. Generate report
+
+    Args:
+        scenario_name: Name of the scenario to run
+        channel: Slack channel ID (defaults to SLACK_DEFAULT_CHANNEL env var)
+        wait_timeout: Timeout in seconds for agent response
+        poll_interval: Polling interval in seconds
+        gateway_url: Gateway URL for triggering agents (defaults to GATEWAY_URL env var)
     """
     # Get scenario config
     if scenario_name not in SCENARIOS:
@@ -649,8 +644,24 @@ async def run_evaluation(
     # Slack doesn't send webhooks for messages the bot itself posts,
     # so we need to explicitly trigger the gateway
     print("\n>>> Step 1b: Triggering gateway to process message")
-    gateway_url = os.environ.get("GATEWAY_URL", "https://webhook.team.vibebrowser.app")
-    trigger_url = f"{gateway_url}/slack/trigger"
+    default_prod_url = "https://webhook.team.vibebrowser.app"
+    resolved_gateway_url = gateway_url or os.environ.get("GATEWAY_URL", default_prod_url)
+    trigger_url = f"{resolved_gateway_url}/slack/trigger"
+
+    # Warn if targeting production gateway without explicit opt-in
+    if (
+        resolved_gateway_url == default_prod_url
+        and not gateway_url
+        and not os.environ.get("GATEWAY_URL")
+    ):
+        print(f"    ⚠ WARNING: Using default PRODUCTION gateway ({default_prod_url})")
+        print("    ⚠ Set GATEWAY_URL env var or --gateway-url to target a different environment")
+
+    # Build auth header if SLACK_TRIGGER_SECRET is configured
+    trigger_secret = os.environ.get("SLACK_TRIGGER_SECRET", "")
+    headers: dict[str, str] = {}
+    if trigger_secret:
+        headers["Authorization"] = f"Bearer {trigger_secret}"
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -662,6 +673,7 @@ async def run_evaluation(
                     "text": user_message,
                     "user_id": "eval_script",
                 },
+                headers=headers,
             )
             if response.status_code == 200:
                 result = response.json()
@@ -670,7 +682,11 @@ async def run_evaluation(
                 print(f"    WARNING: Gateway returned {response.status_code}: {response.text}")
     except Exception as e:
         print(f"    WARNING: Failed to trigger gateway: {e}")
-        print("    Falling back to webhook-only mode (may not work)")
+        print(
+            "    ERROR: Gateway trigger failed. No agent will be invoked — "
+            "bot-posted messages do not generate Slack webhook events. "
+            "The eval will wait but no response will arrive."
+        )
 
     # Track conversation
     conversation: list[tuple[str, str]] = [("user", user_message)]
@@ -686,11 +702,11 @@ async def run_evaluation(
     pending_handoff = False  # Track if we're waiting for a handoff
 
     # Pattern to detect @/RoleName mentions (handoffs)
-    import re
-
+    # Must match vibeteam/router/router.py ROLE_PATTERN
     handoff_pattern = re.compile(
         r"[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|"
-        r"ProductManager|MarketingManager)",
+        r"ProductManager|MarketingManager|"
+        r"SWE|Release|Support|PM|Marketing)",
         re.IGNORECASE,
     )
 
@@ -950,6 +966,10 @@ Examples:
         action="store_true",
         help="List available scenarios and exit",
     )
+    parser.add_argument(
+        "--gateway-url",
+        help="Gateway URL for triggering agents (default: GATEWAY_URL env var or https://webhook.team.vibebrowser.app)",
+    )
 
     args = parser.parse_args()
 
@@ -970,6 +990,7 @@ Examples:
                 channel=args.channel,
                 wait_timeout=args.timeout,
                 poll_interval=args.poll_interval,
+                gateway_url=args.gateway_url,
             )
         )
 

@@ -87,6 +87,13 @@ spec:
                   name: vibeteam-secrets
                   key: SLACK_BOT_TOKEN
                   optional: true
+            # Trigger endpoint authentication
+            - name: SLACK_TRIGGER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_TRIGGER_SECRET
+                  optional: true
             # Sentry configuration
             - name: SENTRY_CLIENT_SECRET
               valueFrom:
