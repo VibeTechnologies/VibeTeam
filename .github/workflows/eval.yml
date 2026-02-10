@@ -1,0 +1,115 @@
+name: Agent Evaluation
+
+on:
+  # Manual trigger with scenario selection
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Scenario to evaluate (or "all" for all scenarios)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - support_400_errors
+          - support_notify_check
+          - github_issue
+          - release_deploy
+          - stripe_webhook_failure
+      timeout:
+        description: 'Timeout in seconds per scenario'
+        required: false
+        default: '180'
+        type: string
+  
+  # Run nightly at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+
+env:
+  SLACK_EVAL_CHANNEL: ${{ secrets.SLACK_EVAL_CHANNEL }}
+  AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+  AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+  AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+  SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+  GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          
+      - name: Install dependencies
+        run: uv sync
+        
+      - name: Verify credentials
+        run: |
+          if [ -z "$AZURE_OPENAI_ENDPOINT" ]; then
+            echo "ERROR: AZURE_OPENAI_ENDPOINT secret not set"
+            exit 1
+          fi
+          if [ -z "$SLACK_EVAL_CHANNEL" ]; then
+            echo "ERROR: SLACK_EVAL_CHANNEL secret not set"
+            exit 1
+          fi
+          echo "Using endpoint: $AZURE_OPENAI_ENDPOINT"
+          echo "Using channel: $SLACK_EVAL_CHANNEL"
+          
+      - name: Run evaluation (single scenario)
+        if: ${{ github.event.inputs.scenario != 'all' && github.event.inputs.scenario != '' }}
+        run: |
+          uv run python scripts/eval_slack_e2e.py \
+            --scenario ${{ github.event.inputs.scenario }} \
+            --channel $SLACK_EVAL_CHANNEL \
+            --timeout ${{ github.event.inputs.timeout || '180' }}
+            
+      - name: Run evaluation (all scenarios)
+        if: ${{ github.event.inputs.scenario == 'all' || github.event.inputs.scenario == '' }}
+        run: |
+          TIMEOUT=${{ github.event.inputs.timeout || '180' }}
+          FAILED=0
+          
+          for scenario in support_400_errors support_notify_check github_issue release_deploy stripe_webhook_failure; do
+            echo "========================================"
+            echo "Running: $scenario"
+            echo "========================================"
+            
+            if ! uv run python scripts/eval_slack_e2e.py \
+              --scenario $scenario \
+              --channel $SLACK_EVAL_CHANNEL \
+              --timeout $TIMEOUT; then
+              echo "FAILED: $scenario"
+              FAILED=$((FAILED + 1))
+            fi
+            
+            # Brief pause between scenarios to avoid rate limiting
+            sleep 5
+          done
+          
+          if [ $FAILED -gt 0 ]; then
+            echo "========================================"
+            echo "FAILED SCENARIOS: $FAILED"
+            echo "========================================"
+            exit 1
+          fi
+          
+      - name: Upload evaluation reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-reports-${{ github.run_id }}
+          path: results/eval_reports/*.md
+          retention-days: 30

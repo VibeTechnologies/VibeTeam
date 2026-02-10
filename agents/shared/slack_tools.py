@@ -650,16 +650,20 @@ can understand and work on the task effectively.
 
 
 def _get_agent_display_name(agent_key: str) -> str:
-    """Get display name for an agent key."""
-    display_names = {
-        "swe": "SoftwareEngineer",
-        "release": "ReleaseEngineer",
-        "support": "SupportEngineer",
-        "pm": "ProductManager",
-        "marketer": "MarketingManager",
-        "supervisor": "ProductManager",
-    }
-    return display_names.get(agent_key.lower(), agent_key)
+    """Get display name for an agent key.
+
+    Delegates to role_resolver for known roles, falls back to the key itself.
+    """
+    from agents.shared.role_resolver import ROLE_DISPLAY_NAMES, ROLE_MENTION_MAP
+
+    # Try direct lookup (agent_key might be a snake_case role)
+    if agent_key in ROLE_DISPLAY_NAMES:
+        return ROLE_DISPLAY_NAMES[agent_key]
+    # Try as a mention alias (e.g. "swe", "marketer", "supervisor")
+    role = ROLE_MENTION_MAP.get(agent_key.lower())
+    if role:
+        return ROLE_DISPLAY_NAMES.get(role, agent_key)
+    return agent_key
 
 
 # ==============================================================================

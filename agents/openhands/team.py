@@ -14,6 +14,7 @@ from agents.openhands.product_manager import OpenHandsProductManager
 from agents.openhands.release_engineer import OpenHandsReleaseEngineer
 from agents.openhands.software_engineer import OpenHandsSoftwareEngineer
 from agents.openhands.support_engineer import OpenHandsSupportEngineer
+from agents.shared.role_resolver import parse_first_role_mention
 
 
 class OpenHandsTeam:
@@ -49,42 +50,12 @@ class OpenHandsTeam:
         """
         Parse @mention from text to determine target agent.
 
-        Supported mentions:
-        - @ReleaseEngineer, @release, @einstein
-        - @MarketingManager, @marketing, @ada
-        - @SupportEngineer, @support, @grace
-        - @ProductManager, @product, @pm
-        - @SoftwareEngineer, @swe, @dev
+        Delegates to agents.shared.role_resolver.parse_first_role_mention
+        which supports all mention patterns: @RoleName, /RoleName,
+        persona names (@einstein, @grace, @ada), and short aliases
+        (@swe, @pm, @dev, etc.).
         """
-        text_lower = text.lower()
-
-        release_patterns = ["@releaseengineer", "@release", "@einstein"]
-        marketing_patterns = ["@marketingmanager", "@marketing", "@ada"]
-        support_patterns = ["@supportengineer", "@support", "@grace"]
-        product_patterns = ["@productmanager", "@product", "@pm"]
-        software_patterns = ["@softwareengineer", "@swe", "@dev"]
-
-        for pattern in release_patterns:
-            if pattern in text_lower:
-                return "release_engineer"
-
-        for pattern in marketing_patterns:
-            if pattern in text_lower:
-                return "marketing_manager"
-
-        for pattern in support_patterns:
-            if pattern in text_lower:
-                return "support_engineer"
-
-        for pattern in product_patterns:
-            if pattern in text_lower:
-                return "product_manager"
-
-        for pattern in software_patterns:
-            if pattern in text_lower:
-                return "software_engineer"
-
-        return None
+        return parse_first_role_mention(text)
 
     def route_by_keywords(self, text: str) -> str:
         """

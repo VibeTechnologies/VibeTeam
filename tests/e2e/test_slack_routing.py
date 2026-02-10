@@ -19,7 +19,6 @@ Usage:
 from __future__ import annotations
 
 import os
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +26,16 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+
+from agents.shared.role_resolver import (
+    ROLE_DISPLAY_NAMES as ROLE_DISPLAY,
+)
+from agents.shared.role_resolver import (
+    ROLE_MENTION_MAP as ROLE_MAP,
+)
+from agents.shared.role_resolver import (
+    ROLE_PATTERN,
+)
 
 # Import DeepEval if available
 DEEPEVAL_AVAILABLE = False
@@ -77,35 +86,6 @@ AGENT_TIMEOUT = 120
 
 # Maximum handoff chain depth
 MAX_HANDOFFS = 3
-
-# Role name pattern (must match vibeteam/router/router.py ROLE_PATTERN)
-ROLE_PATTERN = re.compile(
-    r"[/@](SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager|"
-    r"SWE|Release|Support|PM|Marketing)",
-    re.IGNORECASE,
-)
-
-# Role name normalization (must match vibeteam/router/models.py ROLE_MENTION_MAP)
-ROLE_MAP = {
-    "softwareengineer": "software_engineer",
-    "swe": "software_engineer",
-    "releaseengineer": "release_engineer",
-    "release": "release_engineer",
-    "supportengineer": "support_engineer",
-    "support": "support_engineer",
-    "productmanager": "product_manager",
-    "pm": "product_manager",
-    "marketingmanager": "marketing_manager",
-    "marketing": "marketing_manager",
-}
-
-ROLE_DISPLAY = {
-    "software_engineer": "SoftwareEngineer",
-    "release_engineer": "ReleaseEngineer",
-    "support_engineer": "SupportEngineer",
-    "product_manager": "ProductManager",
-    "marketing_manager": "MarketingManager",
-}
 
 
 # ==============================================================================

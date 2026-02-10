@@ -8,13 +8,20 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 
-# Valid agent roles that can be mentioned
-AgentRole = Literal[
-    "software_engineer",
-    "release_engineer",
-    "support_engineer",
-    "product_manager",
-    "marketing_manager",
+# Re-export from the single source of truth
+from agents.shared.role_resolver import (
+    ROLE_DISPLAY_NAMES,
+    ROLE_MENTION_MAP,
+    AgentRole,
+)
+
+__all__ = [
+    "AgentRole",
+    "ROLE_MENTION_MAP",
+    "ROLE_DISPLAY_NAMES",
+    "MessageSource",
+    "UnifiedMessage",
+    "ThreadSubscription",
 ]
 
 # Message sources
@@ -81,26 +88,5 @@ class ThreadSubscription:
         return f"{self.source}:{self.thread_id}:{self.agent_role}"
 
 
-# Mapping from mention text to role name
-ROLE_MENTION_MAP: dict[str, AgentRole] = {
-    "softwareengineer": "software_engineer",
-    "releaseengineer": "release_engineer",
-    "supportengineer": "support_engineer",
-    "productmanager": "product_manager",
-    "marketingmanager": "marketing_manager",
-    # Also support short forms
-    "swe": "software_engineer",
-    "release": "release_engineer",
-    "support": "support_engineer",
-    "pm": "product_manager",
-    "marketing": "marketing_manager",
-}
-
-# Mapping from role to display name for message prefix
-ROLE_DISPLAY_NAMES: dict[AgentRole, str] = {
-    "software_engineer": "SoftwareEngineer",
-    "release_engineer": "ReleaseEngineer",
-    "support_engineer": "SupportEngineer",
-    "product_manager": "ProductManager",
-    "marketing_manager": "MarketingManager",
-}
+# ROLE_MENTION_MAP and ROLE_DISPLAY_NAMES are imported from agents.shared.role_resolver
+# and re-exported above for backward compatibility.

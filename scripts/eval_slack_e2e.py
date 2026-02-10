@@ -2,26 +2,31 @@
 """
 E2E Slack Agent Evaluation Script.
 
+Consolidated evaluation script (replaces eval_slack_agent.py).
+
 This script runs a true end-to-end evaluation:
-1. Posts a message to Slack mentioning an agent (e.g., /SupportEngineer)
-2. Waits for the bot to respond in the thread (real agent processing)
-3. Collects all thread messages including handoffs
-4. Evaluates with DeepEval G-Eval metrics
+1. Posts a message to Slack mentioning an agent (e.g., @SupportEngineer)
+2. Triggers the gateway's /slack/trigger endpoint to invoke agent processing
+   (bot-posted messages don't generate Slack webhook events, so direct trigger is required)
+3. Polls the thread for agent responses, including handoff chains
+4. Evaluates the conversation with DeepEval G-Eval metrics
 5. Saves detailed markdown report with full conversation history
 
 Usage:
-    python scripts/eval_slack_e2e.py
     python scripts/eval_slack_e2e.py --scenario support_400_errors
-    python scripts/eval_slack_e2e.py --scenario github_issue --timeout 300
-    python scripts/eval_slack_e2e.py --channel C0123456789 --wait 180
+    python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --timeout 300
+    python scripts/eval_slack_e2e.py --message "@SupportEngineer check Sentry for errors"
+    python scripts/eval_slack_e2e.py --channel C0123456789 --skip-eval
+    python scripts/eval_slack_e2e.py --list-scenarios
 
 Environment Variables:
     SLACK_BOT_TOKEN: Slack bot OAuth token (required)
-    SLACK_DEFAULT_CHANNEL: Default channel for posting (required)
-    AZURE_API_KEY: Azure OpenAI API key for G-Eval
-    AZURE_API_BASE: Azure OpenAI endpoint
+    SLACK_DEFAULT_CHANNEL: Default channel for posting
+    AZURE_API_KEY / AZURE_OPENAI_API_KEY: Azure OpenAI API key for G-Eval judge
+    AZURE_API_BASE / AZURE_OPENAI_ENDPOINT: Azure OpenAI endpoint
     GATEWAY_URL: Gateway URL to trigger agents (default: https://webhook.team.vibebrowser.app)
-    SLACK_TRIGGER_SECRET: Bearer token for /slack/trigger auth (optional, must match gateway config)
+    SLACK_TRIGGER_SECRET: Bearer token for /slack/trigger auth (must match gateway config)
+    BENCHMARK_JUDGE_MODEL: Override the judge model for evaluation (default: gpt-5.2)
 """
 
 from __future__ import annotations
@@ -50,9 +55,9 @@ from vibeteam.connectors.slack import SlackConnector
 # Try to import DeepEval
 DEEPEVAL_AVAILABLE = False
 try:
-    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
     from deepeval.metrics import GEval
     from deepeval.models.base_model import DeepEvalBaseLLM
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
@@ -470,7 +475,7 @@ def generate_eval_report(
         status_text = "NO EVALUATION (DeepEval not available)"
 
     # Extract agents from conversation
-    agents_ran = list(set(role for role, _ in conversation if role != "user"))
+    agents_ran = list({role for role, _ in conversation if role != "user"})
 
     # Build the report
     lines = [
@@ -587,27 +592,46 @@ async def run_evaluation(
     wait_timeout: int = 600,
     poll_interval: int = 5,
     gateway_url: str | None = None,
+    custom_message: str | None = None,
+    skip_eval: bool = False,
 ) -> dict[str, Any]:
     """
     Run a full E2E evaluation:
     1. Post message to Slack
-    2. Wait for bot response
-    3. Evaluate with DeepEval
-    4. Generate report
+    2. Trigger gateway to process the message
+    3. Wait for bot response
+    4. Evaluate with DeepEval
+    5. Generate report
 
     Args:
-        scenario_name: Name of the scenario to run
+        scenario_name: Name of the scenario to run (or "custom" for custom messages)
         channel: Slack channel ID (defaults to SLACK_DEFAULT_CHANNEL env var)
         wait_timeout: Timeout in seconds for agent response
         poll_interval: Polling interval in seconds
         gateway_url: Gateway URL for triggering agents (defaults to GATEWAY_URL env var)
+        custom_message: Custom message to send (overrides scenario message)
+        skip_eval: Skip DeepEval evaluation (just post and collect responses)
     """
     # Get scenario config
-    if scenario_name not in SCENARIOS:
+    if custom_message:
+        # Custom message mode — create a minimal scenario config
+        scenario = {
+            "name": f"Custom: {custom_message[:50]}...",
+            "message": custom_message,
+            "expected_agent": "unknown",
+            "evaluation_criteria": {
+                "TaskCompletion": (
+                    "Did the agent complete the requested task or make meaningful progress? "
+                    "The agent should address the specific request and provide actionable output."
+                ),
+            },
+            "threshold": 0.60,
+        }
+    elif scenario_name not in SCENARIOS:
         available = ", ".join(SCENARIOS.keys())
         raise ValueError(f"Unknown scenario: {scenario_name}. Available: {available}")
-
-    scenario = SCENARIOS[scenario_name]
+    else:
+        scenario = SCENARIOS[scenario_name]
 
     # Initialize Slack connector
     slack_token = os.environ.get("SLACK_BOT_TOKEN")
@@ -623,7 +647,7 @@ async def run_evaluation(
         raise ValueError("No channel specified. Use --channel or set SLACK_DEFAULT_CHANNEL")
 
     print("=" * 70)
-    print(f"E2E SLACK AGENT EVALUATION")
+    print("E2E SLACK AGENT EVALUATION")
     print("=" * 70)
     print(f"Scenario: {scenario['name']}")
     print(f"Channel: {channel}")
@@ -638,7 +662,7 @@ async def run_evaluation(
     initial_msg = slack.post_message(channel=channel, text=user_message)
     thread_ts = initial_msg.ts
     print(f"    Thread TS: {thread_ts}")
-    print(f"    Posted successfully!")
+    print("    Posted successfully!")
 
     # Step 1b: Trigger the gateway to process this message
     # Slack doesn't send webhooks for messages the bot itself posts,
@@ -728,7 +752,7 @@ async def run_evaluation(
                 latest_bot_msg = bot_messages[-1]
                 has_handoff = bool(handoff_pattern.search(latest_bot_msg.text))
                 if has_handoff:
-                    print(f"    Handoff detected in response! Waiting for next agent...")
+                    print("    Handoff detected in response! Waiting for next agent...")
                     pending_handoff = True
                     # Continue polling for the handoff response
                     continue
@@ -753,7 +777,7 @@ async def run_evaluation(
                     )
                     break
                 else:
-                    print(f"    Still waiting for handoff response...")
+                    print("    Still waiting for handoff response...")
 
         elapsed = int(time.time() - start_time)
         print(f"    Waiting... ({elapsed}s / {wait_timeout}s)")
@@ -795,7 +819,9 @@ async def run_evaluation(
     # Step 4: Evaluate with DeepEval
     metrics_results = []
 
-    if DEEPEVAL_AVAILABLE and len(conversation) > 1:
+    if skip_eval:
+        print("\n>>> Step 4: SKIPPED - Evaluation disabled (--skip-eval)")
+    elif DEEPEVAL_AVAILABLE and len(conversation) > 1:
         print("\n>>> Step 4: Evaluating with DeepEval G-Eval")
 
         # Get Azure credentials
@@ -935,8 +961,10 @@ Available Scenarios:
 
 Examples:
   python scripts/eval_slack_e2e.py --scenario support_400_errors
-  python scripts/eval_slack_e2e.py --scenario github_issue --timeout 300
-  python scripts/eval_slack_e2e.py --channel C0123456789 --wait 180
+  python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --timeout 300
+  python scripts/eval_slack_e2e.py --message "@SupportEngineer check Sentry for errors"
+  python scripts/eval_slack_e2e.py --channel C0123456789 --skip-eval
+  python scripts/eval_slack_e2e.py --list-scenarios
         """,
     )
     parser.add_argument(
@@ -944,6 +972,10 @@ Examples:
         choices=list(SCENARIOS.keys()),
         default="support_400_errors",
         help="Evaluation scenario to run (default: support_400_errors)",
+    )
+    parser.add_argument(
+        "--message",
+        help="Custom message to send (overrides --scenario). Must include @RoleName mention.",
     )
     parser.add_argument(
         "--channel",
@@ -970,6 +1002,11 @@ Examples:
         "--gateway-url",
         help="Gateway URL for triggering agents (default: GATEWAY_URL env var or https://webhook.team.vibebrowser.app)",
     )
+    parser.add_argument(
+        "--skip-eval",
+        action="store_true",
+        help="Skip DeepEval evaluation (just post and collect responses)",
+    )
 
     args = parser.parse_args()
 
@@ -983,14 +1020,20 @@ Examples:
             print()
         return 0
 
+    # Determine scenario name and custom message
+    scenario_name = "custom" if args.message else args.scenario
+    custom_message = args.message
+
     try:
         result = asyncio.run(
             run_evaluation(
-                scenario_name=args.scenario,
+                scenario_name=scenario_name,
                 channel=args.channel,
                 wait_timeout=args.timeout,
                 poll_interval=args.poll_interval,
                 gateway_url=args.gateway_url,
+                custom_message=custom_message,
+                skip_eval=args.skip_eval,
             )
         )
 
