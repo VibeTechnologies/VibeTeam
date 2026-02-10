@@ -360,6 +360,24 @@ A user has requested a deployment via Slack.
 - Channel: {channel}
 - Thread: {thread_ts or "new thread"}
 
+### =================================================================
+### CRITICAL SAFETY RULE: DO NOT DESTROY YOUR OWN INFRASTRUCTURE
+### =================================================================
+###
+### You (ReleaseEngineer) run INSIDE vibeteam-gateway and openhands-svc.
+### If you restart or replace these pods, YOUR REQUEST DIES and the
+### response NEVER reaches Slack. The eval/user sees a timeout.
+###
+### FORBIDDEN (kills your in-flight request):
+###   kubectl apply -k k8s/overlays/dev
+###   kubectl apply -k k8s/base/
+###   kubectl rollout restart deployment/vibeteam-gateway -n vibeteam
+###   kubectl rollout restart deployment/openhands-svc -n vibeteam
+###   kubectl delete pod/deployment for gateway or openhands
+###
+### SAFE ALTERNATIVE: kubectl set image (rolling update, safe)
+### =================================================================
+
 ### CRITICAL INSTRUCTIONS - DEPLOYMENT EXECUTION
 
 You are the ReleaseEngineer. You MUST execute the deployment, not just describe it.
@@ -368,21 +386,31 @@ You are the ReleaseEngineer. You MUST execute the deployment, not just describe 
 Run kubectl to check current state before making changes:
 ```bash
 kubectl get pods -n vibeteam -o wide
-kubectl get deployments -n vibeteam
+kubectl get deployments -n vibeteam -o wide
 ```
 
-**STEP 2 - Execute Deployment (MANDATORY):**
-Run the actual deployment command:
+**STEP 2 - Check Current Image Tags (MANDATORY):**
 ```bash
-kubectl apply -k k8s/overlays/dev
+kubectl get deployment vibeteam-gateway -n vibeteam -o jsonpath='{{.spec.template.spec.containers[0].image}}'
+kubectl get deployment openhands-svc -n vibeteam -o jsonpath='{{.spec.template.spec.containers[0].image}}'
 ```
-Then wait for rollout to complete:
+
+**STEP 3 - Execute Deployment (MANDATORY):**
+Use `kubectl set image` to update the container image to the requested tag:
+```bash
+kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<NEW_TAG> -n vibeteam
+kubectl set image deployment/openhands-svc openhands=ghcr.io/vibetechnologies/vibeteam-openhands:<NEW_TAG> -n vibeteam
+```
+If no specific tag is given in the user message, check the latest tag or ask.
+Do NOT run `kubectl apply -k` — it modifies pod specs and kills your own pod.
+
+Then monitor rollout (safe, read-only):
 ```bash
 kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
 kubectl rollout status deployment/openhands-svc -n vibeteam --timeout=120s
 ```
 
-**STEP 3 - Verify Post-Deployment (MANDATORY):**
+**STEP 4 - Verify Post-Deployment (MANDATORY):**
 Confirm pods are healthy after deployment:
 ```bash
 kubectl get pods -n vibeteam
@@ -390,6 +418,8 @@ kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
 ```
 
 **FORBIDDEN ACTIONS:**
+- DO NOT run `kubectl apply -k` (kills your pod)
+- DO NOT run `kubectl rollout restart` on gateway or openhands-svc (kills your pod)
 - DO NOT just describe what you would do - ACTUALLY RUN the commands
 - DO NOT hand off deployment to another agent - YOU are the ReleaseEngineer
 - DO NOT skip verification steps
@@ -397,10 +427,11 @@ kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
 **REQUIRED OUTPUT:**
 Your response MUST include:
 1. Pre-deployment state (pod status before)
-2. Deployment command output (kubectl apply output)
-3. Rollout status (success/failure)
-4. Post-deployment verification (pods healthy, events clean)
-5. Summary: deployment succeeded/failed with evidence
+2. Current image tags (what's running now)
+3. Deployment command output (kubectl set image output)
+4. Rollout status (success/failure)
+5. Post-deployment verification (pods healthy, events clean)
+6. Summary: deployment succeeded/failed with evidence
 """
     elif is_notification and not is_explicit_investigation:
         # Simplified task for notifications - NO mandatory investigation steps
