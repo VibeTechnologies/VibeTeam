@@ -128,7 +128,10 @@ jobs:
             --from-literal=AZURE_API_VERSION="${{ secrets.AZURE_API_VERSION }}" \
             --from-literal=SLACK_BOT_TOKEN="${{ secrets.SLACK_BOT_TOKEN }}" \
             --from-literal=SLACK_SIGNING_SECRET="${{ secrets.SLACK_SIGNING_SECRET }}" \
-            --from-literal=SLACK_TRIGGER_SECRET="${{ secrets.SLACK_TRIGGER_SECRET }}"
+            --from-literal=SLACK_TRIGGER_SECRET="${{ secrets.SLACK_TRIGGER_SECRET }}" \
+            --from-literal=GITHUB_WEBHOOK_SECRET="${{ secrets.GITHUB_WEBHOOK_SECRET }}" \
+            --from-literal=SENTRY_CLIENT_SECRET="${{ secrets.SENTRY_CLIENT_SECRET }}" \
+            --from-literal=CALLBACK_SECRET="${{ secrets.CALLBACK_SECRET }}"
 
           if [ -n "${{ secrets.GMAIL_CREDENTIALS_JSON }}" ]; then
             kubectl -n $NAMESPACE delete secret gmail-oauth-secrets --ignore-not-found

@@ -185,10 +185,14 @@ async def post_acknowledgment(repo: str, issue_number: int) -> None:
         logger.exception(f"Failed to post acknowledgment: {e}")
 
 
-async def run_release_engineer_agent(issue_data: dict[str, Any], classification: str) -> None:
-    """Run the Release Engineer agent on a Sentry issue."""
+async def run_support_engineer_agent(issue_data: dict[str, Any], classification: str) -> None:
+    """Run the Support Engineer agent on a Sentry issue.
+
+    Per AGENTS.md Service Ownership Matrix, Sentry is owned by SupportEngineer
+    with escalation to ReleaseEngineer (infra) or SoftwareEngineer (code).
+    """
     issue_id = issue_data.get("shortId", "unknown")
-    logger.info(f"Starting Release Engineer agent for Sentry issue {issue_id}")
+    logger.info(f"Starting Support Engineer agent for Sentry issue {issue_id}")
 
     # Run the CLI command asynchronously
     cmd = [
@@ -196,7 +200,7 @@ async def run_release_engineer_agent(issue_data: dict[str, Any], classification:
         "-m",
         "vibeteam.cli",
         "scheduled",
-        "release-triage",
+        "support-triage",
         "--issue-json",
         json.dumps(issue_data),
         "--classification",
@@ -212,12 +216,12 @@ async def run_release_engineer_agent(issue_data: dict[str, Any], classification:
         stdout, stderr = await process.communicate()
 
         if process.returncode == 0:
-            logger.info(f"Release Engineer agent completed successfully for {issue_id}")
+            logger.info(f"Support Engineer agent completed successfully for {issue_id}")
         else:
-            logger.error(f"Release Engineer agent failed: {stderr.decode()}")
+            logger.error(f"Support Engineer agent failed: {stderr.decode()}")
 
     except Exception as e:
-        logger.exception(f"Failed to run Release Engineer agent: {e}")
+        logger.exception(f"Failed to run Support Engineer agent: {e}")
 
 
 @app.get("/health")
@@ -452,7 +456,7 @@ async def handle_sentry_webhook(
     Handle incoming Sentry webhook events.
 
     Sentry webhooks are triggered when new issues are created or existing
-    issues receive new events. We route these to the Release Engineer agent
+    issues receive new events. We route these to the Support Engineer agent
     via OpenHands with Sentry-specific context.
     """
     payload_bytes = await request.body()
@@ -493,8 +497,8 @@ async def handle_sentry_webhook(
     # Start agent conversation in background
     # asyncio.create_task(start_openhands_conversation(task))
 
-    # Trigger Release Engineer agent directly
-    asyncio.create_task(run_release_engineer_agent(issue, classification))
+    # Trigger Support Engineer agent (Sentry owner per AGENTS.md)
+    asyncio.create_task(run_support_engineer_agent(issue, classification))
 
     return {
         "status": "accepted",
