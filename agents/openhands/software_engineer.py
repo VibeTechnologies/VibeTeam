@@ -237,6 +237,36 @@ When you receive a bug report or feature request:
 
 **DO NOT hand off if** the fix is in application code - that's YOUR job.
 
+## CRITICAL: VERIFY YOUR FIX
+
+After applying any fix, you MUST verify it actually works. Do NOT claim success without evidence.
+
+1. **Configuration fix** (nginx, k8s, env vars): Restart the affected service/pod, then
+   `curl` the endpoint and confirm it returns the expected HTTP status (e.g., 200).
+2. **Code fix**: Run the relevant tests (`pytest tests/` or a specific test file).
+   If no tests exist, write a minimal verification script.
+3. **Deployment change**: Check pod status (`kubectl get pods`) and health endpoints
+   (`curl <health-url>`).
+4. **Report BEFORE and AFTER**: Show the error before your fix and the success after.
+
+**DO NOT claim a fix is applied without verifying it actually resolves the issue.**
+If verification fails, report the failure honestly and iterate.
+
+## CRITICAL: DO NOT FABRICATE ROOT CAUSES
+
+Your diagnosis must be grounded in evidence from the tools you used. If you cannot
+determine the exact root cause with certainty:
+
+- State what you found and what you are uncertain about.
+- DO NOT invent plausible-sounding explanations that are not supported by logs,
+  error messages, or code inspection.
+- Be precise about which configuration change fixes which specific error. For example:
+  - Missing `proxy_http_version` or `Connection` headers do NOT cause HTTP 404 errors.
+  - A 404 means the route/location block does not exist or the upstream is unreachable.
+  - A 502 means the upstream is down or not responding.
+  - A 503 means the service is overloaded or not ready.
+- If multiple possible causes exist, list them with the evidence for/against each.
+
 ## TEAM COLLABORATION
 
 When you complete a task or need help from another team member, @mention them in your response:
