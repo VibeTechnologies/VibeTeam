@@ -57,10 +57,18 @@ from agents.shared.gmail_tools import (
 )
 from agents.shared.handoff import HANDOFF_PROMPT
 from agents.shared.langfuse_tools import (
-    detect_langfuse_anomalies,
     get_langfuse_context,
     get_langfuse_stats,
     get_langfuse_traces,
+)
+from agents.shared.role_resolver import (
+    ROLE_DISPLAY_NAMES,
+    ROLE_MENTION_MAP,
+    ROLE_PATTERN,
+    AgentRole,
+    get_display_name,
+    parse_first_role_mention,
+    parse_role_mentions,
 )
 from agents.shared.slack_tools import (
     clear_slack_context,
@@ -136,4 +144,12 @@ __all__ = [
     "get_slack_handoff_instructions",
     # Handoff
     "HANDOFF_PROMPT",
+    # Role resolution
+    "AgentRole",
+    "ROLE_MENTION_MAP",
+    "ROLE_DISPLAY_NAMES",
+    "ROLE_PATTERN",
+    "parse_role_mentions",
+    "parse_first_role_mention",
+    "get_display_name",
 ]

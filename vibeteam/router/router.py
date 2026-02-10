@@ -6,15 +6,18 @@ and thread subscriptions.
 """
 
 import logging
-import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from agents.shared.role_resolver import (
+    get_display_name as _get_display_name,
+)
+from agents.shared.role_resolver import (
+    parse_role_mentions as _parse_role_mentions,
+)
 from vibeteam.router.db import SubscriptionDB, get_subscription_db
 from vibeteam.router.models import (
-    ROLE_DISPLAY_NAMES,
-    ROLE_MENTION_MAP,
     AgentRole,
     ThreadSubscription,
     UnifiedMessage,
@@ -45,16 +48,9 @@ class Router:
     Mention patterns:
     - @SoftwareEngineer, @ReleaseEngineer, etc. (@ prefix - preferred)
     - /SoftwareEngineer, /ReleaseEngineer, etc. (/ prefix - also supported)
+    - @einstein, @grace, @ada, etc. (persona names)
+    - @swe, @pm, @dev, etc. (short aliases)
     """
-
-    # Pattern to match role mentions: @RoleName or /RoleName
-    # Includes short forms (SWE, PM, etc.) that map via ROLE_MENTION_MAP
-    ROLE_PATTERN = re.compile(
-        r"[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|"
-        r"ProductManager|MarketingManager|"
-        r"SWE|Release|Support|PM|Marketing)",
-        re.IGNORECASE,
-    )
 
     def __init__(
         self,
@@ -76,24 +72,16 @@ class Router:
         """
         Extract role mentions from message text.
 
+        Delegates to agents.shared.role_resolver.parse_role_mentions
+        which is the single source of truth for role parsing.
+
         Args:
             text: Message content to parse
 
         Returns:
             List of normalized role names (e.g., ["software_engineer"])
         """
-        matches = self.ROLE_PATTERN.findall(text)
-        roles: list[AgentRole] = []
-
-        for match in matches:
-            # Normalize to lowercase and look up role
-            key = match.lower()
-            if key in ROLE_MENTION_MAP:
-                role = ROLE_MENTION_MAP[key]
-                if role not in roles:
-                    roles.append(role)
-
-        return roles
+        return _parse_role_mentions(text)
 
     async def route_message(self, message: UnifiedMessage) -> RouteResult:
         """
@@ -234,4 +222,4 @@ class Router:
     @staticmethod
     def get_display_name(role: AgentRole) -> str:
         """Get the display name for a role (for message prefixes)."""
-        return ROLE_DISPLAY_NAMES.get(role, role.replace("_", " ").title())
+        return _get_display_name(role)
