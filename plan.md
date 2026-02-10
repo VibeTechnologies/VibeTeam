@@ -173,10 +173,10 @@ Created three specialized OpenCode primary agents in `~/.config/opencode/agents/
 
 ### Improvement Checklist
 
-- [ ] Validate mermaid diagram renders correctly
+- [x] Validate mermaid diagram renders correctly (fixed `<br/>` in participant aliases)
 - [x] Consolidate 4 role-parsing systems into single RoleResolver (`agents/shared/role_resolver.py`)
 - [x] Parallelize kubectl context injection (sequential → concurrent via ThreadPoolExecutor)
-- [ ] Skip non-existent deployments in kubectl context
+- [x] Skip non-existent deployments in kubectl context (two-phase: pods first, then filter)
 - [x] Pull real [TIMING] metrics from logs to validate latency estimates
 - [x] Verify /slack/trigger test actually produced agent response
 - [x] Write unit tests for role resolver (37 tests in `tests/test_role_resolver.py`)
@@ -186,12 +186,12 @@ Created three specialized OpenCode primary agents in `~/.config/opencode/agents/
 ```mermaid
 sequenceDiagram
     participant Slack
-    participant GW as vibeteam-gateway<br/>(FastAPI :8080)
+    participant GW as vibeteam-gateway (FastAPI :8080)
     participant Router as Router
-    participant OH as openhands-svc<br/>(FastAPI :3000)
+    participant OH as openhands-svc (FastAPI :3000)
     participant Team as OpenHandsTeam
-    participant Agent as Agent<br/>(e.g. SupportEngineer)
-    participant SDK as OpenHands SDK<br/>(LocalConversation)
+    participant Agent as Agent (e.g. SupportEngineer)
+    participant SDK as OpenHands SDK (LocalConversation)
 
     Note over Slack,GW: 1. WEBHOOK INGRESS
     Slack->>GW: POST /slack/events<br/>(app_mention or message.im)

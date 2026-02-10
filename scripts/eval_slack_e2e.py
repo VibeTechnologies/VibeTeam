@@ -34,7 +34,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -726,13 +725,8 @@ async def run_evaluation(
     pending_handoff = False  # Track if we're waiting for a handoff
 
     # Pattern to detect @/RoleName mentions (handoffs)
-    # Must match vibeteam/router/router.py ROLE_PATTERN
-    handoff_pattern = re.compile(
-        r"[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|"
-        r"ProductManager|MarketingManager|"
-        r"SWE|Release|Support|PM|Marketing)",
-        re.IGNORECASE,
-    )
+    # Uses the consolidated ROLE_PATTERN from role_resolver (single source of truth)
+    from agents.shared.role_resolver import ROLE_PATTERN as handoff_pattern
 
     while time.time() - start_time < wait_timeout:
         await asyncio.sleep(poll_interval)
