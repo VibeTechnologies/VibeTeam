@@ -568,6 +568,246 @@ class TestGitHubHandoff:
         # Both agents should have posted comments
         assert mock_comment.call_count >= 2
 
+    def test_swe_agent_error_posts_error_comment(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """When SWE agent returns an error, an error comment is posted and no handoff occurs."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+        monkeypatch.setenv("GITHUB_APP_ID", "")
+
+        payload = {
+            "action": "assigned",
+            "issue": {
+                "number": 77,
+                "title": "Fix flaky test",
+                "body": "The CI test is flaky",
+                "html_url": "https://github.com/owner/repo/issues/77",
+            },
+            "assignee": {"login": "vibeteam-bot[bot]", "id": 12345},
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.call_agent_service",
+                new_callable=AsyncMock,
+                return_value={"error": "Agent service timed out after 600s"},
+            ) as mock_agent,
+            patch(
+                "vibeteam.gateway.routes.github.post_acknowledgment",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.github.post_github_comment",
+                new_callable=AsyncMock,
+            ) as mock_comment,
+        ):
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issues",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+
+        # Agent was called once (SWE agent only, no handoff)
+        mock_agent.assert_called_once()
+        assert mock_agent.call_args[1]["role"] == "software_engineer"
+
+        # Error comment was posted containing the error message
+        mock_comment.assert_called_once()
+        comment_body = mock_comment.call_args[0][2]
+        assert "error" in comment_body.lower()
+        assert "Agent service timed out after 600s" in comment_body
+
+    def test_handoff_comment_contains_agent_responses(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """Verify first comment has SWE response and second has [Release Engineer] prefix."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+        monkeypatch.setenv("GITHUB_APP_ID", "")
+
+        payload = {
+            "action": "assigned",
+            "issue": {
+                "number": 88,
+                "title": "Scale up deployment",
+                "body": "We need more replicas",
+                "html_url": "https://github.com/owner/repo/issues/88",
+            },
+            "assignee": {"login": "vibeteam-bot[bot]", "id": 12345},
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        swe_response = "Analysis complete. /ReleaseEngineer please scale the deployment."
+        handoff_response = "Scaled deployment to 5 replicas successfully."
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.call_agent_service",
+                new_callable=AsyncMock,
+                side_effect=[
+                    {"response": swe_response},
+                    {"response": handoff_response},
+                ],
+            ),
+            patch(
+                "vibeteam.gateway.routes.github.post_acknowledgment",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.github.post_github_comment",
+                new_callable=AsyncMock,
+            ) as mock_comment,
+        ):
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issues",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        assert mock_comment.call_count == 2
+
+        # First comment: SWE agent's raw response
+        first_comment = mock_comment.call_args_list[0]
+        assert first_comment[0][0] == "owner/repo"  # repo
+        assert first_comment[0][1] == 88  # issue number
+        assert first_comment[0][2] == swe_response
+
+        # Second comment: prefixed with [ReleaseEngineer] and contains handoff response
+        second_comment = mock_comment.call_args_list[1]
+        assert second_comment[0][0] == "owner/repo"
+        assert second_comment[0][1] == 88
+        assert second_comment[0][2].startswith("[ReleaseEngineer]")
+        assert handoff_response in second_comment[0][2]
+
+
+class TestSentryErrorHandling:
+    """Test Sentry webhook error and edge-case paths."""
+
+    def test_sentry_no_issue_data_ignored(self, test_client, sentry_client_secret, monkeypatch):
+        """Payload with no issue data returns ignored status."""
+        monkeypatch.setenv("SENTRY_CLIENT_SECRET", sentry_client_secret)
+
+        payload = {
+            "action": "created",
+            "data": {},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_sentry_signature(payload_str, sentry_client_secret)
+
+        response = test_client.post(
+            "/webhook/sentry",
+            content=payload_str,
+            headers={
+                "Sentry-Hook-Signature": signature,
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ignored"
+        assert data["reason"] == "no_issue_data"
+
+    def test_sentry_agent_error_still_accepted(
+        self, test_client, sentry_client_secret, monkeypatch
+    ):
+        """When agent returns an error, the webhook still returns accepted."""
+        monkeypatch.setenv("SENTRY_CLIENT_SECRET", sentry_client_secret)
+
+        payload = {
+            "action": "created",
+            "data": {
+                "issue": {
+                    "id": "err-1",
+                    "shortId": "VIBETEAM-ERR1",
+                    "title": "TypeError: boom",
+                    "count": 10,
+                    "userCount": 5,
+                }
+            },
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_sentry_signature(payload_str, sentry_client_secret)
+
+        with patch(
+            "vibeteam.gateway.routes.sentry.call_agent_service",
+            new_callable=AsyncMock,
+            return_value={"error": "Agent service unavailable"},
+        ):
+            response = test_client.post(
+                "/webhook/sentry",
+                content=payload_str,
+                headers={
+                    "Sentry-Hook-Signature": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+
+    def test_sentry_agent_exception_handled(self, test_client, sentry_client_secret, monkeypatch):
+        """When call_agent_service raises an exception, webhook still returns accepted."""
+        monkeypatch.setenv("SENTRY_CLIENT_SECRET", sentry_client_secret)
+
+        payload = {
+            "action": "created",
+            "data": {
+                "issue": {
+                    "id": "err-2",
+                    "shortId": "VIBETEAM-ERR2",
+                    "title": "ReferenceError: x is not defined",
+                    "count": 20,
+                    "userCount": 8,
+                }
+            },
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_sentry_signature(payload_str, sentry_client_secret)
+
+        with patch(
+            "vibeteam.gateway.routes.sentry.call_agent_service",
+            new_callable=AsyncMock,
+            side_effect=ConnectionError("Connection refused"),
+        ):
+            response = test_client.post(
+                "/webhook/sentry",
+                content=payload_str,
+                headers={
+                    "Sentry-Hook-Signature": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        # The webhook returns accepted because the agent runs in a background task.
+        # The exception is caught by the try/except in run_release_engineer_agent.
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+
 
 @pytest.mark.integration
 class TestEndToEndWebhookFlow:

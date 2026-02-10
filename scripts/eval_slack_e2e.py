@@ -18,6 +18,7 @@ Usage:
     python scripts/eval_slack_e2e.py --message "@SupportEngineer check Sentry for errors"
     python scripts/eval_slack_e2e.py --channel C0123456789 --skip-eval
     python scripts/eval_slack_e2e.py --list-scenarios
+    python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --thread-ts 1770710833.425539 --channel C0AATPSADB8
 
 Environment Variables:
     SLACK_BOT_TOKEN: Slack bot OAuth token (required)
@@ -594,12 +595,14 @@ async def run_evaluation(
     gateway_url: str | None = None,
     custom_message: str | None = None,
     skip_eval: bool = False,
+    existing_thread_ts: str | None = None,
+    handoff_timeout_extension: int = 600,
 ) -> dict[str, Any]:
     """
     Run a full E2E evaluation:
-    1. Post message to Slack
-    2. Trigger gateway to process the message
-    3. Wait for bot response
+    1. Post message to Slack (or use existing thread if existing_thread_ts provided)
+    2. Trigger gateway to process the message (skipped for existing threads)
+    3. Wait for bot response (skipped for existing threads)
     4. Evaluate with DeepEval
     5. Generate report
 
@@ -611,6 +614,11 @@ async def run_evaluation(
         gateway_url: Gateway URL for triggering agents (defaults to GATEWAY_URL env var)
         custom_message: Custom message to send (overrides scenario message)
         skip_eval: Skip DeepEval evaluation (just post and collect responses)
+        existing_thread_ts: If provided, re-score an existing Slack thread instead of
+            posting a new message. Skips Steps 1, 1b, and 2 — jumps directly to
+            conversation collection and evaluation.
+        handoff_timeout_extension: Seconds to extend wait_timeout when a handoff is
+            detected (default: 600). Applied once per handoff detection.
     """
     # Get scenario config
     if custom_message:
@@ -651,129 +659,142 @@ async def run_evaluation(
     print("=" * 70)
     print(f"Scenario: {scenario['name']}")
     print(f"Channel: {channel}")
-    print(f"Wait Timeout: {wait_timeout}s")
+    if existing_thread_ts:
+        print(f"Mode: RE-SCORE existing thread {existing_thread_ts}")
+    else:
+        print(f"Wait Timeout: {wait_timeout}s")
     print()
 
-    # Step 1: Post message to Slack
-    print(">>> Step 1: Posting message to Slack")
     user_message = scenario["message"]
-    print(f"    Message: {user_message[:80]}...")
 
-    initial_msg = slack.post_message(channel=channel, text=user_message)
-    thread_ts = initial_msg.ts
-    print(f"    Thread TS: {thread_ts}")
-    print("    Posted successfully!")
+    if existing_thread_ts:
+        # ── Re-score mode: skip Steps 1, 1b, 2 ──────────────────────────
+        thread_ts = existing_thread_ts
+        print(f">>> Steps 1/1b/2: SKIPPED (re-scoring existing thread {thread_ts})")
+        start_time = time.time()
+        latency_ms = 0  # Not meaningful for re-score
+    else:
+        # ── Normal mode: post message, trigger gateway, poll ─────────────
+        # Step 1: Post message to Slack
+        print(">>> Step 1: Posting message to Slack")
+        print(f"    Message: {user_message[:80]}...")
 
-    # Step 1b: Trigger the gateway to process this message
-    # Slack doesn't send webhooks for messages the bot itself posts,
-    # so we need to explicitly trigger the gateway
-    print("\n>>> Step 1b: Triggering gateway to process message")
-    default_prod_url = "https://webhook.team.vibebrowser.app"
-    resolved_gateway_url = gateway_url or os.environ.get("GATEWAY_URL", default_prod_url)
-    trigger_url = f"{resolved_gateway_url}/slack/trigger"
+        initial_msg = slack.post_message(channel=channel, text=user_message)
+        thread_ts = initial_msg.ts
+        print(f"    Thread TS: {thread_ts}")
+        print("    Posted successfully!")
 
-    # Warn if targeting production gateway without explicit opt-in
-    if (
-        resolved_gateway_url == default_prod_url
-        and not gateway_url
-        and not os.environ.get("GATEWAY_URL")
-    ):
-        print(f"    ⚠ WARNING: Using default PRODUCTION gateway ({default_prod_url})")
-        print("    ⚠ Set GATEWAY_URL env var or --gateway-url to target a different environment")
+        # Step 1b: Trigger the gateway to process this message
+        print("\n>>> Step 1b: Triggering gateway to process message")
+        default_prod_url = "https://webhook.team.vibebrowser.app"
+        resolved_gateway_url = gateway_url or os.environ.get("GATEWAY_URL", default_prod_url)
+        trigger_url = f"{resolved_gateway_url}/slack/trigger"
 
-    # Build auth header if SLACK_TRIGGER_SECRET is configured
-    trigger_secret = os.environ.get("SLACK_TRIGGER_SECRET", "")
-    headers: dict[str, str] = {}
-    if trigger_secret:
-        headers["Authorization"] = f"Bearer {trigger_secret}"
+        if (
+            resolved_gateway_url == default_prod_url
+            and not gateway_url
+            and not os.environ.get("GATEWAY_URL")
+        ):
+            print(f"    WARNING: Using default PRODUCTION gateway ({default_prod_url})")
+            print("    Set GATEWAY_URL env var or --gateway-url to target a different environment")
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                trigger_url,
-                json={
-                    "channel": channel,
-                    "thread_ts": thread_ts,
-                    "text": user_message,
-                    "user_id": "eval_script",
-                },
-                headers=headers,
+        trigger_secret = os.environ.get("SLACK_TRIGGER_SECRET", "")
+        headers: dict[str, str] = {}
+        if trigger_secret:
+            headers["Authorization"] = f"Bearer {trigger_secret}"
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    trigger_url,
+                    json={
+                        "channel": channel,
+                        "thread_ts": thread_ts,
+                        "text": user_message,
+                        "user_id": "eval_script",
+                    },
+                    headers=headers,
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    print(f"    Gateway accepted: routing to {result.get('roles', [])}")
+                else:
+                    print(f"    WARNING: Gateway returned {response.status_code}: {response.text}")
+        except Exception as e:
+            print(f"    WARNING: Failed to trigger gateway: {e}")
+            print(
+                "    ERROR: Gateway trigger failed. No agent will be invoked — "
+                "bot-posted messages do not generate Slack webhook events. "
+                "The eval will wait but no response will arrive."
             )
-            if response.status_code == 200:
-                result = response.json()
-                print(f"    Gateway accepted: routing to {result.get('roles', [])}")
-            else:
-                print(f"    WARNING: Gateway returned {response.status_code}: {response.text}")
-    except Exception as e:
-        print(f"    WARNING: Failed to trigger gateway: {e}")
-        print(
-            "    ERROR: Gateway trigger failed. No agent will be invoked — "
-            "bot-posted messages do not generate Slack webhook events. "
-            "The eval will wait but no response will arrive."
-        )
+
+        # Step 2: Wait for bot response (with handoff chain support + auto-extend)
+        print(f"\n>>> Step 2: Waiting for agent response (timeout: {wait_timeout}s)")
+        start_time = time.time()
+        last_message_count = 1  # We posted 1 message
+        stable_time_no_handoff = 15
+        stable_time_with_handoff = 300  # 5min wait for handoff agent
+        last_new_message_time = 0.0
+        pending_handoff = False
+        effective_timeout = wait_timeout
+
+        while time.time() - start_time < effective_timeout:
+            await asyncio.sleep(poll_interval)
+
+            replies = slack.get_thread_replies(channel=channel, thread_ts=thread_ts, limit=50)
+            current_count = len(replies)
+
+            if current_count > last_message_count:
+                print(f"    New messages detected: {current_count - last_message_count}")
+                last_message_count = current_count
+                last_new_message_time = time.time()
+
+                bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
+                if bot_messages:
+                    latest_bot_msg = bot_messages[-1]
+                    has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
+                    if has_handoff:
+                        # Auto-extend timeout on handoff detection
+                        remaining = (start_time + effective_timeout) - time.time()
+                        if handoff_timeout_extension > remaining:
+                            effective_timeout = time.time() - start_time + handoff_timeout_extension
+                            print(
+                                f"    Handoff detected! Extended timeout to "
+                                f"{int(effective_timeout)}s "
+                                f"(+{handoff_timeout_extension}s from now)"
+                            )
+                        else:
+                            print("    Handoff detected in response! Waiting for next agent...")
+                        pending_handoff = True
+                        continue
+                    else:
+                        pending_handoff = False
+
+            bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
+            if bot_messages and last_new_message_time > 0:
+                time_since_last = time.time() - last_new_message_time
+                stable_time = (
+                    stable_time_with_handoff if pending_handoff else stable_time_no_handoff
+                )
+                if time_since_last >= stable_time:
+                    latest_bot_msg = bot_messages[-1]
+                    has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
+                    if not has_handoff:
+                        print(
+                            f"    Conversation stable for {int(time_since_last)}s, "
+                            "no pending handoffs."
+                        )
+                        break
+                    else:
+                        print("    Still waiting for handoff response...")
+
+            elapsed = int(time.time() - start_time)
+            print(f"    Waiting... ({elapsed}s / {int(effective_timeout)}s)")
+
+        latency_ms = int((time.time() - start_time) * 1000)
 
     # Track conversation
     conversation: list[tuple[str, str]] = [("user", user_message)]
-
-    # Step 2: Wait for bot response (with handoff chain support)
-    print(f"\n>>> Step 2: Waiting for agent response (timeout: {wait_timeout}s)")
-    start_time = time.time()
-    last_message_count = 1  # We posted 1 message
-    # Wait times are adaptive based on whether handoffs are detected
-    stable_time_no_handoff = 15  # Seconds with no new messages when no handoff detected
-    stable_time_with_handoff = 60  # Longer wait when expecting handoff chain
-    last_new_message_time = 0.0
-    pending_handoff = False  # Track if we're waiting for a handoff
-
-    while time.time() - start_time < wait_timeout:
-        await asyncio.sleep(poll_interval)
-
-        # Get thread replies
-        replies = slack.get_thread_replies(channel=channel, thread_ts=thread_ts, limit=50)
-        current_count = len(replies)
-
-        if current_count > last_message_count:
-            print(f"    New messages detected: {current_count - last_message_count}")
-            last_message_count = current_count
-            last_new_message_time = time.time()
-
-            # Check if latest bot message contains a handoff mention
-            bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
-            if bot_messages:
-                latest_bot_msg = bot_messages[-1]
-                has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
-                if has_handoff:
-                    print("    Handoff detected in response! Waiting for next agent...")
-                    pending_handoff = True
-                    # Continue polling for the handoff response
-                    continue
-                else:
-                    # Got a response without handoff mention - reset pending flag
-                    pending_handoff = False
-
-        # Check if we've received bot responses and conversation is stable
-        bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
-        if bot_messages and last_new_message_time > 0:
-            # Check if enough time has passed with no new messages
-            time_since_last = time.time() - last_new_message_time
-            # Use adaptive wait time based on pending handoff state
-            stable_time = stable_time_with_handoff if pending_handoff else stable_time_no_handoff
-            if time_since_last >= stable_time:
-                # Check if latest message has no handoff (conversation complete)
-                latest_bot_msg = bot_messages[-1]
-                has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
-                if not has_handoff:
-                    print(
-                        f"    Conversation stable for {int(time_since_last)}s, no pending handoffs."
-                    )
-                    break
-                else:
-                    print("    Still waiting for handoff response...")
-
-        elapsed = int(time.time() - start_time)
-        print(f"    Waiting... ({elapsed}s / {wait_timeout}s)")
-
-    latency_ms = int((time.time() - start_time) * 1000)
 
     # Step 3: Collect conversation
     print("\n>>> Step 3: Collecting conversation")
@@ -956,6 +977,7 @@ Examples:
   python scripts/eval_slack_e2e.py --message "@SupportEngineer check Sentry for errors"
   python scripts/eval_slack_e2e.py --channel C0123456789 --skip-eval
   python scripts/eval_slack_e2e.py --list-scenarios
+  python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --thread-ts 1770710833.425539 --channel C0AATPSADB8
         """,
     )
     parser.add_argument(
@@ -998,6 +1020,22 @@ Examples:
         action="store_true",
         help="Skip DeepEval evaluation (just post and collect responses)",
     )
+    parser.add_argument(
+        "--thread-ts",
+        help=(
+            "Re-score an existing Slack thread instead of posting a new message. "
+            "Requires --scenario (for evaluation criteria) and --channel."
+        ),
+    )
+    parser.add_argument(
+        "--handoff-timeout",
+        type=int,
+        default=600,
+        help=(
+            "Seconds to extend wait timeout when a handoff is detected (default: 600). "
+            "Ignored in --thread-ts mode."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -1015,6 +1053,12 @@ Examples:
     scenario_name = "custom" if args.message else args.scenario
     custom_message = args.message
 
+    # Validate --thread-ts usage
+    if args.thread_ts and args.message:
+        print("ERROR: --thread-ts and --message are mutually exclusive.")
+        print("       --thread-ts re-scores an existing thread; --message posts a new one.")
+        return 1
+
     try:
         result = asyncio.run(
             run_evaluation(
@@ -1025,6 +1069,8 @@ Examples:
                 gateway_url=args.gateway_url,
                 custom_message=custom_message,
                 skip_eval=args.skip_eval,
+                existing_thread_ts=args.thread_ts,
+                handoff_timeout_extension=args.handoff_timeout,
             )
         )
 
