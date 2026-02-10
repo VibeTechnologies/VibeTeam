@@ -50,9 +50,9 @@ from vibeteam.connectors.slack import SlackConnector
 # Try to import DeepEval
 DEEPEVAL_AVAILABLE = False
 try:
-    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
     from deepeval.metrics import GEval
     from deepeval.models.base_model import DeepEvalBaseLLM
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 
     DEEPEVAL_AVAILABLE = True
 except ImportError:
@@ -470,7 +470,7 @@ def generate_eval_report(
         status_text = "NO EVALUATION (DeepEval not available)"
 
     # Extract agents from conversation
-    agents_ran = list(set(role for role, _ in conversation if role != "user"))
+    agents_ran = list({role for role, _ in conversation if role != "user"})
 
     # Build the report
     lines = [
@@ -623,7 +623,7 @@ async def run_evaluation(
         raise ValueError("No channel specified. Use --channel or set SLACK_DEFAULT_CHANNEL")
 
     print("=" * 70)
-    print(f"E2E SLACK AGENT EVALUATION")
+    print("E2E SLACK AGENT EVALUATION")
     print("=" * 70)
     print(f"Scenario: {scenario['name']}")
     print(f"Channel: {channel}")
@@ -638,7 +638,7 @@ async def run_evaluation(
     initial_msg = slack.post_message(channel=channel, text=user_message)
     thread_ts = initial_msg.ts
     print(f"    Thread TS: {thread_ts}")
-    print(f"    Posted successfully!")
+    print("    Posted successfully!")
 
     # Step 1b: Trigger the gateway to process this message
     # Slack doesn't send webhooks for messages the bot itself posts,
@@ -728,7 +728,7 @@ async def run_evaluation(
                 latest_bot_msg = bot_messages[-1]
                 has_handoff = bool(handoff_pattern.search(latest_bot_msg.text))
                 if has_handoff:
-                    print(f"    Handoff detected in response! Waiting for next agent...")
+                    print("    Handoff detected in response! Waiting for next agent...")
                     pending_handoff = True
                     # Continue polling for the handoff response
                     continue
@@ -753,7 +753,7 @@ async def run_evaluation(
                     )
                     break
                 else:
-                    print(f"    Still waiting for handoff response...")
+                    print("    Still waiting for handoff response...")
 
         elapsed = int(time.time() - start_time)
         print(f"    Waiting... ({elapsed}s / {wait_timeout}s)")

@@ -13,9 +13,7 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import re
-import threading
 import time
 from typing import Any
 
@@ -29,55 +27,6 @@ from vibeteam.router.models import ROLE_DISPLAY_NAMES
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Slack"])
-
-
-# ==============================================================================
-# Rate Limiter for trigger endpoint
-# ==============================================================================
-
-
-class TokenBucketRateLimiter:
-    """
-    Thread-safe token bucket rate limiter.
-
-    Allows `max_requests` per `window_seconds`. Tokens refill continuously.
-    """
-
-    def __init__(self, max_requests: int = 30, window_seconds: float = 60.0):
-        self.max_requests = max_requests
-        self.window_seconds = window_seconds
-        self._tokens = float(max_requests)
-        self._last_refill = time.monotonic()
-        self._lock = threading.Lock()
-
-    def allow(self) -> bool:
-        """Return True if the request is allowed, False if rate limited."""
-        with self._lock:
-            now = time.monotonic()
-            elapsed = now - self._last_refill
-            self._tokens = min(
-                self.max_requests,
-                self._tokens + elapsed * (self.max_requests / self.window_seconds),
-            )
-            self._last_refill = now
-
-            if self._tokens >= 1.0:
-                self._tokens -= 1.0
-                return True
-            return False
-
-    def reset(self) -> None:
-        """Reset the rate limiter (for testing)."""
-        with self._lock:
-            self._tokens = float(self.max_requests)
-            self._last_refill = time.monotonic()
-
-
-# Rate limiter for /slack/trigger (configurable via env vars)
-_trigger_rate_limiter = TokenBucketRateLimiter(
-    max_requests=int(os.environ.get("TRIGGER_RATE_LIMIT_MAX", "30")),
-    window_seconds=float(os.environ.get("TRIGGER_RATE_LIMIT_WINDOW", "60")),
-)
 
 
 def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
@@ -625,90 +574,3 @@ async def handle_slack_events(
         return {"status": "accepted", "event": "message.bot_with_role_mention"}
 
     return {"status": "ignored", "event": event_type}
-
-
-@router.post("/slack/trigger")
-async def trigger_agent_for_slack(
-    request: Request,
-    authorization: str = Header(None, alias="Authorization"),
-) -> dict[str, Any]:
-    """
-    Directly trigger an agent for a Slack thread.
-
-    This endpoint bypasses Slack webhooks and directly invokes the agent routing logic.
-    Useful for:
-    - E2E eval tests that post messages via Slack API but need to trigger agents
-    - Manual testing and debugging
-    - Programmatic agent invocation
-
-    Authentication:
-    - If SLACK_TRIGGER_SECRET is set, requires Bearer token in Authorization header.
-    - If SLACK_TRIGGER_SECRET is not set, logs a warning and allows unauthenticated access.
-
-    Request body:
-    {
-        "channel": "C0AATPSADB8",
-        "thread_ts": "1234567890.123456",
-        "text": "@SupportEngineer please investigate the issue",
-        "user_id": "eval_script"
-    }
-    """
-    # Rate limiting
-    if not _trigger_rate_limiter.allow():
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded for /slack/trigger. Try again later.",
-        )
-
-    # Verify trigger secret if configured
-    if config.SLACK_TRIGGER_SECRET:
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(
-                status_code=401,
-                detail="Authorization header with Bearer token required",
-            )
-        token = authorization.removeprefix("Bearer ").strip()
-        if not hmac.compare_digest(token, config.SLACK_TRIGGER_SECRET):
-            logger.warning("Invalid trigger secret in /slack/trigger request")
-            raise HTTPException(status_code=403, detail="Invalid trigger secret")
-    else:
-        logger.warning(
-            "SLACK_TRIGGER_SECRET not set - /slack/trigger endpoint is unauthenticated. "
-            "Set SLACK_TRIGGER_SECRET env var to secure this endpoint."
-        )
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body") from None
-
-    channel = body.get("channel")
-    thread_ts = body.get("thread_ts")
-    text = body.get("text", "")
-    user_id = body.get("user_id", "trigger_api")
-
-    if not channel:
-        raise HTTPException(status_code=400, detail="channel is required")
-    if not text:
-        raise HTTPException(status_code=400, detail="text is required")
-
-    # Check for role mentions
-    message_router = get_message_router()
-    role_mentions = message_router.parse_role_mentions(text)
-
-    if not role_mentions:
-        raise HTTPException(
-            status_code=400,
-            detail="text must contain @RoleName mention (e.g., @SupportEngineer)",
-        )
-
-    logger.info(f"Trigger API: routing to {role_mentions} in {channel}")
-
-    # Process in background (same as webhook handler)
-    asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id))
-
-    return {
-        "status": "accepted",
-        "channel": channel,
-        "thread_ts": thread_ts,
-        "roles": role_mentions,
-    }

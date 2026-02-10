@@ -132,4 +132,34 @@ done
 ```
 
 ---
-Last updated: 2026-02-10
+Last updated: 2026-02-09
+
+---
+
+## Completed: Remove /slack/trigger Bypass & Rewrite Eval Script (2026-02-09)
+
+### Problem
+The eval tests used a `/slack/trigger` bypass endpoint that skipped the real Slack webhook pipeline.
+This meant eval tests passed 100% while real Slack integration was completely broken (gateway received
+ZERO `POST /slack/events` requests).
+
+### What Was Done
+
+- [x] **Deleted `/slack/trigger` endpoint** from `vibeteam/gateway/routes/slack.py`
+  - Removed `TokenBucketRateLimiter` class and `_trigger_rate_limiter` instance
+  - Removed `trigger_agent_for_slack` function and route
+  - Removed unused imports (`threading`, `os`)
+- [x] **Deleted `tests/test_gateway_trigger.py`** (tested the removed endpoint)
+- [x] **Removed `SLACK_TRIGGER_SECRET`** from `vibeteam/gateway/server.py`
+- [x] **Rewrote `scripts/eval_slack_e2e.py`** to use real Slack webhook path:
+  - Posts as real user via `SLACK_USER_TOKEN` (xoxp-*) with `<@BOT_ID>` mention
+  - Triggers real `app_mention` webhook event to gateway
+  - Merged scenarios from both eval scripts (8 total)
+  - No bypass, no `/slack/trigger`, no `GATEWAY_URL`
+- [x] **Deleted `scripts/eval_slack_agent.py`** (superseded by merged script)
+- [x] Ruff lint: all checks pass
+- [x] Pytest: 28 passed, 72 skipped, 0 failures
+
+### Remaining Dependency
+- A `SLACK_USER_TOKEN` (xoxp-*) must be provisioned before the eval script can run
+- Slack app Event Subscriptions URL must point to `webhook.team.vibebrowser.app/slack/events`
