@@ -88,8 +88,7 @@ commands for any write operations (deploy, rollback, restart, scale).
 ## and your response will NEVER reach Slack.
 ##
 ## FORBIDDEN COMMANDS (will kill your in-flight request):
-##   - kubectl apply -k k8s/overlays/dev  (replaces pod specs, triggers rollout)
-##   - kubectl apply -k k8s/base/         (same effect)
+##   - kubectl apply -k (ANY path)         (replaces pod specs, triggers rollout)
 ##   - kubectl rollout restart deployment/vibeteam-gateway -n vibeteam
 ##   - kubectl rollout restart deployment/openhands-svc -n vibeteam
 ##   - kubectl delete pod <any vibeteam-gateway or openhands-svc pod>
@@ -102,6 +101,18 @@ commands for any write operations (deploy, rollback, restart, scale).
 ##   - To rollback OTHER deployments: `kubectl rollout undo` is safe for non-self deployments
 ##   - For vibeteam-gateway/openhands-svc rollback: report the need and recommend
 ##     a human or CI/CD pipeline handles it (since you cannot survive the restart)
+##
+## ==========================================================================
+
+## ==========================================================================
+## CRITICAL: YOU HAVE NO LOCAL REPOSITORY FILES
+## ==========================================================================
+##
+## You run in a temporary sandbox with NO access to the source code repository.
+## DO NOT try to: ls, cat, find, or access k8s/, Dockerfile, or any repo files.
+## Your ONLY tools for deployment are kubectl commands against the live cluster.
+## If you need to find image tags, use kubectl to check current deployments
+## or use the tag "latest" (CI pushes latest for every master merge).
 ##
 ## ==========================================================================
 
@@ -124,21 +135,24 @@ kubectl get deployments -n vibeteam -o wide
 kubectl get deployment vibeteam-gateway -n vibeteam -o jsonpath='{.spec.template.spec.containers[0].image}'
 kubectl get deployment openhands-svc -n vibeteam -o jsonpath='{.spec.template.spec.containers[0].image}'
 
-# Step 3: Update image tag (replace <NEW_TAG> with actual commit SHA or version)
+# Step 3: Determine the target tag
+# Our CI/CD tags images with the short git commit SHA (7 chars).
+# CI also pushes "latest" for every master merge.
+# If the user doesn't specify a tag, use "latest".
+
+# Step 4: Update image tag (replace <TAG> with actual commit SHA, version, or "latest")
 # This triggers a safe rolling update that does NOT immediately kill your pod.
-kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<NEW_TAG> -n vibeteam
-kubectl set image deployment/openhands-svc openhands=ghcr.io/vibetechnologies/vibeteam-openhands:<NEW_TAG> -n vibeteam
+kubectl set image deployment/vibeteam-gateway gateway=ghcr.io/vibetechnologies/vibeteam:<TAG> -n vibeteam
 
-# Step 4: Monitor rollout (non-destructive, just watches)
+# Step 5: Monitor rollout (non-destructive, just watches)
 kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
-kubectl rollout status deployment/openhands-svc -n vibeteam --timeout=120s
 
-# Step 5: Verify pods are healthy AFTER deployment
+# Step 6: Verify pods are healthy AFTER deployment
 kubectl get pods -n vibeteam
 kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -10
 ```
-**NOTE:** If no specific image tag is provided in the request, check the latest available
-tag from the GitHub Container Registry or ask the user which tag/commit to deploy.
+**NOTE:** You do NOT have access to local repository files. Do NOT look for k8s/
+directories, Dockerfiles, or manifests. Use kubectl commands ONLY.
 Do NOT blindly apply kustomize overlays — they modify pod specs and kill in-flight requests.
 
 ### Rollback a Deployment (non-self deployments)

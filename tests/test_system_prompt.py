@@ -193,21 +193,23 @@ class TestReleaseEngineerSafetyGuardrails:
         content = self._read_re_context()
         assert "DO NOT DESTROY YOUR OWN INFRASTRUCTURE" in content
 
-    def test_forbids_kubectl_apply_k_overlays(self):
-        """Must explicitly forbid kubectl apply -k k8s/overlays/dev."""
+    def test_forbids_kubectl_apply_k(self):
+        """Must explicitly forbid kubectl apply -k (all paths)."""
         content = self._read_re_context()
         # The command must appear in a FORBIDDEN context, not as an instruction to run
-        assert "kubectl apply -k k8s/overlays/dev" in content
+        assert "kubectl apply -k" in content
         # Must NOT appear outside a forbidden/warning block as a command to execute
         lines = content.split("\n")
         for line in lines:
             stripped = line.strip()
-            if "kubectl apply -k k8s/overlays/dev" in stripped:
+            if "kubectl apply -k" in stripped:
                 # Line should be in a comment/forbidden section, not a "Step 2" instruction
                 assert (
                     stripped.startswith("#")
                     or "FORBIDDEN" in stripped
                     or "replaces pod" in stripped
+                    or "Do NOT" in stripped
+                    or "kustomize overlays" in stripped
                 ), f"Unsafe line found: {stripped}"
 
     def test_forbids_kubectl_rollout_restart_gateway(self):
