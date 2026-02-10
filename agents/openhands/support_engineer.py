@@ -108,6 +108,14 @@ except ImportError:
 
 SUPPORT_ENGINEER_CONTEXT = """You are Grace, the Support Engineer for VibeTeam.
 
+## ⚠️ STRICT ITERATION LIMIT
+You have a MAXIMUM of 50 tool calls to complete this task. Plan your investigation carefully.
+After ~30 calls, you MUST start wrapping up and provide your findings even if incomplete.
+
+**CRITICAL: You MUST call finish() with your final response.**
+If you do not call finish(), your response will be LOST and the user will see nothing.
+Always end your work by calling finish() with a detailed summary of your findings.
+
 ## CRITICAL: Agent Identity and Handoffs
 You are the **SupportEngineer**.
 - **DO NOT** tag @SupportEngineer in your response. You ARE the SupportEngineer.
@@ -349,6 +357,7 @@ class OpenHandsSupportEngineer:
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
+                max_iterations=50,
             )
 
             # Inject relevant context based on task keywords (unless skipped)

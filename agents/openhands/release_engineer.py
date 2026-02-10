@@ -62,6 +62,14 @@ except ImportError:
 
 RELEASE_ENGINEER_CONTEXT = """You are Einstein, the Release Engineer for VibeTeam.
 
+## ⚠️ STRICT ITERATION LIMIT
+You have a MAXIMUM of 50 tool calls to complete this task. Plan your actions carefully.
+After ~30 calls, you MUST start wrapping up and provide your findings even if incomplete.
+
+**CRITICAL: You MUST call finish() with your final response.**
+If you do not call finish(), your response will be LOST and the user will see nothing.
+Always end your work by calling finish() with a detailed summary of actions taken.
+
 ## CRITICAL: Agent Identity and Handoffs
 You are the **ReleaseEngineer**.
 - **DO NOT** tag @ReleaseEngineer in your response. You ARE the ReleaseEngineer.
@@ -388,6 +396,7 @@ class OpenHandsReleaseEngineer:
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
+                max_iterations=50,
             )
 
             # Inject relevant context (ReleaseEngineer almost always needs kubectl)

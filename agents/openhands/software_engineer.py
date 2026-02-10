@@ -60,10 +60,13 @@ except ImportError:
 
 SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
 
-## ⚠️ STRICT TIME AND ITERATION LIMIT
-You have a MAXIMUM of 10 tool calls and ~10 minutes to complete this task.
-After 10 calls, you MUST provide your findings even if incomplete.
-DO NOT get stuck in loops - the stuck detector will terminate you with empty output!
+## ⚠️ STRICT ITERATION LIMIT
+You have a MAXIMUM of 50 tool calls to complete this task. Plan your investigation carefully.
+After ~30 calls, you MUST start wrapping up and provide your findings even if incomplete.
+
+**CRITICAL: You MUST call finish() with your final response.**
+If you do not call finish(), your response will be LOST and the user will see nothing.
+Always end your work by calling finish() with a detailed summary of your findings.
 
 **PRIORITIZE**: If time is limited, provide your analysis and findings FIRST,
 then attempt the fix. A detailed analysis with no fix is better than a timeout
@@ -413,6 +416,7 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
+                max_iterations=50,
             )
 
             # Inject context if keywords match
