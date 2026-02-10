@@ -1,77 +1,5 @@
 # Current Work Plan
 
-## Active: Eval Rescore & Agent Verification Improvements
-
-**Branch:** `fix/eval-rescore-and-agent-verification`
-**Triggered by:** SoftwareEngineer response in Slack thread `1770710833.425539` was never scored (arrived at ~726s, eval timeout was 600s). Manual G-Eval showed EvidenceBasedDecision: 0.50 due to fabricated root cause.
-
-### Changes Implemented
-
-- [x] `--thread-ts` flag for re-scoring existing Slack threads without posting new messages
-- [x] `--handoff-timeout` flag + auto-extend timeout when handoff is detected (default: +600s)
-- [x] Increased `stable_time_with_handoff` from 60s to 300s (agents take 5-10min)
-- [x] SoftwareEngineer: "VERIFY YOUR FIX" instructions (curl after config fix, run tests after code fix)
-- [x] SoftwareEngineer: "DO NOT FABRICATE ROOT CAUSES" anti-hallucination guardrails
-- [x] All 87 existing tests pass, ruff lint clean
-- [x] 27 unit tests for rescore mode + handoff timeout (`tests/test_eval_rescore.py`)
-- [x] Live validation: all 4 metrics >= 0.90 on `stripe_webhook_failure` thread
-- [x] CI passes (lint, test, unit tests, docker build)
-
-### Files Changed
-
-| File | What Changed |
-|------|-------------|
-| `scripts/eval_slack_e2e.py` | `--thread-ts` rescore mode, `--handoff-timeout`, auto-extend timeout, stable_time 60→300 |
-| `agents/openhands/software_engineer.py` | VERIFY YOUR FIX + DO NOT FABRICATE ROOT CAUSES sections |
-| `tests/test_eval_rescore.py` | **NEW** — 27 unit tests for rescore mode + handoff timeout |
-
-### PR Status
-
-**PR #60:** Open, CI passing, ready for review.
-- https://github.com/VibeTechnologies/VibeTeam/pull/60
-
-### Usage
-
-```bash
-# Re-score an existing thread (no new message posted)
-uv run python scripts/eval_slack_e2e.py \
-  --scenario stripe_webhook_failure \
-  --thread-ts 1770710833.425539 \
-  --channel C0AATPSADB8
-
-# Normal eval with extended handoff timeout
-uv run python scripts/eval_slack_e2e.py \
-  --scenario stripe_webhook_failure \
-  --handoff-timeout 900
-```
-
-### Live Rescore Results (thread 1770710833.425539)
-
-| Metric | Score | Threshold | Status |
-|--------|-------|-----------|--------|
-| InvestigationQuality | 1.00 | 0.60 | Pass |
-| TaskCompletion | 1.00 | 0.60 | Pass |
-| EvidenceBasedDecision | 0.90 | 0.60 | Pass |
-| HandoffCompletion | 0.90 | 0.60 | Pass |
-
-### Remaining
-
-- [ ] Merge PR #60, deploy, run full eval to verify SoftwareEngineer improvements
-
----
-
-## Blocked: GitHub App Auth & Sentry Webhooks (PR #53)
-
-**Status:** Draft PR, merges cleanly, 13 commits behind master.
-**PR:** #53 (copilot/integrate-github-app-auth)
-
-### Remaining Work
-- [ ] Rebase onto master (no conflicts expected)
-- [ ] Add integration tests for webhook routing
-- [ ] Merge to master
-
----
-
 ## Blocked: Slack App Webhook URL Configuration
 
 **Status:** Blocked on manual Slack admin access.
@@ -179,6 +107,8 @@ Reduced from worst-case 210s (sequential) to ~11s (parallel).
 
 | PR/Commit | Title | Key Changes |
 |-----------|-------|-------------|
+| #60 | fix(eval): rescore mode, handoff timeout, agent verification | `--thread-ts` rescore, `--handoff-timeout`, SWE anti-hallucination guardrails, 27 new tests |
+| #53 | feat: GitHub App auth + Sentry webhook routing | GitHubConnector App auth, Sentry classification, webhook routing, 33 integration tests |
 | `687f328` | docs: update plan.md | keyword routing done, close PR #51, track PR #53 |
 | `652cfc6` | refactor: consolidate keyword routing into role_resolver | Single `route_by_keywords()` in role_resolver.py, word-boundary regex |
 | #59 | refactor: consolidate role parsing, parallelize kubectl, merge eval scripts | RoleResolver module, ThreadPoolExecutor kubectl, deleted eval_slack_agent.py |
