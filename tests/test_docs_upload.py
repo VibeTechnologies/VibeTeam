@@ -98,3 +98,18 @@ class TestDocsUpload:
         # list_uploaded_docs returns relative paths
         expected_path = os.path.join(session_id, "session_doc.txt")
         assert expected_path in docs
+
+    def test_search_integration(self, api_client, clean_uploads):
+        """Test the full tool integration: upload -> search."""
+        # 1. Upload a file
+        content = b"The secret code is XYZ-999."
+        files = {"file": ("secret.txt", content, "text/plain")}
+        api_client.post("/v1/docs/upload", files=files)
+
+        # 2. Simulate tool usage (what the agent calls)
+        from agents.shared.docs_tools import search_docs
+
+        # 3. Verify tool retrieves content
+        results = search_docs("secret code")
+        assert "XYZ-999" in results
+        assert "secret.txt" in results
