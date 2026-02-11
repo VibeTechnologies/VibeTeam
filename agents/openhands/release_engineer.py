@@ -32,29 +32,21 @@ def fetch_kubectl_context() -> str:
 
 # OpenHands imports - will fail gracefully if not installed
 try:
-    from openhands.sdk import LLM, Agent, LocalConversation, Tool
+    from openhands.sdk import Agent, LocalConversation, Tool
     from openhands.tools.file_editor import FileEditorTool
     from openhands.tools.terminal import TerminalTool
 
     OPENHANDS_AVAILABLE = True
 
-    class AzureLLM(LLM):
-        """LLM subclass that forces completion API for Azure OpenAI."""
-
-        def uses_responses_api(self) -> bool:
-            """Azure OpenAI doesn't support the Responses API."""
-            return False
-
 except ImportError:
     OPENHANDS_AVAILABLE = False
-    LLM = None
-    AzureLLM = None
     Agent = None
     LocalConversation = None
     Tool = None
     TerminalTool = None
     FileEditorTool = None
 
+from agents.shared.llm import LLM, AzureLLM
 
 # OpenHands uses Jinja2 templates for system prompts.
 # We use agents/openhands/prompts/agent_system.j2 as a custom template

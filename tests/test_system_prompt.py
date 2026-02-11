@@ -681,3 +681,126 @@ class TestSoftwareEngineerIterationBudget:
                 f"{agent_file} should still use max_iteration_per_run=25. "
                 f"Only SWE agent needs 35 iterations."
             )
+
+
+class TestAzureLLMConsolidation:
+    """Verify all agents use AzureLLM from the shared module.
+
+    Azure OpenAI doesn't support the Responses API. The base LLM class
+    attempts to use it and gets 404 errors. All agents MUST use AzureLLM
+    (which overrides uses_responses_api() to return False).
+
+    Previously, AzureLLM was defined 3 times (SWE, support, release) and
+    marketing_manager + product_manager used base LLM — a production bug.
+    Now AzureLLM lives in agents/shared/llm.py and all agents import from there.
+    """
+
+    AGENTS_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "agents", "openhands")
+
+    ALL_AGENT_FILES = [
+        "software_engineer.py",
+        "support_engineer.py",
+        "release_engineer.py",
+        "marketing_manager.py",
+        "product_manager.py",
+    ]
+
+    @staticmethod
+    def _read_agent(filename: str) -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "openhands",
+            filename,
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    @staticmethod
+    def _read_shared_llm() -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "shared",
+            "llm.py",
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    def test_shared_llm_module_exists(self):
+        """agents/shared/llm.py must exist as the single source of truth."""
+        filepath = os.path.join(os.path.dirname(__file__), os.pardir, "agents", "shared", "llm.py")
+        assert os.path.exists(filepath), (
+            "agents/shared/llm.py must exist. AzureLLM should be defined once, not per-agent."
+        )
+
+    def test_shared_llm_defines_azure_llm_class(self):
+        """The shared module must define the AzureLLM class."""
+        content = self._read_shared_llm()
+        assert "class AzureLLM" in content
+
+    def test_shared_llm_overrides_uses_responses_api(self):
+        """AzureLLM must override uses_responses_api to return False."""
+        content = self._read_shared_llm()
+        assert "def uses_responses_api" in content
+        assert "return False" in content
+
+    @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
+    def test_agent_imports_from_shared_llm(self, agent_file: str):
+        """Every agent must import AzureLLM from agents.shared.llm."""
+        content = self._read_agent(agent_file)
+        assert "from agents.shared.llm import" in content, (
+            f"{agent_file} must import from agents.shared.llm, "
+            f"not define its own AzureLLM or use base LLM"
+        )
+        assert "AzureLLM" in content.split("from agents.shared.llm import")[1].split("\n")[0], (
+            f"{agent_file} must import AzureLLM from agents.shared.llm"
+        )
+
+    @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
+    def test_agent_does_not_define_own_azure_llm(self, agent_file: str):
+        """No agent should define its own AzureLLM class — use the shared one."""
+        content = self._read_agent(agent_file)
+        assert "class AzureLLM" not in content, (
+            f"{agent_file} defines its own AzureLLM class. "
+            f"Remove it and import from agents.shared.llm instead."
+        )
+
+    @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
+    def test_agent_create_llm_returns_azure_llm(self, agent_file: str):
+        """Every agent's _create_llm must return AzureLLM(), not LLM()."""
+        content = self._read_agent(agent_file)
+        # Find the _create_llm method body
+        method_start = content.find("def _create_llm")
+        assert method_start != -1, f"{agent_file} must have a _create_llm method"
+        # Find the next method or class definition
+        next_def = content.find("\n    def ", method_start + 10)
+        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+
+        assert "return AzureLLM(" in method_body, (
+            f"{agent_file}._create_llm() must return AzureLLM(...), not LLM(...). "
+            f"Azure OpenAI doesn't support the Responses API."
+        )
+        # Ensure it does NOT return plain LLM (but AzureLLM contains "LLM" so check carefully)
+        # Remove all "AzureLLM" occurrences then check for standalone "return LLM("
+        sanitized = method_body.replace("AzureLLM", "XXXX")
+        assert "return LLM(" not in sanitized, (
+            f"{agent_file}._create_llm() returns base LLM(). "
+            f"Must use AzureLLM() for Azure OpenAI compatibility."
+        )
+
+    @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
+    def test_agent_does_not_import_llm_from_openhands_sdk(self, agent_file: str):
+        """Agents must not import LLM from openhands.sdk directly (use shared module)."""
+        content = self._read_agent(agent_file)
+        import re
+
+        sdk_imports = re.findall(r"from openhands\.sdk import (.+)", content)
+        for import_line in sdk_imports:
+            imported_names = [name.strip() for name in import_line.split(",")]
+            assert "LLM" not in imported_names, (
+                f"{agent_file} imports LLM from openhands.sdk. "
+                f"Import from agents.shared.llm instead for Azure compatibility."
+            )

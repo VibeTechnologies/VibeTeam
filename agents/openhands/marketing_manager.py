@@ -34,15 +34,15 @@ from agents.shared.browser_tools import (
 )
 
 try:
-    from openhands.sdk import LLM, Agent, LocalConversation
+    from openhands.sdk import Agent, LocalConversation
 
     OPENHANDS_AVAILABLE = True
 except ImportError:
     OPENHANDS_AVAILABLE = False
-    LLM = None
     Agent = None
     LocalConversation = None
 
+from agents.shared.llm import LLM, AzureLLM
 
 MARKETING_MANAGER_CONTEXT = """You are Ada, the Marketing Manager for VibeTeam.
 
@@ -89,13 +89,17 @@ class OpenHandsMarketingManager:
 
         self.config = config or MARKETING_MANAGER_CONFIG
 
-    def _create_llm(self) -> LLM:
-        """Create LLM with Azure configuration."""
+    def _create_llm(self) -> AzureLLM:
+        """Create AzureLLM with Azure configuration.
+
+        Uses AzureLLM (not base LLM) because Azure OpenAI doesn't support the
+        Responses API. AzureLLM overrides uses_responses_api() to return False.
+        """
         model_name = self.config.llm.model or "gpt-4.1-mini"
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 
-        return LLM(
+        return AzureLLM(
             model=model_name,
             api_key=self.config.llm.api_key,
             base_url=self.config.llm.api_base,
