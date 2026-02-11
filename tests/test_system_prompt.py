@@ -740,6 +740,94 @@ class TestSoftwareEngineerIterationBudget:
             "Prompt must include a BAD investigation example showing what NOT to do"
         )
 
+    def test_evidence_rule_in_phase2(self):
+        """Phase 2 must require evidence-based claims with file:line citations."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "EVIDENCE RULE" in ctx, (
+            "PHASE 2 must contain an EVIDENCE RULE requiring file:line citations"
+        )
+
+    def test_report_requires_evidence_found_section(self):
+        """Phase 3 report must require an 'Evidence found' section with code quotes."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "Evidence found" in ctx, (
+            "PHASE 3 report template must include an 'Evidence found' section "
+            "requiring specific code quotes or command output"
+        )
+
+    def test_forbids_speculative_language_without_evidence(self):
+        """Prompt must forbid 'likely', 'probably', 'might be' without evidence."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "likely" in ctx.lower() and "evidence" in ctx.lower(), (
+            "Prompt must explicitly forbid speculative language like 'likely' "
+            "without citing specific evidence"
+        )
+
+    def test_forbids_infra_checks_for_ui_bugs(self):
+        """Prompt must forbid kubectl/Sentry for frontend/extension bugs."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "kubectl" in ctx and "UI bug" in ctx.lower() or "frontend" in ctx.lower(), (
+            "Prompt must forbid wasting iterations on kubectl for UI/frontend bugs"
+        )
+
+    def test_report_has_good_bad_recommendation_examples(self):
+        """Phase 3 report must show examples of good vs bad recommendations."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "BAD:" in ctx and "GOOD:" in ctx, (
+            "Report template must include concrete BAD and GOOD recommendation examples"
+        )
+
+
+class TestKubernetesDeploymentStrategy:
+    """Verify openhands-svc uses Recreate strategy.
+
+    The cluster has a single node with limited memory. RollingUpdate with 1 replica
+    creates a deadlock: new pod can't schedule until old pod terminates, but old pod
+    won't terminate until new pod is ready. Recreate avoids this by terminating the
+    old pod first.
+    """
+
+    K8S_BASE = os.path.join(
+        os.path.dirname(__file__), os.pardir, "k8s", "base", "openhands-svc.yaml"
+    )
+
+    def test_openhands_uses_recreate_strategy(self):
+        """openhands-svc must use Recreate strategy to avoid memory deadlock."""
+        with open(self.K8S_BASE) as f:
+            content = f.read()
+        assert "type: Recreate" in content, (
+            "openhands-svc deployment must use 'type: Recreate' strategy. "
+            "RollingUpdate causes deadlock on single-node clusters with memory constraints."
+        )
+
+    def test_openhands_has_strategy_comment(self):
+        """Strategy section must have a comment explaining why Recreate is used."""
+        with open(self.K8S_BASE) as f:
+            content = f.read()
+        assert "single-node" in content.lower() or "cannot run two" in content.lower(), (
+            "Strategy section must explain why Recreate is needed (single-node memory constraint)"
+        )
+
 
 class TestAzureLLMConsolidation:
     """Verify all agents use AzureLLM from the shared module.

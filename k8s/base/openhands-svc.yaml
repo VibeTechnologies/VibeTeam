@@ -13,6 +13,12 @@ metadata:
     framework: openhands
 spec:
   replicas: 1
+  # Recreate strategy: single-node cluster cannot run two openhands pods simultaneously
+  # (each requires 3-6Gi memory). RollingUpdate causes deadlock since the new pod
+  # can't schedule until the old one terminates, but the old won't terminate until
+  # the new one is ready.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: openhands-svc
