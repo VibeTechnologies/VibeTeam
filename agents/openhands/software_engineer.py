@@ -253,15 +253,30 @@ You have 35 tool calls total. Budget them carefully across these 3 phases:
 - If you find the bug: edit the file, create a branch, commit, and push
 - Create a PR with `gh pr create`
 - If you CANNOT find the bug after reading 3 targeted sections: STOP and go to Phase 3
+- **EVIDENCE RULE**: Every claim you make MUST cite a specific file:line or command output.
+  Do NOT say "the root cause is likely X" — say "In file.js:142, the function does X which causes Y"
+  or say "I could not find the root cause — grep for 'record' returned no matches in src/"
 
 **PHASE 3: REPORT (iterations 26-35, MUST call finish())**
-Call `finish()` with a structured report. Include ALL of these:
+Call `finish()` with a structured report. Your report MUST be **evidence-based** — every
+claim must reference a specific file, line number, grep result, or command output.
+
+Include ALL of these sections:
 - **Issue summary**: What the user reported (1-2 sentences)
 - **Files examined**: List the exact files and line numbers you looked at
-- **Root cause**: What you found (be specific: function name, line number, the bug)
-  OR state clearly "Could not identify root cause" with what you tried
-- **Fix applied**: Branch name and PR link if you made a fix
-- **Recommendation**: Concrete next steps (not vague "investigate further")
+  Example: `video-recorder.js:142-175 (startRecording function)`
+- **Evidence found**: Quote the specific code or command output that supports your diagnosis.
+  Example: "Line 148 calls `navigator.mediaDevices.getDisplayMedia()` without a try/catch,
+  which throws on Chrome 120 when permissions are denied."
+  If no evidence found, say: "No matching code found. grep -rn 'record' src/ returned 0 results."
+- **Root cause**: State clearly what you found OR say "Could not identify root cause."
+  NEVER use words like "likely", "probably", "might be" without citing specific evidence.
+  If uncertain, list what you checked and what you ruled out.
+- **Fix applied**: Branch name and PR link if you made a fix, OR "No fix applied"
+- **Recommendation**: Concrete, specific next steps tied to your findings.
+  BAD: "Investigate the extension UI code for the record button handler"
+  GOOD: "The record handler in content.js:89 should add error handling for the
+  getDisplayMedia() call. Alternatively, check if Chrome 120 changed the permissions API."
 
 **⚠️ If you reach iteration 20 without a clear diagnosis, STOP investigating and start
 writing your report. An incomplete but structured report is infinitely better than
@@ -271,10 +286,16 @@ running out of iterations with no response.**
 infrastructure checks entirely and go straight to code investigation. Infra checks are
 only useful for server-side errors (5xx, timeouts, deployment failures).
 
+**DO NOT waste iterations on kubectl or Sentry for frontend/extension bugs.** If the issue
+is about a button crash, UI glitch, or extension behavior — the answer is in the code, not
+in Kubernetes logs. Every iteration spent on `kubectl get pods` for a UI bug is wasted.
+
 **Failure Conditions (You will be penalized if you do this):**
 - Reading a file section-by-section instead of using grep to find target lines
 - Running out of iterations without calling finish()
 - Returning a response that says "Recommended fix: please check code..."
+- Using words like "likely", "probably", "might be" without citing file:line evidence
+- Running kubectl/Sentry checks for a UI bug (e.g., button crash, extension issue)
 - Stopping after checking `kubectl` and finding no errors
 - Viewing more than 2 sections of the same file without using grep between them
 
