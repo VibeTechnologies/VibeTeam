@@ -32,9 +32,11 @@ except ImportError:
     LocalConversation = None
 
 from agents.openhands.utils import get_prompt_path
+from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 
-PRODUCT_MANAGER_CONTEXT = """You are Maya, the Product Manager for VibeTeam.
+# Fallback context if AGENTS.md files not found
+PRODUCT_MANAGER_CONTEXT_FALLBACK = """You are Jordan, the Product Manager for VibeTeam.
 
 ## CRITICAL: Agent Identity and Handoffs
 You are the **ProductManager**.
@@ -134,13 +136,20 @@ class OpenHandsProductManager:
 
     def _create_agent(self, llm: LLM) -> Agent:
         """Create Agent with LLM."""
+        # Load agent context from AGENTS.md hierarchy
+        # Falls back to hardcoded context if files not found
+        agent_context = compose_agent_context(
+            "product_manager", 
+            fallback_context=PRODUCT_MANAGER_CONTEXT_FALLBACK
+        )
+
         return Agent(
             llm=llm,
             # Use our custom template that renders agent_context into the system prompt.
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
             system_prompt_filename=get_prompt_path(),
             system_prompt_kwargs={
-                "agent_context": PRODUCT_MANAGER_CONTEXT,
+                "agent_context": agent_context,
             },
         )
 
@@ -193,7 +202,7 @@ class OpenHandsProductManager:
                 workspace=workspace_path,
             )
 
-            full_task = f"{PRODUCT_MANAGER_CONTEXT}\n\nTask: {task}"
+            full_task = f"{PRODUCT_MANAGER_CONTEXT_FALLBACK}\n\nTask: {task}"
             response = conversation.ask_agent(full_task)
 
             session.add_message("user", task)

@@ -43,9 +43,11 @@ except ImportError:
     LocalConversation = None
 
 from agents.openhands.utils import get_prompt_path
+from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 
-MARKETING_MANAGER_CONTEXT = """You are Ada, the Marketing Manager for VibeTeam.
+# Fallback context if AGENTS.md files not found
+MARKETING_MANAGER_CONTEXT_FALLBACK = """You are Sam, the Marketing Manager for VibeTeam.
 
 ## CRITICAL: Agent Identity and Handoffs
 You are the **MarketingManager**.
@@ -110,6 +112,13 @@ class OpenHandsMarketingManager:
 
     def _create_agent(self, llm: LLM) -> Agent:
         """Create Agent with MCP config if available."""
+        # Load agent context from AGENTS.md hierarchy
+        # Falls back to hardcoded context if files not found
+        agent_context = compose_agent_context(
+            "marketing_manager", 
+            fallback_context=MARKETING_MANAGER_CONTEXT_FALLBACK
+        )
+
         mcp_config = get_mcp_config_dict(self.config.mcp_servers)
 
         return Agent(
@@ -119,7 +128,7 @@ class OpenHandsMarketingManager:
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
             system_prompt_filename=get_prompt_path(),
             system_prompt_kwargs={
-                "agent_context": MARKETING_MANAGER_CONTEXT,
+                "agent_context": agent_context,
             },
         )
 
@@ -230,7 +239,7 @@ class OpenHandsMarketingManager:
             # Inject browser context based on task keywords
             browser_context = self._inject_browser_context(task)
 
-            full_task = f"{MARKETING_MANAGER_CONTEXT}\n\n{browser_context}Task: {task}"
+            full_task = f"{MARKETING_MANAGER_CONTEXT_FALLBACK}\n\n{browser_context}Task: {task}"
             response = conversation.ask_agent(full_task)
 
             session.add_message("user", task)

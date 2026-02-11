@@ -47,13 +47,15 @@ except ImportError:
     FileEditorTool = None
 
 from agents.openhands.utils import get_prompt_path
+from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 
 # OpenHands uses Jinja2 templates for system prompts.
 # We use agents/openhands/prompts/agent_system.j2 as a custom template
 # that renders agent_context into the system prompt via system_prompt_kwargs.
 
-RELEASE_ENGINEER_CONTEXT = """You are Einstein, the Release Engineer for VibeTeam.
+# Fallback context if AGENTS.md files not found
+RELEASE_ENGINEER_CONTEXT_FALLBACK = """You are Einstein, the Release Engineer for VibeTeam.
 
 ## ⚠️ STRICT ITERATION LIMIT
 You have a MAXIMUM of 15 tool calls to complete this task. Plan your actions carefully.
@@ -323,6 +325,13 @@ class OpenHandsReleaseEngineer:
 
     def _create_agent(self, llm: LLM) -> Agent:
         """Create Agent with LLM and tools."""
+        # Load agent context from AGENTS.md hierarchy
+        # Falls back to hardcoded context if files not found
+        agent_context = compose_agent_context(
+            "release_engineer", 
+            fallback_context=RELEASE_ENGINEER_CONTEXT_FALLBACK
+        )
+
         return Agent(
             llm=llm,
             tools=[
@@ -333,7 +342,7 @@ class OpenHandsReleaseEngineer:
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
             system_prompt_filename=get_prompt_path(),
             system_prompt_kwargs={
-                "agent_context": RELEASE_ENGINEER_CONTEXT,
+                "agent_context": agent_context,
             },
         )
 

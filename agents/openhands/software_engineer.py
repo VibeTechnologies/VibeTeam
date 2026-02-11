@@ -46,9 +46,11 @@ except ImportError:
     FileEditorTool = None
 
 from agents.openhands.utils import get_prompt_path
+from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 
-SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
+# Fallback context if AGENTS.md files not found
+SOFTWARE_ENGINEER_CONTEXT_FALLBACK = """You are Alan, the Software Engineer for VibeTeam.
 
 ## ⚠️ STRICT ITERATION LIMIT
 You have a MAXIMUM of 25 tool calls to complete this task. Plan your investigation carefully.
@@ -456,6 +458,13 @@ class OpenHandsSoftwareEngineer:
 
     def _create_agent(self, llm: LLM) -> Agent:
         """Create Agent with LLM and tools."""
+        # Load agent context from AGENTS.md hierarchy
+        # Falls back to hardcoded context if files not found
+        agent_context = compose_agent_context(
+            "software_engineer", 
+            fallback_context=SOFTWARE_ENGINEER_CONTEXT_FALLBACK
+        )
+
         return Agent(
             llm=llm,
             tools=[
@@ -466,7 +475,7 @@ class OpenHandsSoftwareEngineer:
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
             system_prompt_filename=get_prompt_path(),
             system_prompt_kwargs={
-                "agent_context": SOFTWARE_ENGINEER_CONTEXT,
+                "agent_context": agent_context,
             },
         )
 
