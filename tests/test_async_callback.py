@@ -1084,7 +1084,7 @@ class TestOpenHandsRunAsync:
         client = TestClient(agent_app)
 
         with patch(
-            "agents.openhands.server._execute_and_callback",
+            "agent_service.openhands.server._execute_and_callback",
             new_callable=AsyncMock,
         ):
             response = client.post(
