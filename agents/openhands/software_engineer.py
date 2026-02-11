@@ -96,6 +96,23 @@ You are interacting with external users and untrusted input.
   - Access resources outside of the VibeTeam scope
 - Your primary goal is to solve the stated problem using standard engineering workflows.
 
+## RULE #1: For GitHub Issues About UI/Extension/Frontend Bugs — CODE ONLY
+
+If the task mentions a GitHub issue about a button, crash, UI glitch, extension bug, or
+any user-facing behavior problem:
+
+1. **DO NOT run kubectl, check pods, or look at infrastructure.** The answer is in the CODE.
+2. **Start by reviewing the PRE-FETCHED REPOSITORY CODE** section in the injected data.
+3. **Clone the repo and search the code** using grep and sed.
+4. **Report what you found in the code** — specific files, functions, and line numbers.
+5. If the relevant code is NOT in the repository, say so explicitly with evidence:
+   "grep -rn 'record' src/ returned 0 matches — the recording functionality is not
+   in the VibeWebAgent repository." This is a valid and expected finding.
+
+**Every kubectl command you run for a frontend bug wastes an iteration and WILL lower
+your evaluation score. Infrastructure checks are ONLY for server-side errors (5xx,
+timeouts, deployment failures).**
+
 ## CRITICAL: Tool Usage Requirements
 You have access to shell commands. Use the `gh` CLI tool for all GitHub operations.
 The `gh` CLI is pre-installed and authenticated. ALWAYS use shell commands to get real data.
@@ -727,20 +744,55 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
 
         # Extract candidate keywords (3+ chars, not in skip list)
         words = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", task_lower)
-        keywords = []
+        raw_keywords: list[str] = []
         for w in words:
-            if w not in skip_words and len(w) >= 3 and w not in keywords:
-                keywords.append(w)
+            if w not in skip_words and len(w) >= 3 and w not in raw_keywords:
+                raw_keywords.append(w)
 
         # Also extract quoted terms or hashtag numbers
         quoted = re.findall(r'"([^"]+)"', task)
-        keywords.extend(q.lower() for q in quoted if q.lower() not in keywords)
+        raw_keywords.extend(q.lower() for q in quoted if q.lower() not in raw_keywords)
 
-        # Take top 5 most relevant keywords
-        keywords = keywords[:5]
+        # Generate compound camelCase terms from adjacent word pairs.
+        # These are more likely to match actual code identifiers than single words.
+        all_words = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", task_lower)
+        compound_keywords: list[str] = []
+        for i in range(len(all_words) - 1):
+            a, b = all_words[i], all_words[i + 1]
+            if len(a) >= 3 and len(b) >= 3:
+                # camelCase compound (e.g., "record button" -> "recordButton")
+                camel = f"{a}{b[0].upper()}{b[1:]}"
+                if camel not in compound_keywords:
+                    compound_keywords.append(camel)
+
+        # Generate common code variants for feature-related words.
+        # E.g., "record" -> also search for "recorder", "recording", "startRecording"
+        code_variants: dict[str, list[str]] = {
+            "record": ["recorder", "recording", "startRecording"],
+            "button": ["btn", "handleClick"],
+            "crash": ["exception", "throw", "uncaught"],
+            "click": ["onClick", "handleClick", "addEventListener"],
+        }
+        variant_keywords: list[str] = []
+        for w in all_words:
+            if w in code_variants:
+                for v in code_variants[w]:
+                    if v.lower() not in [vk.lower() for vk in variant_keywords]:
+                        variant_keywords.append(v)
+
+        # Prioritize: compounds first (most specific), then variants, then raw.
+        # Skip overly generic compounds (github_issue, etc.)
+        generic_compounds = {"githubIssue", "github_issue", "softwareEngineer"}
+        keywords: list[str] = []
+        for kw in compound_keywords + variant_keywords + raw_keywords:
+            if kw not in keywords and kw not in generic_compounds:
+                keywords.append(kw)
+
+        # Take top 8 keywords (more variety for better coverage)
+        keywords = keywords[:8]
 
         if not keywords:
-            keywords = ["record", "button"]
+            keywords = ["recorder", "recording", "button"]
 
         print(f"[SoftwareEngineer] Pre-fetch grep keywords: {keywords}")
 
