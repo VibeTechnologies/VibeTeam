@@ -238,18 +238,23 @@ sed -n '121,160p' VibeWebAgent/src/recorder.js       # Lines 121-160... wasting 
 
 You have 35 tool calls total. Budget them carefully across these 3 phases:
 
-**PHASE 1: SETUP + TARGETED SEARCH (iterations 1-8, MAX 8 tool calls)**
-1. `gh issue view <number> --repo VibeTechnologies/VibeWebAgent > /tmp/issue.txt && cat /tmp/issue.txt`
-2. `gh auth setup-git && git clone --depth 1 https://github.com/VibeTechnologies/VibeWebAgent/`
-3. `find VibeWebAgent/ -type f \\( -name '*.ts' -o -name '*.js' -o -name '*.tsx' \\) | head -30`
-4. Extract 2-3 keywords from the issue (e.g., "record", "crash", "button") and run:
-   `grep -rn "KEYWORD1\\|KEYWORD2" VibeWebAgent/src/ | head -30`
-5. If needed: one more targeted grep with a different keyword
-6-8. Read ONLY the specific functions found by grep using `sed -n 'START,ENDp' file`
+**PHASE 1: REVIEW PRE-FETCHED DATA (iterations 1-3, MAX 3 tool calls)**
+The system has ALREADY cloned the repo and searched for relevant code. Look at the
+"PRE-FETCHED REPOSITORY CODE" section in the injected data above. It contains:
+- File structure of the repository
+- Grep results for keywords from the issue
+- Relevant code sections with line numbers
 
-**PHASE 2: DIAGNOSE AND FIX (iterations 9-25, MAX 17 tool calls)**
-- By now you should know which file and function is involved
-- Read the specific error-prone code (max 30 lines per read)
+Review this data. If you need more context on a specific function, use:
+`grep -n "function_name" VibeWebAgent/path/to/file.js`
+or `sed -n 'START,ENDp' VibeWebAgent/path/to/file.js`
+
+**DO NOT clone the repo again — it is already at VibeWebAgent/ in your workspace.**
+**DO NOT read entire files — the relevant sections are already provided.**
+
+**PHASE 2: DIAGNOSE AND FIX (iterations 4-25, MAX 21 tool calls)**
+- By now you should know which file and function is involved from the pre-fetched data
+- Read any additional specific code sections if needed (max 30 lines per read)
 - If you find the bug: edit the file, create a branch, commit, and push
 - Create a PR with `gh pr create`
 - If you CANNOT find the bug after reading 3 targeted sections: STOP and go to Phase 3
@@ -403,12 +408,18 @@ class OpenHandsSoftwareEngineer:
         )
 
     def _create_agent(self, llm: LLM) -> Agent:
-        """Create Agent with LLM and tools."""
+        """Create Agent with LLM and tools.
+
+        Only TerminalTool is provided — FileEditorTool is intentionally excluded.
+        When FileEditorTool is available, gpt-4.1-mini defaults to using its
+        open_file/view_range to read files in sequential 30-line chunks, ignoring
+        prompt instructions to use grep. Removing it forces the agent to use
+        bash commands (grep, sed, cat) which are faster and more targeted.
+        """
         return Agent(
             llm=llm,
             tools=[
                 Tool(name=TerminalTool.name),
-                Tool(name=FileEditorTool.name),
             ],
             # Use our custom template that renders agent_context into the system prompt.
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
@@ -446,6 +457,351 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
                 return f"[System] Failed to pre-fetch issue #{issue_number}: {result.stderr}"
         except Exception as e:
             return f"[System] Error pre-fetching issue #{issue_number}: {str(e)}"
+
+    def _prefetch_repo_code(self, task: str, workspace_path: str) -> str:
+        """Pre-fetch repo code by cloning and grepping for keywords from the task.
+
+        This eliminates the agent's need to search the codebase itself, which
+        prevents the sequential file-reading pattern that wastes iterations.
+        The agent receives grep results and relevant code snippets in context,
+        so it can go straight to analysis and diagnosis.
+        """
+        import re
+        import subprocess
+
+        repo = "VibeTechnologies/VibeWebAgent"
+        repo_dir = os.path.join(workspace_path, "VibeWebAgent")
+        sections: list[str] = []
+
+        # Step 1: Clone the repo
+        try:
+            print(f"[SoftwareEngineer] Pre-fetching repo code into {repo_dir}")
+
+            # Setup git auth first
+            subprocess.run(
+                ["gh", "auth", "setup-git"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            clone_result = subprocess.run(
+                ["git", "clone", "--depth", "1", f"https://github.com/{repo}.git", repo_dir],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if clone_result.returncode != 0:
+                return f"[System] Failed to clone repo: {clone_result.stderr}"
+        except Exception as e:
+            return f"[System] Error cloning repo: {e}"
+
+        # Step 2: Get file listing
+        try:
+            find_result = subprocess.run(
+                [
+                    "find",
+                    repo_dir,
+                    "-type",
+                    "f",
+                    "(",
+                    "-name",
+                    "*.ts",
+                    "-o",
+                    "-name",
+                    "*.js",
+                    "-o",
+                    "-name",
+                    "*.tsx",
+                    "-o",
+                    "-name",
+                    "*.jsx",
+                    ")",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            file_list = find_result.stdout.strip()
+            if file_list:
+                # Make paths relative
+                file_list = file_list.replace(workspace_path + "/", "")
+                sections.append(f"## File Structure\n```\n{file_list}\n```")
+        except Exception:
+            pass
+
+        # Step 3: Extract keywords from task and grep
+        task_lower = task.lower()
+        # Extract meaningful keywords: words that are likely code identifiers
+        # Skip common English words and focus on technical terms
+        skip_words = {
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "shall",
+            "that",
+            "this",
+            "these",
+            "those",
+            "it",
+            "its",
+            "we",
+            "our",
+            "they",
+            "their",
+            "you",
+            "your",
+            "and",
+            "but",
+            "or",
+            "not",
+            "no",
+            "yes",
+            "so",
+            "if",
+            "when",
+            "while",
+            "for",
+            "from",
+            "to",
+            "with",
+            "in",
+            "on",
+            "at",
+            "by",
+            "of",
+            "up",
+            "about",
+            "into",
+            "through",
+            "during",
+            "before",
+            "after",
+            "above",
+            "below",
+            "between",
+            "under",
+            "again",
+            "further",
+            "then",
+            "once",
+            "here",
+            "there",
+            "all",
+            "each",
+            "every",
+            "both",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "than",
+            "too",
+            "very",
+            "just",
+            "new",
+            "latest",
+            "version",
+            "please",
+            "investigate",
+            "reporting",
+            "says",
+            "happens",
+            "user",
+            "browser",
+            "chrome",
+            "extension",
+            "issue",
+            "problem",
+            "bug",
+            "error",
+            "fix",
+            "check",
+            "look",
+            "need",
+            "want",
+            "help",
+            "get",
+            "make",
+            "use",
+            "try",
+            "see",
+            "softwareengineer",
+        }
+
+        # Extract candidate keywords (3+ chars, not in skip list)
+        words = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", task_lower)
+        keywords = []
+        for w in words:
+            if w not in skip_words and len(w) >= 3 and w not in keywords:
+                keywords.append(w)
+
+        # Also extract quoted terms or hashtag numbers
+        quoted = re.findall(r'"([^"]+)"', task)
+        keywords.extend(q.lower() for q in quoted if q.lower() not in keywords)
+
+        # Take top 5 most relevant keywords
+        keywords = keywords[:5]
+
+        if not keywords:
+            keywords = ["record", "button", "click"]
+
+        print(f"[SoftwareEngineer] Pre-fetch grep keywords: {keywords}")
+
+        # Step 4: Run grep for each keyword
+        grep_results: list[str] = []
+        files_with_matches: set[str] = set()
+
+        for keyword in keywords:
+            try:
+                grep_result = subprocess.run(
+                    [
+                        "grep",
+                        "-rn",
+                        "--include=*.ts",
+                        "--include=*.js",
+                        "--include=*.tsx",
+                        "--include=*.jsx",
+                        "-i",
+                        keyword,
+                        repo_dir,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if grep_result.stdout.strip():
+                    # Make paths relative and limit output
+                    output = grep_result.stdout.replace(workspace_path + "/", "")
+                    lines = output.strip().split("\n")[:20]
+                    grep_results.append(
+                        f"### grep -rn '{keyword}' (top {len(lines)} matches)\n```\n"
+                        + "\n".join(lines)
+                        + "\n```"
+                    )
+
+                    # Track files with matches for code extraction
+                    for line in lines:
+                        if ":" in line:
+                            filepath = line.split(":")[0]
+                            files_with_matches.add(filepath)
+            except Exception:
+                pass
+
+        if grep_results:
+            sections.append("## Grep Results\n" + "\n\n".join(grep_results))
+
+        # Step 5: Extract key code sections from top matched files
+        # Read the most relevant functions around grep matches
+        code_sections: list[str] = []
+        files_read = 0
+        max_files_to_read = 3
+
+        for filepath in sorted(files_with_matches):
+            if files_read >= max_files_to_read:
+                break
+
+            full_path = os.path.join(workspace_path, filepath)
+            if not os.path.isfile(full_path):
+                continue
+
+            try:
+                with open(full_path) as f:
+                    all_lines = f.readlines()
+
+                total_lines = len(all_lines)
+
+                # Find line numbers where keywords matched
+                matched_lines: set[int] = set()
+                for keyword in keywords:
+                    for i, line in enumerate(all_lines, 1):
+                        if keyword.lower() in line.lower():
+                            matched_lines.add(i)
+
+                if not matched_lines:
+                    continue
+
+                # Extract context around each match (15 lines before, 15 after)
+                ranges_to_show: list[tuple[int, int]] = []
+                for line_num in sorted(matched_lines):
+                    start = max(1, line_num - 15)
+                    end = min(total_lines, line_num + 15)
+                    ranges_to_show.append((start, end))
+
+                # Merge overlapping ranges
+                merged: list[tuple[int, int]] = []
+                for start, end in sorted(ranges_to_show):
+                    if merged and start <= merged[-1][1] + 5:
+                        merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+                    else:
+                        merged.append((start, end))
+
+                # Limit to 3 ranges per file, max 100 lines total
+                lines_shown = 0
+                for start, end in merged[:3]:
+                    if lines_shown >= 100:
+                        break
+                    chunk = all_lines[start - 1 : end]
+                    numbered = "".join(f"{start + i:4d} | {line}" for i, line in enumerate(chunk))
+                    code_sections.append(
+                        f"### {filepath} (lines {start}-{end})\n```\n{numbered}```"
+                    )
+                    lines_shown += end - start + 1
+
+                files_read += 1
+            except Exception:
+                continue
+
+        if code_sections:
+            sections.append("## Relevant Code Sections\n" + "\n\n".join(code_sections))
+
+        if not sections:
+            return "[System] Pre-fetched repo but found no matching code."
+
+        context = "\n\n".join(sections)
+
+        # Truncate if too large (keep under 8000 chars to leave room for other context)
+        if len(context) > 8000:
+            context = context[:8000] + "\n\n... (truncated, use grep for more)"
+
+        return f"""
+================================================================================
+PRE-FETCHED REPOSITORY CODE — USE THIS DATA, DO NOT RE-SEARCH
+================================================================================
+Repository: {repo} (cloned to {repo_dir.replace(workspace_path + "/", "")})
+
+{context}
+
+================================================================================
+IMPORTANT: The repo is already cloned in your workspace at VibeWebAgent/.
+Use the grep results above to identify the relevant code. Do NOT read files
+section-by-section. If you need more context, use:
+  grep -n "keyword" VibeWebAgent/path/to/file.js
+  sed -n 'START,ENDp' VibeWebAgent/path/to/file.js
+================================================================================
+"""
 
     def run(
         self,
@@ -512,6 +868,12 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
                     issue_number = issue_match.group(1)
                     github_ctx = self._fetch_github_issue(issue_number)
                     injected_context.append(github_ctx)
+
+                    # Pre-fetch repo code: clone + grep for keywords from the task.
+                    # This gives the agent relevant code snippets in context so it
+                    # doesn't need to search the codebase itself (which wastes iterations).
+                    repo_ctx = self._prefetch_repo_code(task, workspace_path)
+                    injected_context.append(repo_ctx)
 
                 # Keywords that suggest infrastructure/deployment work
                 infra_keywords = [

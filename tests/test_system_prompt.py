@@ -519,7 +519,7 @@ class TestSoftwareEngineerCodeFirstInvestigation:
         assert "crash" in content.lower() or "UI" in content
 
     def test_github_issue_workflow_includes_find_and_grep(self):
-        """The GitHub Issue Investigation workflow must include both find and grep."""
+        """The GitHub Issue Investigation workflow must include grep for targeted search."""
         content = self._read_swe_context()
         workflow_start = content.find("### For GitHub Issue Investigation")
         assert workflow_start != -1, "GitHub Issue Investigation workflow not found"
@@ -531,7 +531,6 @@ class TestSoftwareEngineerCodeFirstInvestigation:
             content[workflow_start:next_section] if next_section != -1 else content[workflow_start:]
         )
         assert "grep" in workflow, "Workflow must include grep for code search"
-        assert "find" in workflow, "Workflow must include find for file discovery"
 
     def test_mentions_infra_only_for_deployment_bugs(self):
         """Must clarify that infra checks are only for deployment-related bugs."""
@@ -950,3 +949,164 @@ class TestAzureLLMConsolidation:
                 f"{agent_file} imports LLM from openhands.sdk. "
                 f"Import from agents.shared.llm instead for Azure compatibility."
             )
+
+
+class TestSoftwareEngineerFileEditorRemoval:
+    """Verify FileEditorTool is removed and pre-fetch is implemented.
+
+    When FileEditorTool is available, gpt-4.1-mini defaults to using its
+    open_file/view_range to read files in sequential 30-line chunks, ignoring
+    prompt instructions to use grep. Removing it forces bash-only (grep, sed, cat).
+
+    Pre-fetching code before the agent starts means the agent receives relevant
+    grep results and code snippets in context, eliminating the need to search.
+    """
+
+    @staticmethod
+    def _read_swe_source() -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "openhands",
+            "software_engineer.py",
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    def test_create_agent_uses_only_terminal_tool(self):
+        """_create_agent must only include TerminalTool, not FileEditorTool in tools list."""
+        content = self._read_swe_source()
+        # Find the _create_agent method
+        method_start = content.find("def _create_agent")
+        assert method_start != -1, "_create_agent method not found"
+        next_def = content.find("\n    def ", method_start + 10)
+        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+
+        assert "TerminalTool" in method_body, "_create_agent must include TerminalTool"
+        # Check only the tools=[...] portion, not the docstring
+        tools_start = method_body.find("tools=[")
+        assert tools_start != -1, "_create_agent must have a tools=[...] list"
+        tools_end = method_body.find("]", tools_start)
+        tools_section = method_body[tools_start : tools_end + 1]
+
+        assert "FileEditorTool" not in tools_section, (
+            "_create_agent tools list must NOT include FileEditorTool. "
+            "gpt-4.1-mini defaults to open_file/view_range which reads files "
+            "in sequential 30-line chunks, wasting all iterations."
+        )
+
+    def test_create_agent_docstring_explains_why(self):
+        """_create_agent docstring must explain why FileEditorTool is excluded."""
+        content = self._read_swe_source()
+        method_start = content.find("def _create_agent")
+        assert method_start != -1
+        next_def = content.find("\n    def ", method_start + 10)
+        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+
+        assert "FileEditorTool" in method_body.split("return")[0], (
+            "_create_agent docstring must mention FileEditorTool to explain "
+            "why it's excluded from the tools list"
+        )
+
+    def test_prefetch_repo_code_method_exists(self):
+        """SWE agent must have a _prefetch_repo_code method."""
+        content = self._read_swe_source()
+        assert "def _prefetch_repo_code" in content, (
+            "SWE agent must have _prefetch_repo_code method to pre-fetch code "
+            "before the agent starts, eliminating the need for sequential search"
+        )
+
+    def test_prefetch_clones_repo(self):
+        """_prefetch_repo_code must clone the VibeTechnologies/VibeWebAgent repo."""
+        content = self._read_swe_source()
+        method_start = content.find("def _prefetch_repo_code")
+        assert method_start != -1
+        next_def = content.find("\n    def ", method_start + 10)
+        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+
+        assert "git" in method_body and "clone" in method_body, (
+            "_prefetch_repo_code must clone the repo"
+        )
+        assert "VibeTechnologies/VibeWebAgent" in method_body, (
+            "_prefetch_repo_code must clone VibeTechnologies/VibeWebAgent"
+        )
+
+    def test_prefetch_runs_grep(self):
+        """_prefetch_repo_code must grep for keywords from the task."""
+        content = self._read_swe_source()
+        method_start = content.find("def _prefetch_repo_code")
+        assert method_start != -1
+        next_def = content.find("\n    def ", method_start + 10)
+        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+
+        assert "grep" in method_body, "_prefetch_repo_code must run grep to find relevant code"
+
+    def test_prefetch_extracts_keywords(self):
+        """_prefetch_repo_code must extract keywords from the task text."""
+        content = self._read_swe_source()
+        method_start = content.find("def _prefetch_repo_code")
+        assert method_start != -1
+        next_def = content.find("\n    def ", method_start + 10)
+        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+
+        assert "keywords" in method_body, "_prefetch_repo_code must extract keywords from the task"
+        assert "skip_words" in method_body, (
+            "_prefetch_repo_code must filter out common English words"
+        )
+
+    def test_run_calls_prefetch_for_github_issues(self):
+        """run() must call _prefetch_repo_code when a GitHub issue is detected."""
+        content = self._read_swe_source()
+        method_start = content.find("def run(")
+        assert method_start != -1
+        next_def = content.find("\n    def ", method_start + 10)
+        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+
+        assert "_prefetch_repo_code" in method_body, (
+            "run() must call _prefetch_repo_code when a GitHub issue is detected"
+        )
+
+    def test_phase1_mentions_prefetched_data(self):
+        """Phase 1 workflow must reference PRE-FETCHED DATA."""
+        content = self._read_swe_source()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "PRE-FETCHED" in ctx, "Phase 1 workflow must mention PRE-FETCHED data"
+
+    def test_prompt_says_do_not_clone_again(self):
+        """Prompt must say DO NOT clone the repo again."""
+        content = self._read_swe_source()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "DO NOT clone the repo again" in ctx, (
+            "Prompt must tell agent not to clone again since pre-fetch already did it"
+        )
+
+    def test_prompt_says_do_not_read_entire_files(self):
+        """Prompt must say DO NOT read entire files."""
+        content = self._read_swe_source()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "DO NOT read entire files" in ctx, (
+            "Prompt must tell agent not to read entire files since "
+            "relevant sections are already provided"
+        )
+
+    def test_prefetch_limits_output_size(self):
+        """_prefetch_repo_code must limit output to prevent context overflow."""
+        content = self._read_swe_source()
+        method_start = content.find("def _prefetch_repo_code")
+        assert method_start != -1
+        next_def = content.find("\n    def ", method_start + 10)
+        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+
+        assert "8000" in method_body or "truncat" in method_body.lower(), (
+            "_prefetch_repo_code must limit output size to prevent context overflow"
+        )
