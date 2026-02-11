@@ -30,33 +30,21 @@ def fetch_kubectl_context() -> str:
 
 
 try:
-    from openhands.sdk import LLM, Agent, LocalConversation, Tool
+    from openhands.sdk import Agent, LocalConversation, Tool
     from openhands.tools.file_editor import FileEditorTool
     from openhands.tools.terminal import TerminalTool
 
     OPENHANDS_AVAILABLE = True
 
-    class AzureLLM(LLM):
-        """LLM subclass that forces completion API for Azure OpenAI.
-
-        Azure OpenAI doesn't support the Responses API endpoint, so we override
-        uses_responses_api() to always return False.
-        """
-
-        def uses_responses_api(self) -> bool:
-            """Azure OpenAI doesn't support the Responses API."""
-            return False
-
 except ImportError:
     OPENHANDS_AVAILABLE = False
-    LLM = None
-    AzureLLM = None
     Agent = None
     LocalConversation = None
     Tool = None
     TerminalTool = None
     FileEditorTool = None
 
+from agents.shared.llm import LLM, AzureLLM
 
 SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
 
