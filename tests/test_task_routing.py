@@ -259,43 +259,25 @@ class TestEdgeCases:
         assert result == "deployment"
 
 
-class TestHandoffDetection:
-    """Handoff messages from other agents should get the handoff template."""
+class TestHandoffPassthrough:
+    """Handoff messages are forwarded as-is — the gateway doesn't add special templates.
 
-    def test_handoff_from_support_engineer(self):
+    Per design.md, the gateway is a message router. Handoff intelligence belongs
+    in the agent's system prompt (AGENTS.md / agent_service), not the gateway.
+    """
+
+    def test_handoff_message_gets_investigation_template(self):
+        """Handoff messages go through the normal investigation template."""
         result = classify_task_template(
             "software_engineer",
             "[Handoff from SupportEngineer]\n\nOriginal request: ...\n\nPrevious response: ...",
         )
-        assert result == "handoff"
+        assert result == "investigation"
 
-    def test_handoff_from_release_engineer(self):
-        result = classify_task_template(
-            "support_engineer",
-            "[Handoff from ReleaseEngineer]\n\nOriginal request: customer reports...",
-        )
-        assert result == "handoff"
-
-    def test_handoff_with_investigation_keywords(self):
-        """Handoff should take priority over investigation keywords in the body."""
-        result = classify_task_template(
-            "software_engineer",
-            "[Handoff from SupportEngineer]\n\nOriginal request: investigate the 400 errors...",
-        )
-        assert result == "handoff"
-
-    def test_handoff_with_deploy_keywords(self):
-        """Handoff should take priority over deployment keywords."""
+    def test_handoff_with_deploy_keywords_for_release_engineer(self):
+        """Handoff to ReleaseEngineer with deploy keywords gets deployment template."""
         result = classify_task_template(
             "release_engineer",
             "[Handoff from SupportEngineer]\n\nOriginal request: deploy to staging...",
         )
-        assert result == "handoff"
-
-    def test_non_handoff_mentioning_handoff_word(self):
-        """Regular message containing the word 'handoff' should NOT match."""
-        result = classify_task_template(
-            "software_engineer",
-            "@SoftwareEngineer the handoff from support was unclear, please investigate.",
-        )
-        assert result == "investigation"
+        assert result == "deployment"

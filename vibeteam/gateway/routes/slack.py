@@ -298,12 +298,8 @@ def classify_task_template(role: str, user_message: str) -> str:
     """Classify a message into a task template type.
 
     Returns:
-        'deployment', 'notification', 'handoff', or 'investigation'
+        'deployment', 'notification', or 'investigation'
     """
-    # Detect handoff messages — these come from another agent, not a user
-    if user_message.strip().startswith("[Handoff from"):
-        return "handoff"
-
     msg_lower = user_message.lower()
 
     is_notification = any(
@@ -529,54 +525,6 @@ A user has requested you to send a notification via Slack.
 2. **Tools:** You do NOT need to run kubectl, Sentry, or curl.
 3. **Format:** Just write the message clearly.
 4. **Handoffs:** If you need to hand off, use the standard format (e.g., @RoleName).
-"""
-
-    elif template == "handoff":
-        # Handoff from another agent — focus on YOUR expertise, don't re-investigate
-        return f"""## Handoff from Another Agent
-
-You are receiving a handoff from a teammate who already investigated.
-
-### Handoff Details
-{user_message}
-### End Handoff Details
-
-### Context
-- User ID: {user_id}
-- Channel: {channel}
-- Thread: {thread_display}
-
-### CRITICAL INSTRUCTIONS FOR HANDOFFS
-
-**DO NOT repeat work the previous agent already did.**
-The previous agent's findings are included above. They already ran:
-- Sentry checks
-- kubectl commands (pods, logs, events)
-- curl/endpoint tests
-
-**Your job is to ADD VALUE with YOUR expertise:**
-- If you are SoftwareEngineer: Focus on CODE — clone the repo, search for
-  the relevant code, identify the bug, and create a fix or PR.
-- If you are ReleaseEngineer: Focus on ACTIONS — rollback, restart, scale.
-- If you are SupportEngineer: Focus on COMMUNICATION — notify customers.
-
-**SPECIFIC INSTRUCTIONS FOR CODE INVESTIGATION (SoftwareEngineer):**
-1. Read the previous agent's root cause analysis carefully
-2. Clone the relevant repo: `git clone --depth 1 https://github.com/VibeTechnologies/VibeWebAgent/`
-3. Search for the specific code mentioned in the handoff (e.g., missing route, endpoint config)
-4. Identify where the fix should go and what it should be
-5. If possible, create a branch, implement the fix, and open a PR
-
-**FORBIDDEN:**
-- DO NOT re-run Sentry, kubectl, or curl unless you have a specific NEW question
-- DO NOT copy-paste the previous agent's findings as your own
-- DO NOT tag your own role (e.g., if you are SoftwareEngineer, do NOT write @SoftwareEngineer)
-- DO NOT just summarize what was already found — provide NEW analysis
-
-**REQUIRED OUTPUT:**
-1. Acknowledge the handoff and the previous agent's findings (1-2 sentences)
-2. Your NEW investigation (code search, repo analysis, etc.)
-3. Your recommendation or action taken (PR created, fix identified, etc.)
 """
 
     else:
