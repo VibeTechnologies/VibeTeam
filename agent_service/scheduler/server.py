@@ -411,7 +411,7 @@ def main():
     host = os.getenv("HOST", "0.0.0.0")
 
     uvicorn.run(
-        "agents.scheduler.server:app",
+        "agent_service.scheduler.server:app",
         host=host,
         port=port,
         reload=os.getenv("DEBUG", "").lower() == "true",

@@ -6,7 +6,7 @@ services:
   autogen:
     build:
       context: .
-      dockerfile: agents/autogen/Dockerfile
+      dockerfile: agent_service/autogen/Dockerfile
     environment:
       - AZURE_API_KEY=${AZURE_API_KEY}
       - AZURE_API_BASE=${AZURE_API_BASE}
@@ -26,7 +26,7 @@ services:
   crewai:
     build:
       context: .
-      dockerfile: agents/crewai/Dockerfile
+      dockerfile: agent_service/crewai/Dockerfile
     environment:
       - AZURE_API_KEY=${AZURE_API_KEY}
       - AZURE_API_BASE=${AZURE_API_BASE}
@@ -46,7 +46,7 @@ services:
   openhands:
     build:
       context: .
-      dockerfile: agents/openhands/Dockerfile
+      dockerfile: agent_service/openhands/Dockerfile
     environment:
       - AZURE_API_KEY=${AZURE_API_KEY}
       - AZURE_API_BASE=${AZURE_API_BASE}
