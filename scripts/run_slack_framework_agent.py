@@ -73,19 +73,19 @@ def get_agent_class(framework: str, agent_key: str) -> type:
 
     if framework == "autogen":
         if agent_name == "software_engineer":
-            from agents.agent_service.autogen.software_engineer import AutoGenSoftwareEngineer
+            from agent_service.autogen.software_engineer import AutoGenSoftwareEngineer
 
             return AutoGenSoftwareEngineer
         elif agent_name == "release_engineer":
-            from agents.agent_service.autogen.release_engineer import AutoGenReleaseEngineer
+            from agent_service.autogen.release_engineer import AutoGenReleaseEngineer
 
             return AutoGenReleaseEngineer
         elif agent_name == "support_engineer":
-            from agents.agent_service.autogen.support_engineer import AutoGenSupportEngineer
+            from agent_service.autogen.support_engineer import AutoGenSupportEngineer
 
             return AutoGenSupportEngineer
         elif agent_name == "product_manager":
-            from agents.agent_service.autogen.product_manager import AutoGenProductManager
+            from agent_service.autogen.product_manager import AutoGenProductManager
 
             return AutoGenProductManager
         else:
@@ -93,19 +93,19 @@ def get_agent_class(framework: str, agent_key: str) -> type:
 
     elif framework == "crewai":
         if agent_name == "software_engineer":
-            from agents.agent_service.crewai.software_engineer import CrewAISoftwareEngineer
+            from agent_service.crewai.software_engineer import CrewAISoftwareEngineer
 
             return CrewAISoftwareEngineer
         elif agent_name == "release_engineer":
-            from agents.agent_service.crewai.release_engineer import CrewAIReleaseEngineer
+            from agent_service.crewai.release_engineer import CrewAIReleaseEngineer
 
             return CrewAIReleaseEngineer
         elif agent_name == "support_engineer":
-            from agents.agent_service.crewai.support_engineer import CrewAISupportEngineer
+            from agent_service.crewai.support_engineer import CrewAISupportEngineer
 
             return CrewAISupportEngineer
         elif agent_name == "product_manager":
-            from agents.agent_service.crewai.product_manager import CrewAIProductManager
+            from agent_service.crewai.product_manager import CrewAIProductManager
 
             return CrewAIProductManager
         else:
@@ -113,19 +113,19 @@ def get_agent_class(framework: str, agent_key: str) -> type:
 
     elif framework == "openhands":
         if agent_name == "software_engineer":
-            from agents.agent_service.openhands.software_engineer import OpenHandsSoftwareEngineer
+            from agent_service.openhands.software_engineer import OpenHandsSoftwareEngineer
 
             return OpenHandsSoftwareEngineer
         elif agent_name == "release_engineer":
-            from agents.agent_service.openhands.release_engineer import OpenHandsReleaseEngineer
+            from agent_service.openhands.release_engineer import OpenHandsReleaseEngineer
 
             return OpenHandsReleaseEngineer
         elif agent_name == "support_engineer":
-            from agents.agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+            from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
             return OpenHandsSupportEngineer
         elif agent_name == "product_manager":
-            from agents.agent_service.openhands.product_manager import OpenHandsProductManager
+            from agent_service.openhands.product_manager import OpenHandsProductManager
 
             return OpenHandsProductManager
         else:

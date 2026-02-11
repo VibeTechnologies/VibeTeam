@@ -282,7 +282,7 @@ class TestAutoGenGmailIntegration:
     @pytest.fixture
     def support_engineer(self, azure_credentials, gmail_credentials):
         """Create AutoGen SupportEngineer with real credentials."""
-        from agents.agent_service.autogen.support_engineer import AutoGenSupportEngineer
+        from agent_service.autogen.support_engineer import AutoGenSupportEngineer
 
         return AutoGenSupportEngineer()
 
@@ -342,7 +342,7 @@ class TestCrewAIGmailIntegration:
     @pytest.fixture
     def support_engineer(self, azure_credentials, gmail_credentials):
         """Create CrewAI SupportEngineer with real credentials."""
-        from agents.agent_service.crewai.support_engineer import CrewAISupportEngineer
+        from agent_service.crewai.support_engineer import CrewAISupportEngineer
 
         return CrewAISupportEngineer()
 
@@ -402,7 +402,7 @@ class TestOpenHandsGmailIntegration:
     @pytest.fixture
     def support_engineer(self, azure_credentials, gmail_credentials):
         """Create OpenHands SupportEngineer with real credentials."""
-        from agents.agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+        from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
         return OpenHandsSupportEngineer()
 
@@ -498,9 +498,9 @@ class TestCrossFrameworkGmailComparison:
         self, azure_credentials, gmail_credentials, verify_gmail_connectivity
     ):
         """Run identical email query across all three frameworks."""
-        from agents.agent_service.autogen.support_engineer import AutoGenSupportEngineer
-        from agents.agent_service.crewai.support_engineer import CrewAISupportEngineer
-        from agents.agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+        from agent_service.autogen.support_engineer import AutoGenSupportEngineer
+        from agent_service.crewai.support_engineer import CrewAISupportEngineer
+        from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
         task = "Check my inbox for any unread emails and provide a summary."
 

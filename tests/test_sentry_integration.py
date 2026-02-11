@@ -136,7 +136,7 @@ class TestAutoGenSentryIntegration:
     @pytest.fixture
     def support_engineer(self, azure_credentials, sentry_credentials):
         """Create AutoGen SupportEngineer with real credentials."""
-        from agents.agent_service.autogen.support_engineer import AutoGenSupportEngineer
+        from agent_service.autogen.support_engineer import AutoGenSupportEngineer
 
         return AutoGenSupportEngineer()
 
@@ -209,7 +209,7 @@ class TestCrewAISentryIntegration:
     @pytest.fixture
     def support_engineer(self, azure_credentials, sentry_credentials):
         """Create CrewAI SupportEngineer with real credentials."""
-        from agents.agent_service.crewai.support_engineer import CrewAISupportEngineer
+        from agent_service.crewai.support_engineer import CrewAISupportEngineer
 
         return CrewAISupportEngineer()
 
@@ -272,7 +272,7 @@ class TestOpenHandsSentryIntegration:
     @pytest.fixture
     def support_engineer(self, azure_credentials, sentry_credentials):
         """Create OpenHands SupportEngineer with real credentials."""
-        from agents.agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+        from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
         return OpenHandsSupportEngineer()
 
@@ -341,9 +341,9 @@ class TestCrossFrameworkSentryComparison:
         self, azure_credentials, sentry_credentials, verify_sentry_connectivity
     ):
         """Run identical Sentry query across all three frameworks."""
-        from agents.agent_service.autogen.support_engineer import AutoGenSupportEngineer
-        from agents.agent_service.crewai.support_engineer import CrewAISupportEngineer
-        from agents.agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+        from agent_service.autogen.support_engineer import AutoGenSupportEngineer
+        from agent_service.crewai.support_engineer import CrewAISupportEngineer
+        from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
         task = "Query Sentry for unresolved issues and list them with their error counts."
 

@@ -10,7 +10,7 @@ Verifies that extract_response_from_events correctly handles:
 
 from __future__ import annotations
 
-from agents.agent_service.openhands.utils import extract_response_from_events
+from agent_service.openhands.utils import extract_response_from_events
 
 # ---------------------------------------------------------------------------
 # Lightweight mock objects that replicate OpenHands event structures

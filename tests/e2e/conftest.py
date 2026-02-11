@@ -407,65 +407,65 @@ def get_agent_class(framework: str, role: str):
     """Import and return the agent class for the given framework and role."""
     if framework == "autogen":
         if role == "software_engineer":
-            from agents.agent_service.autogen.software_engineer import AutoGenSoftwareEngineer
+            from agent_service.autogen.software_engineer import AutoGenSoftwareEngineer
 
             return AutoGenSoftwareEngineer
         elif role == "support_engineer":
-            from agents.agent_service.autogen.support_engineer import AutoGenSupportEngineer
+            from agent_service.autogen.support_engineer import AutoGenSupportEngineer
 
             return AutoGenSupportEngineer
         elif role == "release_engineer":
-            from agents.agent_service.autogen.release_engineer import AutoGenReleaseEngineer
+            from agent_service.autogen.release_engineer import AutoGenReleaseEngineer
 
             return AutoGenReleaseEngineer
         elif role == "product_manager":
-            from agents.agent_service.autogen.product_manager import AutoGenProductManager
+            from agent_service.autogen.product_manager import AutoGenProductManager
 
             return AutoGenProductManager
         elif role == "marketing_manager":
-            from agents.agent_service.autogen.marketing_manager import AutoGenMarketingManager
+            from agent_service.autogen.marketing_manager import AutoGenMarketingManager
 
             return AutoGenMarketingManager
     elif framework == "crewai":
         if role == "software_engineer":
-            from agents.agent_service.crewai.software_engineer import CrewAISoftwareEngineer
+            from agent_service.crewai.software_engineer import CrewAISoftwareEngineer
 
             return CrewAISoftwareEngineer
         elif role == "support_engineer":
-            from agents.agent_service.crewai.support_engineer import CrewAISupportEngineer
+            from agent_service.crewai.support_engineer import CrewAISupportEngineer
 
             return CrewAISupportEngineer
         elif role == "release_engineer":
-            from agents.agent_service.crewai.release_engineer import CrewAIReleaseEngineer
+            from agent_service.crewai.release_engineer import CrewAIReleaseEngineer
 
             return CrewAIReleaseEngineer
         elif role == "product_manager":
-            from agents.agent_service.crewai.product_manager import CrewAIProductManager
+            from agent_service.crewai.product_manager import CrewAIProductManager
 
             return CrewAIProductManager
         elif role == "marketing_manager":
-            from agents.agent_service.crewai.marketing_manager import CrewAIMarketingManager
+            from agent_service.crewai.marketing_manager import CrewAIMarketingManager
 
             return CrewAIMarketingManager
     elif framework == "openhands":
         if role == "software_engineer":
-            from agents.agent_service.openhands.software_engineer import OpenHandsSoftwareEngineer
+            from agent_service.openhands.software_engineer import OpenHandsSoftwareEngineer
 
             return OpenHandsSoftwareEngineer
         elif role == "support_engineer":
-            from agents.agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+            from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
             return OpenHandsSupportEngineer
         elif role == "release_engineer":
-            from agents.agent_service.openhands.release_engineer import OpenHandsReleaseEngineer
+            from agent_service.openhands.release_engineer import OpenHandsReleaseEngineer
 
             return OpenHandsReleaseEngineer
         elif role == "product_manager":
-            from agents.agent_service.openhands.product_manager import OpenHandsProductManager
+            from agent_service.openhands.product_manager import OpenHandsProductManager
 
             return OpenHandsProductManager
         elif role == "marketing_manager":
-            from agents.agent_service.openhands.marketing_manager import OpenHandsMarketingManager
+            from agent_service.openhands.marketing_manager import OpenHandsMarketingManager
 
             return OpenHandsMarketingManager
 

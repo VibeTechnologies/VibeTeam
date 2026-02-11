@@ -17,7 +17,7 @@ services:
       - autogen-sessions:/app/.sessions
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "from agents.agent_service.autogen import AutoGenReleaseEngineer; print('OK')"]
+      test: ["CMD", "python", "-c", "from agent_service.autogen import AutoGenReleaseEngineer; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -37,7 +37,7 @@ services:
       - crewai-sessions:/app/.sessions
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "from agents.agent_service.crewai import CrewAIReleaseEngineer; print('OK')"]
+      test: ["CMD", "python", "-c", "from agent_service.crewai import CrewAIReleaseEngineer; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -58,7 +58,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # For OpenHands sandbox
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "from agents.agent_service.openhands import OpenHandsReleaseEngineer; print('OK')"]
+      test: ["CMD", "python", "-c", "from agent_service.openhands import OpenHandsReleaseEngineer; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
