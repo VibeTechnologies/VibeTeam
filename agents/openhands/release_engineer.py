@@ -415,9 +415,11 @@ WRITE operations (apply, rollout, restart, scale, undo). Do NOT skip actions
 just because you have the current state above.
 ================================================================================
 """
-                full_task = f"{RELEASE_ENGINEER_CONTEXT}\n{context_block}\nTask: {task}"
+                # NOTE: RELEASE_ENGINEER_CONTEXT is already in the system prompt
+                # via system_prompt_kwargs. Do NOT duplicate it in the user message.
+                full_task = f"{context_block}\nTask: {task}"
             else:
-                full_task = f"{RELEASE_ENGINEER_CONTEXT}\n\nTask: {task}"
+                full_task = f"Task: {task}"
 
             # Use send_message + run for the full agentic loop with tools
             conversation.send_message(full_task)

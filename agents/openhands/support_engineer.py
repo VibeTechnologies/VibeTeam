@@ -471,16 +471,19 @@ INJECTED DATA FROM MONITORING SYSTEMS - THIS IS YOUR DATA, USE IT!
 END OF INJECTED DATA - The above data has ALREADY been fetched for you
 ================================================================================
 """
-                full_task = f"""{SUPPORT_ENGINEER_CONTEXT}
-{context_block}
+                # NOTE: SUPPORT_ENGINEER_CONTEXT is already injected into the
+                # system prompt via system_prompt_kwargs in _create_agent().
+                # Do NOT include it again here — duplicating it wastes ~17k chars
+                # and pushes the context past OpenHands' 50k char limit, causing
+                # truncation that makes the agent blind to injected data.
+                full_task = f"""{context_block}
 
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
 """
             else:
-                full_task = f"""{SUPPORT_ENGINEER_CONTEXT}
-
+                full_task = f"""
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
