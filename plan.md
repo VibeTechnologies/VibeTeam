@@ -1,76 +1,89 @@
 # Current Work Plan
 
-## Status: PR pending — SWE iteration budget fix (branch: fix/swe-iteration-budget)
-
-**Branch:** `fix/swe-iteration-budget` (based on `master` at `874ba07`)
+## Status: PR pending — SWE investigation strategy fix (branch: fix/swe-investigation-strategy)
 
 ---
 
-## Current Fix: SWE Iteration Budget (github_issue eval)
+## In Progress: SWE Investigation Strategy Fix
+
+**Branch:** `fix/swe-investigation-strategy`
+**PR:** Pending
 
 ### Problem
-The `github_issue` eval fails with all 0.00 scores because the SoftwareEngineer agent:
-1. Uses all 25 iterations searching code (grep, find, cat) without producing a summary
-2. Never calls `finish()`, so the response is empty
-3. The fallback extraction chain (ThinkAction, ActionEvent.thought, event summaries) from commit `874ba07` still returns empty because gpt-4.1-mini doesn't populate thought fields
+The `github_issue` eval fails because the SWE agent reads files sequentially (method-by-method, lines 1-40, 41-80, etc.) instead of using grep to find target code. Even with 35 iterations, it exhausts them all reading one file without producing a diagnosis.
 
-### Root Cause
-- 25 iterations is insufficient for code search tasks (clone + search + read + fix + verify)
-- The iteration warning at the TOP of the prompt (lines 62-73) gets lost during the agent's investigation loop
-- No reminder near the END of the prompt catches the agent before it exhausts iterations
-
-### Fix (Two Parts)
-
-**Part 1: Prompt Changes** (`agents/openhands/software_engineer.py`)
-- Updated STRICT ITERATION LIMIT: 25→35 max, wrap up at ~25 (was 25/15)
-- Added ITERATION CHECK step to GitHub Issue Investigation workflow (step 7)
-- Added **FINAL REMINDER** section at the END of the prompt with escalating urgency:
-  - After 25 calls: STOP investigation, begin summary
-  - After 30 calls: EMERGENCY mode, call finish() immediately
-  - Includes checklist of what to include in finish()
-
-**Part 2: Config Change** (`agents/openhands/software_engineer.py`)
-- Changed `max_iteration_per_run` from 25 to 35 (SWE only)
-- SupportEngineer and ReleaseEngineer remain at 25 (they finish in 10-15 iterations)
-
-### Tests Added (`tests/test_system_prompt.py`)
-- `TestSoftwareEngineerIterationBudget`: 9 tests
-  - FINAL REMINDER exists in last 30% of prompt
-  - FINAL REMINDER mentions finish()
-  - FINAL REMINDER has escalating urgency (EMERGENCY/IMMEDIATELY)
-  - STRICT ITERATION LIMIT says 35
-  - Wrap-up at ~25 iterations
-  - max_iteration_per_run=35 in code
-  - GitHub Issue workflow has ITERATION CHECK
-  - Other agents still use 25 iterations
+### Fix
+- Added FORBIDDEN ACTIONS section with 4 explicit anti-patterns and concrete GOOD vs BAD investigation examples
+- Limited file exploration to 3 files max, 30 lines per read without grep-targeted line numbers
+- Trigger wrap-up at iteration 20 (was 25) to ensure finish() is called sooner
+- Improved 3-phase workflow with explicit iteration budgets per phase (8/17/10)
+- 4 new tests for FORBIDDEN ACTIONS enforcement
 
 ### Checklist
-- [x] Create feature branch `fix/swe-iteration-budget`
-- [x] Update STRICT ITERATION LIMIT numbers (25→35, 15→25)
-- [x] Add FINAL REMINDER section at end of prompt
-- [x] Add ITERATION CHECK step to GitHub Issue Investigation workflow
-- [x] Change max_iteration_per_run from 25 to 35
-- [x] Add 9 tests for iteration budget
-- [x] Full test suite passes (506 passed, 79 skipped)
-- [x] Lint clean
+- [x] Add FORBIDDEN ACTIONS section to software_engineer.py
+- [x] Add GOOD vs BAD investigation examples
+- [x] Update 3-phase workflow iteration budgets
+- [x] Update FINAL REMINDER thresholds (wrap at 20, emergency at 25, critical at 30)
+- [x] Add 4 new tests (forbidden actions section, sequential reading, file limits, examples)
+- [x] Update existing test for new wrap-up threshold (25 -> 20)
+- [x] All 96 system prompt tests pass
+- [x] Full suite passes (537 passed, 78 skipped, 0 failed)
+- [x] Lint clean (fixed `\|` escape sequence)
 - [ ] Commit and push
 - [ ] Create PR
 - [ ] CI checks pass
-- [ ] Merge and deploy
-- [ ] Run `github_issue` eval to verify fix
+- [ ] Merge
+- [ ] Deploy and run `github_issue` eval
 - [ ] Run `support_400_errors` regression eval
 
 ---
 
-## Previous Eval Results (2026-02-10 23:51 UTC)
+## Completed: SWE Investigation Workflow & Response Extraction (#82)
 
-| Scenario | Result | Key Scores | Latency | Notes |
-|----------|--------|------------|---------|-------|
-| `support_400_errors` | PASS | IQ:0.90, EBD:1.00, HC:0.70 | 68s | Regression check passed |
-| `stripe_webhook_failure` | PASS | IQ:0.90, TC:0.90, EBD:0.90, HC:0.90 | 74s | New scenario, strong pass |
-| `support_notify_check` | PASS | NO:1.00 | 21s | Perfect score |
-| `github_issue` | FAIL | All 0.00 | 132s | Agent used all 25 iterations, empty response |
-| `release_deploy` | BLOCKED | N/A | 900s x4 | Pod killed mid-request by other sessions |
+**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/82 — **Merged** (`0ee5ffb`)
+
+---
+
+## Completed: SWE 3-Phase Workflow (#81)
+
+**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/81 — **Merged** (`02100ba`)
+
+---
+
+## Completed: AzureLLM Consolidation (#80)
+
+**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/80 — **Merged** (`d3e8dea`)
+
+### Fix
+- Created `agents/shared/llm.py` as single source of truth for AzureLLM
+- Updated all 5 agent files to import from shared module
+- Fixed marketing_manager and product_manager to use AzureLLM (was base LLM causing 404)
+- 23 new tests in `TestAzureLLMConsolidation`
+
+---
+
+## Completed: SWE Iteration Budget (#79)
+
+**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/79 — **Merged** (`ae162bb`)
+
+### Fix
+- Increased `max_iteration_per_run` from 25 to 35 for SWE agent
+- Added FINAL REMINDER section at end of prompt with escalating urgency
+- Added ITERATION CHECK step to GitHub Issue Investigation workflow
+- 8 new tests in `TestSoftwareEngineerIterationBudget`
+
+---
+
+## Eval Results (2026-02-10)
+
+| Scenario | Result | Key Scores | Notes |
+|----------|--------|------------|-------|
+| `support_400_errors` | PASS | IQ:0.90, EBD:0.90, HC:0.80 | Post AzureLLM consolidation |
+| `stripe_webhook_failure` | PASS | IQ:0.90, TC:0.90, EBD:0.90, HC:0.90 | Strong pass |
+| `support_notify_check` | PASS | NO:1.00 | Perfect score |
+| `github_issue` (stale pod) | FAIL | All 0.20 | Agent read files sequentially, ran out of iterations |
+| `github_issue` (35 iter pod) | TIMEOUT | N/A | No response in 600s — agent still reading files |
+| `release_deploy` | BLOCKED | N/A | Pod killed mid-request by other sessions |
 
 ---
 
@@ -84,9 +97,13 @@ The `github_issue` eval fails with all 0.00 scores because the SoftwareEngineer 
 | #72 | Gmail Processor K8s Deployment | Merged |
 | #73 | Wire CALLBACK_SECRET to K8s | Merged |
 | #74 | `--use-async` flag for eval/trigger | Merged |
-| #76 | Type annotation fixes (pyright) | Merged (`be61bb2`) |
-| #77 | Sentry routing + deploy secrets | Merged (`6ed158f`) |
-| #78 | Eval timeouts + agent prompt improvements | Merged (`5c0b634`) |
+| #76 | Type annotation fixes (pyright) | Merged |
+| #77 | Sentry routing + deploy secrets | Merged |
+| #78 | Eval timeouts + agent prompt improvements | Merged |
+| #79 | SWE iteration budget + FINAL REMINDER | Merged |
+| #80 | AzureLLM consolidation + marketing/product fix | Merged |
+| #81 | SWE 3-phase workflow | Merged |
+| #82 | SWE investigation workflow + response extraction | Merged |
 
 ## Open Issues
 
@@ -104,5 +121,12 @@ The `github_issue` eval fails with all 0.00 scores because the SoftwareEngineer 
 | SENTRY_CLIENT_SECRET | Needs Sentry admin to retrieve from dashboard |
 | Issue #22 full closure | Needs Gmail OAuth credentials deployed to cluster |
 
+## Next Steps (after current PR)
+
+1. Deploy and run `github_issue` eval to verify FORBIDDEN ACTIONS fix
+2. Run `support_400_errors` regression eval
+3. If `github_issue` still fails, consider runtime iteration counting in agent code
+4. Fix `release_deploy` eval reliability (infrastructure contention)
+
 ---
-Last updated: 2026-02-11 00:20 UTC
+Last updated: 2026-02-11 UTC
