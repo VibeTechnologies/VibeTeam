@@ -545,9 +545,10 @@ class TestSoftwareEngineerIterationBudget:
     The github_issue eval fails when the SWE agent exhausts all iterations
     searching code without calling finish(). These tests ensure:
     1. The prompt has a FINAL REMINDER at the end about calling finish()
-    2. The iteration limit numbers are consistent (35 max, wrap up at 25)
+    2. The iteration limit numbers are consistent (35 max, wrap up at 20)
     3. max_iteration_per_run is set to 35 (higher than other agents)
     4. The GitHub Issue workflow includes an iteration check step
+    5. FORBIDDEN ACTIONS section prevents sequential file reading
     """
 
     @staticmethod
@@ -626,8 +627,8 @@ class TestSoftwareEngineerIterationBudget:
             f"STRICT ITERATION LIMIT must mention 35 max iterations. Found: {limit_section[:100]}"
         )
 
-    def test_wrap_up_at_25_iterations(self):
-        """The prompt must tell the agent to wrap up at ~25 iterations."""
+    def test_wrap_up_at_20_iterations(self):
+        """The prompt must tell the agent to wrap up at ~20 iterations."""
         content = self._read_swe_context()
         ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
         ctx_end = content.find('"""', ctx_start + 30)
@@ -637,8 +638,8 @@ class TestSoftwareEngineerIterationBudget:
         assert limit_start != -1
         limit_section = ctx[limit_start : limit_start + 200]
 
-        assert "25" in limit_section, (
-            f"STRICT ITERATION LIMIT must tell agent to wrap up at ~25 calls. "
+        assert "20" in limit_section, (
+            f"STRICT ITERATION LIMIT must tell agent to wrap up at ~20 calls. "
             f"Found: {limit_section[:100]}"
         )
 
@@ -681,6 +682,63 @@ class TestSoftwareEngineerIterationBudget:
                 f"{agent_file} should still use max_iteration_per_run=25. "
                 f"Only SWE agent needs 35 iterations."
             )
+
+    def test_has_forbidden_actions_section(self):
+        """Prompt must have a FORBIDDEN ACTIONS section to prevent sequential file reading."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "FORBIDDEN ACTIONS" in ctx, (
+            "SOFTWARE_ENGINEER_CONTEXT must contain a FORBIDDEN ACTIONS section "
+            "to prevent the agent from reading files section-by-section"
+        )
+
+    def test_forbidden_actions_mentions_sequential_reading(self):
+        """FORBIDDEN ACTIONS must explicitly forbid sequential file reading."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        forbidden_start = ctx.find("FORBIDDEN ACTIONS")
+        assert forbidden_start != -1
+        forbidden_section = ctx[forbidden_start : forbidden_start + 800]
+
+        assert (
+            "section-by-section" in forbidden_section.lower()
+            or "sequentially" in forbidden_section.lower()
+        ), "FORBIDDEN ACTIONS must warn against reading files section-by-section"
+
+    def test_forbidden_actions_limits_files_explored(self):
+        """FORBIDDEN ACTIONS must limit the number of files the agent explores."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        forbidden_start = ctx.find("FORBIDDEN ACTIONS")
+        assert forbidden_start != -1
+        forbidden_section = ctx[forbidden_start : forbidden_start + 800]
+
+        assert "3 files" in forbidden_section, (
+            "FORBIDDEN ACTIONS must limit exploration to 3 files max"
+        )
+
+    def test_has_good_bad_investigation_examples(self):
+        """Prompt must show concrete good vs bad investigation examples."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "GOOD investigation" in ctx or "Good investigation" in ctx, (
+            "Prompt must include a GOOD investigation example showing grep-first strategy"
+        )
+        assert "BAD investigation" in ctx or "Bad investigation" in ctx, (
+            "Prompt must include a BAD investigation example showing what NOT to do"
+        )
 
 
 class TestAzureLLMConsolidation:
