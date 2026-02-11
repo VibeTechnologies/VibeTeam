@@ -240,6 +240,7 @@ SCENARIOS = {
             "with the staging deployment and notify the team when done."
         ),
         "expected_agent": "release_engineer",
+        "disabled": True,  # DISABLED: agent service is live on prod, do not ask it to deploy
         "timeout": 1800,  # RE agent's kubectl+gh deployment workflow needs extra time (30 min)
         "evaluation_criteria": {
             "DeploymentExecution": (
@@ -652,6 +653,12 @@ async def run_evaluation(
         raise ValueError(f"Unknown scenario: {scenario_name}. Available: {available}")
     else:
         scenario = SCENARIOS[scenario_name]
+
+    # Check if scenario is disabled
+    if scenario.get("disabled"):
+        print(f"\n>>> Scenario '{scenario_name}' is DISABLED: skipping.")
+        print(f"    Reason: {scenario.get('disabled_reason', 'See scenario config')}")
+        return
 
     # Use per-scenario timeout if defined and CLI didn't explicitly override
     if "timeout" in scenario and wait_timeout == 600:
@@ -1077,7 +1084,8 @@ Examples:
     if args.list_scenarios:
         print("Available Scenarios:")
         for name, config in SCENARIOS.items():
-            print(f"  {name}:")
+            disabled = " [DISABLED]" if config.get("disabled") else ""
+            print(f"  {name}{disabled}:")
             print(f"    Name: {config['name']}")
             print(f"    Agent: {config['expected_agent']}")
             print(f"    Message: {config['message'][:60]}...")

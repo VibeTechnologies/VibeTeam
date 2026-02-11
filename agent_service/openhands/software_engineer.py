@@ -70,6 +70,17 @@ You are the **SoftwareEngineer**.
 - **DO NOT** tag @SoftwareEngineer in your response. You ARE the SoftwareEngineer.
 - If you need to hand off, tag the *other* specific role (e.g., @ReleaseEngineer, @ProductManager).
 - If you have completed the task, simply state that. Do not tag yourself.
+- **NEVER** write "@SoftwareEngineer please investigate" — that's tagging yourself!
+
+## HANDOFF AWARENESS: Building on Prior Agent Findings
+If the task contains `[Handoff from ...]` or `Previous response:`, this means
+another agent already investigated. **DO NOT repeat their work.**
+- Read their findings carefully before starting
+- Focus on what THEY could not do (e.g., code analysis, fixing actual code)
+- Build on their diagnosis — investigate the specific code area they identified
+- If they found "endpoint returns 404" or "missing route", go directly to the code to find/fix it
+- Add NEW value: code search, root cause in source code, PR creation
+- DO NOT re-run kubectl, curl, or Sentry checks they already completed
 
 ## PRIMARY REPOSITORY
 The main codebase is located at: https://github.com/VibeTechnologies/VibeWebAgent/
@@ -123,6 +134,20 @@ gh issue list --repo VibeTechnologies/VibeWebAgent
 - You **MUST** run `gh auth setup-git` before cloning any repository.
 - If `git clone` fails with authentication error, RUN `gh auth setup-git` and try again.
 - Use `git clone --depth 1` for faster cloning.
+
+**FALLBACK IF CLONE FAILS** (CRITICAL — do NOT give up on code analysis!):
+If `git clone` fails for any reason, use the GitHub API to search and read code:
+```bash
+# Search code in the repo (redirect to file!)
+gh search code "recordButton" --repo VibeTechnologies/VibeWebAgent --json path,textMatches > /tmp/search.txt && cat /tmp/search.txt
+
+# Read a specific file from GitHub (redirect to file!)
+gh api repos/VibeTechnologies/VibeWebAgent/contents/src/recorder.ts --jq .content | base64 -d > /tmp/file.txt && cat /tmp/file.txt
+
+# List directory contents from GitHub (redirect to file!)
+gh api repos/VibeTechnologies/VibeWebAgent/contents/src --jq '.[].path' > /tmp/dir.txt && cat /tmp/dir.txt
+```
+NEVER skip code analysis just because clone failed. Use `gh search code` and `gh api` instead.
 
 **SEARCHING CODE:**
 - Use `grep -r "pattern" .` to search for code.
@@ -545,9 +570,12 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
                 timeout=60,
             )
             if clone_result.returncode != 0:
-                return f"[System] Failed to clone repo: {clone_result.stderr}"
+                # Fallback: use gh search code instead of giving up entirely
+                return self._prefetch_via_github_api(task, repo)
         except Exception as e:
-            return f"[System] Error cloning repo: {e}"
+            # Fallback: use gh search code instead of giving up entirely
+            print(f"[SoftwareEngineer] Clone failed ({e}), trying GitHub API fallback")
+            return self._prefetch_via_github_api(task, repo)
 
         # Step 2: Get file listing
         try:
@@ -924,6 +952,110 @@ Use the grep results above to identify the relevant code. Do NOT read files
 section-by-section. If you need more context, use:
   grep -n "keyword" VibeWebAgent/path/to/file.js
   sed -n 'START,ENDp' VibeWebAgent/path/to/file.js
+================================================================================
+"""
+
+    def _prefetch_via_github_api(self, task: str, repo: str) -> str:
+        """Fallback: use gh search code and gh api when git clone fails.
+
+        Instead of returning nothing when clone fails, search for relevant code
+        via the GitHub API so the agent still has code context for analysis.
+        """
+        import re
+        import subprocess
+
+        sections: list[str] = []
+
+        # Extract keywords from user message (same logic as _prefetch_repo_code)
+        user_msg_match = re.search(
+            r"### User Message.*?\n(.*?)(?:### End User Message|$)",
+            task,
+            re.DOTALL,
+        )
+        keyword_source = user_msg_match.group(1).strip() if user_msg_match else task
+
+        # Extract meaningful keywords
+        skip_words = {
+            "the", "a", "an", "is", "are", "was", "were", "be", "been", "have",
+            "has", "had", "do", "does", "did", "will", "would", "could", "should",
+            "that", "this", "it", "we", "they", "you", "and", "but", "or", "not",
+            "for", "from", "to", "with", "in", "on", "at", "by", "of", "about",
+            "please", "investigate", "reporting", "says", "happens", "user",
+            "browser", "chrome", "extension", "issue", "problem", "bug", "error",
+            "fix", "check", "need", "help", "get", "use", "try", "see",
+            "softwareengineer", "github", "repo", "crashes", "crash", "clicking",
+        }
+        words = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", keyword_source.lower())
+        keywords = [w for w in words if w not in skip_words and len(w) >= 3]
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        unique_keywords: list[str] = []
+        for kw in keywords:
+            if kw not in seen:
+                seen.add(kw)
+                unique_keywords.append(kw)
+        keywords = unique_keywords[:5]
+
+        if not keywords:
+            keywords = ["recorder", "recording", "button"]
+
+        print(f"[SoftwareEngineer] Clone failed, using GitHub API search with keywords: {keywords}")
+
+        # Search for code via gh search code
+        for keyword in keywords:
+            try:
+                result = subprocess.run(
+                    [
+                        "gh", "search", "code", keyword,
+                        "--repo", repo,
+                        "--json", "path,textMatches",
+                        "--limit", "5",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    sections.append(f"## gh search code '{keyword}':\n```json\n{result.stdout[:2000]}\n```")
+            except Exception:
+                pass
+
+        # Also get the repo's top-level directory listing
+        try:
+            result = subprocess.run(
+                ["gh", "api", f"repos/{repo}/contents/", "--jq", ".[].path"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                sections.append(f"## Repository top-level structure:\n```\n{result.stdout[:1500]}\n```")
+        except Exception:
+            pass
+
+        if not sections:
+            return (
+                f"[System] Failed to clone repo and GitHub API search returned no results.\n"
+                f"The agent should use `gh search code` and `gh api` commands to search {repo} directly."
+            )
+
+        context = "\n\n".join(sections)
+        if len(context) > 6000:
+            context = context[:6000] + "\n\n... (truncated)"
+
+        return f"""
+================================================================================
+PRE-FETCHED CODE VIA GITHUB API (clone failed, searched remotely)
+================================================================================
+Repository: {repo}
+
+{context}
+
+================================================================================
+NOTE: Repo could not be cloned locally. The above search results show relevant
+code matches. Use `gh search code` and `gh api` for further investigation:
+  gh search code "keyword" --repo {repo} --json path,textMatches > /tmp/search.txt && cat /tmp/search.txt
+  gh api repos/{repo}/contents/path/to/file --jq .content | base64 -d > /tmp/file.txt && cat /tmp/file.txt
 ================================================================================
 """
 
