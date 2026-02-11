@@ -110,8 +110,14 @@ class OpenHandsMarketingManager:
             max_output_tokens=4096,
         )
 
-    def _create_agent(self, llm: LLM) -> Agent:
-        """Create Agent with MCP config if available."""
+    def _create_agent(self, llm: LLM, *, use_tools: bool = True) -> Agent:
+        """Create Agent with MCP config if available.
+
+        Args:
+            llm: The LLM to use.
+            use_tools: When False, skip MCP configuration (useful for
+                lightweight/test invocations that don't need browser tools).
+        """
         # Load agent context from AGENTS.md hierarchy
         # Falls back to hardcoded context if files not found
         agent_context = compose_agent_context(
@@ -119,18 +125,23 @@ class OpenHandsMarketingManager:
             fallback_context=MARKETING_MANAGER_CONTEXT_FALLBACK
         )
 
-        mcp_config = get_mcp_config_dict(self.config.mcp_servers)
-
-        return Agent(
+        # Build common kwargs; only include mcp_config when servers are
+        # actually configured.  Passing None crashes the OpenHands SDK
+        # (pydantic expects a dict, not NoneType).
+        agent_kwargs: dict[str, Any] = dict(
             llm=llm,
-            mcp_config=mcp_config if mcp_config.get("mcpServers") else None,
-            # Use our custom template that renders agent_context into the system prompt.
-            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
             system_prompt_filename=get_prompt_path(),
             system_prompt_kwargs={
                 "agent_context": agent_context,
             },
         )
+
+        if use_tools:
+            mcp_config = get_mcp_config_dict(self.config.mcp_servers)
+            if mcp_config.get("mcpServers"):
+                agent_kwargs["mcp_config"] = mcp_config
+
+        return Agent(**agent_kwargs)
 
     def _inject_browser_context(self, task: str) -> str:
         """Inject browser context based on task keywords.
@@ -219,8 +230,9 @@ class OpenHandsMarketingManager:
             context_id=context_id,
         )
 
+        use_tools = kwargs.get("use_tools", True)
         llm = self._create_llm()
-        agent = self._create_agent(llm)
+        agent = self._create_agent(llm, use_tools=use_tools)
 
         # Use provided workspace or create temporary one
         temp_dir = None

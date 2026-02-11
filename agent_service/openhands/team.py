@@ -30,18 +30,25 @@ class OpenHandsTeam:
         self._agents: dict[str, Any] = {}
 
     def _get_agent(self, role: str) -> Any:
-        """Lazy-load agents on demand."""
+        """Lazy-load agents on demand.
+
+        Each agent constructor accepts an optional AgentConfig.  Passing None
+        lets the agent fall back to its own role-specific default config
+        (e.g. MARKETING_MANAGER_CONFIG) which carries the correct MCP
+        servers.  A generic AgentConfig() would override those defaults
+        with an empty mcp_servers dict, breaking agents that rely on MCP.
+        """
         if role not in self._agents:
             if role == "release_engineer":
-                self._agents[role] = OpenHandsReleaseEngineer(self.config)
+                self._agents[role] = OpenHandsReleaseEngineer()
             elif role == "marketing_manager":
-                self._agents[role] = OpenHandsMarketingManager(self.config)
+                self._agents[role] = OpenHandsMarketingManager()
             elif role == "support_engineer":
-                self._agents[role] = OpenHandsSupportEngineer(self.config)
+                self._agents[role] = OpenHandsSupportEngineer()
             elif role == "product_manager":
-                self._agents[role] = OpenHandsProductManager(self.config)
+                self._agents[role] = OpenHandsProductManager()
             elif role == "software_engineer":
-                self._agents[role] = OpenHandsSoftwareEngineer(self.config)
+                self._agents[role] = OpenHandsSoftwareEngineer()
             else:
                 raise ValueError(f"Unknown agent role: {role}")
         return self._agents[role]
