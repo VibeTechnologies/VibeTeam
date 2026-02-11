@@ -3,9 +3,42 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Base directory for the agents/openhands package.
+# In the dev k8s overlay, code lives under /code/current (a symlink managed by
+# git-sync that points to a worktree directory named after the commit SHA).
+# When git-sync updates, it atomically swaps the symlink to a new worktree and
+# removes the old one.  Python's __file__ is resolved at import time and caches
+# the *resolved* (non-symlink) path, so after a git-sync update __file__ points
+# to a deleted directory.
+#
+# We solve this by resolving the path from the symlink at *call* time rather
+# than at import time.
+_CODE_CURRENT = "/code/current"
+
+
+def get_prompt_path(prompt_filename: str = "agent_system.j2") -> str:
+    """Return the absolute path to a prompt template in agents/openhands/prompts/.
+
+    Resolves through the /code/current symlink at call time so the path stays
+    valid even after git-sync replaces the underlying worktree.  Falls back to
+    ``os.path.dirname(__file__)`` for local development where /code/current
+    does not exist.
+
+    Args:
+        prompt_filename: The template filename (default: ``agent_system.j2``).
+
+    Returns:
+        Absolute path to the prompt template file.
+    """
+    if os.path.isdir(_CODE_CURRENT):
+        return os.path.join(_CODE_CURRENT, "agents", "openhands", "prompts", prompt_filename)
+    # Local dev / non-k8s fallback
+    return os.path.join(os.path.dirname(__file__), "prompts", prompt_filename)
 
 
 def extract_response_from_events(events: list[Any]) -> str:

@@ -102,9 +102,8 @@ class TestAgentPromptFilenameConstruction:
         with open(filepath) as f:
             content = f.read()
 
-        assert "agent_system.j2" in content, f"{agent_file} does not reference agent_system.j2"
-        assert "os.path.dirname(__file__)" in content, (
-            f"{agent_file} should use os.path.dirname(__file__) for reliable path resolution"
+        assert "get_prompt_path" in content, (
+            f"{agent_file} should use get_prompt_path() from utils for git-sync compatible path resolution"
         )
 
     @pytest.mark.parametrize("agent_file", AGENT_FILES)

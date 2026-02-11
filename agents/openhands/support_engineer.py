@@ -97,6 +97,7 @@ except ImportError:
     FileEditorTool = None
 
 from agents.shared.llm import LLM, AzureLLM
+from agents.openhands.utils import get_prompt_path
 
 SUPPORT_ENGINEER_CONTEXT = """You are Grace, the Support Engineer for VibeTeam.
 
@@ -288,9 +289,7 @@ class OpenHandsSupportEngineer:
             tools=tools,
             # Use our custom template that renders agent_context into the system prompt.
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
-            system_prompt_filename=os.path.join(
-                os.path.dirname(__file__), "prompts", "agent_system.j2"
-            ),
+            system_prompt_filename=get_prompt_path(),
             system_prompt_kwargs={
                 "agent_context": SUPPORT_ENGINEER_CONTEXT,
             },
