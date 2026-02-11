@@ -46,8 +46,8 @@ except ImportError:
     TerminalTool = None
     FileEditorTool = None
 
-from agents.shared.llm import LLM, AzureLLM
 from agents.openhands.utils import get_prompt_path
+from agents.shared.llm import LLM, AzureLLM
 
 # OpenHands uses Jinja2 templates for system prompts.
 # We use agents/openhands/prompts/agent_system.j2 as a custom template

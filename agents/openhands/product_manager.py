@@ -31,8 +31,8 @@ except ImportError:
     Agent = None
     LocalConversation = None
 
-from agents.shared.llm import LLM, AzureLLM
 from agents.openhands.utils import get_prompt_path
+from agents.shared.llm import LLM, AzureLLM
 
 PRODUCT_MANAGER_CONTEXT = """You are Maya, the Product Manager for VibeTeam.
 

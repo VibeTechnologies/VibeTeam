@@ -45,8 +45,8 @@ except ImportError:
     TerminalTool = None
     FileEditorTool = None
 
-from agents.shared.llm import LLM, AzureLLM
 from agents.openhands.utils import get_prompt_path
+from agents.shared.llm import LLM, AzureLLM
 
 SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
 
