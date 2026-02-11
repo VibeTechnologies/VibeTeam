@@ -7,8 +7,8 @@
 │                              External Platforms                              │
 │                                                                              │
 │   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
-│   │   Discord   │    │    Slack    │    │   GitHub    │    │    Gmail    │  │
-│   │   Server    │    │  Workspace  │    │   Webhooks  │    │    Push     │  │
+│   │    Slack    │    │   GitHub    │    │   Sentry    │    │  REST API   │  │
+│   │  Workspace  │    │   Webhooks  │    │  Webhooks   │    │  /api/*     │  │
 │   └──────┬──────┘    └──────┬──────┘    └──────┬──────┘    └──────┬──────┘  │
 └──────────┼──────────────────┼──────────────────┼──────────────────┼──────────┘
            │                  │                  │                  │
@@ -16,15 +16,15 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                            GATEWAY (FastAPI)                                 │
 │                                                                              │
-│   POST /webhook/discord   POST /webhook/slack   POST /webhook/github        │
-│   POST /webhook/gmail     GET /health                                        │
+│   POST /slack/events      POST /webhook         POST /webhook/sentry        │
+│   POST /api/run           POST /api/schedule    GET /health                 │
 │                                                                              │
 │   ┌───────────────────────────────────────────────────────────────────────┐ │
 │   │                         Message Router                                 │ │
 │   │                                                                        │ │
 │   │  1. Normalize event → UnifiedMessage                                   │ │
 │   │  2. Check for @VibeTeam mention → track thread                        │ │
-│   │  3. Parse /RoleName mentions → subscribe agents                       │ │
+│   │  3. Parse @RoleName or /RoleName → subscribe agents                   │ │
 │   │  4. React with :eyes: emoji                                           │ │
 │   │  5. Forward to subscribed agents                                      │ │
 │   └───────────────────────────────────────────────────────────────────────┘ │
@@ -83,14 +83,14 @@ class ThreadSubscription:
 ```python
 class Router:
     ROLE_PATTERN = re.compile(
-        r'/(SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager)',
+        r'[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager)',
         re.IGNORECASE
     )
     
     async def route_message(self, message: UnifiedMessage) -> list[str]:
         """Route message to appropriate agents."""
         
-        # 1. Parse /RoleName mentions
+        # 1. Parse @RoleName or /RoleName mentions
         role_mentions = self.ROLE_PATTERN.findall(message.content)
         roles = [self._normalize_role(r) for r in role_mentions]
         
@@ -125,7 +125,7 @@ async def handle_slack_event(event: dict):
     if event.get("bot_id") == OUR_BOT_ID:
         text = event.get("text", "")
         
-        # Check for /RoleName mentions (handoff)
+        # Check for @RoleName or /RoleName mentions (handoff)
         role_mentions = ROLE_PATTERN.findall(text)
         if role_mentions:
             # This is a handoff - subscribe mentioned agents
@@ -244,23 +244,9 @@ class SendMessageTool:
 ## Discord Integration
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Discord Server: VibeTeam                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  Bot: @VibeTeam                                                 │
-│    - Single bot handles all agent roles                         │
-│    - Responds with [RoleName] prefix                            │
-│    - Reacts with :eyes: when message received                   │
-│                                                                  │
-│  Message Format:                                                 │
-│    User: "@VibeTeam /SoftwareEngineer fix the login bug"        │
-│    Bot:  "[SoftwareEngineer] I'll look into the login bug..."   │
-│    Bot:  "[SoftwareEngineer] Fixed in PR #457.                  │
-│           /ReleaseEngineer ready for staging."                  │
-│    Bot:  "[ReleaseEngineer] Deploying to staging now..."        │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+Discord support currently runs via polling bots in scripts
+(see scripts/run_discord_bot.py and scripts/run_discord_agent.py).
+It is not routed through the gateway webhook endpoints.
 ```
 
 ## Slack Integration
@@ -280,7 +266,7 @@ class SendMessageTool:
 │    - message.channels (for thread replies)                      │
 │                                                                  │
 │  Thread Example:                                                 │
-│    User: "@VibeTeam /SoftwareEngineer fix bug #345"             │
+│    User: "@VibeTeam @SoftwareEngineer fix bug #345"             │
 │    :eyes: (reaction)                                            │
 │    Bot:  "[SoftwareEngineer] Looking at issue #345..."          │
 │                                                                  │
@@ -294,7 +280,7 @@ class SendMessageTool:
 │                      GitHub → Agents                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  Issue Comment: "@VibeTeam /SoftwareEngineer please investigate" │
+│  Issue Comment: "@VibeTeam @SoftwareEngineer please investigate" │
 │       │                                                          │
 │       ▼                                                          │
 │  Router:                                                         │
@@ -321,10 +307,10 @@ class SendMessageTool:
 │  2. Router creates synthetic thread:                            │
 │     source = "sentry"                                            │
 │     thread_id = "sentry:{issue_id}"                             │
-│     Auto-routes to /SupportEngineer                             │
+│     Auto-routes to @SupportEngineer                             │
 │                                                                  │
 │  3. SupportEngineer investigates, may handoff:                  │
-│     "/SoftwareEngineer this is a bug in auth.py:45"             │
+│     "@SoftwareEngineer this is a bug in auth.py:45"             │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -367,14 +353,8 @@ CREATE INDEX idx_sessions_key ON sessions(key);
 ### E2E Evaluation Tests
 
 ```bash
-# All scenarios
-pytest tests/e2e/test_team_eval.py -v -s
-
-# Slack routing tests
-pytest tests/e2e/test_slack_routing.py -v -s
-
-# Discord routing tests
-pytest tests/e2e/test_discord_routing.py -v -s
+# Primary Slack E2E evaluation
+python scripts/eval_slack_e2e.py --scenario support_400_errors
 ```
 
 ### Evaluation Metrics (DeepEval)
@@ -391,27 +371,26 @@ pytest tests/e2e/test_discord_routing.py -v -s
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           E2E TEST FLOW                                     │
 └─────────────────────────────────────────────────────────────────────────────┘
-Step 1: Test posts initial message to Slack
+Step 1: Eval script posts initial message to Slack
 ┌──────────┐         ┌─────────────────┐
-│  pytest  │ ──────► │  Slack API      │  POST /SupportEngineer, issue...
-└──────────┘         │  #channel       │
-                     │  thread_ts: X   │
+│ eval_    │ ──────► │  Slack API      │  POST @SupportEngineer, issue...
+│ slack_e2e│         │  #channel       │
+└──────────┘         │  thread_ts: X   │
                      └────────┬────────┘
                               │
 Step 2: Webhook picks up message
                               ▼
                      ┌─────────────────┐
-                     │ Slack Webhook   │  (K8s microservice)
-                     │ Microservice    │
+                     │ vibeteam-gateway│  (FastAPI)
                      └────────┬────────┘
-                              │ routes /SupportEngineer
+                              │ routes @SupportEngineer
                               ▼
 Step 3: Agent service processes
                      ┌─────────────────┐
                      │ OpenHands Agent │  (K8s service)
                      │ Service         │
                      │                 │  - Checks PostgreSQL for session
-                     │ /SupportEngineer│  - No session for thread_ts X
+                     │ @SupportEngineer│  - No session for thread_ts X
                      │                 │  - Creates new session
                      └────────┬────────┘
                               │
@@ -421,22 +400,21 @@ Step 4: Agent responds via send_message tool
                               │   - slack_token
                               ▼
                      ┌─────────────────┐
-                     │  Slack API      │  "Handing off to /ReleaseEngineer..."
+                     │  Slack API      │  "Handing off to @ReleaseEngineer..."
                      │  thread_ts: X   │
                      └────────┬────────┘
                               │
 Step 5: Webhook picks up handoff
                               ▼
                      ┌─────────────────┐
-                     │ Slack Webhook   │  routes /ReleaseEngineer
-                     │ Microservice    │
+                     │ vibeteam-gateway│  routes @ReleaseEngineer
                      └────────┬────────┘
                               │
 Step 6: Release Engineer processes
                               ▼
                      ┌─────────────────┐
                      │ OpenHands Agent │
-                     │ /ReleaseEngineer│  - Same thread, new/existing session
+                     │ @ReleaseEngineer│  - Same thread, new/existing session
                      └────────┬────────┘
                               │
                               ▼
@@ -448,7 +426,8 @@ Step 6: Release Engineer processes
 Step 7: Test reads thread, evaluates
                               ▼
 ┌──────────┐         ┌─────────────────┐
-│  pytest  │ ◄────── │  Slack API      │  GET thread messages
+│ eval_    │ ◄────── │  Slack API      │  GET thread messages
+│ slack_e2e│         │                 │
 │          │         │  thread_ts: X   │
 │ DeepEval │         └─────────────────┘
 │ evaluate │

@@ -1,9 +1,18 @@
 You are working on AI agentic team. Agent are implemented on OpenHands that runs as a service that host all the agents sessions. Gateways is used for integration with Slack. DeepEval is used to evaluate agent sessions. Use
+
 ```shell
 export $( < .env); uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
 ```
 
 to run an evaluation test.
+
+Before running any test `export $( < .env )`
+
+for example
+```shell
+export $( < .env ) && .venv/bin/python -m pytest tests/test_openhands_service_integration.py -v --run-integration -s
+```
+
 Each agent has specific service ownership and handoff responsibilities. Evry agent have their own skill sets, defined in aagents/<agent_name>/skills/<sill_name>/SKILL.md.
 
 
