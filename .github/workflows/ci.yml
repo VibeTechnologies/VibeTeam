@@ -23,11 +23,9 @@ jobs:
           
       - name: Run ruff lint
         run: ruff check .
-        continue-on-error: true  # Existing lint violations across legacy files
         
       - name: Run ruff format
         run: ruff format --check .
-        continue-on-error: true  # Formatting drift in legacy files
         
       - name: Run mypy
         run: mypy vibeteam --ignore-missing-imports --disable-error-code=import-untyped

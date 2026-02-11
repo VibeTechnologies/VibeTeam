@@ -13,7 +13,6 @@ import os
 from typing import Any
 
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
-from .slack_tools import get_slack_tools
 from agents.sessions import get_or_create_session, get_session_store
 from agents.shared.calendar_tools import create_calendar_event, list_calendar_events
 from agents.shared.docs_tools import get_doc_content, list_docs, search_docs_sync
@@ -22,6 +21,8 @@ from agents.shared.docs_tools import get_doc_content, list_docs, search_docs_syn
 from agents.shared.gmail_tools import fetch_unread_emails
 from agents.shared.gmail_tools import send_email as shared_send_email
 from agents.shared.langfuse_tools import detect_langfuse_anomalies, get_langfuse_traces
+
+from .slack_tools import get_slack_tools
 
 try:
     from crewai import Agent, Crew, Process, Task

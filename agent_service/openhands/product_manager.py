@@ -31,9 +31,10 @@ except ImportError:
     Agent = None
     LocalConversation = None
 
-from .utils import get_prompt_path
 from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
+
+from .utils import get_prompt_path
 
 # Fallback context if AGENTS.md files not found
 PRODUCT_MANAGER_CONTEXT_FALLBACK = """You are Jordan, the Product Manager for VibeTeam.
@@ -139,8 +140,7 @@ class OpenHandsProductManager:
         # Load agent context from AGENTS.md hierarchy
         # Falls back to hardcoded context if files not found
         agent_context = compose_agent_context(
-            "product_manager", 
-            fallback_context=PRODUCT_MANAGER_CONTEXT_FALLBACK
+            "product_manager", fallback_context=PRODUCT_MANAGER_CONTEXT_FALLBACK
         )
 
         return Agent(

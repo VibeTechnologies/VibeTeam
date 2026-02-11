@@ -46,9 +46,10 @@ except ImportError:
     TerminalTool = None
     FileEditorTool = None
 
-from .utils import get_prompt_path
 from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
+
+from .utils import get_prompt_path
 
 # OpenHands uses Jinja2 templates for system prompts.
 # We use agents/openhands/prompts/agent_system.j2 as a custom template
@@ -328,8 +329,7 @@ class OpenHandsReleaseEngineer:
         # Load agent context from AGENTS.md hierarchy
         # Falls back to hardcoded context if files not found
         agent_context = compose_agent_context(
-            "release_engineer", 
-            fallback_context=RELEASE_ENGINEER_CONTEXT_FALLBACK
+            "release_engineer", fallback_context=RELEASE_ENGINEER_CONTEXT_FALLBACK
         )
 
         return Agent(

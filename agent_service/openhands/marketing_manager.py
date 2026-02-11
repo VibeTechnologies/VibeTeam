@@ -42,9 +42,10 @@ except ImportError:
     Agent = None
     LocalConversation = None
 
-from .utils import get_prompt_path
 from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
+
+from .utils import get_prompt_path
 
 # Fallback context if AGENTS.md files not found
 MARKETING_MANAGER_CONTEXT_FALLBACK = """You are Sam, the Marketing Manager for VibeTeam.
@@ -121,20 +122,19 @@ class OpenHandsMarketingManager:
         # Load agent context from AGENTS.md hierarchy
         # Falls back to hardcoded context if files not found
         agent_context = compose_agent_context(
-            "marketing_manager", 
-            fallback_context=MARKETING_MANAGER_CONTEXT_FALLBACK
+            "marketing_manager", fallback_context=MARKETING_MANAGER_CONTEXT_FALLBACK
         )
 
         # Build common kwargs; only include mcp_config when servers are
         # actually configured.  Passing None crashes the OpenHands SDK
         # (pydantic expects a dict, not NoneType).
-        agent_kwargs: dict[str, Any] = dict(
-            llm=llm,
-            system_prompt_filename=get_prompt_path(),
-            system_prompt_kwargs={
+        agent_kwargs: dict[str, Any] = {
+            "llm": llm,
+            "system_prompt_filename": get_prompt_path(),
+            "system_prompt_kwargs": {
                 "agent_context": agent_context,
             },
-        )
+        }
 
         if use_tools:
             mcp_config = get_mcp_config_dict(self.config.mcp_servers)

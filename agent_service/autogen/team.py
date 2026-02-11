@@ -8,6 +8,9 @@ import asyncio
 import os
 from typing import Any
 
+from agents.config import AgentConfig
+from agents.sessions import get_or_create_session, get_session_store
+
 from .marketing_manager import (
     analyze_sentiment,
     create_social_post,
@@ -31,8 +34,6 @@ from .support_engineer import (
     list_emails,
     send_email,
 )
-from agents.config import AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
 
 # AutoGen imports
 try:

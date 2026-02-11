@@ -195,9 +195,7 @@ class SessionStore:
     async def save(self, session_data: dict[str, Any]) -> None:
         """Save or update a session."""
         async with get_db_session() as db:
-            result = await db.execute(
-                select(Session).where(Session.key == session_data["key"])
-            )
+            result = await db.execute(select(Session).where(Session.key == session_data["key"]))
             existing = result.scalar_one_or_none()
 
             now = datetime.now(timezone.utc)
@@ -225,27 +223,21 @@ class SessionStore:
     async def load(self, key: str) -> dict[str, Any] | None:
         """Load a session by key."""
         async with get_db_session() as db:
-            result = await db.execute(
-                select(Session).where(Session.key == key)
-            )
+            result = await db.execute(select(Session).where(Session.key == key))
             row = result.scalar_one_or_none()
             return row.to_dict() if row else None
 
     async def load_by_id(self, session_id: str) -> dict[str, Any] | None:
         """Load a session by ID."""
         async with get_db_session() as db:
-            result = await db.execute(
-                select(Session).where(Session.id == session_id)
-            )
+            result = await db.execute(select(Session).where(Session.id == session_id))
             row = result.scalar_one_or_none()
             return row.to_dict() if row else None
 
     async def delete(self, key: str) -> None:
         """Delete a session by key."""
         async with get_db_session() as db:
-            result = await db.execute(
-                select(Session).where(Session.key == key)
-            )
+            result = await db.execute(select(Session).where(Session.key == key))
             row = result.scalar_one_or_none()
             if row:
                 await db.delete(row)

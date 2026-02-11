@@ -20,8 +20,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agents.config import AgentConfig
-from .team import OpenHandsTeam, create_team
 from agents.shared.db import close_db, get_postgres_store, init_db
+
+from .team import OpenHandsTeam, create_team
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Iterator
+from collections.abc import Iterator
 
 import httpx
 import pytest
@@ -93,12 +93,12 @@ def openhands_service_url(azure_credentials: dict[str, str]) -> Iterator[str]:
     try:
         _wait_for_health(base_url)
         yield base_url
-    except Exception:
+    except Exception as err:
         log_fh.flush()
         with open(log_file) as f:
             output = f.read()
         if output:
-            raise RuntimeError(f"OpenHands service output:\n{output}")
+            raise RuntimeError(f"OpenHands service output:\n{output}") from err
         raise
     finally:
         process.terminate()
@@ -148,9 +148,7 @@ async def test_openhands_agent_responds(openhands_service_url: str, role: str) -
         response = await client.post(f"{openhands_service_url}/run", json=payload)
         if response.status_code != 200:
             detail = response.text
-            pytest.fail(
-                f"Role '{role}' returned HTTP {response.status_code}: {detail}"
-            )
+            pytest.fail(f"Role '{role}' returned HTTP {response.status_code}: {detail}")
         data = response.json()
 
         agent_response = data.get("response", "")
@@ -159,12 +157,12 @@ async def test_openhands_agent_responds(openhands_service_url: str, role: str) -
         latency = data.get("metadata", {}).get("latency_ms", "?")
 
         # --- Print the actual agent response so it's visible in test output ---
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  Agent: {role}")
         print(f"  Latency: {latency} ms")
         print(f"  Session: {session_key}")
         print(f"  Response: {agent_response}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         assert agent_response, f"No response from {role}"
         assert session_key.startswith(

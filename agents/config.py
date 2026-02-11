@@ -175,11 +175,14 @@ def _npx_package_available(args: list[str]) -> bool:
         # error is acceptable; the real question is whether npm itself
         # can be invoked.  If npm works but the package is missing it
         # returns rc!=0 so we fall through to the return below.
-        return subprocess.run(
-            [npm, "view", pkg, "version"],
-            capture_output=True,
-            timeout=10,
-        ).returncode == 0
+        return (
+            subprocess.run(
+                [npm, "view", pkg, "version"],
+                capture_output=True,
+                timeout=10,
+            ).returncode
+            == 0
+        )
     except Exception:
         return False
 

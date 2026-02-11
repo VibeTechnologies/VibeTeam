@@ -13,8 +13,9 @@ import os
 from typing import Any
 
 from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
-from .slack_tools import get_slack_tools
 from agents.sessions import get_or_create_session, get_session_store
+
+from .slack_tools import get_slack_tools
 
 try:
     from crewai import Agent, Crew, Process, Task
