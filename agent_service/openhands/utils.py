@@ -22,7 +22,7 @@ _CODE_CURRENT = "/code/current"
 
 
 def get_prompt_path(prompt_filename: str = "agent_system.j2") -> str:
-    """Return the absolute path to a prompt template in agents/openhands/prompts/.
+    """Return the absolute path to a prompt template in agent_service/openhands/prompts/.
 
     Resolves through the /code/current symlink at call time so the path stays
     valid even after git-sync replaces the underlying worktree.  Falls back to
@@ -36,7 +36,7 @@ def get_prompt_path(prompt_filename: str = "agent_system.j2") -> str:
         Absolute path to the prompt template file.
     """
     if os.path.isdir(_CODE_CURRENT):
-        return os.path.join(_CODE_CURRENT, "agents", "openhands", "prompts", prompt_filename)
+        return os.path.join(_CODE_CURRENT, "agent_service", "openhands", "prompts", prompt_filename)
     # Local dev / non-k8s fallback
     return os.path.join(os.path.dirname(__file__), "prompts", prompt_filename)
 
