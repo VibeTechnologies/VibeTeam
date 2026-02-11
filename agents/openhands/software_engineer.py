@@ -17,6 +17,7 @@ Note: OpenHands SDK v1.2.1 uses:
 
 import os
 import tempfile
+import threading
 from typing import Any
 
 from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
@@ -49,8 +50,8 @@ from agents.shared.llm import LLM, AzureLLM
 SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
 
 ## ⚠️ STRICT ITERATION LIMIT
-You have a MAXIMUM of 35 tool calls to complete this task. Plan your investigation carefully.
-After ~20 calls, you MUST start wrapping up and provide your findings even if incomplete.
+You have a MAXIMUM of 25 tool calls to complete this task. Plan your investigation carefully.
+After ~12 calls, you MUST start wrapping up and provide your findings even if incomplete.
 
 **CRITICAL: You MUST call finish() with your final response.**
 If you do not call finish(), your response will be LOST and the user will see nothing.
@@ -236,7 +237,7 @@ sed -n '121,160p' VibeWebAgent/src/recorder.js       # Lines 121-160... wasting 
 
 ### For GitHub Issue Investigation — STRICT 3-PHASE WORKFLOW
 
-You have 35 tool calls total. Budget them carefully across these 3 phases:
+You have 25 tool calls total. Budget them carefully across these 3 phases:
 
 **PHASE 1: REVIEW PRE-FETCHED DATA (iterations 1-3, MAX 3 tool calls)**
 The system has ALREADY cloned the repo and searched for relevant code. Look at the
@@ -252,7 +253,7 @@ or `sed -n 'START,ENDp' VibeWebAgent/path/to/file.js`
 **DO NOT clone the repo again — it is already at VibeWebAgent/ in your workspace.**
 **DO NOT read entire files — the relevant sections are already provided.**
 
-**PHASE 2: DIAGNOSE AND FIX (iterations 4-25, MAX 21 tool calls)**
+**PHASE 2: DIAGNOSE AND FIX (iterations 4-15, MAX 12 tool calls)**
 - By now you should know which file and function is involved from the pre-fetched data
 - Read any additional specific code sections if needed (max 30 lines per read)
 - If you find the bug: edit the file, create a branch, commit, and push
@@ -262,7 +263,7 @@ or `sed -n 'START,ENDp' VibeWebAgent/path/to/file.js`
   Do NOT say "the root cause is likely X" — say "In file.js:142, the function does X which causes Y"
   or say "I could not find the root cause — grep for 'record' returned no matches in src/"
 
-**PHASE 3: REPORT (iterations 26-35, MUST call finish())**
+**PHASE 3: REPORT (iterations 16-25, MUST call finish())**
 Call `finish()` with a structured report. Your report MUST be **evidence-based** — every
 claim must reference a specific file, line number, grep result, or command output.
 
@@ -283,7 +284,7 @@ Include ALL of these sections:
   GOOD: "The record handler in content.js:89 should add error handling for the
   getDisplayMedia() call. Alternatively, check if Chrome 120 changed the permissions API."
 
-**⚠️ If you reach iteration 20 without a clear diagnosis, STOP investigating and start
+**⚠️ If you reach iteration 12 without a clear diagnosis, STOP investigating and start
 writing your report. An incomplete but structured report is infinitely better than
 running out of iterations with no response.**
 
@@ -355,13 +356,16 @@ When you complete a task, summarize what was done, files changed, and any next s
 
 ## ⚠️ FINAL REMINDER — READ THIS BEFORE EVERY ACTION
 
-**You have a hard limit of 35 tool calls. You CANNOT exceed this.**
+**You have a hard limit of 25 tool calls. You CANNOT exceed this.**
 
-- After 20 tool calls: STOP all new investigation. Begin writing your structured report.
-- After 25 tool calls: You are in EMERGENCY mode. Call finish() IMMEDIATELY with whatever you have.
-- After 30 tool calls: CRITICAL — you have 5 calls left. finish() NOW or lose everything.
+- After 12 tool calls: STOP all new investigation. Begin writing your structured report.
+- After 17 tool calls: You are in EMERGENCY mode. Call finish() IMMEDIATELY with whatever you have.
+- After 20 tool calls: CRITICAL — you have 5 calls left. finish() NOW or lose everything.
 - If you run out of iterations without calling finish(), your entire response is LOST.
   The user will see NOTHING — no analysis, no findings, no recommendations.
+
+**NOTE**: The system will inject warning messages at iterations 12, 17, and 20 to remind you.
+When you see these warnings, OBEY THEM IMMEDIATELY. Do not continue investigating.
 
 **An incomplete summary with partial findings is 100x more valuable than no response.**
 
@@ -371,6 +375,47 @@ When calling finish(), include:
 3. Your recommendation or next steps
 4. If you implemented a fix: the branch name and PR link
 """
+
+# Iteration warning messages injected into the conversation at specific thresholds.
+# These give the LLM an external signal it can't ignore (it can't count its own tool calls).
+ITERATION_WARNINGS = {
+    "wrap_up": (
+        "⚠️ ITERATION WARNING: You have used 12 of 25 tool calls. "
+        "You are now in Phase 3. STOP all new investigation. "
+        "Start writing your structured report and call finish() with your findings. "
+        "An incomplete report is 100x better than no response."
+    ),
+    "emergency": (
+        "🚨 EMERGENCY: You have used 17 of 25 tool calls — only 8 remaining. "
+        "Call finish() IMMEDIATELY with whatever findings you have. "
+        "Do NOT run any more grep or read commands. "
+        "Write your report NOW and call finish()."
+    ),
+    "critical": (
+        "🔴 CRITICAL: You have used 20 of 25 tool calls — only 5 remaining. "
+        "If you do not call finish() RIGHT NOW, your entire response will be LOST. "
+        "The user will see NOTHING. Call finish() with your findings IMMEDIATELY."
+    ),
+}
+
+# Thresholds at which warnings are injected (iteration count -> warning level)
+ITERATION_WARNING_THRESHOLDS = {12: "wrap_up", 17: "emergency", 20: "critical"}
+
+
+def _inject_warning(conversation: Any, level: str) -> None:
+    """Inject a warning message into the conversation from a background thread.
+
+    Uses conversation.send_message() which acquires the state lock. Since callbacks
+    fire inside the lock during agent.step(), we spawn a thread that blocks until
+    the current step releases the lock, then injects before the next step.
+    """
+    try:
+        msg = ITERATION_WARNINGS.get(level, "")
+        if msg:
+            print(f"[SoftwareEngineer] Injecting iteration warning: {level}")
+            conversation.send_message(msg)
+    except Exception as e:
+        print(f"[SoftwareEngineer] Warning injection failed ({level}): {e}")
 
 
 class OpenHandsSoftwareEngineer:
@@ -849,10 +894,41 @@ section-by-section. If you need more context, use:
             workspace_path = workspace
 
         try:
+            # Create iteration-counting callback that injects warnings at thresholds.
+            # The LLM cannot count its own tool calls, so we inject explicit messages
+            # at iterations 12, 17, and 20 to force Phase 3 transition and finish().
+            iteration_count = {"value": 0}  # mutable counter for closure
+            warnings_sent: set[str] = set()
+
+            def _count_iterations(event: Any) -> None:
+                """Callback fired on each event. Count ActionEvents (excluding FinishAction)."""
+                event_type = type(event).__name__
+                # Count action events (tool calls), not observations or messages
+                if "Action" in event_type and "Finish" not in event_type:
+                    iteration_count["value"] += 1
+                    count = iteration_count["value"]
+                    print(f"[SoftwareEngineer] Iteration count: {count}")
+
+                    # Check if we've hit a warning threshold
+                    level = ITERATION_WARNING_THRESHOLDS.get(count)
+                    if level and level not in warnings_sent:
+                        warnings_sent.add(level)
+                        # Spawn background thread to inject warning via send_message().
+                        # send_message() acquires the state lock, which is held during
+                        # agent.step(). The thread blocks until the lock is released
+                        # (end of current step), then injects before the next step.
+                        t = threading.Thread(
+                            target=_inject_warning,
+                            args=(conversation, level),
+                            daemon=True,
+                        )
+                        t.start()
+
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
-                max_iteration_per_run=35,
+                max_iteration_per_run=25,
+                callbacks=[_count_iterations],
             )
 
             # Inject context if keywords match

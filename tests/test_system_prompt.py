@@ -544,10 +544,11 @@ class TestSoftwareEngineerIterationBudget:
     The github_issue eval fails when the SWE agent exhausts all iterations
     searching code without calling finish(). These tests ensure:
     1. The prompt has a FINAL REMINDER at the end about calling finish()
-    2. The iteration limit numbers are consistent (35 max, wrap up at 20)
-    3. max_iteration_per_run is set to 35 (higher than other agents)
+    2. The iteration limit numbers are consistent (25 max, wrap up at 12)
+    3. max_iteration_per_run is set to 25 with iteration warning callbacks
     4. The GitHub Issue workflow includes an iteration check step
     5. FORBIDDEN ACTIONS section prevents sequential file reading
+    6. ITERATION_WARNINGS dict and _inject_warning() exist at module level
     """
 
     @staticmethod
@@ -609,11 +610,12 @@ class TestSoftwareEngineerIterationBudget:
             "FINAL REMINDER must escalate urgency for high iteration counts"
         )
 
-    def test_iteration_limit_is_35_in_prompt(self):
-        """The STRICT ITERATION LIMIT section must say 35, not 25."""
+    def test_iteration_limit_is_25_in_prompt(self):
+        """The STRICT ITERATION LIMIT section must say 25, not 35."""
         content = self._read_swe_context()
         ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
         ctx_end = content.find('"""', ctx_start + 30)
+        assert ctx_start != -1 and ctx_end != -1, "SOFTWARE_ENGINEER_CONTEXT not found"
         ctx = content[ctx_start:ctx_end]
 
         # Find the STRICT ITERATION LIMIT section
@@ -622,12 +624,12 @@ class TestSoftwareEngineerIterationBudget:
         # Get the next ~200 chars
         limit_section = ctx[limit_start : limit_start + 200]
 
-        assert "35" in limit_section, (
-            f"STRICT ITERATION LIMIT must mention 35 max iterations. Found: {limit_section[:100]}"
+        assert "25" in limit_section, (
+            f"STRICT ITERATION LIMIT must mention 25 max iterations. Found: {limit_section[:100]}"
         )
 
-    def test_wrap_up_at_20_iterations(self):
-        """The prompt must tell the agent to wrap up at ~20 iterations."""
+    def test_wrap_up_at_12_iterations(self):
+        """The prompt must tell the agent to wrap up at ~12 iterations."""
         content = self._read_swe_context()
         ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
         ctx_end = content.find('"""', ctx_start + 30)
@@ -637,17 +639,17 @@ class TestSoftwareEngineerIterationBudget:
         assert limit_start != -1
         limit_section = ctx[limit_start : limit_start + 200]
 
-        assert "20" in limit_section, (
-            f"STRICT ITERATION LIMIT must tell agent to wrap up at ~20 calls. "
+        assert "12" in limit_section, (
+            f"STRICT ITERATION LIMIT must tell agent to wrap up at ~12 calls. "
             f"Found: {limit_section[:100]}"
         )
 
-    def test_max_iteration_per_run_is_35(self):
-        """max_iteration_per_run must be set to 35 for SWE agent (not 25)."""
+    def test_max_iteration_per_run_is_25(self):
+        """max_iteration_per_run must be set to 25 for SWE agent (with warning callbacks)."""
         content = self._read_swe_context()
-        assert "max_iteration_per_run=35" in content, (
-            "SWE agent must use max_iteration_per_run=35. "
-            "Code search tasks are legitimately iteration-heavy and need more headroom."
+        assert "max_iteration_per_run=25" in content, (
+            "SWE agent must use max_iteration_per_run=25 with iteration warning callbacks. "
+            "Warnings at 12/17/20 replace the need for 35 iterations."
         )
 
     def test_github_issue_workflow_has_iteration_check(self):
@@ -794,6 +796,123 @@ class TestSoftwareEngineerIterationBudget:
 
         assert "BAD:" in ctx and "GOOD:" in ctx, (
             "Report template must include concrete BAD and GOOD recommendation examples"
+        )
+
+    def test_iteration_warnings_dict_exists(self):
+        """ITERATION_WARNINGS dict must exist at module level with 3 warning levels."""
+        content = self._read_swe_context()
+        assert "ITERATION_WARNINGS = {" in content, (
+            "ITERATION_WARNINGS dict must be defined at module level"
+        )
+        assert '"wrap_up"' in content, "ITERATION_WARNINGS must have 'wrap_up' key"
+        assert '"emergency"' in content, "ITERATION_WARNINGS must have 'emergency' key"
+        assert '"critical"' in content, "ITERATION_WARNINGS must have 'critical' key"
+
+    def test_iteration_warning_thresholds_exist(self):
+        """ITERATION_WARNING_THRESHOLDS dict must map iteration counts to warning levels."""
+        content = self._read_swe_context()
+        assert "ITERATION_WARNING_THRESHOLDS" in content, (
+            "ITERATION_WARNING_THRESHOLDS dict must be defined"
+        )
+        # Verify thresholds match prompt (12, 17, 20)
+        assert "12:" in content and "17:" in content and "20:" in content, (
+            "ITERATION_WARNING_THRESHOLDS must have entries for 12, 17, and 20"
+        )
+
+    def test_inject_warning_function_exists(self):
+        """_inject_warning function must exist at module level."""
+        content = self._read_swe_context()
+        assert "def _inject_warning(" in content, (
+            "_inject_warning function must be defined to inject warnings via send_message()"
+        )
+
+    def test_inject_warning_uses_send_message(self):
+        """_inject_warning must use conversation.send_message() to inject warnings."""
+        content = self._read_swe_context()
+        func_start = content.find("def _inject_warning(")
+        assert func_start != -1
+        # Find next def at module level
+        next_def = content.find("\ndef ", func_start + 10)
+        if next_def == -1:
+            next_def = content.find("\nclass ", func_start + 10)
+        func_body = content[func_start:next_def] if next_def != -1 else content[func_start:]
+        assert "send_message" in func_body, (
+            "_inject_warning must call conversation.send_message() to inject warnings"
+        )
+
+    def test_run_passes_callbacks_to_local_conversation(self):
+        """run() must pass callbacks=[_count_iterations] to LocalConversation."""
+        content = self._read_swe_context()
+        run_start = content.find("def run(")
+        assert run_start != -1
+        next_def = content.find("\n    def ", run_start + 10)
+        run_body = content[run_start:next_def] if next_def != -1 else content[run_start:]
+
+        assert "callbacks=" in run_body, "run() must pass callbacks parameter to LocalConversation"
+
+    def test_run_has_iteration_counter(self):
+        """run() must create an iteration counter for the callback closure."""
+        content = self._read_swe_context()
+        run_start = content.find("def run(")
+        assert run_start != -1
+        next_def = content.find("\n    def ", run_start + 10)
+        run_body = content[run_start:next_def] if next_def != -1 else content[run_start:]
+
+        assert "iteration_count" in run_body, (
+            "run() must have an iteration counter for the callback"
+        )
+
+    def test_threading_import_exists(self):
+        """threading module must be imported for background warning injection."""
+        content = self._read_swe_context()
+        assert "import threading" in content, (
+            "threading must be imported for spawning background warning threads"
+        )
+
+    def test_warning_thresholds_match_prompt(self):
+        """Warning thresholds (12, 17, 20) must match FINAL REMINDER section."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        reminder_start = ctx.find("FINAL REMINDER")
+        assert reminder_start != -1
+        reminder_section = ctx[reminder_start:]
+
+        # Verify the same thresholds appear in both the prompt and the code
+        assert "12 tool calls" in reminder_section, (
+            "FINAL REMINDER must reference 12 tool calls (matches wrap_up threshold)"
+        )
+        assert "17 tool calls" in reminder_section, (
+            "FINAL REMINDER must reference 17 tool calls (matches emergency threshold)"
+        )
+        assert "20 tool calls" in reminder_section, (
+            "FINAL REMINDER must reference 20 tool calls (matches critical threshold)"
+        )
+
+    def test_prompt_mentions_system_warnings(self):
+        """Prompt must tell the agent that the system will inject warnings."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "system will inject warning" in ctx.lower() or "inject warning" in ctx.lower(), (
+            "Prompt must tell the agent that warnings will be injected at iteration thresholds"
+        )
+
+    def test_callback_spawns_background_thread(self):
+        """The iteration callback must spawn a background thread for warning injection."""
+        content = self._read_swe_context()
+        run_start = content.find("def run(")
+        assert run_start != -1
+        next_def = content.find("\n    def ", run_start + 10)
+        run_body = content[run_start:next_def] if next_def != -1 else content[run_start:]
+
+        assert "threading.Thread" in run_body, (
+            "Callback must spawn a threading.Thread to call _inject_warning. "
+            "send_message() acquires the state lock, so it must run in a separate thread."
         )
 
 

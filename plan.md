@@ -1,89 +1,109 @@
 # Current Work Plan
 
-## Status: PR pending — SWE investigation strategy fix (branch: fix/swe-investigation-strategy)
+## Status: In Progress — SWE Iteration Warning Injection
 
 ---
 
-## In Progress: SWE Investigation Strategy Fix
+## In Progress: SWE Iteration Warning Injection
 
-**Branch:** `fix/swe-investigation-strategy`
-**PR:** Pending
+**Branch:** `fix/swe-iteration-warnings`
+**Issue:** `github_issue` eval regressed after PR #86 (IA:0.20, TC:0.30, EBD:0.20, HC:0.30)
 
 ### Problem
-The `github_issue` eval fails because the SWE agent reads files sequentially (method-by-method, lines 1-40, 41-80, etc.) instead of using grep to find target code. Even with 35 iterations, it exhausts them all reading one file without producing a diagnosis.
+The SWE agent (gpt-4.1-mini) used all 35 iterations doing grep searches and NEVER:
+1. Transitioned to Phase 3 (report writing)
+2. Called `finish()` with a structured report
+3. Produced any analysis or diagnosis
 
-### Fix
-- Added FORBIDDEN ACTIONS section with 4 explicit anti-patterns and concrete GOOD vs BAD investigation examples
-- Limited file exploration to 3 files max, 30 lines per read without grep-targeted line numbers
-- Trigger wrap-up at iteration 20 (was 25) to ensure finish() is called sooner
-- Improved 3-phase workflow with explicit iteration budgets per phase (8/17/10)
-- 4 new tests for FORBIDDEN ACTIONS enforcement
+The LLM cannot count its own tool calls. The prompt says "after iteration 20, stop" but
+the model has no way to know it's at iteration 20.
+
+### Fix: Iteration Warning Injection
+Implemented an iteration-counting callback that injects warning messages into the
+conversation at specific thresholds (12, 17, 20). This gives the LLM an explicit
+external signal it can't ignore.
+
+Changes:
+- Added `ITERATION_WARNINGS` dict with 3 escalating warning levels (wrap_up, emergency, critical)
+- Added `ITERATION_WARNING_THRESHOLDS` dict mapping iteration counts to levels
+- Added `_inject_warning()` function that injects via `conversation.send_message()` from background thread
+- Updated `run()` with `_count_iterations` callback that counts ActionEvents and spawns warning threads
+- Reduced `max_iteration_per_run` from 35 to 25 (warnings make extra headroom unnecessary)
+- Updated prompt: 25 max iterations, Phase 2 budget 4-15, Phase 3 budget 16-25
+- Updated FINAL REMINDER thresholds to match: 12/17/20
+- Added note in prompt that system will inject warnings
+- 12 new tests for the iteration warning system
 
 ### Checklist
-- [x] Add FORBIDDEN ACTIONS section to software_engineer.py
-- [x] Add GOOD vs BAD investigation examples
-- [x] Update 3-phase workflow iteration budgets
-- [x] Update FINAL REMINDER thresholds (wrap at 20, emergency at 25, critical at 30)
-- [x] Add 4 new tests (forbidden actions section, sequential reading, file limits, examples)
-- [x] Update existing test for new wrap-up threshold (25 -> 20)
-- [x] All 96 system prompt tests pass
-- [x] Full suite passes (537 passed, 78 skipped, 0 failed)
-- [x] Lint clean (fixed `\|` escape sequence)
-- [ ] Commit and push
-- [ ] Create PR
-- [ ] CI checks pass
-- [ ] Merge
-- [ ] Deploy and run `github_issue` eval
-- [ ] Run `support_400_errors` regression eval
+- [x] Add `threading` import
+- [x] Add `ITERATION_WARNINGS` dict at module level
+- [x] Add `ITERATION_WARNING_THRESHOLDS` dict
+- [x] Add `_inject_warning()` function
+- [x] Update `run()` with iteration-counting callback
+- [x] Change `max_iteration_per_run=35` → `25`
+- [x] Pass `callbacks=[_count_iterations]` to `LocalConversation`
+- [x] Update prompt: 35→25, phase budgets, wrap-up trigger 20→12
+- [x] Update FINAL REMINDER: 20/25/30 → 12/17/20
+- [x] Add note about system-injected warnings
+- [x] Update 3 existing tests (35→25, wrap-up 20→12)
+- [x] Add 12 new tests for iteration warning system
+- [x] All 124 system prompt tests pass
+- [x] Full suite passes (566 passed, 79 skipped, 0 failed)
+- [x] Lint clean
+- [ ] Commit, push, create PR
+- [ ] Deploy to cluster
+- [ ] Run `github_issue` eval — target: IA≥0.60, TC≥0.60, EBD≥0.60, HC≥0.60
+- [ ] Run regression evals (support_400_errors, stripe_webhook_failure)
 
 ---
 
-## Completed: SWE Investigation Workflow & Response Extraction (#82)
+## Completed: FileEditorTool Removal + Pre-fetch (#86)
 
-**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/82 — **Merged** (`0ee5ffb`)
-
----
-
-## Completed: SWE 3-Phase Workflow (#81)
-
-**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/81 — **Merged** (`02100ba`)
-
----
-
-## Completed: AzureLLM Consolidation (#80)
-
-**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/80 — **Merged** (`d3e8dea`)
+**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/86 — **Merged** (`540be31`)
 
 ### Fix
-- Created `agents/shared/llm.py` as single source of truth for AzureLLM
-- Updated all 5 agent files to import from shared module
-- Fixed marketing_manager and product_manager to use AzureLLM (was base LLM causing 404)
-- 23 new tests in `TestAzureLLMConsolidation`
+- Removed FileEditorTool from SWE agent (forces grep/sed instead of sequential reads)
+- Added `_prefetch_repo_code()` that clones repo and greps for keywords before agent runs
+- Updated Phase 1 to reference pre-fetched data
 
 ---
 
-## Completed: SWE Iteration Budget (#79)
+## Completed: Observation Extraction Fix (#84) + EBD Improvement (#85)
 
-**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/79 — **Merged** (`ae162bb`)
-
-### Fix
-- Increased `max_iteration_per_run` from 25 to 35 for SWE agent
-- Added FINAL REMINDER section at end of prompt with escalating urgency
-- Added ITERATION CHECK step to GitHub Issue Investigation workflow
-- 8 new tests in `TestSoftwareEngineerIterationBudget`
+**PR #84:** Merged (`68e0946`) — Fixed observation extraction
+**PR #85:** Merged (`7046ca2`) — EBD evidence requirements + Recreate deployment strategy
 
 ---
 
-## Eval Results (2026-02-10)
+## Completed: SWE Investigation Strategy Fix (#83)
 
+**PR:** https://github.com/VibeTechnologies/VibeTeam/pull/83 — **Merged** (`ad0bfc0`)
+
+---
+
+## Completed: Earlier PRs (#79-#82)
+
+| PR | Title | Status |
+|----|-------|--------|
+| #82 | SWE investigation workflow + response extraction | Merged |
+| #81 | SWE 3-phase workflow | Merged |
+| #80 | AzureLLM consolidation + marketing/product fix | Merged |
+| #79 | SWE iteration budget + FINAL REMINDER | Merged |
+
+---
+
+## Eval Results
+
+### Post PR #86 (regression)
 | Scenario | Result | Key Scores | Notes |
 |----------|--------|------------|-------|
-| `support_400_errors` | PASS | IQ:0.90, EBD:0.90, HC:0.80 | Post AzureLLM consolidation |
-| `stripe_webhook_failure` | PASS | IQ:0.90, TC:0.90, EBD:0.90, HC:0.90 | Strong pass |
-| `support_notify_check` | PASS | NO:1.00 | Perfect score |
-| `github_issue` (stale pod) | FAIL | All 0.20 | Agent read files sequentially, ran out of iterations |
-| `github_issue` (35 iter pod) | TIMEOUT | N/A | No response in 600s — agent still reading files |
-| `release_deploy` | BLOCKED | N/A | Pod killed mid-request by other sessions |
+| `github_issue` | **FAIL** | IA:0.20, TC:0.30, EBD:0.20, HC:0.30 | Agent exhausted 35 iterations doing grep, never called finish() |
+
+### Post PR #83 (baseline)
+| Scenario | Result | Key Scores | Latency | Notes |
+|----------|--------|------------|---------|-------|
+| `github_issue` | **PASS** | IA:0.70, TC:0.80, EBD:0.60, HC:0.90 | 121s | Fixed! |
+| `support_400_errors` | **PASS** | IQ:0.90, EBD:1.00, HC:0.90 | 79s | No regression |
 
 ---
 
@@ -104,6 +124,10 @@ The `github_issue` eval fails because the SWE agent reads files sequentially (me
 | #80 | AzureLLM consolidation + marketing/product fix | Merged |
 | #81 | SWE 3-phase workflow | Merged |
 | #82 | SWE investigation workflow + response extraction | Merged |
+| #83 | SWE FORBIDDEN ACTIONS + investigation strategy | Merged |
+| #84 | Observation extraction fix | Merged |
+| #85 | EBD evidence requirements + Recreate strategy | Merged |
+| #86 | FileEditorTool removal + pre-fetch | Merged |
 
 ## Open Issues
 
@@ -113,20 +137,5 @@ The `github_issue` eval fails because the SWE agent reads files sequentially (me
 | #22 | Complete VibeTeam Integration Setup | Open | Gmail processor merged; needs real OAuth creds |
 | #47 | User Document Upload for Knowledge Base | Open | Feature request, ~2-3hrs |
 
-## Blocked
-
-| Item | Blocker |
-|------|---------|
-| Eval reliability (release_deploy) | Multiple sessions saturating/restarting single openhands-svc pod |
-| SENTRY_CLIENT_SECRET | Needs Sentry admin to retrieve from dashboard |
-| Issue #22 full closure | Needs Gmail OAuth credentials deployed to cluster |
-
-## Next Steps (after current PR)
-
-1. Deploy and run `github_issue` eval to verify FORBIDDEN ACTIONS fix
-2. Run `support_400_errors` regression eval
-3. If `github_issue` still fails, consider runtime iteration counting in agent code
-4. Fix `release_deploy` eval reliability (infrastructure contention)
-
 ---
-Last updated: 2026-02-11 UTC
+Last updated: 2026-02-10
