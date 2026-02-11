@@ -214,7 +214,7 @@ async def call_agent_service(
             response = await client.post(
                 f"{service_url}{endpoint}",
                 json=payload,
-                timeout=900.0,  # 15 min for agents running agentic loops
+                timeout=1800.0,  # 30 min for agents running agentic loops
             )
             response.raise_for_status()
             result = response.json()

@@ -240,7 +240,7 @@ SCENARIOS = {
             "with the staging deployment and notify the team when done."
         ),
         "expected_agent": "release_engineer",
-        "timeout": 900,  # RE agent's kubectl+gh deployment workflow needs extra time
+        "timeout": 1800,  # RE agent's kubectl+gh deployment workflow needs extra time (30 min)
         "evaluation_criteria": {
             "DeploymentExecution": (
                 "Did the ReleaseEngineer ACTUALLY deploy to staging? "
