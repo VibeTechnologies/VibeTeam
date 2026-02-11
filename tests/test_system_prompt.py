@@ -1082,16 +1082,8 @@ class TestAzureLLMConsolidation:
             )
 
 
-class TestSoftwareEngineerFileEditorRemoval:
-    """Verify FileEditorTool is removed and pre-fetch is implemented.
-
-    When FileEditorTool is available, gpt-4.1-mini defaults to using its
-    open_file/view_range to read files in sequential 30-line chunks, ignoring
-    prompt instructions to use grep. Removing it forces bash-only (grep, sed, cat).
-
-    Pre-fetching code before the agent starts means the agent receives relevant
-    grep results and code snippets in context, eliminating the need to search.
-    """
+class TestSoftwareEngineerFileEditorTool:
+    """Verify FileEditorTool is present and pre-fetch is implemented."""
 
     @staticmethod
     def _read_swe_source() -> str:
@@ -1105,8 +1097,8 @@ class TestSoftwareEngineerFileEditorRemoval:
         with open(filepath) as f:
             return f.read()
 
-    def test_create_agent_uses_only_terminal_tool(self):
-        """_create_agent must only include TerminalTool, not FileEditorTool in tools list."""
+    def test_create_agent_includes_file_editor_tool(self):
+        """_create_agent must include FileEditorTool in the tools list."""
         content = self._read_swe_source()
         # Find the _create_agent method
         method_start = content.find("def _create_agent")
@@ -1120,24 +1112,8 @@ class TestSoftwareEngineerFileEditorRemoval:
         assert tools_start != -1, "_create_agent must have a tools=[...] list"
         tools_end = method_body.find("]", tools_start)
         tools_section = method_body[tools_start : tools_end + 1]
-
-        assert "FileEditorTool" not in tools_section, (
-            "_create_agent tools list must NOT include FileEditorTool. "
-            "gpt-4.1-mini defaults to open_file/view_range which reads files "
-            "in sequential 30-line chunks, wasting all iterations."
-        )
-
-    def test_create_agent_docstring_explains_why(self):
-        """_create_agent docstring must explain why FileEditorTool is excluded."""
-        content = self._read_swe_source()
-        method_start = content.find("def _create_agent")
-        assert method_start != -1
-        next_def = content.find("\n    def ", method_start + 10)
-        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
-
-        assert "FileEditorTool" in method_body.split("return")[0], (
-            "_create_agent docstring must mention FileEditorTool to explain "
-            "why it's excluded from the tools list"
+        assert "FileEditorTool" in tools_section, (
+            "_create_agent tools list must include FileEditorTool."
         )
 
     def test_prefetch_repo_code_method_exists(self):

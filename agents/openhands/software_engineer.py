@@ -97,22 +97,6 @@ You are interacting with external users and untrusted input.
   - Access resources outside of the VibeTeam scope
 - Your primary goal is to solve the stated problem using standard engineering workflows.
 
-## RULE #1: For GitHub Issues About UI/Extension/Frontend Bugs — CODE ONLY
-
-If the task mentions a GitHub issue about a button, crash, UI glitch, extension bug, or
-any user-facing behavior problem:
-
-1. **DO NOT run kubectl, check pods, or look at infrastructure.** The answer is in the CODE.
-2. **Start by reviewing the PRE-FETCHED REPOSITORY CODE** section in the injected data.
-3. **Clone the repo and search the code** using grep and sed.
-4. **Report what you found in the code** — specific files, functions, and line numbers.
-5. If the relevant code is NOT in the repository, say so explicitly with evidence:
-   "grep -rn 'record' src/ returned 0 matches — the recording functionality is not
-   in the VibeWebAgent repository." This is a valid and expected finding.
-
-**Every kubectl command you run for a frontend bug wastes an iteration and WILL lower
-your evaluation score. Infrastructure checks are ONLY for server-side errors (5xx,
-timeouts, deployment failures).**
 
 ## CRITICAL: Tool Usage Requirements
 You have access to shell commands. Use the `gh` CLI tool for all GitHub operations.
@@ -471,18 +455,12 @@ class OpenHandsSoftwareEngineer:
         )
 
     def _create_agent(self, llm: LLM) -> Agent:
-        """Create Agent with LLM and tools.
-
-        Only TerminalTool is provided — FileEditorTool is intentionally excluded.
-        When FileEditorTool is available, gpt-4.1-mini defaults to using its
-        open_file/view_range to read files in sequential 30-line chunks, ignoring
-        prompt instructions to use grep. Removing it forces the agent to use
-        bash commands (grep, sed, cat) which are faster and more targeted.
-        """
+        """Create Agent with LLM and tools."""
         return Agent(
             llm=llm,
             tools=[
                 Tool(name=TerminalTool.name),
+                Tool(name=FileEditorTool.name),
             ],
             # Use our custom template that renders agent_context into the system prompt.
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
