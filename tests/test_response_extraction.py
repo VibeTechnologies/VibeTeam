@@ -72,13 +72,24 @@ class MockMessageEvent:
 MockMessageEvent.__name__ = "MessageEvent"
 
 
+class MockObservationEvent:
+    """Mimics an OpenHands ObservationEvent containing command output."""
+
+    def __init__(self, content: str = "", text: str = ""):
+        self.content = content
+        self.text = text
+
+
+MockObservationEvent.__name__ = "ObservationEvent"
+
+
 class MockOtherEvent:
     """An event type that should be ignored by extraction."""
 
     pass
 
 
-MockOtherEvent.__name__ = "ObservationEvent"
+MockOtherEvent.__name__ = "OtherEvent"
 
 
 class MockCmdRunAction:
@@ -352,15 +363,15 @@ class TestActionThoughtFallback:
 
     def test_thought_fallback_with_observation_events(self):
         """Simulates typical max_iterations scenario: alternating actions and observations."""
-        other1 = MockOtherEvent()  # ObservationEvent
+        obs1 = MockObservationEvent(content="pod/gateway Running")
         action1 = MockCmdRunAction()
         event1 = MockActionEvent(action1, thought="Let me check the logs")
 
-        other2 = MockOtherEvent()
+        obs2 = MockObservationEvent(content="auth.py:42 def login():")
         action2 = MockCmdRunAction()
         event2 = MockActionEvent(action2, thought="The issue is in the auth module, line 42.")
 
-        events = [event1, other1, event2, other2]
+        events = [event1, obs1, event2, obs2]
 
         result = extract_response_from_events(events)
         # Should extract from the last ActionEvent (event2), skipping ObservationEvent
@@ -381,7 +392,7 @@ class TestThinkActionFallback:
         term_action = MockTerminalAction(command="grep -r 'auth' src/")
         term_event = MockActionEvent(term_action)
 
-        events = [think_event, term_event, MockOtherEvent()]
+        events = [think_event, term_event, MockObservationEvent(content="grep output")]
 
         result = extract_response_from_events(events)
         assert result == "After reviewing the code, the bug is in auth.py line 42."
@@ -408,28 +419,50 @@ class TestThinkActionFallback:
         think2 = MockThinkAction(thought="Deeper investigation reveals root cause in line 99.")
         event2 = MockActionEvent(think2)
 
-        events = [event1, MockOtherEvent(), event2]
+        events = [event1, MockObservationEvent(content="some output"), event2]
 
         result = extract_response_from_events(events)
         assert result == "Deeper investigation reveals root cause in line 99."
 
 
 class TestSummaryFallback:
-    """Test fallback that composes response from event summaries."""
+    """Test fallback that composes response from action summaries + observation outputs."""
 
-    def test_composes_from_summaries_when_no_other_response(self):
-        """When all other fallbacks fail, compose from event summaries."""
+    def test_composes_from_summaries_with_observations(self):
+        """When all other fallbacks fail, compose from action/observation pairs."""
+        events = []
+        steps = [
+            ("Check pod status in vibeteam namespace", "NAME  READY  STATUS\npod1  1/1    Running"),
+            ("Check recent events in vibeteam namespace", "LAST SEEN  TYPE    REASON  MESSAGE"),
+            ("Check logs of vibeteam-gateway deployment", "2026-02-10 GET /health 200"),
+        ]
+        for summary, obs_content in steps:
+            action = MockTerminalAction(command="kubectl ...")
+            event = MockActionEvent(action, thought="", summary=summary)
+            events.append(event)
+            events.append(MockObservationEvent(content=obs_content))
+
+        result = extract_response_from_events(events)
+        assert "I investigated but ran out of iterations" in result
+        # Should contain summaries
+        for summary, _ in steps:
+            assert summary in result
+        # Should contain observation content
+        assert "Running" in result
+        assert "GET /health 200" in result
+
+    def test_composes_summaries_without_observations(self):
+        """Works even when observations have no content."""
         events = []
         summaries = [
-            "Check pod status in vibeteam namespace",
-            "Check recent events in vibeteam namespace",
-            "Check logs of vibeteam-gateway deployment",
+            "Check pod status",
+            "Check logs",
         ]
         for s in summaries:
             action = MockTerminalAction(command="kubectl ...")
             event = MockActionEvent(action, thought="", summary=s)
             events.append(event)
-            events.append(MockOtherEvent())  # observation
+            events.append(MockObservationEvent(content=""))  # empty observation
 
         result = extract_response_from_events(events)
         assert "I investigated but ran out of iterations" in result
@@ -451,7 +484,7 @@ class TestSummaryFallback:
         assert result == "Investigation complete"
 
     def test_summaries_limited_to_8(self):
-        """At most 8 summaries should be collected."""
+        """At most 8 steps should be included."""
         events = []
         for i in range(15):
             action = MockTerminalAction(command=f"cmd{i}")
@@ -478,3 +511,46 @@ class TestSummaryFallback:
         result = extract_response_from_events(events)
         assert "Checked the logs" in result
         assert result.count("- ") == 1  # only one bullet point
+
+    def test_observation_content_truncated(self):
+        """Long observation outputs should be truncated to 500 chars."""
+        action = MockTerminalAction(command="cat large_file.py")
+        event = MockActionEvent(action, summary="Read large file")
+        obs = MockObservationEvent(content="x" * 1000)  # 1000 chars
+
+        events = [event, obs]
+
+        result = extract_response_from_events(events)
+        assert "Read large file" in result
+        # Should contain truncated output with "..."
+        assert "..." in result
+        # Total obs content in result should be ~500 + "..."
+        assert "x" * 500 in result
+        assert "x" * 501 not in result
+
+    def test_observation_text_fallback(self):
+        """If content is empty, fall back to .text attribute."""
+        action = MockTerminalAction(command="ls")
+        event = MockActionEvent(action, summary="List files")
+        obs = MockObservationEvent(content="", text="file1.py\nfile2.py")
+
+        events = [event, obs]
+
+        result = extract_response_from_events(events)
+        assert "file1.py" in result
+
+    def test_finish_action_excluded_from_summary(self):
+        """FinishAction events should not appear in the summary steps."""
+        action1 = MockTerminalAction(command="grep auth")
+        event1 = MockActionEvent(action1, summary="Search for auth")
+
+        finish_action = MockFinishAction(message="")  # empty finish
+        finish_action.__class__.__name__ = "FinishAction"
+        finish_event = MockActionEvent(finish_action, summary="Finish")
+
+        events = [event1, finish_event]
+
+        result = extract_response_from_events(events)
+        assert "Search for auth" in result
+        # Finish should not appear in summary
+        assert "Finish" not in result or "Search for auth" in result

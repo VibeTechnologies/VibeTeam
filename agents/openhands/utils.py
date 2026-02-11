@@ -114,27 +114,62 @@ def extract_response_from_events(events: list[Any]) -> str:
                     break
 
     if not response:
-        # Fallback 3: Compose from event summaries.
-        # OpenHands events have a .summary field (e.g. "Check pod status in vibeteam namespace").
-        # Collect the last few action summaries to give a sense of what the agent investigated.
-        summaries: list[str] = []
-        for event in reversed(events):
+        # Fallback 3: Compose from action summaries + observation outputs.
+        # This produces a rich response showing both what the agent did AND what it found.
+        # We pair ActionEvents with their following ObservationEvents to include outputs.
+        steps: list[str] = []
+        max_obs_chars = 500  # Truncate each observation to avoid huge responses
+
+        # Walk forward to pair actions with observations
+        i = 0
+        while i < len(events):
+            event = events[i]
             event_type = type(event).__name__
+
             if event_type == "ActionEvent":
+                action = getattr(event, "action", None)
+                action_name = type(action).__name__ if action else ""
+                # Skip FinishAction/AgentFinishAction — already handled above
+                if action_name in ("FinishAction", "AgentFinishAction"):
+                    i += 1
+                    continue
+
                 summary = getattr(event, "summary", "")
-                if summary:
-                    summaries.append(summary)
-                if len(summaries) >= 8:
-                    break
-        if summaries:
-            summaries.reverse()
+                if not summary:
+                    i += 1
+                    continue
+
+                step = f"- {summary}"
+
+                # Look ahead for the next ObservationEvent (output of this action)
+                if i + 1 < len(events):
+                    next_event = events[i + 1]
+                    next_type = type(next_event).__name__
+                    if next_type == "ObservationEvent":
+                        obs_content = getattr(next_event, "content", "")
+                        if not obs_content:
+                            # Try .text or str fallback
+                            obs_content = getattr(next_event, "text", "")
+                        if obs_content and len(obs_content.strip()) > 0:
+                            obs_text = obs_content.strip()
+                            if len(obs_text) > max_obs_chars:
+                                obs_text = obs_text[:max_obs_chars] + "..."
+                            step += f"\n  ```\n  {obs_text}\n  ```"
+                        i += 1  # Skip the observation event
+
+                steps.append(step)
+            i += 1
+
+        # Take the last 8 steps to keep the response focused
+        if steps:
+            recent_steps = steps[-8:]
             response = (
                 "I investigated but ran out of iterations before completing. "
-                "Here's what I did:\n" + "\n".join(f"- {s}" for s in summaries)
+                "Here's what I did and found:\n\n" + "\n".join(recent_steps)
             )
             logger.info(
-                "Composed response from %d event summaries (%d chars)",
-                len(summaries),
+                "Composed response from %d action+observation pairs (%d chars)",
+                len(recent_steps),
                 len(response),
             )
 
