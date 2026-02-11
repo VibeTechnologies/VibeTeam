@@ -31,4 +31,4 @@ echo "Starting server..."
 
 # Run the server with the fresh code
 cd "$CODE_DIR"
-exec python -m uvicorn agents.openhands.server:app --host 0.0.0.0 --port 8080
+exec python -m uvicorn agent_service.openhands.server:app --host 0.0.0.0 --port 8080

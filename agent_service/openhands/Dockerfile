@@ -21,7 +21,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
-COPY agents/openhands/requirements.txt ./requirements.txt
+COPY agent_service/openhands/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy shared agent code
@@ -30,7 +30,8 @@ COPY agents/config.py ./agents/
 COPY agents/sessions.py ./agents/
 COPY agents/metrics.py ./agents/
 COPY agents/shared/ ./agents/shared/
-COPY agents/openhands/ ./agents/openhands/
+COPY agent_service/__init__.py ./agent_service/
+COPY agent_service/openhands/ ./agent_service/openhands/
 
 # Production stage
 FROM python:3.12-slim
@@ -56,6 +57,7 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 
 # Copy application code
 COPY --from=builder /app/agents /app/agents
+COPY --from=builder /app/agent_service /app/agent_service
 
 # Create non-root user
 RUN useradd -m -u 1000 vibeteam
@@ -85,4 +87,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 EXPOSE 8080
 
 # Default command - run FastAPI server
-CMD ["python", "-m", "agents.openhands.server"]
+CMD ["python", "-m", "agent_service.openhands.server"]

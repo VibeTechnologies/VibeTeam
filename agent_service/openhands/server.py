@@ -525,7 +525,7 @@ def main():
     logger.info(f"Starting OpenHands service on {host}:{port}")
 
     uvicorn.run(
-        "agents.openhands.server:app",
+        "agent_service.openhands.server:app",
         host=host,
         port=port,
         reload=os.getenv("DEBUG", "").lower() == "true",

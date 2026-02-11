@@ -31,6 +31,7 @@ spec:
           image: ghcr.io/vibetechnologies/vibeteam-openhands:dev
           imagePullPolicy: Always
           workingDir: /code/current
+          command: ["python", "-m", "uvicorn", "agent_service.openhands.server:app", "--host", "0.0.0.0", "--port", "8080"]
           lifecycle:
             postStart:
               exec:
