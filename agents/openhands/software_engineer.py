@@ -582,7 +582,17 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
             pass
 
         # Step 3: Extract keywords from task and grep
-        task_lower = task.lower()
+        # Extract the user's actual message from the task template to avoid
+        # generating keywords from boilerplate like "Slack Request", "user has
+        # requested help via Slack", etc. The user message is between
+        # "### User Message" and "### End User Message" markers.
+        user_msg_match = re.search(
+            r"### User Message.*?\n(.*?)(?:### End User Message|$)",
+            task,
+            re.DOTALL,
+        )
+        keyword_source = user_msg_match.group(1).strip() if user_msg_match else task
+        task_lower = keyword_source.lower()
         # Extract meaningful keywords: words that are likely code identifiers
         # Skip common English words and focus on technical terms
         skip_words = {
@@ -727,16 +737,18 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
                 raw_keywords.append(w)
 
         # Also extract quoted terms or hashtag numbers
-        quoted = re.findall(r'"([^"]+)"', task)
+        quoted = re.findall(r'"([^"]+)"', keyword_source)
         raw_keywords.extend(q.lower() for q in quoted if q.lower() not in raw_keywords)
 
         # Generate compound camelCase terms from adjacent word pairs.
         # These are more likely to match actual code identifiers than single words.
+        # Only combine words that are NOT in the skip list — otherwise we get
+        # noise like "newGithub", "reportingThat", "browserExtension", etc.
         all_words = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", task_lower)
         compound_keywords: list[str] = []
         for i in range(len(all_words) - 1):
             a, b = all_words[i], all_words[i + 1]
-            if len(a) >= 3 and len(b) >= 3:
+            if len(a) >= 3 and len(b) >= 3 and a not in skip_words and b not in skip_words:
                 # camelCase compound (e.g., "record button" -> "recordButton")
                 camel = f"{a}{b[0].upper()}{b[1:]}"
                 if camel not in compound_keywords:
