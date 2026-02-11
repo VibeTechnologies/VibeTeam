@@ -668,21 +668,34 @@ class TestSoftwareEngineerIterationBudget:
         )
 
     def test_other_agents_still_use_25_iterations(self):
-        """SupportEngineer and ReleaseEngineer should still use max_iteration_per_run=25."""
-        for agent_file in ["support_engineer.py", "release_engineer.py"]:
-            filepath = os.path.join(
-                os.path.dirname(__file__),
-                os.pardir,
-                "agents",
-                "openhands",
-                agent_file,
-            )
-            with open(filepath) as f:
-                content = f.read()
-            assert "max_iteration_per_run=25" in content, (
-                f"{agent_file} should still use max_iteration_per_run=25. "
-                f"Only SWE agent needs 35 iterations."
-            )
+        """SupportEngineer should use max_iteration_per_run=25, ReleaseEngineer uses 15."""
+        # SupportEngineer uses 25 iterations
+        se_filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "openhands",
+            "support_engineer.py",
+        )
+        with open(se_filepath) as f:
+            se_content = f.read()
+        assert "max_iteration_per_run=25" in se_content, (
+            "support_engineer.py should use max_iteration_per_run=25."
+        )
+
+        # ReleaseEngineer uses 15 iterations (reduced to prevent timeout)
+        re_filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "openhands",
+            "release_engineer.py",
+        )
+        with open(re_filepath) as f:
+            re_content = f.read()
+        assert "max_iteration_per_run=15" in re_content, (
+            "release_engineer.py should use max_iteration_per_run=15."
+        )
 
     def test_has_forbidden_actions_section(self):
         """Prompt must have a FORBIDDEN ACTIONS section to prevent sequential file reading."""

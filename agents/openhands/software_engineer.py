@@ -491,11 +491,16 @@ class OpenHandsSoftwareEngineer:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
 
             if result.returncode == 0:
+                issue_text = result.stdout
+                # Cap issue text to prevent context overflow.
+                # GitHub issues with many comments can be very large.
+                if len(issue_text) > 3000:
+                    issue_text = issue_text[:3000] + "\n\n... (issue text truncated at 3000 chars)"
                 return f"""
 ================================================================================
 PRE-FETCHED GITHUB ISSUE #{issue_number}
 ================================================================================
-{result.stdout}
+{issue_text}
 ================================================================================
 """
             else:
@@ -571,6 +576,13 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
             if file_list:
                 # Make paths relative
                 file_list = file_list.replace(workspace_path + "/", "")
+                # Cap file listing to prevent huge repos from blowing up context.
+                # Show only first 50 files — the agent can run find if it needs more.
+                file_lines = file_list.split("\n")
+                if len(file_lines) > 50:
+                    file_list = (
+                        "\n".join(file_lines[:50]) + f"\n... ({len(file_lines) - 50} more files)"
+                    )
                 sections.append(f"## File Structure\n```\n{file_list}\n```")
         except Exception:
             pass
@@ -694,6 +706,23 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
             "try",
             "see",
             "softwareengineer",
+            # Additional non-code words that pollute grep results
+            "github",
+            "repo",
+            "repository",
+            "crashes",
+            "crashing",
+            "crash",
+            "clicking",
+            "click",
+            "fails",
+            "failing",
+            "broken",
+            "breaking",
+            "working",
+            "stopped",
+            "report",
+            "reported",
         }
 
         # Extract candidate keywords (3+ chars, not in skip list)
@@ -711,7 +740,7 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
         keywords = keywords[:5]
 
         if not keywords:
-            keywords = ["record", "button", "click"]
+            keywords = ["record", "button"]
 
         print(f"[SoftwareEngineer] Pre-fetch grep keywords: {keywords}")
 
@@ -974,7 +1003,12 @@ section-by-section. If you need more context, use:
             # Build full task with context
             context_str = "\n\n".join(injected_context) if injected_context else ""
             if context_str:
-                context_block = f"""
+                # NOTE: SOFTWARE_ENGINEER_CONTEXT is already injected into the
+                # system prompt via system_prompt_kwargs in _create_agent().
+                # Do NOT include it again here — duplicating it wastes ~17k chars
+                # and pushes the context past OpenHands' 50k char limit, causing
+                # truncation that makes the agent blind to pre-fetched data.
+                full_task = f"""
 ================================================================================
 INJECTED DATA FROM MONITORING SYSTEMS - THIS IS YOUR DATA, USE IT!
 ================================================================================
@@ -984,17 +1018,13 @@ INJECTED DATA FROM MONITORING SYSTEMS - THIS IS YOUR DATA, USE IT!
 ================================================================================
 END OF INJECTED DATA - The above data has ALREADY been fetched for you
 ================================================================================
-"""
-                full_task = f"""{SOFTWARE_ENGINEER_CONTEXT}
-{context_block}
 
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
 """
             else:
-                full_task = f"""{SOFTWARE_ENGINEER_CONTEXT}
-
+                full_task = f"""
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK

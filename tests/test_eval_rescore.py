@@ -537,9 +537,9 @@ class TestPerScenarioTimeout:
             f"release_deploy timeout should be > 600, got {SCENARIOS['release_deploy']['timeout']}"
         )
 
-    def test_release_deploy_timeout_is_900(self):
-        """The release_deploy scenario timeout should be 900s."""
-        assert SCENARIOS["release_deploy"]["timeout"] == 900
+    def test_release_deploy_timeout_is_1800(self):
+        """The release_deploy scenario timeout should be 1800s (30 min)."""
+        assert SCENARIOS["release_deploy"]["timeout"] == 1800
 
     def test_other_scenarios_use_default_timeout(self):
         """Scenarios without explicit timeout should not have the key."""
