@@ -73,6 +73,9 @@ ENV AZURE_API_KEY=""
 ENV AZURE_API_BASE=""
 ENV AZURE_API_VERSION="2024-08-01-preview"
 ENV PYTHONPATH="/app"
+ENV GH_PAGER=""
+ENV GH_NO_UPDATE_NOTIFIER="1"
+ENV CI="true"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
