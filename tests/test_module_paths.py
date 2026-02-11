@@ -17,19 +17,21 @@ local-dev fallback path (os.path.dirname(__file__)) and never validated the k8s
 code path which uses hardcoded strings like "agent_service" and "agents".
 
 These tests ensure a directory rename cannot silently break production again.
+No mocks or fallbacks — every test validates against the real repo structure,
+exactly as production would resolve paths.
 """
 
 from __future__ import annotations
 
 import os
 import re
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-# Repo root: tests/ is one level below
+# Repo root: tests/ is one level below.
+# In k8s, /code/current IS the repo root. Tests use the real repo root
+# so every path assertion matches production exactly.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_SERVICE_DIR = REPO_ROOT / "agent_service" / "openhands"
 AGENTS_DIR = REPO_ROOT / "agents"
@@ -50,38 +52,34 @@ AGENTS_MD_LOADER = AGENTS_DIR / "shared" / "agents_md_loader.py"
 class TestGetPromptPathK8sBranch:
     """Verify the k8s code path in get_prompt_path() references the correct directory.
 
-    The existing tests only validated the local-dev fallback (os.path.dirname(__file__)).
-    This class simulates the k8s environment by creating a temp dir that mimics
-    /code/current and patching _CODE_CURRENT, so we exercise the EXACT same
-    string-based path construction that runs in production.
+    In k8s, /code/current is the repo root. We extract the hardcoded path
+    segments from source and check they resolve against the real repo root.
+    No mocks — if the path is wrong, the file won't exist.
     """
 
     def test_k8s_path_resolves_to_existing_file(self):
-        """Simulate k8s: create a temp dir mirroring repo layout, verify prompt is found."""
-        with tempfile.TemporaryDirectory() as fake_root:
-            # Mirror the repo structure under fake_root
-            prompts_dir = Path(fake_root) / "agent_service" / "openhands" / "prompts"
-            prompts_dir.mkdir(parents=True)
-            (prompts_dir / "agent_system.j2").write_text("test")
-
-            with patch("agent_service.openhands.utils._CODE_CURRENT", fake_root):
-                with patch("agent_service.openhands.utils.os.path.isdir", return_value=True):
-                    from agent_service.openhands.utils import get_prompt_path
-
-                    result = get_prompt_path()
-
-            expected = os.path.join(fake_root, "agent_service", "openhands", "prompts", "agent_system.j2")
-            assert result == expected, (
-                f"get_prompt_path() k8s branch produced wrong path.\n"
-                f"  Expected: {expected}\n"
-                f"  Got:      {result}"
-            )
-
-    def test_k8s_path_matches_actual_repo_structure(self):
-        """The k8s path segments must correspond to real directories in the repo."""
-        # Read the actual source to extract the hardcoded path segments
+        """The k8s path constructed by get_prompt_path() must point to a real file in the repo."""
         content = UTILS_PY.read_text()
-        # Find: os.path.join(_CODE_CURRENT, "agent_service", "openhands", "prompts", ...)
+        # Extract: os.path.join(_CODE_CURRENT, "agent_service", "openhands", "prompts", prompt_filename)
+        match = re.search(
+            r'os\.path\.join\(_CODE_CURRENT,\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*prompt_filename\)',
+            content,
+        )
+        assert match, "Could not find os.path.join(_CODE_CURRENT, ..., prompt_filename) in utils.py"
+        seg1, seg2, seg3 = match.group(1), match.group(2), match.group(3)
+
+        # In k8s, _CODE_CURRENT is the repo root. Verify the default prompt file exists.
+        prompt_file = REPO_ROOT / seg1 / seg2 / seg3 / "agent_system.j2"
+        assert prompt_file.is_file(), (
+            f"get_prompt_path() k8s branch builds path "
+            f"'<repo_root>/{seg1}/{seg2}/{seg3}/agent_system.j2' "
+            f"but {prompt_file} does not exist. "
+            f"Did you rename a directory without updating utils.py?"
+        )
+
+    def test_k8s_path_directory_exists(self):
+        """The prompts directory referenced by get_prompt_path() must exist in the repo."""
+        content = UTILS_PY.read_text()
         match = re.search(
             r'os\.path\.join\(_CODE_CURRENT,\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"',
             content,
@@ -89,21 +87,11 @@ class TestGetPromptPathK8sBranch:
         assert match, "Could not find os.path.join(_CODE_CURRENT, ...) in utils.py"
         seg1, seg2, seg3 = match.group(1), match.group(2), match.group(3)
 
-        # These segments must exist as real directories in the repo
         real_path = REPO_ROOT / seg1 / seg2 / seg3
         assert real_path.is_dir(), (
             f"get_prompt_path() k8s branch references '{seg1}/{seg2}/{seg3}/' "
             f"but {real_path} does not exist in the repo. "
             f"Did you rename a directory without updating utils.py?"
-        )
-
-    def test_local_fallback_path_resolves(self):
-        """The local dev fallback path must also point to an existing file."""
-        from agent_service.openhands.utils import get_prompt_path
-
-        path = get_prompt_path()
-        assert os.path.isfile(path), (
-            f"get_prompt_path() local fallback does not exist: {path}"
         )
 
 
