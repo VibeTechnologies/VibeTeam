@@ -31,21 +31,21 @@ class TestAutoGenUnitTasks:
     @pytest.fixture
     def release_engineer(self, azure_credentials):
         """Create AutoGen ReleaseEngineer."""
-        from agents.autogen.release_engineer import AutoGenReleaseEngineer
+        from agent_service.autogen.release_engineer import AutoGenReleaseEngineer
 
         return AutoGenReleaseEngineer()
 
     @pytest.fixture
     def marketing_manager(self, azure_credentials):
         """Create AutoGen MarketingManager."""
-        from agents.autogen.marketing_manager import AutoGenMarketingManager
+        from agent_service.autogen.marketing_manager import AutoGenMarketingManager
 
         return AutoGenMarketingManager()
 
     @pytest.fixture
     def support_engineer(self, azure_credentials):
         """Create AutoGen SupportEngineer."""
-        from agents.autogen.support_engineer import AutoGenSupportEngineer
+        from agent_service.autogen.support_engineer import AutoGenSupportEngineer
 
         return AutoGenSupportEngineer()
 
@@ -169,7 +169,7 @@ class TestAutoGenIntegrationTasks:
     @pytest.fixture
     def team(self, azure_credentials):
         """Create AutoGen team."""
-        from agents.autogen.team import AutoGenTeam
+        from agent_service.autogen.team import AutoGenTeam
 
         return AutoGenTeam()
 
@@ -202,21 +202,21 @@ class TestCrewAIUnitTasks:
     @pytest.fixture
     def release_engineer(self, azure_credentials):
         """Create CrewAI ReleaseEngineer."""
-        from agents.crewai.release_engineer import CrewAIReleaseEngineer
+        from agent_service.crewai.release_engineer import CrewAIReleaseEngineer
 
         return CrewAIReleaseEngineer()
 
     @pytest.fixture
     def marketing_manager(self, azure_credentials):
         """Create CrewAI MarketingManager."""
-        from agents.crewai.marketing_manager import CrewAIMarketingManager
+        from agent_service.crewai.marketing_manager import CrewAIMarketingManager
 
         return CrewAIMarketingManager()
 
     @pytest.fixture
     def support_engineer(self, azure_credentials):
         """Create CrewAI SupportEngineer."""
-        from agents.crewai.support_engineer import CrewAISupportEngineer
+        from agent_service.crewai.support_engineer import CrewAISupportEngineer
 
         return CrewAISupportEngineer()
 
@@ -340,7 +340,7 @@ class TestCrewAIIntegrationTasks:
     @pytest.fixture
     def crew(self, azure_credentials):
         """Create CrewAI crew."""
-        from agents.crewai.crew import CrewAITeam
+        from agent_service.crewai.crew import CrewAITeam
 
         return CrewAITeam()
 
@@ -373,21 +373,21 @@ class TestOpenHandsUnitTasks:
     @pytest.fixture
     def release_engineer(self, azure_credentials):
         """Create OpenHands ReleaseEngineer."""
-        from agents.openhands.release_engineer import OpenHandsReleaseEngineer
+        from agent_service.openhands.release_engineer import OpenHandsReleaseEngineer
 
         return OpenHandsReleaseEngineer()
 
     @pytest.fixture
     def marketing_manager(self, azure_credentials):
         """Create OpenHands MarketingManager."""
-        from agents.openhands.marketing_manager import OpenHandsMarketingManager
+        from agent_service.openhands.marketing_manager import OpenHandsMarketingManager
 
         return OpenHandsMarketingManager()
 
     @pytest.fixture
     def support_engineer(self, azure_credentials):
         """Create OpenHands SupportEngineer."""
-        from agents.openhands.support_engineer import OpenHandsSupportEngineer
+        from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
         return OpenHandsSupportEngineer()
 
@@ -510,7 +510,7 @@ class TestOpenHandsIntegrationTasks:
     @pytest.fixture
     def team(self, azure_credentials):
         """Create OpenHands team."""
-        from agents.openhands.team import OpenHandsTeam
+        from agent_service.openhands.team import OpenHandsTeam
 
         return OpenHandsTeam()
 
@@ -543,7 +543,7 @@ class TestStressTasks:
     @pytest.fixture
     def autogen_engineer(self, azure_credentials):
         """Create AutoGen ReleaseEngineer."""
-        from agents.autogen.release_engineer import AutoGenReleaseEngineer
+        from agent_service.autogen.release_engineer import AutoGenReleaseEngineer
 
         return AutoGenReleaseEngineer()
 
@@ -581,9 +581,9 @@ class TestStressTasks:
     @pytest.mark.asyncio
     async def test_s2_concurrent_agents(self, azure_credentials):
         """S2: Concurrent agent execution."""
-        from agents.autogen.marketing_manager import AutoGenMarketingManager
-        from agents.autogen.release_engineer import AutoGenReleaseEngineer
-        from agents.autogen.support_engineer import AutoGenSupportEngineer
+        from agent_service.autogen.marketing_manager import AutoGenMarketingManager
+        from agent_service.autogen.release_engineer import AutoGenReleaseEngineer
+        from agent_service.autogen.support_engineer import AutoGenSupportEngineer
 
         release = AutoGenReleaseEngineer()
         marketing = AutoGenMarketingManager()

@@ -38,7 +38,7 @@ jobs:
             dockerfile: agents/openhands/Dockerfile
             context: .
           - name: vibeteam-scheduler
-            dockerfile: agents/scheduler/Dockerfile
+            dockerfile: agent_service/scheduler/Dockerfile
             context: .
     steps:
       - uses: actions/checkout@v4

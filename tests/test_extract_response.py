@@ -14,7 +14,7 @@ Covers:
 
 from __future__ import annotations
 
-from agents.openhands.utils import extract_response_from_events
+from agent_service.openhands.utils import extract_response_from_events
 
 # ---------------------------------------------------------------------------
 # Helper stubs - mimic OpenHands event types without importing them

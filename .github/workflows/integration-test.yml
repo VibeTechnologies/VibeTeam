@@ -1,0 +1,46 @@
+name: Integration Test (OpenHands Agents)
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch: # allow manual runs
+
+jobs:
+  openhands-agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[openhands,dev]"
+          pip install aiosqlite
+
+      - name: Run OpenHands agent integration test
+        env:
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+          AZURE_API_VERSION: "2024-08-01-preview"
+          # gpt-5-mini is cheaper — use it for CI, keep gpt-4.1 for local dev
+          AZURE_OPENAI_DEPLOYMENT: "gpt-5-mini"
+        run: |
+          python -m pytest tests/test_openhands_service_integration.py \
+            -v --run-integration -s \
+            2>&1 | tee test-output.txt
+
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-output
+          path: test-output.txt

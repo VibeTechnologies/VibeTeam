@@ -141,19 +141,73 @@ PRODUCT_MANAGER_CONFIG = AgentConfig(
 )
 
 
+def _npx_package_available(args: list[str]) -> bool:
+    """Check whether the npx package referenced in *args* can be resolved.
+
+    We do a quick ``npm view <pkg>`` probe.  If the registry returns a
+    non-zero exit code the package doesn't exist (or we're offline) and
+    we should skip it rather than crashing the agent at runtime.
+    """
+    import shutil
+    import subprocess
+
+    npm = shutil.which("npm")
+    if not npm:
+        return False  # No npm → can't use npx MCP servers
+
+    # Extract the package name.  npx args are typically ["-y", "<pkg>", ...]
+    pkg = None
+    for a in args:
+        if not a.startswith("-"):
+            pkg = a
+            break
+    if not pkg:
+        return False
+
+    try:
+        subprocess.run(
+            [npm, "view", pkg, "version"],
+            capture_output=True,
+            timeout=10,
+        )
+        # npm view exits 0 if found, non-zero otherwise.
+        # We intentionally don't check returncode here — even a network
+        # error is acceptable; the real question is whether npm itself
+        # can be invoked.  If npm works but the package is missing it
+        # returns rc!=0 so we fall through to the return below.
+        return (
+            subprocess.run(
+                [npm, "view", pkg, "version"],
+                capture_output=True,
+                timeout=10,
+            ).returncode
+            == 0
+        )
+    except Exception:
+        return False
+
+
 def get_mcp_config_dict(servers: dict[str, MCPServerConfig]) -> dict[str, Any]:
-    """Convert MCPServerConfig objects to dict format for frameworks."""
-    result = {"mcpServers": {}}
-    for name, config in servers.items():
+    """Convert MCPServerConfig objects to dict format for frameworks.
+
+    MCP servers whose npx package is not available on the local machine
+    are silently skipped so the agent can still run without them.
+    """
+    result: dict[str, Any] = {"mcpServers": {}}
+    for name, cfg in servers.items():
+        # Skip npx-based servers whose package isn't installed / published
+        if cfg.command == "npx" and not _npx_package_available(cfg.args):
+            continue
+
         server_config: dict[str, Any] = {
-            "command": config.command,
-            "args": config.args,
+            "command": cfg.command,
+            "args": cfg.args,
         }
-        if config.env:
-            server_config["env"] = config.env
-        if config.url:
-            server_config["url"] = config.url
-        if config.auth:
-            server_config["auth"] = config.auth
+        if cfg.env:
+            server_config["env"] = cfg.env
+        if cfg.url:
+            server_config["url"] = cfg.url
+        if cfg.auth:
+            server_config["auth"] = cfg.auth
         result["mcpServers"][name] = server_config
     return result

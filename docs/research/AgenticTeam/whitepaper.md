@@ -2,151 +2,15 @@
 
 **A Technical Whitepaper on Agentic Team Architecture**
 
-*VibeTeam Research*  
-*Version 1.0 - February 2025*
+## 4. VibeTeam System Architecture
 
----
+This paper focuses on coordination concepts rather than implementation specifics. For current system diagrams, endpoints, and routing details, see [../../design.md](../../design.md).
 
-## Abstract
+High-level elements:
 
-This whitepaper presents a novel approach to multi-agent AI coordination that mirrors natural human team communication patterns. We introduce the **Thread-Based Subscription Model** (TBSM), a paradigm where AI agents collaborate through existing team messaging platforms (Slack, Discord) using natural language mentions and context-aware handoffs. Unlike traditional multi-agent orchestration systems that rely on centralized schedulers or rigid workflows, our approach enables emergent coordination through simple `/RoleName` mention patterns, persistent thread subscriptions, and transparent human-in-the-loop visibility.
-
-We present the VibeTeam system architecture, which implements five specialized agents (SoftwareEngineer, ReleaseEngineer, SupportEngineer, ProductManager, MarketingManager) that autonomously delegate tasks, preserve context across handoffs, and complete complex multi-step operations. We evaluate agent performance using the DeepEval framework with G-Eval methodology, achieving measurable thresholds for task completion, handoff quality, and contextual preservation.
-
-Our results demonstrate that natural language-based coordination in familiar communication channels reduces adoption friction, improves team visibility, and enables flexible agent collaboration without predetermined workflows.
-
----
-
-## 1. Introduction
-
-### 1.1 The Multi-Agent Coordination Challenge
-
-The deployment of multiple AI agents in production environments presents a fundamental coordination challenge: how do independent agents with specialized capabilities work together on complex tasks that span multiple domains? Traditional approaches fall into two categories:
-
-1. **Centralized Orchestration**: A master agent or scheduler directs all activities, creating bottlenecks and single points of failure.
-2. **Predefined Workflows**: Static DAG-based workflows where agent interactions are predetermined, limiting adaptability.
-
-Both approaches suffer from rigidity, opacity (agents communicate through internal channels invisible to human operators), and difficulty scaling to real-world complexity where tasks require dynamic collaboration.
-
-### 1.2 Our Hypothesis: Natural Team Communication as Coordination Primitive
-
-We hypothesize that **multi-agent AI teams can achieve effective coordination by adopting human team communication patterns** rather than implementing novel agent-specific protocols. Specifically:
-
-> **Hypothesis**: AI agents communicating through thread-based messaging platforms using natural language mentions can autonomously coordinate complex tasks while maintaining full human visibility, achieving coordination quality comparable to centralized orchestration systems.
-
-This hypothesis leads to three design principles:
-
-1. **Communication Transparency**: All agent-to-agent communication occurs in visible channels (Slack threads, Discord channels) where humans can observe, intervene, or participate.
-
-2. **Mention-Based Routing**: Agents invoke each other using the same `/RoleName` or `@RoleName` patterns humans use, creating intuitive handoff semantics.
-
-3. **Thread Persistence**: Conversations maintain context through thread subscriptions, allowing agents to receive all subsequent messages after being mentioned, preserving conversational continuity.
-
-### 1.3 Contributions
-
-This whitepaper makes the following contributions:
-
-- A formal model for **Thread-Based Subscription** in multi-agent systems
-- The **VibeTeam architecture** implementing five specialized agents
-- A **DeepEval-based evaluation framework** using G-Eval methodology for measuring agent team performance
-- Empirical results demonstrating handoff quality and task completion across multi-agent scenarios
-
----
-
-## 2. Related Work
-
-### 2.1 Multi-Agent Orchestration Frameworks
-
-Existing multi-agent frameworks such as AutoGen (Microsoft), CrewAI, and LangGraph provide orchestration primitives for agent collaboration. These systems typically implement:
-
-- **Agent-to-Agent Messaging**: Structured message passing through code-level APIs
-- **Workflow Definition**: YAML or code-based workflow specifications
-- **Centralized State**: Shared memory or state stores for coordination
-
-While effective for predetermined workflows, these approaches create opacity between agent activities and human operators, limiting practical deployment in team settings.
-
-### 2.2 Tool-Augmented LLM Agents
-
-OpenHands (formerly OpenDevin), OpenCode, and similar coding agents demonstrate the effectiveness of LLM-based agents with tool access for complex tasks. These systems provide:
-
-- **Shell and Code Execution**: Agents can write and execute code
-- **File System Access**: Reading, writing, and modifying files
-- **External API Integration**: Connecting to services like GitHub, Sentry, etc.
-
-Our work extends these capabilities by embedding tool-augmented agents within team communication platforms.
-
-### 2.3 Human-AI Collaboration
-
-Research on human-AI collaboration emphasizes the importance of transparency, controllability, and appropriate trust calibration. Studies show that AI systems operating through familiar interfaces (email, chat) achieve higher adoption rates than specialized interfaces.
-
----
-
-## 3. Thread-Based Subscription Model
-
-### 3.1 Formal Model
-
-We define a **Thread-Based Subscription Model** (TBSM) with the following components:
-
-**Definition 1 (Thread)**: A thread T is an ordered sequence of messages M = {m₁, m₂, ..., mₙ} with a unique identifier and associated metadata (channel, timestamp, parent message).
-
-**Definition 2 (Subscription)**: A subscription S is a tuple (source, thread_id, agent_role, session_id) indicating that an agent of role R is subscribed to receive messages in thread T.
-
-**Definition 3 (Mention)**: A mention is a pattern `/RoleName` or `@RoleName` within a message that triggers subscription of the mentioned agent to the thread.
-
-**Definition 4 (Handoff)**: A handoff H occurs when agent A₁ posts a message containing a mention of agent A₂, causing A₂ to be subscribed to the thread and receive all subsequent messages.
-
-The formal routing rules are:
-
-```
-R1: Thread Activation
-    IF message M contains "@VibeTeam" THEN mark thread(M) as active
-
-R2: Agent Subscription  
-    IF message M in active thread contains "/RoleName" THEN
-        subscribe(agent=RoleName, thread=thread(M))
-
-R3: Persistent Subscription
-    IF agent A is subscribed to thread T THEN
-        A receives all subsequent messages in T
-
-R4: Handoff Processing
-    IF agent A₁ posts message M containing "/A₂" THEN
-        execute R2 (subscribe A₂ to thread)
-        forward M to A₂
-```
-
-### 3.2 Data Model
-
-Thread subscriptions are persisted in a relational database:
-
-```sql
-CREATE TABLE thread_subscriptions (
-    id SERIAL PRIMARY KEY,
-    source VARCHAR(50) NOT NULL,        -- slack, discord, github_issue, github_pr
-    thread_id VARCHAR(255) NOT NULL,    -- platform-specific thread identifier
-    agent_role VARCHAR(50) NOT NULL,    -- software_engineer, release_engineer, etc.
-    session_id UUID NOT NULL,           -- link to agent session
-    subscribed_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (source, thread_id, agent_role)
-);
-```
-
-Session state is maintained per (thread, agent) tuple:
-
-```sql
-CREATE TABLE sessions (
-    id UUID PRIMARY KEY,
-    key VARCHAR(255) UNIQUE NOT NULL,   -- openhands:{role}:{source}:{thread_id}
-    framework VARCHAR(50) NOT NULL,     -- openhands, crewai, autogen
-    role VARCHAR(50) NOT NULL,
-    source VARCHAR(50) NOT NULL,
-    thread_id VARCHAR(255) NOT NULL,
-    workspace VARCHAR(500),             -- persistent directory path
-    messages JSONB DEFAULT '[]',        -- conversation history
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+- Gateway routes Slack, GitHub, and Sentry events and parses `@RoleName` or `/RoleName`.
+- Agent services manage per-thread sessions and tool access.
+- Thread subscriptions persist across handoffs.
 
 ### 3.3 Thread ID Formats
 

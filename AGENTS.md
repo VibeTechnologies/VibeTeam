@@ -1,47 +1,20 @@
-# VibeTeam Agent Instructions
+You are working on AI agentic team. Agent are implemented on OpenHands that runs as a service that host all the agents sessions. Gateways is used for integration with Slack. DeepEval is used to evaluate agent sessions. Use
 
-Instructions for AI agents working on the VibeTeam repository.
+```shell
+export $( < .env); uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
+```
 
-## Agent Roles and Responsibilities
+to run an evaluation test.
 
-Each agent has specific service ownership and handoff responsibilities. See individual agent instructions for details:
+Before running any test `export $( < .env )`
 
-| Agent | Persona | Instructions | Primary Services |
-|-------|---------|--------------|------------------|
-| **SupportEngineer** | Grace | [agents/SupportEngineer/AGENTS.md](agents/SupportEngineer/AGENTS.md) | Gmail, Sentry, Customer Requests |
-| **ReleaseEngineer** | Einstein | [agents/ReleaseEngineer/AGENTS.md](agents/ReleaseEngineer/AGENTS.md) | API endpoints, k3s cluster, CI/CD |
-| **SoftwareEngineer** | Alex | [agents/SoftwareEngineer/AGENTS.md](agents/SoftwareEngineer/AGENTS.md) | VibeBrowser repos, code review |
-| **ProductManager** | Jordan | [agents/ProductManager/AGENTS.md](agents/ProductManager/AGENTS.md) | GitHub Issues, PRDs, roadmap |
-| **MarketingManager** | Sam | [agents/MarketingManager/AGENTS.md](agents/MarketingManager/AGENTS.md) | Status page, docs, announcements |
+for example
+```shell
+export $( < .env ) && .venv/bin/python -m pytest tests/test_openhands_service_integration.py -v --run-integration -s
+```
 
-## Service Ownership Matrix
+Each agent has specific service ownership and handoff responsibilities. Evry agent have their own skill sets, defined in aagents/<agent_name>/skills/<sill_name>/SKILL.md.
 
-| Service | Primary Owner | Escalation Path |
-|---------|--------------|-----------------|
-| **api.vibebrowser.app** | ReleaseEngineer | → SoftwareEngineer (code bugs) |
-| **api-dev.vibebrowser.app** | ReleaseEngineer | → SoftwareEngineer (code bugs) |
-| **portal.vibebrowser.app** | ReleaseEngineer | → SoftwareEngineer (code bugs) |
-| **GenAI Gateway** | ReleaseEngineer | → SoftwareEngineer (code bugs) |
-| **Gmail (support@)** | SupportEngineer | → ProductManager (roadmap questions) |
-| **Sentry** | SupportEngineer | → ReleaseEngineer (infra) / SoftwareEngineer (code) |
-| **Langfuse** | SupportEngineer | → SoftwareEngineer (LLM issues) |
-| **GitHub Issues** | ProductManager | → SoftwareEngineer (implementation) |
-| **GitHub Actions CI/CD** | ReleaseEngineer | → SoftwareEngineer (test failures) |
-| **Customer Requests (#322)** | SupportEngineer | → ProductManager (prioritization) |
-| **Status Page** | MarketingManager | ← ReleaseEngineer (incident info) |
-| **Documentation** | MarketingManager | ← SoftwareEngineer (technical review) |
-
-## Production Action Ownership
-
-**CRITICAL: Only ReleaseEngineer can modify the production cluster.**
-
-| Action | Owner | Others |
-|--------|-------|--------|
-| **Rollback deployments** | ReleaseEngineer ONLY | SupportEngineer investigates, hands off |
-| **Restart pods** | ReleaseEngineer ONLY | SupportEngineer identifies need, hands off |
-| **Scale deployments** | ReleaseEngineer ONLY | SupportEngineer detects load, hands off |
-| **kubectl apply** | ReleaseEngineer ONLY | SoftwareEngineer provides manifests |
-| **kubectl get/logs** (read-only) | All agents | Investigation only |
 
 ### Investigation vs Action Flow
 
@@ -64,52 +37,6 @@ ReleaseEngineer ACTS:
         ↓
 Report action taken
 ```
-
-## Handoff Decision Tree
-
-When an agent receives a request, they should use this decision tree:
-
-```
-Is this a customer email/complaint?
-  → SupportEngineer investigates (kubectl read-only + Sentry)
-  → If action needed: hand off to ReleaseEngineer
-  
-Is this an infrastructure outage (API down, 5xx, health check failing)?
-  → SupportEngineer investigates first
-  → ReleaseEngineer takes action (rollback/restart)
-  
-Is this a code bug or feature request?
-  → SoftwareEngineer implements
-  
-Is this a prioritization or roadmap question?
-  → ProductManager decides
-  
-Does this need public communication?
-  → MarketingManager drafts
-```
-
-## Task Completion Policy
-
-**A task is not complete until it is verified end-to-end.** After deploying code changes that affect agent behavior:
-
-1. **Always run the evaluation** to verify the fix works:
-   ```bash
-   uv run python scripts/eval_slack_e2e.py --scenario <relevant_scenario> --channel C0AATPSADB8
-   ```
-
-2. **Check the evaluation report** for:
-   - Agent response received (no timeout)
-   - Response quality meets threshold
-   - No new errors introduced
-
-3. **If evaluation fails**, debug and iterate until it passes
-
-Do not consider infrastructure or agent code changes complete based solely on:
-- Successful deployment
-- Unit tests passing
-- Manual spot checks
-
-The evaluation script is the source of truth for agent functionality.
 
 ## Analyzing Evaluation Tests
 
@@ -138,13 +65,8 @@ kubectl get pods -n vibeteam
 kubectl rollout pause deployment/vibeteam-gateway -n vibeteam
 kubectl rollout pause deployment/openhands-svc -n vibeteam
 
-# 3. CRITICAL: Unset shell env vars that may override .env file
-# Shell env vars like AZURE_OPENAI_ENDPOINT take precedence over .env
-unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY AZURE_API_BASE AZURE_API_KEY
-
-# 4. Load credentials from .env and verify
-export $(grep -v '^#' .env | grep -E '^AZURE_' | xargs)
-echo "Using endpoint: $AZURE_OPENAI_ENDPOINT"  # Should show vibebrowser-dev.openai.azure.com
+# 3. Verify Azure credentials in .env match the deployment
+grep "AZURE_OPENAI" .env
 ```
 
 ### Understanding Evaluation Output
@@ -335,41 +257,6 @@ kubectl create secret generic vibeteam-secrets -n vibeteam \
 ## Environment Variables
 
 Required in `.env` (for local development and evaluation):
-```
-# Azure OpenAI
-AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com/
-AZURE_OPENAI_API_KEY=...
-AZURE_OPENAI_DEPLOYMENT=gpt-4.1-mini
-AZURE_API_VERSION=2024-08-01-preview
-
-# Legacy names (also supported)
-AZURE_API_KEY=${AZURE_OPENAI_API_KEY}
-AZURE_API_BASE=${AZURE_OPENAI_ENDPOINT}
-
-# GitHub
-GITHUB_TOKEN=
-```
-
-Optional:
-```
-# Slack
-SLACK_BOT_TOKEN=
-SLACK_SIGNING_SECRET=
-
-# Discord
-DISCORD_BOT_TOKEN=
-
-# Database
-DATABASE_URL=postgresql://...
-
-# Monitoring
-SENTRY_AUTH_TOKEN=
-LANGFUSE_PUBLIC_KEY=
-LANGFUSE_SECRET_KEY=
-
-# Evaluation
-BENCHMARK_JUDGE_MODEL=gpt-4.1-mini  # Override judge model for evals
-```
 
 ## Model Configuration
 
@@ -391,13 +278,3 @@ kubectl get pods -n vibeteam
 kubectl logs deployment/openhands-svc -n vibeteam --tail=50
 kubectl describe pod <pod-name> -n vibeteam
 ```
-
-## Customer Requests
-
-Feature requests are tracked in GitHub Issue #322 (VibeTechnologies/VibeWebAgent).
-Use `GitHubConnector.get_customer_requests_table()` to read/update.
-
-## Current Work
-
-**Active Issue: #38** - Deploy VibeTeam to Kubernetes and verify integrations
-https://github.com/VibeTechnologies/VibeTeam/issues/38

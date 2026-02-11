@@ -6,7 +6,7 @@ services:
   autogen:
     build:
       context: .
-      dockerfile: agents/autogen/Dockerfile
+      dockerfile: agent_service/autogen/Dockerfile
     environment:
       - AZURE_API_KEY=${AZURE_API_KEY}
       - AZURE_API_BASE=${AZURE_API_BASE}
@@ -17,7 +17,7 @@ services:
       - autogen-sessions:/app/.sessions
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "from agents.autogen import AutoGenReleaseEngineer; print('OK')"]
+      test: ["CMD", "python", "-c", "from agent_service.autogen import AutoGenReleaseEngineer; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -26,7 +26,7 @@ services:
   crewai:
     build:
       context: .
-      dockerfile: agents/crewai/Dockerfile
+      dockerfile: agent_service/crewai/Dockerfile
     environment:
       - AZURE_API_KEY=${AZURE_API_KEY}
       - AZURE_API_BASE=${AZURE_API_BASE}
@@ -37,7 +37,7 @@ services:
       - crewai-sessions:/app/.sessions
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "from agents.crewai import CrewAIReleaseEngineer; print('OK')"]
+      test: ["CMD", "python", "-c", "from agent_service.crewai import CrewAIReleaseEngineer; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -46,7 +46,7 @@ services:
   openhands:
     build:
       context: .
-      dockerfile: agents/openhands/Dockerfile
+      dockerfile: agent_service/openhands/Dockerfile
     environment:
       - AZURE_API_KEY=${AZURE_API_KEY}
       - AZURE_API_BASE=${AZURE_API_BASE}
@@ -58,7 +58,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # For OpenHands sandbox
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "from agents.openhands import OpenHandsReleaseEngineer; print('OK')"]
+      test: ["CMD", "python", "-c", "from agent_service.openhands import OpenHandsReleaseEngineer; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3

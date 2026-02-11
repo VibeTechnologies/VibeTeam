@@ -33,7 +33,7 @@
     └─────────────────────────────────────────────────────────────────────┘
              │
              │  2. Trigger Gateway (explicit POST request)
-             │     POST /slack/trigger
+             │     POST /slack/trigger (Bearer token: SLACK_TRIGGER_SECRET)
              ▼
     ┌─────────────────────────────────────────────────────────────────────┐
     │                      KUBERNETES CLUSTER                              │
@@ -98,228 +98,18 @@
     │    wait_timeout    │
     └────────┬───────────┘
              │
-    ┌────────▼───────────┐
-    │ 6. Collect Thread  │  Get all messages in thread
-    │    Conversation    │  Detect handoffs (@ReleaseEngineer)
-    └────────┬───────────┘
-             │
-    ┌────────▼───────────────────────────────────────────────────────────┐
-    │  7. DEEPEVAL G-EVAL EVALUATION                                      │
-    │                                                                      │
-    │  ┌──────────────────────────────────────────────────────────────┐  │
-    │  │  Azure OpenAI (gpt-5-2)                                       │  │
-    │  │                                                               │  │
-    │  │  Metrics Evaluated:                                           │  │
-    │  │  ┌─────────────────────────────────────────────────────────┐ │  │
-    │  │  │ InvestigationQuality                                    │ │  │
-    │  │  │ - Did agent ACTUALLY use tools successfully?            │ │  │
-    │  │  │ - Did agent query Sentry, kubectl, find evidence?       │ │  │
-    │  │  │ - Score 0.0-1.0 (threshold: 0.60)                       │ │  │
-    │  │  └─────────────────────────────────────────────────────────┘ │  │
-    │  │  ┌─────────────────────────────────────────────────────────┐ │  │
-    │  │  │ TaskCompletion                                          │ │  │
-    │  │  │ - Was the customer's issue RESOLVED?                    │ │  │
-    │  │  │ - Not just "please help" - actual progress              │ │  │
-    │  │  │ - Score 0.0-1.0 (threshold: 0.60)                       │ │  │
-    │  │  └─────────────────────────────────────────────────────────┘ │  │
-    │  └──────────────────────────────────────────────────────────────┘  │
-    └────────┬───────────────────────────────────────────────────────────┘
-             │
-    ┌────────▼───────────┐
-    │ 8. Generate Report │  results/eval_reports/eval_support_400_*.md
-    └────────┬───────────┘
-             │
-             ▼
-    ┌─────────────────────────────────────────────────────────────────────┐
-    │                        EVALUATION REPORT                             │
-    │                                                                      │
-    │  Status: ✅ PASSED / ❌ FAILED                                       │
-    │  Scenario: Support Engineer - API 400 Errors Investigation          │
-    │                                                                      │
-    │  | Metric               | Score | Threshold | Status  |             │
-    │  |---------------------|-------|-----------|---------|             │
-    │  | InvestigationQuality | 0.75  | 0.60      | ✅ Pass |             │
-    │  | TaskCompletion       | 0.68  | 0.60      | ✅ Pass |             │
-    │                                                                      │
-    │  Full Conversation History:                                          │
-    │  1. [User] @SupportEngineer there is a request...                   │
-    │  2. [SupportEngineer] I'll investigate...                           │
-    │  3. [SupportEngineer] Found in Sentry: 500 errors...                │
-    │  4. ...                                                              │
-    └─────────────────────────────────────────────────────────────────────┘
-```
+    ## Components (Short)
 
-## Test Scenarios
+    - `scripts/eval_slack_e2e.py` posts to Slack, then calls `POST /slack/trigger`.
+    - The gateway parses role mentions and routes to `DEFAULT_FRAMEWORK`.
+    - The agent service executes the role task and replies in-thread.
+    - DeepEval scores the collected transcript and writes a report.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          AVAILABLE SCENARIOS                                 │
-└─────────────────────────────────────────────────────────────────────────────┘
+    ## Handoff Flow
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  1. support_400_errors (Primary Test)                                        │
-│  ────────────────────────────────────                                        │
-│  Message: "@SupportEngineer there is a request from a user who sees the     │
-│            issue with Vibe API Gateway returning 400 errors..."             │
-│                                                                              │
-│  Expected Agent: SupportEngineer                                             │
-│  Expected Tools: Sentry queries, kubectl, Slack messages                     │
-│  Expected Outcome: Identify root cause, initiate fix/rollback                │
-│                                                                              │
-│  Evaluation Criteria:                                                        │
-│  - InvestigationQuality: Did tools WORK? Evidence found?                     │
-│  - TaskCompletion: Was issue RESOLVED or meaningfully addressed?             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  2. github_issue                                                             │
-│  ────────────────                                                            │
-│  Message: "@SoftwareEngineer we have a new GitHub issue #42 reporting       │
-│            that the browser extension crashes when clicking record..."       │
-│                                                                              │
-│  Expected Agent: SoftwareEngineer                                            │
-│  Expected Tools: GitHub API, code analysis                                   │
-│  Expected Outcome: Analyze issue, identify cause, propose fix                │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  3. release_deploy                                                           │
-│  ─────────────────                                                           │
-│  Message: "@ReleaseEngineer we need to deploy the latest changes to         │
-│            staging. The PR #123 has been merged..."                          │
-│                                                                              │
-│  Expected Agent: ReleaseEngineer                                             │
-│  Expected Tools: kubectl, GitHub API, deployment pipelines                   │
-│  Expected Outcome: Execute deployment, verify health, notify team            │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Component Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        COMPONENT RELATIONSHIPS                               │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-                          scripts/
-                    ┌─────────────────┐
-                    │ eval_slack_e2e  │
-                    │      .py        │
-                    └────────┬────────┘
-                             │ uses
-                             ▼
-               vibeteam/connectors/
-                    ┌─────────────────┐
-                    │ slack.py        │ SlackConnector
-                    │                 │ - post_message()
-                    │                 │ - get_thread_replies()
-                    └─────────────────┘
-                             │
-         ┌───────────────────┼───────────────────┐
-         │                   │                   │
-         ▼                   ▼                   ▼
-    ┌─────────┐        ┌─────────┐        ┌─────────┐
-    │ Slack   │        │ Gateway │        │ DeepEval│
-    │   API   │        │   API   │        │ G-Eval  │
-    └─────────┘        └─────────┘        └─────────┘
-
-
-                       vibeteam/gateway/
-    ┌───────────────────────────────────────────────────────────────────────┐
-    │                                                                        │
-    │  routes/slack.py                routes/api.py                          │
-    │  ┌─────────────────────┐       ┌─────────────────────┐                │
-    │  │ /slack/events       │       │ /run                │                │
-    │  │ /slack/trigger      │       │ /health             │                │
-    │  │ /slack/interactive  │       │ /metrics            │                │
-    │  └──────────┬──────────┘       └─────────────────────┘                │
-    │             │                                                          │
-    │             │ parse_role_mentions()                                    │
-    │             │ route_to_framework()                                     │
-    │             ▼                                                          │
-    │  ┌─────────────────────────────────────────────────────────────────┐  │
-    │  │  Framework Router                                                │  │
-    │  │  DEFAULT_FRAMEWORK env var → openhands | crewai | autogen       │  │
-    │  │                                                                  │  │
-    │  │  HTTP POST to framework service:                                 │  │
-    │  │  - openhands-svc:8001/run                                       │  │
-    │  │  - crewai-svc:8001/run                                          │  │
-    │  │  - autogen-svc:8001/run                                         │  │
-    │  └─────────────────────────────────────────────────────────────────┘  │
-    └───────────────────────────────────────────────────────────────────────┘
-
-
-                         agents/openhands/
-    ┌───────────────────────────────────────────────────────────────────────┐
-    │                                                                        │
-    │  server.py                                                             │
-    │  ┌─────────────────────────────────────────────────────────────────┐  │
-    │  │ POST /run                                                        │  │
-    │  │   request: { task, role, channel, thread_ts }                   │  │
-    │  │                                                                  │  │
-    │  │   agent = get_agent(role)  # support_engineer.py, etc.          │  │
-    │  │                                                                  │  │
-    │  │   # KEY FIX: Non-blocking execution                              │  │
-    │  │   result = await asyncio.to_thread(                              │  │
-    │  │       agent.run,                                                 │  │
-    │  │       task=request.task,                                        │  │
-    │  │       ...                                                        │  │
-    │  │   )                                                              │  │
-    │  │                                                                  │  │
-    │  │   return { response, status }                                   │  │
-    │  └─────────────────────────────────────────────────────────────────┘  │
-    │                                                                        │
-    │  Agent Files:                                                          │
-    │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐               │
-    │  │ support_      │ │ software_     │ │ release_      │               │
-    │  │ engineer.py   │ │ engineer.py   │ │ engineer.py   │               │
-    │  └───────────────┘ └───────────────┘ └───────────────┘               │
-    │  ┌───────────────┐ ┌───────────────┐                                  │
-    │  │ product_      │ │ marketing_    │                                  │
-    │  │ manager.py    │ │ manager.py    │                                  │
-    │  └───────────────┘ └───────────────┘                                  │
-    │                                                                        │
-    └───────────────────────────────────────────────────────────────────────┘
-
-
-                          agents/shared/
-    ┌───────────────────────────────────────────────────────────────────────┐
-    │  Shared Tools (used by all frameworks)                                 │
-    │                                                                        │
-    │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-    │  │ slack_tools │  │ handoff.py  │  │ browser_    │  │ gmail_tools │  │
-    │  │    .py      │  │             │  │  tools.py   │  │    .py      │  │
-    │  │             │  │ @RoleName   │  │             │  │             │  │
-    │  │ post_msg()  │  │ handoffs    │  │ browse()    │  │ send_email()│  │
-    │  │ reply()     │  │             │  │             │  │             │  │
-    │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  │
-    │                                                                        │
-    │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                    │
-    │  │ scheduler_  │  │ docs_tools  │  │ langfuse_   │                    │
-    │  │  tools.py   │  │    .py      │  │  tools.py   │                    │
-    │  └─────────────┘  └─────────────┘  └─────────────┘                    │
-    └───────────────────────────────────────────────────────────────────────┘
-```
-
-## Handoff Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AGENT HANDOFF FLOW                                 │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-User: "@SupportEngineer investigate 400 errors"
-              │
-              ▼
-    ┌──────────────────────┐
-    │   SupportEngineer    │
-    │   (OpenHands Agent)  │
-    │                      │
-    │   1. Query Sentry    │
-    │   2. Check kubectl   │
-    │   3. Identify issue  │
-    │                      │
-    │   Response:          │
+    - Agents mention `@OtherAgent` or `/OtherAgent` in replies.
+    - The router subscribes the mentioned agent to the thread.
+    - The eval script keeps polling until the thread is idle and includes handoff replies.
     │   "Found deployment  │
     │   issue from 8am.    │
     │   @ReleaseEngineer   │──────┐
