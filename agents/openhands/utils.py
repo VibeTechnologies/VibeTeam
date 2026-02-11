@@ -141,15 +141,20 @@ def extract_response_from_events(events: list[Any]) -> str:
 
                 step = f"- {summary}"
 
-                # Look ahead for the next ObservationEvent (output of this action)
+                # Look ahead for the next observation (output of this action).
+                # OpenHands observation types: CmdOutputObservation, FileReadObservation,
+                # FileEditObservation, etc. — all end with "Observation" and have .message.
                 if i + 1 < len(events):
                     next_event = events[i + 1]
                     next_type = type(next_event).__name__
-                    if next_type == "ObservationEvent":
-                        obs_content = getattr(next_event, "content", "")
+                    if next_type.endswith("Observation"):
+                        # Primary: .message (all OpenHands observations have this)
+                        obs_content = getattr(next_event, "message", "")
                         if not obs_content:
-                            # Try .text or str fallback
-                            obs_content = getattr(next_event, "text", "")
+                            # Fallback: .content or .text (for custom/mock events)
+                            obs_content = getattr(next_event, "content", "") or getattr(
+                                next_event, "text", ""
+                            )
                         if obs_content and len(obs_content.strip()) > 0:
                             obs_text = obs_content.strip()
                             if len(obs_text) > max_obs_chars:

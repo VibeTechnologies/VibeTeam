@@ -73,14 +73,19 @@ MockMessageEvent.__name__ = "MessageEvent"
 
 
 class MockObservationEvent:
-    """Mimics an OpenHands ObservationEvent containing command output."""
+    """Mimics an OpenHands observation (e.g., CmdOutputObservation, FileReadObservation).
 
-    def __init__(self, content: str = "", text: str = ""):
+    Real OpenHands observations have .message as the primary content field.
+    We also support .content/.text for backward compatibility.
+    """
+
+    def __init__(self, content: str = "", text: str = "", message: str = ""):
         self.content = content
         self.text = text
+        self.message = message
 
 
-MockObservationEvent.__name__ = "ObservationEvent"
+MockObservationEvent.__name__ = "CmdOutputObservation"
 
 
 class MockOtherEvent:
@@ -363,11 +368,11 @@ class TestActionThoughtFallback:
 
     def test_thought_fallback_with_observation_events(self):
         """Simulates typical max_iterations scenario: alternating actions and observations."""
-        obs1 = MockObservationEvent(content="pod/gateway Running")
+        obs1 = MockObservationEvent(message="pod/gateway Running")
         action1 = MockCmdRunAction()
         event1 = MockActionEvent(action1, thought="Let me check the logs")
 
-        obs2 = MockObservationEvent(content="auth.py:42 def login():")
+        obs2 = MockObservationEvent(message="auth.py:42 def login():")
         action2 = MockCmdRunAction()
         event2 = MockActionEvent(action2, thought="The issue is in the auth module, line 42.")
 
@@ -392,7 +397,7 @@ class TestThinkActionFallback:
         term_action = MockTerminalAction(command="grep -r 'auth' src/")
         term_event = MockActionEvent(term_action)
 
-        events = [think_event, term_event, MockObservationEvent(content="grep output")]
+        events = [think_event, term_event, MockObservationEvent(message="grep output")]
 
         result = extract_response_from_events(events)
         assert result == "After reviewing the code, the bug is in auth.py line 42."
@@ -419,7 +424,7 @@ class TestThinkActionFallback:
         think2 = MockThinkAction(thought="Deeper investigation reveals root cause in line 99.")
         event2 = MockActionEvent(think2)
 
-        events = [event1, MockObservationEvent(content="some output"), event2]
+        events = [event1, MockObservationEvent(message="some output"), event2]
 
         result = extract_response_from_events(events)
         assert result == "Deeper investigation reveals root cause in line 99."
@@ -436,11 +441,11 @@ class TestSummaryFallback:
             ("Check recent events in vibeteam namespace", "LAST SEEN  TYPE    REASON  MESSAGE"),
             ("Check logs of vibeteam-gateway deployment", "2026-02-10 GET /health 200"),
         ]
-        for summary, obs_content in steps:
+        for summary, obs_msg in steps:
             action = MockTerminalAction(command="kubectl ...")
             event = MockActionEvent(action, thought="", summary=summary)
             events.append(event)
-            events.append(MockObservationEvent(content=obs_content))
+            events.append(MockObservationEvent(message=obs_msg))
 
         result = extract_response_from_events(events)
         assert "I investigated but ran out of iterations" in result
@@ -462,7 +467,7 @@ class TestSummaryFallback:
             action = MockTerminalAction(command="kubectl ...")
             event = MockActionEvent(action, thought="", summary=s)
             events.append(event)
-            events.append(MockObservationEvent(content=""))  # empty observation
+            events.append(MockObservationEvent())  # empty observation
 
         result = extract_response_from_events(events)
         assert "I investigated but ran out of iterations" in result
@@ -516,7 +521,7 @@ class TestSummaryFallback:
         """Long observation outputs should be truncated to 500 chars."""
         action = MockTerminalAction(command="cat large_file.py")
         event = MockActionEvent(action, summary="Read large file")
-        obs = MockObservationEvent(content="x" * 1000)  # 1000 chars
+        obs = MockObservationEvent(message="x" * 1000)  # 1000 chars
 
         events = [event, obs]
 
@@ -528,11 +533,22 @@ class TestSummaryFallback:
         assert "x" * 500 in result
         assert "x" * 501 not in result
 
-    def test_observation_text_fallback(self):
-        """If content is empty, fall back to .text attribute."""
+    def test_observation_content_fallback(self):
+        """If message is empty, fall back to .content attribute."""
         action = MockTerminalAction(command="ls")
         event = MockActionEvent(action, summary="List files")
-        obs = MockObservationEvent(content="", text="file1.py\nfile2.py")
+        obs = MockObservationEvent(message="", content="file1.py\nfile2.py")
+
+        events = [event, obs]
+
+        result = extract_response_from_events(events)
+        assert "file1.py" in result
+
+    def test_observation_text_fallback(self):
+        """If message and content are empty, fall back to .text attribute."""
+        action = MockTerminalAction(command="ls")
+        event = MockActionEvent(action, summary="List files")
+        obs = MockObservationEvent(message="", content="", text="file1.py\nfile2.py")
 
         events = [event, obs]
 
