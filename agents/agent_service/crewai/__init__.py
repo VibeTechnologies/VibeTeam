@@ -8,25 +8,25 @@ CrewAI provides:
 - Task delegation and hierarchical processes
 """
 
-from agents.crewai.crew import CrewAITeam, create_team
-from agents.crewai.llm import AzureFunctionCallingLLM
-from agents.crewai.marketing_manager import (
+from .crew import CrewAITeam, create_team
+from .llm import AzureFunctionCallingLLM
+from .marketing_manager import (
     CrewAIMarketingManager,
     create_marketing_manager,
 )
-from agents.crewai.product_manager import (
+from .product_manager import (
     CrewAIProductManager,
     create_product_manager,
 )
-from agents.crewai.release_engineer import (
+from .release_engineer import (
     CrewAIReleaseEngineer,
     create_release_engineer,
 )
-from agents.crewai.software_engineer import (
+from .software_engineer import (
     CrewAISoftwareEngineer,
     create_software_engineer,
 )
-from agents.crewai.support_engineer import (
+from .support_engineer import (
     CrewAISupportEngineer,
     create_support_engineer,
 )

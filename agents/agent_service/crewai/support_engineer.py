@@ -13,7 +13,7 @@ import os
 from typing import Any
 
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
-from agents.crewai.slack_tools import get_slack_tools
+from .slack_tools import get_slack_tools
 from agents.sessions import get_or_create_session, get_session_store
 from agents.shared.calendar_tools import create_calendar_event, list_calendar_events
 from agents.shared.docs_tools import get_doc_content, list_docs, search_docs_sync
@@ -39,7 +39,7 @@ except ImportError:
 
 # Import custom LLM wrapper for Azure GPT-5 function calling support
 if CREWAI_AVAILABLE:
-    from agents.crewai.llm import AzureFunctionCallingLLM
+    from .llm import AzureFunctionCallingLLM
 else:
     AzureFunctionCallingLLM = None
 

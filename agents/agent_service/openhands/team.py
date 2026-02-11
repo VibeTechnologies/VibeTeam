@@ -9,11 +9,11 @@ Coordinates multiple agents and routes tasks based on @mentions.
 from typing import Any
 
 from agents.config import AgentConfig
-from agents.openhands.marketing_manager import OpenHandsMarketingManager
-from agents.openhands.product_manager import OpenHandsProductManager
-from agents.openhands.release_engineer import OpenHandsReleaseEngineer
-from agents.openhands.software_engineer import OpenHandsSoftwareEngineer
-from agents.openhands.support_engineer import OpenHandsSupportEngineer
+from .marketing_manager import OpenHandsMarketingManager
+from .product_manager import OpenHandsProductManager
+from .release_engineer import OpenHandsReleaseEngineer
+from .software_engineer import OpenHandsSoftwareEngineer
+from .support_engineer import OpenHandsSupportEngineer
 from agents.shared.role_resolver import parse_first_role_mention, route_by_keywords
 
 

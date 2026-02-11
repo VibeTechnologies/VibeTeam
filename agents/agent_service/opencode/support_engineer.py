@@ -8,7 +8,7 @@ Capabilities:
 - Customer communication
 """
 
-from agents.opencode.base import OpenCodeAgentConfig, OpenCodeBaseAgent
+from .base import OpenCodeAgentConfig, OpenCodeBaseAgent
 
 SUPPORT_ENGINEER_PROMPT = """You are Grace, the Support Engineer for VibeTeam.
 

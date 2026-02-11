@@ -38,7 +38,7 @@ except ImportError:
 
 # Import custom LLM wrapper for Azure GPT-5 function calling support
 if CREWAI_AVAILABLE:
-    from agents.crewai.llm import AzureFunctionCallingLLM
+    from .llm import AzureFunctionCallingLLM
 else:
     AzureFunctionCallingLLM = None
 

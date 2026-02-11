@@ -8,7 +8,7 @@ import asyncio
 import os
 from typing import Any
 
-from agents.autogen.marketing_manager import (
+from .marketing_manager import (
     analyze_sentiment,
     create_social_post,
     fetch_webpage,
@@ -16,13 +16,13 @@ from agents.autogen.marketing_manager import (
 )
 
 # Import agent modules (will create agents on demand)
-from agents.autogen.release_engineer import (
+from .release_engineer import (
     execute_shell,
     list_directory,
     read_file,
     write_file,
 )
-from agents.autogen.support_engineer import (
+from .support_engineer import (
     create_calendar_event,
     create_support_ticket,
     get_langfuse_traces,

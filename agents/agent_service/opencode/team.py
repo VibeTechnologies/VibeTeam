@@ -7,20 +7,20 @@ Manages the 5-agent team with @mention-based handoffs.
 from dataclasses import dataclass
 from typing import Any
 
-from agents.opencode.base import OpenCodeAgentConfig
-from agents.opencode.marketing_manager import (
+from .base import OpenCodeAgentConfig
+from .marketing_manager import (
     create_marketing_manager,
 )
-from agents.opencode.product_manager import (
+from .product_manager import (
     create_product_manager,
 )
-from agents.opencode.release_engineer import (
+from .release_engineer import (
     create_release_engineer,
 )
-from agents.opencode.software_engineer import (
+from .software_engineer import (
     create_software_engineer,
 )
-from agents.opencode.support_engineer import (
+from .support_engineer import (
     create_support_engineer,
 )
 

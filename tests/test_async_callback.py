@@ -1079,7 +1079,7 @@ class TestOpenHandsRunAsync:
 
     def test_run_async_returns_job_id(self):
         """POST /run/async should return a job_id immediately."""
-        from agents.openhands.server import app as agent_app
+        from agents.agent_service.openhands.server import app as agent_app
 
         client = TestClient(agent_app)
 
@@ -1106,7 +1106,7 @@ class TestOpenHandsRunAsync:
 
     def test_run_async_requires_callback_url(self):
         """POST /run/async should require callback_url."""
-        from agents.openhands.server import app as agent_app
+        from agents.agent_service.openhands.server import app as agent_app
 
         client = TestClient(agent_app)
 

@@ -341,7 +341,7 @@ class TestAutoGenBrowserIntegration:
     @pytest.fixture
     def marketing_manager(self, azure_credentials):
         """Create AutoGen MarketingManager with real credentials."""
-        from agents.autogen.marketing_manager import AutoGenMarketingManager
+        from agents.agent_service.autogen.marketing_manager import AutoGenMarketingManager
 
         return AutoGenMarketingManager()
 
@@ -404,7 +404,7 @@ class TestCrewAIBrowserIntegration:
     @pytest.fixture
     def marketing_manager(self, azure_credentials):
         """Create CrewAI MarketingManager with real credentials."""
-        from agents.crewai.marketing_manager import CrewAIMarketingManager
+        from agents.agent_service.crewai.marketing_manager import CrewAIMarketingManager
 
         return CrewAIMarketingManager()
 
@@ -461,7 +461,7 @@ class TestOpenHandsBrowserIntegration:
     @pytest.fixture
     def marketing_manager(self, azure_credentials):
         """Create OpenHands MarketingManager with real credentials."""
-        from agents.openhands.marketing_manager import OpenHandsMarketingManager
+        from agents.agent_service.openhands.marketing_manager import OpenHandsMarketingManager
 
         return OpenHandsMarketingManager()
 
@@ -519,9 +519,9 @@ class TestCrossFrameworkBrowserComparison:
     @pytest.mark.asyncio
     async def test_all_frameworks_web_research(self, azure_credentials, check_playwright):
         """Run identical web research task across all three frameworks."""
-        from agents.autogen.marketing_manager import AutoGenMarketingManager
-        from agents.crewai.marketing_manager import CrewAIMarketingManager
-        from agents.openhands.marketing_manager import OpenHandsMarketingManager
+        from agents.agent_service.autogen.marketing_manager import AutoGenMarketingManager
+        from agents.agent_service.crewai.marketing_manager import CrewAIMarketingManager
+        from agents.agent_service.openhands.marketing_manager import OpenHandsMarketingManager
 
         task = "Fetch content from https://example.com and provide a brief summary."
 

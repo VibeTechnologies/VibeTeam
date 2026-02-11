@@ -234,19 +234,19 @@ class TeamTestHarness:
         # Import CrewAI agents
         try:
             if role == "software_engineer":
-                from agents.crewai.software_engineer import create_software_engineer
+                from agents.agent_service.crewai.software_engineer import create_software_engineer
 
                 return create_software_engineer()
             elif role == "release_engineer":
-                from agents.crewai.release_engineer import create_release_engineer
+                from agents.agent_service.crewai.release_engineer import create_release_engineer
 
                 return create_release_engineer()
             elif role == "support_engineer":
-                from agents.crewai.support_engineer import create_support_engineer
+                from agents.agent_service.crewai.support_engineer import create_support_engineer
 
                 return create_support_engineer()
             elif role == "product_manager":
-                from agents.crewai.product_manager import create_product_manager
+                from agents.agent_service.crewai.product_manager import create_product_manager
 
                 return create_product_manager()
             else:
@@ -258,19 +258,19 @@ class TeamTestHarness:
         """Create an AutoGen agent."""
         try:
             if role == "software_engineer":
-                from agents.autogen.software_engineer import create_software_engineer
+                from agents.agent_service.autogen.software_engineer import create_software_engineer
 
                 return create_software_engineer()
             elif role == "release_engineer":
-                from agents.autogen.release_engineer import create_release_engineer
+                from agents.agent_service.autogen.release_engineer import create_release_engineer
 
                 return create_release_engineer()
             elif role == "support_engineer":
-                from agents.autogen.support_engineer import create_support_engineer
+                from agents.agent_service.autogen.support_engineer import create_support_engineer
 
                 return create_support_engineer()
             elif role == "product_manager":
-                from agents.autogen.product_manager import create_product_manager
+                from agents.agent_service.autogen.product_manager import create_product_manager
 
                 return create_product_manager()
             else:
@@ -282,23 +282,23 @@ class TeamTestHarness:
         """Create an OpenHands agent."""
         try:
             if role == "software_engineer":
-                from agents.openhands.software_engineer import create_software_engineer
+                from agents.agent_service.openhands.software_engineer import create_software_engineer
 
                 return create_software_engineer()
             elif role == "release_engineer":
-                from agents.openhands.release_engineer import create_release_engineer
+                from agents.agent_service.openhands.release_engineer import create_release_engineer
 
                 return create_release_engineer()
             elif role == "support_engineer":
-                from agents.openhands.support_engineer import create_support_engineer
+                from agents.agent_service.openhands.support_engineer import create_support_engineer
 
                 return create_support_engineer()
             elif role == "product_manager":
-                from agents.openhands.product_manager import create_product_manager
+                from agents.agent_service.openhands.product_manager import create_product_manager
 
                 return create_product_manager()
             elif role == "marketing_manager":
-                from agents.openhands.marketing_manager import create_marketing_manager
+                from agents.agent_service.openhands.marketing_manager import create_marketing_manager
 
                 return create_marketing_manager()
             else:
@@ -310,23 +310,23 @@ class TeamTestHarness:
         """Create an OpenCode agent."""
         try:
             if role == "software_engineer":
-                from agents.opencode.software_engineer import create_software_engineer
+                from agents.agent_service.opencode.software_engineer import create_software_engineer
 
                 return create_software_engineer()
             elif role == "release_engineer":
-                from agents.opencode.release_engineer import create_release_engineer
+                from agents.agent_service.opencode.release_engineer import create_release_engineer
 
                 return create_release_engineer()
             elif role == "support_engineer":
-                from agents.opencode.support_engineer import create_support_engineer
+                from agents.agent_service.opencode.support_engineer import create_support_engineer
 
                 return create_support_engineer()
             elif role == "product_manager":
-                from agents.opencode.product_manager import create_product_manager
+                from agents.agent_service.opencode.product_manager import create_product_manager
 
                 return create_product_manager()
             elif role == "marketing_manager":
-                from agents.opencode.marketing_manager import create_marketing_manager
+                from agents.agent_service.opencode.marketing_manager import create_marketing_manager
 
                 return create_marketing_manager()
             else:

@@ -31,7 +31,7 @@ except ImportError:
     Agent = None
     LocalConversation = None
 
-from agents.openhands.utils import get_prompt_path
+from .utils import get_prompt_path
 from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 

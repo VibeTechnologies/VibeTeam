@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agents.config import AgentConfig
-from agents.opencode.client import OpenCodeClient, OpenCodeClientConfig, create_client
+from .client import OpenCodeClient, OpenCodeClientConfig, create_client
 from agents.sessions import get_or_create_session, get_session_store
 
 

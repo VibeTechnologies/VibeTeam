@@ -118,7 +118,7 @@ class AgentSessionManager:
     def _create_crewai_agent(self, role: AgentRole):
         """Create a CrewAI agent."""
         try:
-            from agents.crewai import (
+            from agents.agent_service.crewai import (
                 create_software_engineer,
                 create_release_engineer,
                 create_support_engineer,
@@ -143,7 +143,7 @@ class AgentSessionManager:
     def _create_autogen_agent(self, role: AgentRole):
         """Create an AutoGen agent."""
         try:
-            from agents.autogen import (
+            from agents.agent_service.autogen import (
                 create_software_engineer,
                 create_release_engineer,
                 create_support_engineer,
@@ -168,7 +168,7 @@ class AgentSessionManager:
     def _create_openhands_agent(self, role: AgentRole):
         """Create an OpenHands agent."""
         try:
-            from agents.openhands import (
+            from agents.agent_service.openhands import (
                 create_software_engineer,
                 create_release_engineer,
                 create_support_engineer,

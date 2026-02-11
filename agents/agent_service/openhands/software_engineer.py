@@ -45,7 +45,7 @@ except ImportError:
     TerminalTool = None
     FileEditorTool = None
 
-from agents.openhands.utils import get_prompt_path
+from .utils import get_prompt_path
 from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 
@@ -1089,7 +1089,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 
             # Extract the agent's final response from conversation events
             # Uses shared extraction that handles both FinishAction and MessageEvent
-            from agents.openhands.utils import extract_response_from_events
+            from .utils import extract_response_from_events
 
             response = extract_response_from_events(conversation.state.events)
 

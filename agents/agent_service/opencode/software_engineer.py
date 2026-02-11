@@ -8,7 +8,7 @@ Capabilities:
 - Code editing and refactoring
 """
 
-from agents.opencode.base import OpenCodeAgentConfig, OpenCodeBaseAgent
+from .base import OpenCodeAgentConfig, OpenCodeBaseAgent
 
 SOFTWARE_ENGINEER_PROMPT = """You are Alan, the Software Engineer for VibeTeam.
 

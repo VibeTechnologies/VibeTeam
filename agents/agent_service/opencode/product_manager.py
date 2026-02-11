@@ -8,7 +8,7 @@ Capabilities:
 - Multi-agent task coordination
 """
 
-from agents.opencode.base import OpenCodeAgentConfig, OpenCodeBaseAgent
+from .base import OpenCodeAgentConfig, OpenCodeBaseAgent
 
 PRODUCT_MANAGER_PROMPT = """You are Maya, the Product Manager for VibeTeam.
 

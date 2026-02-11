@@ -11,37 +11,37 @@ Features:
 - @mention-based handoffs between agents
 """
 
-from agents.opencode.base import (
+from .base import (
     OpenCodeAgentConfig,
     OpenCodeBaseAgent,
 )
-from agents.opencode.client import (
+from .client import (
     OpenCodeClient,
     OpenCodeClientConfig,
     OpenCodeResponse,
     create_client,
 )
-from agents.opencode.marketing_manager import (
+from .marketing_manager import (
     OpenCodeMarketingManager,
     create_marketing_manager,
 )
-from agents.opencode.product_manager import (
+from .product_manager import (
     OpenCodeProductManager,
     create_product_manager,
 )
-from agents.opencode.release_engineer import (
+from .release_engineer import (
     OpenCodeReleaseEngineer,
     create_release_engineer,
 )
-from agents.opencode.software_engineer import (
+from .software_engineer import (
     OpenCodeSoftwareEngineer,
     create_software_engineer,
 )
-from agents.opencode.support_engineer import (
+from .support_engineer import (
     OpenCodeSupportEngineer,
     create_support_engineer,
 )
-from agents.opencode.team import (
+from .team import (
     OpenCodeTeam,
     TeamConfig,
     create_team,
