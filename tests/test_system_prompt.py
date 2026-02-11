@@ -537,3 +537,147 @@ class TestSoftwareEngineerCodeFirstInvestigation:
         """Must clarify that infra checks are only for deployment-related bugs."""
         content = self._read_swe_context()
         assert "deployment-related" in content.lower() or "deployment related" in content.lower()
+
+
+class TestSoftwareEngineerIterationBudget:
+    """Verify the SoftwareEngineer prompt and config enforce iteration budget.
+
+    The github_issue eval fails when the SWE agent exhausts all iterations
+    searching code without calling finish(). These tests ensure:
+    1. The prompt has a FINAL REMINDER at the end about calling finish()
+    2. The iteration limit numbers are consistent (35 max, wrap up at 25)
+    3. max_iteration_per_run is set to 35 (higher than other agents)
+    4. The GitHub Issue workflow includes an iteration check step
+    """
+
+    @staticmethod
+    def _read_swe_context() -> str:
+        filepath = os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            "agents",
+            "openhands",
+            "software_engineer.py",
+        )
+        with open(filepath) as f:
+            return f.read()
+
+    def test_has_final_reminder_section(self):
+        """Prompt must have a FINAL REMINDER section near the end."""
+        content = self._read_swe_context()
+        # Extract the SOFTWARE_ENGINEER_CONTEXT string
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        assert ctx_start != -1 and ctx_end != -1, "SOFTWARE_ENGINEER_CONTEXT not found"
+        ctx = content[ctx_start:ctx_end]
+
+        assert "FINAL REMINDER" in ctx, (
+            "SOFTWARE_ENGINEER_CONTEXT must contain a FINAL REMINDER section"
+        )
+        # FINAL REMINDER should be in the last 30% of the prompt
+        reminder_pos = ctx.find("FINAL REMINDER")
+        assert reminder_pos > len(ctx) * 0.7, (
+            f"FINAL REMINDER at position {reminder_pos}/{len(ctx)} — "
+            f"must be in the last 30% of the prompt so the LLM sees it last"
+        )
+
+    def test_final_reminder_mentions_finish(self):
+        """FINAL REMINDER must explicitly tell agent to call finish()."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        reminder_start = ctx.find("FINAL REMINDER")
+        assert reminder_start != -1
+        reminder_section = ctx[reminder_start:]
+
+        assert "finish()" in reminder_section, "FINAL REMINDER must mention calling finish()"
+
+    def test_final_reminder_mentions_emergency_mode(self):
+        """FINAL REMINDER must have escalating urgency (e.g., EMERGENCY at 30+)."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        reminder_start = ctx.find("FINAL REMINDER")
+        assert reminder_start != -1
+        reminder_section = ctx[reminder_start:]
+
+        assert "EMERGENCY" in reminder_section or "IMMEDIATELY" in reminder_section, (
+            "FINAL REMINDER must escalate urgency for high iteration counts"
+        )
+
+    def test_iteration_limit_is_35_in_prompt(self):
+        """The STRICT ITERATION LIMIT section must say 35, not 25."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        # Find the STRICT ITERATION LIMIT section
+        limit_start = ctx.find("STRICT ITERATION LIMIT")
+        assert limit_start != -1, "STRICT ITERATION LIMIT section not found"
+        # Get the next ~200 chars
+        limit_section = ctx[limit_start : limit_start + 200]
+
+        assert "35" in limit_section, (
+            f"STRICT ITERATION LIMIT must mention 35 max iterations. Found: {limit_section[:100]}"
+        )
+
+    def test_wrap_up_at_25_iterations(self):
+        """The prompt must tell the agent to wrap up at ~25 iterations."""
+        content = self._read_swe_context()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        limit_start = ctx.find("STRICT ITERATION LIMIT")
+        assert limit_start != -1
+        limit_section = ctx[limit_start : limit_start + 200]
+
+        assert "25" in limit_section, (
+            f"STRICT ITERATION LIMIT must tell agent to wrap up at ~25 calls. "
+            f"Found: {limit_section[:100]}"
+        )
+
+    def test_max_iteration_per_run_is_35(self):
+        """max_iteration_per_run must be set to 35 for SWE agent (not 25)."""
+        content = self._read_swe_context()
+        assert "max_iteration_per_run=35" in content, (
+            "SWE agent must use max_iteration_per_run=35. "
+            "Code search tasks are legitimately iteration-heavy and need more headroom."
+        )
+
+    def test_github_issue_workflow_has_iteration_check(self):
+        """The GitHub Issue Investigation workflow must include an iteration check step."""
+        content = self._read_swe_context()
+        workflow_start = content.find("### For GitHub Issue Investigation")
+        assert workflow_start != -1, "GitHub Issue Investigation workflow not found"
+        next_section = content.find("###", workflow_start + 5)
+        if next_section == -1:
+            next_section = content.find("## ", workflow_start + 5)
+        workflow = (
+            content[workflow_start:next_section] if next_section != -1 else content[workflow_start:]
+        )
+        assert "ITERATION CHECK" in workflow or "iteration" in workflow.lower(), (
+            "GitHub Issue workflow must include an iteration budget check step"
+        )
+
+    def test_other_agents_still_use_25_iterations(self):
+        """SupportEngineer and ReleaseEngineer should still use max_iteration_per_run=25."""
+        for agent_file in ["support_engineer.py", "release_engineer.py"]:
+            filepath = os.path.join(
+                os.path.dirname(__file__),
+                os.pardir,
+                "agents",
+                "openhands",
+                agent_file,
+            )
+            with open(filepath) as f:
+                content = f.read()
+            assert "max_iteration_per_run=25" in content, (
+                f"{agent_file} should still use max_iteration_per_run=25. "
+                f"Only SWE agent needs 35 iterations."
+            )

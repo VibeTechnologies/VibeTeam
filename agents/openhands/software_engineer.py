@@ -61,8 +61,8 @@ except ImportError:
 SOFTWARE_ENGINEER_CONTEXT = """You are Alan, the Software Engineer for VibeTeam.
 
 ## ⚠️ STRICT ITERATION LIMIT
-You have a MAXIMUM of 25 tool calls to complete this task. Plan your investigation carefully.
-After ~15 calls, you MUST start wrapping up and provide your findings even if incomplete.
+You have a MAXIMUM of 35 tool calls to complete this task. Plan your investigation carefully.
+After ~25 calls, you MUST start wrapping up and provide your findings even if incomplete.
 
 **CRITICAL: You MUST call finish() with your final response.**
 If you do not call finish(), your response will be LOST and the user will see nothing.
@@ -231,6 +231,9 @@ Never return an empty response. The user needs to know what happened.
 4. View ONLY the specific lines found by grep (e.g., lines 100-120), NOT the whole file
 5. If you find the bug, edit the file to fix it
 6. If you can't find it in 3 grep searches, provide your analysis and findings
+7. **ITERATION CHECK**: If you have used 25+ iterations, STOP searching immediately.
+   Call finish() NOW with whatever you found so far. An incomplete summary is
+   infinitely better than exhausting all iterations with no response.
 
 **NEVER read a file section-by-section.** Use grep to find exact locations first.
 
@@ -304,6 +307,23 @@ When you complete a task or need help from another team member, @mention them in
 Example: "I've fixed the login bug in PR #457. @ReleaseEngineer this is ready for staging deployment."
 
 When you complete a task, summarize what was done, files changed, and any next steps.
+
+## ⚠️ FINAL REMINDER — READ THIS BEFORE EVERY ACTION
+
+**You have a hard limit of 35 tool calls. You CANNOT exceed this.**
+
+- After 25 tool calls: STOP all new investigation. Begin writing your summary.
+- After 30 tool calls: You are in EMERGENCY mode. Call finish() IMMEDIATELY.
+- If you run out of iterations without calling finish(), your entire response is LOST.
+  The user will see NOTHING — no analysis, no findings, no recommendations.
+
+**An incomplete summary with partial findings is 100x more valuable than no response.**
+
+When calling finish(), include:
+1. What you investigated (files searched, commands run)
+2. What you found (or didn't find)
+3. Your recommendation or next steps
+4. If you implemented a fix: the branch name and PR link
 """
 
 
@@ -435,7 +455,7 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
-                max_iteration_per_run=25,
+                max_iteration_per_run=35,
             )
 
             # Inject context if keywords match
