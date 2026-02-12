@@ -1068,10 +1068,8 @@ async def handle_slack_events(
     logger.info(
         f"Received Slack event: {event_type}, "
         f"subtype={event.get('subtype')}, "
-        f"bot_id={event.get('bot_id')}, "
-        f"thread_ts={event.get('thread_ts')}, "
-        f"channel_type={event.get('channel_type')}, "
-        f"text={event.get('text', '')[:80]}"
+        f"thread_ts={bool(event.get('thread_ts'))}, "
+        f"channel_type={event.get('channel_type')}"
     )
 
     # Handle bot messages: process if they contain role mentions (handoffs/eval)
