@@ -27,6 +27,8 @@ spec:
       containers:
         # Patch the main container to use synced code
         - name: gateway
+          workingDir: /code/current
+          command: ["python", "-m", "vibeteam.gateway.server"]
           env:
             - name: PYTHONPATH
               value: "/code/current"
