@@ -2,9 +2,9 @@
 Tests for the async agent callback architecture.
 
 Tests the complete async flow:
-1. Slack event -> gateway adds eyes reaction -> submits /run/async
+1. Slack event -> gateway adds thinking_face reaction -> submits /run/async
 2. Agent completes -> POSTs to /callback/agent
-3. Gateway removes spinner, posts response, adds checkmark
+3. Gateway removes thinking_face, posts response, adds checkmark
 4. Handoffs in callback submit new async jobs
 """
 
@@ -236,8 +236,8 @@ class TestCallbackEndpoint:
             assert result["status"] == "ok"
             assert result["outcome"] == "response_posted"
 
-            # Verify spinner removed
-            mock_remove.assert_called_once_with("C_TEST", "ts_1234", "arrows_counterclockwise")
+            # Verify thinking_face removed
+            mock_remove.assert_called_once_with("C_TEST", "ts_1234", "thinking_face")
 
             # Verify checkmark added
             mock_add.assert_called_once_with("C_TEST", "ts_1234", "white_check_mark")
@@ -699,9 +699,9 @@ class TestSubmitAgentAsync:
                 user_id="U_USER",
             )
 
-            # Verify reaction lifecycle: add spinner, remove eyes
-            mock_add.assert_called_once_with("C_TEST", "msg_ts_1234", "arrows_counterclockwise")
-            mock_remove.assert_called_once_with("C_TEST", "msg_ts_1234", "eyes")
+            # Verify no reaction lifecycle on success submit (thinking_face already added by event handler)
+            mock_add.assert_not_called()
+            mock_remove.assert_not_called()
 
             # Verify async service was called with callback URL
             mock_call.assert_called_once()
@@ -763,7 +763,7 @@ class TestSubmitAgentAsync:
                 "vibeteam.gateway.routes.slack.remove_reaction",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as mock_remove,
             patch(
                 "vibeteam.gateway.routes.slack.call_agent_service_async",
                 new_callable=AsyncMock,
@@ -772,13 +772,8 @@ class TestSubmitAgentAsync:
             patch(
                 "vibeteam.gateway.routes.slack.send_slack_message",
                 new_callable=AsyncMock,
-                return_value="thinking_ts_123",
+                return_value="msg_ts_new",
             ) as mock_send,
-            patch(
-                "vibeteam.gateway.routes.slack.update_slack_message",
-                new_callable=AsyncMock,
-                return_value=True,
-            ) as mock_update,
             patch("vibeteam.gateway.routes.slack.config") as mock_config,
         ):
             mock_config.GATEWAY_URL = "http://vibeteam-gateway:8080"
@@ -794,15 +789,16 @@ class TestSubmitAgentAsync:
                 user_id="U_USER",
             )
 
-            # Should remove spinner and add X on failure
+            # Should remove thinking_face and add X on failure
+            remove_calls = [call[0] for call in mock_remove.call_args_list]
+            assert ("C_TEST", "msg_ts_1234", "thinking_face") in remove_calls
             add_calls = [call[0] for call in mock_add.call_args_list]
-            assert ("C_TEST", "msg_ts_1234", "arrows_counterclockwise") in add_calls
             assert ("C_TEST", "msg_ts_1234", "x") in add_calls
 
-            # Should update the thinking message with the error
-            mock_update.assert_called_once()
-            updated_text = mock_update.call_args[0][2]
-            assert "couldn't reach" in updated_text.lower() or "error" in updated_text.lower()
+            # Should post error as a new message (not update thinking message)
+            mock_send.assert_called_once()
+            sent_text = mock_send.call_args[0][1]
+            assert "couldn't reach" in sent_text.lower() or "error" in sent_text.lower()
 
 
 # ==============================================================================

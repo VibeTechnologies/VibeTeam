@@ -249,20 +249,6 @@ async def update_slack_message(
         return False
 
 
-async def send_thinking_message(
-    channel: str,
-    display_name: str,
-    thread_ts: str | None = None,
-) -> str | None:
-    """Post a temporary 'thinking' message and return its ts.
-
-    The returned ts can later be passed to update_slack_message() to replace
-    the thinking indicator with the real agent response.
-    """
-    text = f":hourglass_flowing_sand: [{display_name}] Thinking..."
-    return await send_slack_message(channel, text, thread_ts)
-
-
 async def add_reaction(
     channel: str,
     timestamp: str,
@@ -781,7 +767,7 @@ async def _submit_agent_async(
 ) -> None:
     """Submit an agent task asynchronously via /run/async.
 
-    Posts a "Thinking..." indicator, transitions reactions (eyes → spinner),
+    Uses a :thinking_face: reaction as typing indicator (added by event handler),
     submits the task, and returns immediately.
     The agent service will POST results to /callback/agent when done.
     """
@@ -792,13 +778,6 @@ async def _submit_agent_async(
         channel=channel,
         thread_ts=thread_ts,
     )
-
-    # Post thinking indicator to the thread
-    thinking_ts = await send_thinking_message(channel, display_name, thread_ts)
-
-    # Transition reactions: add spinner, remove eyes
-    await add_reaction(channel, message_ts, "arrows_counterclockwise")
-    await remove_reaction(channel, message_ts, "eyes")
 
     # Build callback URL
     callback_url = f"{config.GATEWAY_URL}/callback/agent"
@@ -820,8 +799,6 @@ async def _submit_agent_async(
             "user_message": user_message,
             "max_handoff_depth": max_handoff_depth,
             "current_depth": current_depth,
-            # ts of the "Thinking..." message so callback can update it
-            "thinking_ts": thinking_ts,
             # Include callback secret for authentication
             # Agent service echoes this back; gateway verifies on receipt
             "callback_secret": config.CALLBACK_SECRET,
@@ -829,17 +806,13 @@ async def _submit_agent_async(
     )
 
     if "error" in result:
-        # Remove spinner, add X
-        await remove_reaction(channel, message_ts, "arrows_counterclockwise")
+        # Remove thinking face, add X
+        await remove_reaction(channel, message_ts, "thinking_face")
         await add_reaction(channel, message_ts, "x")
         error_text = (
             f"[{display_name}] Sorry, I couldn't reach the agent service: {result['error']}"
         )
-        # Update thinking message with error, or post new if thinking failed
-        if thinking_ts:
-            await update_slack_message(channel, thinking_ts, error_text)
-        else:
-            await send_slack_message(channel, error_text, thread_ts)
+        await send_slack_message(channel, error_text, thread_ts)
         logger.error(f"[ASYNC] Failed to submit task for {role}: {result['error']}")
     else:
         job_id = result.get("job_id", "unknown")
@@ -911,6 +884,7 @@ async def run_agent_for_slack(
                 channel=channel,
                 thread_ts=thread_ts,
                 user_id=user_id,
+                message_ts=effective_message_ts or None,
             )
 
 
@@ -921,6 +895,7 @@ async def _run_agent_and_respond(
     channel: str,
     thread_ts: str | None,
     user_id: str,
+    message_ts: str | None = None,
     max_handoff_depth: int = 3,
     current_depth: int = 0,
 ) -> None:
@@ -928,6 +903,8 @@ async def _run_agent_and_respond(
 
     This is the sync path — used by /slack/trigger and as fallback when
     message_ts is unavailable for async reaction management.
+
+    Uses :thinking_face: reaction as typing indicator (added by event handler).
 
     Supports synchronous handoffs: if the agent mentions /RoleName in its response,
     that agent is immediately invoked (up to max_handoff_depth to prevent infinite loops).
@@ -939,9 +916,6 @@ async def _run_agent_and_respond(
         channel=channel,
         thread_ts=thread_ts,
     )
-
-    # Post thinking indicator before calling agent
-    thinking_ts = await send_thinking_message(channel, display_name, thread_ts)
 
     agent_start_time = time.time()
     logger.info(f"[TIMING] Starting agent {role} (depth={current_depth})")
@@ -959,12 +933,17 @@ async def _run_agent_and_respond(
 
         if "error" in result:
             error_text = f"[{display_name}] Sorry, I encountered an error: {result['error']}"
-            if thinking_ts:
-                await update_slack_message(channel, thinking_ts, error_text)
-            else:
-                await send_slack_message(channel, error_text, thread_ts)
+            if message_ts:
+                await remove_reaction(channel, message_ts, "thinking_face")
+                await add_reaction(channel, message_ts, "x")
+            await send_slack_message(channel, error_text, thread_ts)
         else:
             response = result.get("response", "I completed the task but have no output to share.")
+
+            # Remove thinking face, add checkmark
+            if message_ts:
+                await remove_reaction(channel, message_ts, "thinking_face")
+                await add_reaction(channel, message_ts, "white_check_mark")
 
             # Split long responses into multiple messages instead of truncating
             # This preserves handoff mentions that might be at the end
@@ -973,14 +952,8 @@ async def _run_agent_and_respond(
             # Send each chunk as a separate message
             for i, chunk in enumerate(chunks):
                 if i == 0:
-                    # First chunk: update thinking message or post new
                     formatted_chunk = f"[{display_name}] {chunk}"
-                    if thinking_ts:
-                        await update_slack_message(channel, thinking_ts, formatted_chunk)
-                    else:
-                        await send_slack_message(channel, formatted_chunk, thread_ts)
                 else:
-                    # Continuation chunks are always new messages
                     formatted_chunk = f"[{display_name} (cont.)] {chunk}"
                 await send_slack_message(channel, formatted_chunk, thread_ts)
 
@@ -1033,10 +1006,10 @@ async def _run_agent_and_respond(
         error_text = (
             f"[{display_name}] Sorry, I encountered an unexpected error. Please try again later."
         )
-        if thinking_ts:
-            await update_slack_message(channel, thinking_ts, error_text)
-        else:
-            await send_slack_message(channel, error_text, thread_ts)
+        if message_ts:
+            await remove_reaction(channel, message_ts, "thinking_face")
+            await add_reaction(channel, message_ts, "x")
+        await send_slack_message(channel, error_text, thread_ts)
 
 
 # ==============================================================================
@@ -1053,8 +1026,8 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     - callback_metadata (Slack context: channel, thread_ts, message_ts, role, etc.)
 
     This endpoint:
-    1. Removes the spinner reaction
-    2. Posts the response (or error) to Slack
+    1. Removes the :thinking_face: reaction
+    2. Posts the response (or error) to Slack as a new message
     3. Checks for handoff mentions and submits new async jobs if needed
     """
     try:
@@ -1077,7 +1050,6 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     user_id = meta.get("user_id", "")
     max_handoff_depth = meta.get("max_handoff_depth", 3)
     current_depth = meta.get("current_depth", 0)
-    thinking_ts = meta.get("thinking_ts")
 
     logger.info(f"[CALLBACK] Received callback for job {job_id}: status={status}, role={role}")
 
@@ -1093,9 +1065,9 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
         logger.error(f"[CALLBACK] Missing channel in callback_metadata for job {job_id}")
         return {"status": "error", "detail": "missing channel in callback_metadata"}
 
-    # Remove spinner reaction
+    # Remove thinking_face reaction
     if message_ts:
-        await remove_reaction(channel, message_ts, "arrows_counterclockwise")
+        await remove_reaction(channel, message_ts, "thinking_face")
 
     if status == "failed" or error:
         # Failure path
@@ -1103,11 +1075,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
             await add_reaction(channel, message_ts, "x")
         error_msg = error or "Unknown error"
         error_text = f"[{display_name}] Sorry, I encountered an error: {error_msg}"
-        # Update thinking message with error, or post new if thinking failed
-        if thinking_ts:
-            await update_slack_message(channel, thinking_ts, error_text)
-        else:
-            await send_slack_message(channel, error_text, thread_ts)
+        await send_slack_message(channel, error_text, thread_ts)
         return {"status": "ok", "job_id": job_id, "outcome": "error_posted"}
 
     # Success path
@@ -1122,15 +1090,9 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     for i, chunk in enumerate(chunks):
         if i == 0:
             formatted_chunk = f"[{display_name}] {chunk}"
-            # Update thinking message with first chunk, or post new if no thinking msg
-            if thinking_ts:
-                await update_slack_message(channel, thinking_ts, formatted_chunk)
-            else:
-                await send_slack_message(channel, formatted_chunk, thread_ts)
         else:
-            # Continuation chunks are always new messages
             formatted_chunk = f"[{display_name} (cont.)] {chunk}"
-            await send_slack_message(channel, formatted_chunk, thread_ts)
+        await send_slack_message(channel, formatted_chunk, thread_ts)
 
     # Check for handoffs in the response
     message_router = get_message_router()
@@ -1232,8 +1194,8 @@ async def handle_slack_events(
         # Remove the bot mention from the text
         clean_text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
 
-        # React with eyes to show we're looking at the message
-        await add_reaction(channel, message_ts, "eyes")
+        # React with thinking face to show we're working on it
+        await add_reaction(channel, message_ts, "thinking_face")
 
         # Process in background
         asyncio.create_task(
@@ -1250,8 +1212,8 @@ async def handle_slack_events(
         message_ts = event.get("ts", "")
         thread_ts = event.get("thread_ts") or message_ts
 
-        # React with eyes to show we're looking at the message
-        await add_reaction(channel, message_ts, "eyes")
+        # React with thinking face to show we're working on it
+        await add_reaction(channel, message_ts, "thinking_face")
 
         # Process in background
         asyncio.create_task(
@@ -1316,7 +1278,7 @@ async def handle_slack_events(
                     f"{[s.agent_role for s in subscriptions]}. Processing message."
                 )
 
-            await add_reaction(channel, message_ts, "eyes")
+            await add_reaction(channel, message_ts, "thinking_face")
 
             asyncio.create_task(
                 run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
@@ -1333,8 +1295,8 @@ async def handle_slack_events(
         thread_ts = event.get("thread_ts") or message_ts
         user_id = event.get("bot_id", "bot")  # Use bot_id as user_id for bot messages
 
-        # React with eyes to show we're processing the message
-        await add_reaction(channel, message_ts, "eyes")
+        # React with thinking face to show we're processing the message
+        await add_reaction(channel, message_ts, "thinking_face")
 
         # Process in background
         asyncio.create_task(
