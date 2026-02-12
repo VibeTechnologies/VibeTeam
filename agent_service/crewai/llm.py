@@ -19,7 +19,7 @@ class AzureFunctionCallingLLM(LLM if CREWAI_AVAILABLE else object):  # type: ign
     Custom LLM wrapper that forces function calling support for Azure GPT-5.
 
     Problem:
-        LiteLLM's model registry doesn't include 'gpt-5-2', causing
+        LiteLLM's model registry doesn't include 'gpt-5.2', causing
         `supports_function_calling()` to return False. This makes CrewAI fall
         back to ReAct-style prompting, where the model outputs:
 
@@ -39,7 +39,7 @@ class AzureFunctionCallingLLM(LLM if CREWAI_AVAILABLE else object):  # type: ign
     Usage:
         ```python
         llm = AzureFunctionCallingLLM(
-            model="azure/gpt-5-2",
+            model="azure/gpt-5.2",
             provider="litellm",
             api_base=os.environ["AZURE_API_BASE"],
             api_key=os.environ["AZURE_API_KEY"],

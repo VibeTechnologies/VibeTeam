@@ -772,10 +772,17 @@ class TestSubmitAgentAsync:
             patch(
                 "vibeteam.gateway.routes.slack.send_slack_message",
                 new_callable=AsyncMock,
+                return_value="thinking_ts_123",
             ) as mock_send,
+            patch(
+                "vibeteam.gateway.routes.slack.update_slack_message",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_update,
             patch("vibeteam.gateway.routes.slack.config") as mock_config,
         ):
             mock_config.GATEWAY_URL = "http://vibeteam-gateway:8080"
+            mock_config.SLACK_BOT_TOKEN = "xoxb-test"
 
             await _submit_agent_async(
                 role="support_engineer",
@@ -792,10 +799,10 @@ class TestSubmitAgentAsync:
             assert ("C_TEST", "msg_ts_1234", "arrows_counterclockwise") in add_calls
             assert ("C_TEST", "msg_ts_1234", "x") in add_calls
 
-            # Should send error message to Slack
-            mock_send.assert_called_once()
-            sent_text = mock_send.call_args[0][1]
-            assert "couldn't reach" in sent_text.lower() or "error" in sent_text.lower()
+            # Should update the thinking message with the error
+            mock_update.assert_called_once()
+            updated_text = mock_update.call_args[0][2]
+            assert "couldn't reach" in updated_text.lower() or "error" in updated_text.lower()
 
 
 # ==============================================================================

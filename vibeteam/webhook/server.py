@@ -54,7 +54,7 @@ SENTRY_CLIENT_SECRET = os.environ.get("SENTRY_CLIENT_SECRET", "")
 OPENHANDS_SERVER_URL = os.environ.get("OPENHANDS_SERVER_URL", "http://openhands-server:8000")
 OPENHANDS_API_KEY = os.environ.get("OPENHANDS_API_KEY", "")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
-LLM_MODEL = os.environ.get("LLM_MODEL", "azure/gpt-5-2")
+LLM_MODEL = os.environ.get("LLM_MODEL", "azure/gpt-5.2")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 
 

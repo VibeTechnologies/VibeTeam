@@ -123,7 +123,7 @@ class OpenHandsProductManager:
         Uses AzureLLM (not base LLM) because Azure OpenAI doesn't support the
         Responses API. AzureLLM overrides uses_responses_api() to return False.
         """
-        model_name = self.config.llm.model or "gpt-4.1-mini"
+        model_name = self.config.llm.model or "gpt-5.2"
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 

@@ -11,7 +11,7 @@ Environment Variables Required:
 - AZURE_OPENAI_API_KEY or AZURE_API_KEY
 - AZURE_OPENAI_ENDPOINT or AZURE_API_BASE
 - AZURE_API_VERSION (default: 2024-12-01-preview)
-- BENCHMARK_JUDGE_MODEL (default: gpt-5-2)
+- BENCHMARK_JUDGE_MODEL (default: gpt-5.2)
 - SLACK_BOT_TOKEN
 - SLACK_DEFAULT_CHANNEL (optional)
 - GITHUB_TOKEN
@@ -63,7 +63,7 @@ class EvaluatorConfig:
         api_key = os.getenv("AZURE_OPENAI_API_KEY", os.getenv("AZURE_API_KEY", ""))
         api_base = os.getenv("AZURE_OPENAI_ENDPOINT", os.getenv("AZURE_API_BASE", ""))
         api_version = os.getenv("AZURE_API_VERSION", "2024-12-01-preview")
-        model = os.getenv("BENCHMARK_JUDGE_MODEL", os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-2"))
+        model = os.getenv("BENCHMARK_JUDGE_MODEL", os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2"))
 
         if not api_key:
             raise ValueError("AZURE_API_KEY or AZURE_OPENAI_API_KEY environment variable not set")

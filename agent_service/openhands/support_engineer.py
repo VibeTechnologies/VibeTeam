@@ -257,7 +257,7 @@ class OpenHandsSupportEngineer:
 
     def _create_llm(self) -> LLM:
         """Create LLM with Azure configuration."""
-        model_name = self.config.llm.model or "gpt-4.1-mini"
+        model_name = self.config.llm.model or "gpt-5.2"
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 

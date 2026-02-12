@@ -157,7 +157,7 @@ class ResponsibilityDetector:
     agent_role: str
     keywords: list[str] = field(default_factory=list)
     mention_patterns: list[str] = field(default_factory=list)
-    llm_model: str = "azure/gpt-5-2"
+    llm_model: str = "azure/gpt-5.2"
     keyword_threshold: float = 0.3
     use_llm: bool = False  # Disabled by default for testing
 

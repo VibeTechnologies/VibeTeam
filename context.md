@@ -78,7 +78,7 @@ The system routes messages from Slack to appropriate agents based on `@RoleName`
 
 External Services:
   - Slack API (messages, reactions)
-  - Azure OpenAI (LLM: gpt-5-2)
+  - Azure OpenAI (LLM: gpt-5.2)
   - Sentry (error monitoring)
   - GitHub (issues, PRs)
   - Langfuse (LLM observability)
@@ -382,7 +382,7 @@ vibeteam-gateway-db8dcdcbc-d7txw   1/1     Running
 |----------|-------|
 | `AZURE_API_KEY` | (secret) |
 | `AZURE_API_BASE` | `https://info-mjnxtt51-eastus2.cognitiveservices.azure.com/` |
-| `AZURE_OPENAI_DEPLOYMENT` | `gpt-5-2` |
+| `AZURE_OPENAI_DEPLOYMENT` | `gpt-5.2` |
 | `AZURE_API_VERSION` | `2024-08-01-preview` |
 
 ### Slack Configuration

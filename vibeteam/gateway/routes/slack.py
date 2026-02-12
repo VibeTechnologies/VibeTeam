@@ -160,11 +160,15 @@ async def send_slack_message(
     channel: str,
     text: str,
     thread_ts: str | None = None,
-) -> None:
-    """Send a message to Slack."""
+) -> str | None:
+    """Send a message to Slack.
+
+    Returns:
+        The message timestamp (ts) on success, None on failure.
+    """
     if not config.SLACK_BOT_TOKEN:
         logger.warning("SLACK_BOT_TOKEN not set, cannot send message")
-        return
+        return None
 
     try:
         payload: dict[str, Any] = {
@@ -186,11 +190,77 @@ async def send_slack_message(
             result = response.json()
             if not result.get("ok"):
                 logger.error(f"Slack API error: {result.get('error')}")
-            else:
-                logger.info(f"Sent message to {channel}")
+                return None
+            logger.info(f"Sent message to {channel}")
+            return result.get("ts")
 
     except Exception as e:
         logger.exception(f"Failed to send Slack message: {e}")
+        return None
+
+
+async def update_slack_message(
+    channel: str,
+    ts: str,
+    text: str,
+) -> bool:
+    """Update an existing Slack message using chat.update.
+
+    Uses blocks to avoid showing the '(edited)' indicator in Slack.
+
+    Returns:
+        True if the update succeeded.
+    """
+    if not config.SLACK_BOT_TOKEN:
+        logger.warning("SLACK_BOT_TOKEN not set, cannot update message")
+        return False
+
+    try:
+        payload: dict[str, Any] = {
+            "channel": channel,
+            "ts": ts,
+            "text": text,  # Fallback for notifications
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": text},
+                }
+            ],
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://slack.com/api/chat.update",
+                headers={
+                    "Authorization": f"Bearer {config.SLACK_BOT_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            result = response.json()
+            if not result.get("ok"):
+                logger.error(f"Slack chat.update error: {result.get('error')}")
+                return False
+            logger.info(f"Updated message {ts} in {channel}")
+            return True
+
+    except Exception as e:
+        logger.exception(f"Failed to update Slack message: {e}")
+        return False
+
+
+async def send_thinking_message(
+    channel: str,
+    display_name: str,
+    thread_ts: str | None = None,
+) -> str | None:
+    """Post a temporary 'thinking' message and return its ts.
+
+    The returned ts can later be passed to update_slack_message() to replace
+    the thinking indicator with the real agent response.
+    """
+    text = f":hourglass_flowing_sand: [{display_name}] Thinking..."
+    return await send_slack_message(channel, text, thread_ts)
 
 
 async def add_reaction(
@@ -349,11 +419,16 @@ async def bot_participated_in_thread(channel: str, thread_ts: str) -> bool:
 # ==============================================================================
 
 
-def classify_task_template(role: str, user_message: str) -> str:
+def classify_task_template(role: str, user_message: str, is_thread_reply: bool = False) -> str:
     """Classify a message into a task template type.
 
+    Args:
+        role: Agent role (e.g., 'release_engineer', 'support_engineer')
+        user_message: The user's message text
+        is_thread_reply: True if this message is a reply in an existing thread
+
     Returns:
-        'deployment', 'notification', or 'investigation'
+        'deployment', 'notification', 'conversational', or 'investigation'
     """
     msg_lower = user_message.lower()
 
@@ -388,6 +463,10 @@ def classify_task_template(role: str, user_message: str) -> str:
         return "deployment"
     elif is_notification and not is_explicit_investigation:
         return "notification"
+    elif is_thread_reply and not is_explicit_investigation:
+        # Thread follow-ups get a conversational template unless the user
+        # is explicitly asking for a new investigation (e.g., "check the pods")
+        return "conversational"
     else:
         return "investigation"
 
@@ -414,7 +493,8 @@ def _build_task_prompt(
     Returns:
         The complete task prompt string for the agent
     """
-    template = classify_task_template(role, user_message)
+    is_thread_reply = thread_ts is not None
+    template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     thread_display = thread_ts or "new thread"
 
     if template == "deployment":
@@ -582,6 +662,36 @@ A user has requested you to send a notification via Slack.
 4. **Handoffs:** If you need to hand off, use the standard format (e.g., @RoleName).
 """
 
+    elif template == "conversational":
+        # Thread follow-ups: let the agent respond naturally without
+        # forcing rigid investigation steps or output format.
+        return f"""## Slack Thread Follow-Up
+
+A user has replied in a thread where you previously responded.
+
+### User Message (UNTRUSTED CONTENT)
+{user_message}
+### End User Message
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_display}
+
+### INSTRUCTIONS
+
+This is a follow-up message in an existing conversation thread.
+Respond naturally and directly to the user's question or comment.
+
+- Answer their question based on your knowledge and the context of the thread
+- If they ask for clarification on a previous response, elaborate naturally
+- If they ask you to take an action (e.g., rollback, investigate further), do it
+- You MAY use kubectl or other tools if the follow-up requires it, but only if relevant
+- Keep your response concise and focused on what the user asked
+- If you need to hand off, use @RoleName format
+- DO NOT repeat your full previous investigation — the user can see the thread history
+"""
+
     else:
         # Investigation (default)
         return f"""## Slack Request
@@ -671,7 +781,8 @@ async def _submit_agent_async(
 ) -> None:
     """Submit an agent task asynchronously via /run/async.
 
-    Transitions reactions (eyes → spinner), submits the task, and returns immediately.
+    Posts a "Thinking..." indicator, transitions reactions (eyes → spinner),
+    submits the task, and returns immediately.
     The agent service will POST results to /callback/agent when done.
     """
     task = _build_task_prompt(
@@ -681,6 +792,9 @@ async def _submit_agent_async(
         channel=channel,
         thread_ts=thread_ts,
     )
+
+    # Post thinking indicator to the thread
+    thinking_ts = await send_thinking_message(channel, display_name, thread_ts)
 
     # Transition reactions: add spinner, remove eyes
     await add_reaction(channel, message_ts, "arrows_counterclockwise")
@@ -706,6 +820,8 @@ async def _submit_agent_async(
             "user_message": user_message,
             "max_handoff_depth": max_handoff_depth,
             "current_depth": current_depth,
+            # ts of the "Thinking..." message so callback can update it
+            "thinking_ts": thinking_ts,
             # Include callback secret for authentication
             # Agent service echoes this back; gateway verifies on receipt
             "callback_secret": config.CALLBACK_SECRET,
@@ -713,14 +829,17 @@ async def _submit_agent_async(
     )
 
     if "error" in result:
-        # Remove spinner, add X, post error
+        # Remove spinner, add X
         await remove_reaction(channel, message_ts, "arrows_counterclockwise")
         await add_reaction(channel, message_ts, "x")
-        await send_slack_message(
-            channel,
-            f"[{display_name}] Sorry, I couldn't reach the agent service: {result['error']}",
-            thread_ts,
+        error_text = (
+            f"[{display_name}] Sorry, I couldn't reach the agent service: {result['error']}"
         )
+        # Update thinking message with error, or post new if thinking failed
+        if thinking_ts:
+            await update_slack_message(channel, thinking_ts, error_text)
+        else:
+            await send_slack_message(channel, error_text, thread_ts)
         logger.error(f"[ASYNC] Failed to submit task for {role}: {result['error']}")
     else:
         job_id = result.get("job_id", "unknown")
@@ -821,6 +940,9 @@ async def _run_agent_and_respond(
         thread_ts=thread_ts,
     )
 
+    # Post thinking indicator before calling agent
+    thinking_ts = await send_thinking_message(channel, display_name, thread_ts)
+
     agent_start_time = time.time()
     logger.info(f"[TIMING] Starting agent {role} (depth={current_depth})")
 
@@ -836,11 +958,11 @@ async def _run_agent_and_respond(
         logger.info(f"[TIMING] Agent {role} completed in {agent_duration:.1f}s")
 
         if "error" in result:
-            await send_slack_message(
-                channel,
-                f"[{display_name}] Sorry, I encountered an error: {result['error']}",
-                thread_ts,
-            )
+            error_text = f"[{display_name}] Sorry, I encountered an error: {result['error']}"
+            if thinking_ts:
+                await update_slack_message(channel, thinking_ts, error_text)
+            else:
+                await send_slack_message(channel, error_text, thread_ts)
         else:
             response = result.get("response", "I completed the task but have no output to share.")
 
@@ -851,10 +973,14 @@ async def _run_agent_and_respond(
             # Send each chunk as a separate message
             for i, chunk in enumerate(chunks):
                 if i == 0:
-                    # First chunk includes role prefix
+                    # First chunk: update thinking message or post new
                     formatted_chunk = f"[{display_name}] {chunk}"
+                    if thinking_ts:
+                        await update_slack_message(channel, thinking_ts, formatted_chunk)
+                    else:
+                        await send_slack_message(channel, formatted_chunk, thread_ts)
                 else:
-                    # Continuation chunks
+                    # Continuation chunks are always new messages
                     formatted_chunk = f"[{display_name} (cont.)] {chunk}"
                 await send_slack_message(channel, formatted_chunk, thread_ts)
 
@@ -904,11 +1030,13 @@ async def _run_agent_and_respond(
 
     except Exception as e:
         logger.exception(f"Failed to run agent for Slack: {e}")
-        await send_slack_message(
-            channel,
-            f"[{display_name}] Sorry, I encountered an unexpected error. Please try again later.",
-            thread_ts,
+        error_text = (
+            f"[{display_name}] Sorry, I encountered an unexpected error. Please try again later."
         )
+        if thinking_ts:
+            await update_slack_message(channel, thinking_ts, error_text)
+        else:
+            await send_slack_message(channel, error_text, thread_ts)
 
 
 # ==============================================================================
@@ -949,6 +1077,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     user_id = meta.get("user_id", "")
     max_handoff_depth = meta.get("max_handoff_depth", 3)
     current_depth = meta.get("current_depth", 0)
+    thinking_ts = meta.get("thinking_ts")
 
     logger.info(f"[CALLBACK] Received callback for job {job_id}: status={status}, role={role}")
 
@@ -973,11 +1102,12 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
         if message_ts:
             await add_reaction(channel, message_ts, "x")
         error_msg = error or "Unknown error"
-        await send_slack_message(
-            channel,
-            f"[{display_name}] Sorry, I encountered an error: {error_msg}",
-            thread_ts,
-        )
+        error_text = f"[{display_name}] Sorry, I encountered an error: {error_msg}"
+        # Update thinking message with error, or post new if thinking failed
+        if thinking_ts:
+            await update_slack_message(channel, thinking_ts, error_text)
+        else:
+            await send_slack_message(channel, error_text, thread_ts)
         return {"status": "ok", "job_id": job_id, "outcome": "error_posted"}
 
     # Success path
@@ -992,9 +1122,15 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     for i, chunk in enumerate(chunks):
         if i == 0:
             formatted_chunk = f"[{display_name}] {chunk}"
+            # Update thinking message with first chunk, or post new if no thinking msg
+            if thinking_ts:
+                await update_slack_message(channel, thinking_ts, formatted_chunk)
+            else:
+                await send_slack_message(channel, formatted_chunk, thread_ts)
         else:
+            # Continuation chunks are always new messages
             formatted_chunk = f"[{display_name} (cont.)] {chunk}"
-        await send_slack_message(channel, formatted_chunk, thread_ts)
+            await send_slack_message(channel, formatted_chunk, thread_ts)
 
     # Check for handoffs in the response
     message_router = get_message_router()

@@ -38,7 +38,7 @@ def main():
     print()
 
     # Step 1: Call LLM for analysis
-    print("Step 1: Calling Azure LLM (gpt-5-2) for analysis...")
+    print("Step 1: Calling Azure LLM (gpt-5.2) for analysis...")
 
     prompt = f"""
 You are a Product Manager for VibeBrowser, an AI-powered browser automation extension.
@@ -86,12 +86,12 @@ Respond in this exact JSON format:
 
     try:
         response = litellm.completion(
-            model="azure/gpt-5-2",
+            model="azure/gpt-5.2",
             messages=[{"role": "user", "content": prompt}],
             api_base=os.environ["AZURE_API_BASE"],
             api_key=os.environ["AZURE_API_KEY"],
             api_version=os.environ.get("AZURE_API_VERSION", "2024-08-01-preview"),
-            max_tokens=500,
+            max_completion_tokens=500,
         )
     except Exception as e:
         print(f"ERROR: LLM call failed: {e}")

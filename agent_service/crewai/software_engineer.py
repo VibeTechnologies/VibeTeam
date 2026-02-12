@@ -413,13 +413,13 @@ class CrewAISoftwareEngineer:
     def _create_agent(self) -> "Agent":
         """Create CrewAI Agent."""
         # CrewAI uses litellm which needs azure/<deployment> format
-        model_name = self.config.llm.model or "gpt-4.1-mini"
+        model_name = self.config.llm.model or "gpt-5.2"
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 
         # Create LLM with explicit Azure configuration
         # Use AzureFunctionCallingLLM to force native function calling mode.
-        # LiteLLM's registry doesn't include 'gpt-5-2', so the default LLM
+        # LiteLLM's registry doesn't include 'gpt-5.2', so the default LLM
         # class returns False for supports_function_calling(), causing CrewAI
         # to use ReAct prompting where the model hallucinates tool outputs.
         llm = AzureFunctionCallingLLM(

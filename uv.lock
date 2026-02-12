@@ -8248,6 +8248,7 @@ crewai = [
     { name = "crewai" },
 ]
 dev = [
+    { name = "aiosqlite" },
     { name = "black", version = "25.12.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "black", version = "26.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "mypy" },
@@ -8265,6 +8266,7 @@ openhands = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite", marker = "extra == 'dev'", specifier = ">=0.20.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.0.0" },
     { name = "click", specifier = ">=8.1.0" },
     { name = "crewai", marker = "extra == 'agents'", specifier = ">=0.100.0" },

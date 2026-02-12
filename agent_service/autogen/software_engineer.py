@@ -329,7 +329,7 @@ class AutoGenSoftwareEngineer:
 
     def _create_model_client(self) -> "AzureOpenAIChatCompletionClient":
         """Create Azure OpenAI model client."""
-        model_name = self.config.llm.model or "gpt-4.1-mini"
+        model_name = self.config.llm.model or "gpt-5.2"
         if model_name.startswith("azure/"):
             model_name = model_name[6:]
 

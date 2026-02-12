@@ -282,7 +282,7 @@ class CrewAIProductManager:
     def _create_agent(self) -> "Agent":
         """Create CrewAI Agent."""
         # CrewAI uses litellm which needs azure/<deployment> format
-        model_name = self.config.llm.model or "gpt-4.1-mini"
+        model_name = self.config.llm.model or "gpt-5.2"
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 

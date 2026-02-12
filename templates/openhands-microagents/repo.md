@@ -40,7 +40,7 @@ vibeteam/
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` - Langfuse observability
 
 ### Model Configuration
-The default model is `azure/gpt-5-2`. Always use hyphen notation (not dots) for Azure model names.
+The default model is `azure/gpt-5.2`. The Azure deployment name uses dot notation (e.g., `gpt-5.2`).
 
 ### Running Tests
 ```bash

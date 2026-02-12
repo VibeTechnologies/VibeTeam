@@ -85,7 +85,7 @@ class LLMConfig:
     def __post_init__(self):
         # Use standard Azure OpenAI environment variables
         if self.model is None:
-            self.model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini")
+            self.model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2")
         self.api_base = (
             self.api_base or os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_API_BASE")
         )

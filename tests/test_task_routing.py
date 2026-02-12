@@ -281,3 +281,92 @@ class TestHandoffPassthrough:
             "[Handoff from SupportEngineer]\n\nOriginal request: deploy to staging...",
         )
         assert result == "deployment"
+
+
+class TestConversationalTemplate:
+    """Thread follow-ups should get a conversational template (no rigid format)."""
+
+    def test_thread_follow_up_basic(self):
+        """Simple follow-up in thread gets conversational template."""
+        result = classify_task_template(
+            "support_engineer",
+            "what exact recommendation do you think about?",
+            is_thread_reply=True,
+        )
+        assert result == "conversational"
+
+    def test_thread_follow_up_clarification(self):
+        result = classify_task_template(
+            "support_engineer",
+            "can you elaborate on that?",
+            is_thread_reply=True,
+        )
+        assert result == "conversational"
+
+    def test_thread_follow_up_thanks(self):
+        result = classify_task_template(
+            "support_engineer",
+            "thanks, that makes sense",
+            is_thread_reply=True,
+        )
+        assert result == "conversational"
+
+    def test_thread_follow_up_what_next(self):
+        result = classify_task_template(
+            "support_engineer",
+            "what should we do next?",
+            is_thread_reply=True,
+        )
+        assert result == "conversational"
+
+    def test_thread_follow_up_with_investigation_keyword_gets_investigation(self):
+        """Thread follow-up with explicit investigation keywords → investigation."""
+        result = classify_task_template(
+            "support_engineer",
+            "check the pods again please",
+            is_thread_reply=True,
+        )
+        assert result == "investigation"
+
+    def test_thread_follow_up_with_error_keyword_gets_investigation(self):
+        result = classify_task_template(
+            "support_engineer",
+            "I'm seeing a new error now, can you investigate?",
+            is_thread_reply=True,
+        )
+        assert result == "investigation"
+
+    def test_thread_follow_up_with_debug_keyword_gets_investigation(self):
+        result = classify_task_template(
+            "support_engineer",
+            "debug why the logs are empty",
+            is_thread_reply=True,
+        )
+        assert result == "investigation"
+
+    def test_non_thread_message_still_gets_investigation(self):
+        """Non-thread messages should still fall through to investigation."""
+        result = classify_task_template(
+            "support_engineer",
+            "what do you think about this?",
+            is_thread_reply=False,
+        )
+        assert result == "investigation"
+
+    def test_thread_deploy_for_release_engineer(self):
+        """Thread reply with deploy keyword for RE → deployment (deploy takes priority)."""
+        result = classify_task_template(
+            "release_engineer",
+            "ok, deploy it to staging now",
+            is_thread_reply=True,
+        )
+        assert result == "deployment"
+
+    def test_thread_notify_gets_notification(self):
+        """Thread reply with notify keyword → notification."""
+        result = classify_task_template(
+            "support_engineer",
+            "notify the customer it's fixed",
+            is_thread_reply=True,
+        )
+        assert result == "notification"

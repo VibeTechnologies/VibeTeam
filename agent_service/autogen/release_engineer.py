@@ -39,7 +39,7 @@ except ImportError:
     AzureOpenAIChatCompletionClient = None
     ModelFamily = None
 
-# Model info for custom Azure deployments (gpt-5-2 is not in AutoGen's built-in list)
+# Model info for custom Azure deployments (gpt-5.2 is not in AutoGen's built-in list)
 GPT5_MODEL_INFO = {
     "vision": True,
     "function_calling": True,
@@ -242,8 +242,8 @@ class AutoGenReleaseEngineer:
 
     def _create_model_client(self) -> "AzureOpenAIChatCompletionClient":
         """Create Azure OpenAI model client."""
-        # Parse model name (e.g., "azure/gpt-5-2" -> "gpt-5-2")
-        model_name = self.config.llm.model or "gpt-4.1-mini"
+        # Parse model name (e.g., "azure/gpt-5.2" -> "gpt-5.2")
+        model_name = self.config.llm.model or "gpt-5.2"
         if model_name.startswith("azure/"):
             model_name = model_name[6:]
 

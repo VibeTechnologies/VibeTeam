@@ -12,7 +12,7 @@ import os
 # =============================================================================
 
 # Default model for all agents (can be overridden per-agent or via env)
-DEFAULT_MODEL = os.environ.get("VIBETEAM_MODEL", "azure/gpt-5-2")
+DEFAULT_MODEL = os.environ.get("VIBETEAM_MODEL", "azure/gpt-5.2")
 
 # Default temperature for agents
 DEFAULT_TEMPERATURE = float(os.environ.get("VIBETEAM_TEMPERATURE", "0.3"))

@@ -15,6 +15,8 @@ export $( < .env ) && .venv/bin/python -m pytest tests/test_openhands_service_in
 
 Each agent has specific service ownership and handoff responsibilities. Evry agent have their own skill sets, defined in aagents/<agent_name>/skills/<sill_name>/SKILL.md.
 
+Do not ask for tokens, evrything inside .env, just export it `export $( < .env )`
+
 
 ### Investigation vs Action Flow
 
@@ -43,30 +45,14 @@ Report action taken
 ### Running Evaluations
 
 ```bash
-# Unset any conflicting shell env vars first
-unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY AZURE_OPENAI_DEPLOYMENT
-
-# Run evaluation (uses .env file for credentials)
 uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
-
-# Available scenarios
 uv run python scripts/eval_slack_e2e.py --list-scenarios
 ```
 
-### Pre-Flight Checks
-
-Before running evaluations, ensure infrastructure stability:
-
-```bash
-# 1. Check pods are running
-kubectl get pods -n vibeteam
-
 # 2. Pause rollouts to prevent mid-eval restarts (git-sync can trigger rolling updates)
+```shell
 kubectl rollout pause deployment/vibeteam-gateway -n vibeteam
 kubectl rollout pause deployment/openhands-svc -n vibeteam
-
-# 3. Verify Azure credentials in .env match the deployment
-grep "AZURE_OPENAI" .env
 ```
 
 ### Understanding Evaluation Output
@@ -141,46 +127,10 @@ Before running VibeTeam agents or after infrastructure changes, verify system re
 3. Interpret results using the evaluation criteria
 4. Produce a report using the template at the end
 
-The playbook allows for intelligent judgment on ambiguous cases.
-
-## Repository Structure
-
-```
-VibeTeam/
-  agents/              # Multi-framework agent implementations
-    autogen/           # AutoGen agents (planned)
-    crewai/            # CrewAI agents (planned)
-    openhands/         # OpenHands agents (active)
-    opencode/          # OpenCode agents (experimental)
-  vibeteam/            # Main package
-    connectors/        # External service integrations
-    lib/               # Test harness for multi-agent scenarios
-  readiness/           # System readiness checks
-    playbook.md        # GenAI evaluation playbook
-  docs/                # Documentation
-    requirements.md    # System requirements and agent roles
-    design.md          # Architecture and design decisions
-  scripts/             # Utility scripts
-  tests/               # Test files
-  config/              # Configuration files
-```
-
 ## Documentation
 
 - **[docs/requirements.md](docs/requirements.md)** - System requirements, agent roles, and responsibilities
 - **[docs/design.md](docs/design.md)** - Architecture, routing logic, and design decisions
-
-## Key Connectors
-
-| Connector | Purpose |
-|-----------|---------|
-| `GitHubConnector` | Issues, PRs, code review |
-| `SlackConnector` | Slack messaging and threads |
-| `DiscordConnector` | Discord messaging and threads |
-| `SentryConnector` | Error tracking |
-| `LangfuseConnector` | LLM observability |
-| `HealthConnector` | Endpoint monitoring |
-| `GmailConnector` | Email processing |
 
 ## Deployment
 
@@ -261,8 +211,6 @@ Required in `.env` (for local development and evaluation):
 ## Model Configuration
 
 VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-4.1-mini` (with dot).
-
-**Current deployment:** `gpt-4.1-mini` on `vibebrowser-dev.openai.azure.com`
 
 ## kubectl Access for Agents
 

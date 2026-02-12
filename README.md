@@ -86,7 +86,7 @@ export GMAIL_TOKEN_PATH="/secrets/gmail-token.json"
         ▼                 ▼                 ▼
 ┌─────────────────────────────────────────────────────────┐
 │                      LiteLLM                            │
-│  - Azure OpenAI (gpt-4.1, gpt-5-2)                      │
+│  - Azure OpenAI (gpt-4.1, gpt-5.2)                      │
 │  - Fallback providers                                   │
 └─────────────────────────────────────────────────────────┘
 ```

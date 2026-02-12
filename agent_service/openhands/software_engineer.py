@@ -470,7 +470,7 @@ class OpenHandsSoftwareEngineer:
         Uses AzureLLM which forces completion API since Azure OpenAI
         doesn't support the Responses API endpoint.
         """
-        model_name = self.config.llm.model or "gpt-4.1-mini"
+        model_name = self.config.llm.model or "gpt-5.2"
         if not model_name.startswith("azure/"):
             model_name = f"azure/{model_name}"
 
