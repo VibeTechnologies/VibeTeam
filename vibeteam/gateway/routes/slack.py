@@ -1065,7 +1065,14 @@ async def handle_slack_events(
     event = payload.get("event", {})
     event_type = event.get("type")
 
-    logger.info(f"Received Slack event: {event_type}")
+    logger.info(
+        f"Received Slack event: {event_type}, "
+        f"subtype={event.get('subtype')}, "
+        f"bot_id={event.get('bot_id')}, "
+        f"thread_ts={event.get('thread_ts')}, "
+        f"channel_type={event.get('channel_type')}, "
+        f"text={event.get('text', '')[:80]}"
+    )
 
     # Handle bot messages: process if they contain role mentions (handoffs/eval)
     # Per requirements: "Bot Messages: Router processes bot's own messages to detect handoffs"
@@ -1189,6 +1196,12 @@ async def handle_slack_events(
 
         return {"status": "accepted", "event": "message.bot_with_role_mention"}
 
+    logger.info(
+        f"Event fell through all handlers: event_type={event_type}, "
+        f"is_bot_message={is_bot_message}, "
+        f"has_thread_ts={bool(event.get('thread_ts'))}, "
+        f"channel_type={event.get('channel_type')}"
+    )
     return {"status": "ignored", "event": event_type}
 
 
