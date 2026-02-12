@@ -1064,6 +1064,50 @@ async def handle_slack_events(
 
         return {"status": "accepted", "event": "message.im"}
 
+    # Handle thread replies in threads where the bot has subscribed agents.
+    # When VibeTeam participates in a thread (via app_mention or trigger), agents
+    # are subscribed to that thread. Subsequent user messages in the thread should
+    # be delivered to the subscribed agents — even without an explicit @mention.
+    # This covers the case: user posts "@SupportEngineer, please create a PR"
+    # in a thread where the bot already replied, without re-mentioning @VibeTeam.
+    if (
+        event_type == "message"
+        and not is_bot_message
+        and event.get("thread_ts")
+        and event.get("channel_type") != "im"
+    ):
+        user_id = event.get("user", "")
+        channel = event.get("channel", "")
+        text = event.get("text", "")
+        message_ts = event.get("ts", "")
+        thread_ts = event.get("thread_ts", "")
+
+        # Check if we have agents subscribed to this thread
+        message_router = get_message_router()
+        subscriptions = await message_router.get_subscriptions(
+            source="slack",
+            thread_id=thread_ts,
+        )
+
+        if subscriptions:
+            logger.info(
+                f"Thread {thread_ts} has subscribed agents: "
+                f"{[s.agent_role for s in subscriptions]}. Processing message."
+            )
+
+            # Check for new role mentions — subscribe additional agents if needed
+            role_mentions = message_router.parse_role_mentions(text)
+            if role_mentions:
+                logger.info(f"New role mentions in thread reply: {role_mentions}")
+
+            await add_reaction(channel, message_ts, "eyes")
+
+            asyncio.create_task(
+                run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
+            )
+
+            return {"status": "accepted", "event": "message.subscribed_thread"}
+
     # Handle bot messages with role mentions in channels (handoffs and eval)
     # This handles cases where the bot posts /RoleName mentions (eval script or agent handoffs)
     if event_type == "message" and is_bot_message:
