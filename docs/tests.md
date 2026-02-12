@@ -1,15 +1,92 @@
-Pure logic/unit-ish: mention parsing and task extraction helpers (low cost, high confidence). Example targets in run_slack_framework_agent.py for is_mention_for_agent() and extract_task_from_mention(). Similar extraction behavior appears in run_slack_agent.py and run_discord_agent.py.
-Connector interaction smoke tests (mocked): validate that polling loops post replies and skip bot messages by stubbing connector classes. Focus on behavior around processed_ts / processed_ids and thread replies in run_slack_agent.py and run_discord_agent.py.
-Routing/role handoff integration (mocked Router + fake connectors): for the multi-session bots to ensure routing calls and role fan-out work. See run_slack_bot.py and run_discord_bot.py.
-DB migration integration (ephemeral DB): verify --check behavior and that tables/indexes are created. This is isolated and valuable. See migrate_db.py.
-Sentry triage logic unit tests (pure functions): pattern matching for valid/invalid issues, severity classification, and processed issue bookkeeping. This is deterministic and worth it. See triage_sentry.py.
-Infra docs builder unit tests: filter/exclude logic, relevance scoring, and “always include” list handling. All pure file processing. See build_infra_docs.py.
-Email pipeline logic tests: _is_docs_portal_escalation(), _extract_ticket_info(), and escalation triggers based on body content are good to cover. See process_emails.py.
-E2E “happy path” (manual or nightly): the Slack evaluator already serves as a real end-to-end flow with external dependencies. It’s inherently flaky but valuable for scheduled runs. See eval_slack_e2e.py.
-E2E feature request flow (manual): this script is already a true integration path (LLM + GitHub). Good as a manual smoke test. See test_e2e_feature_request.py.
-Tests that are probably not worth it
+# VibeTeam Test Suite
 
-Full daemon loops with real Slack/Discord: high flake rate and slow. Mocked connector tests are the better tradeoff. Applies to run_slack_agent.py, run_discord_agent.py, run_slack_bot.py, run_discord_bot.py.
-Signal handling and logging output: low value and brittle to assert. Applies across the run_* scripts.
-DeepEval scoring correctness: that’s third-party behavior; unit tests won’t add confidence. Use the script as an integration check instead. See eval_slack_e2e.py.
-Real Gmail/Sentry/GitHub network tests in CI: too flaky and expensive; keep those as local/manual or opt-in integration runs. Applies to process_emails.py and triage_sentry.py.
+## Overview
+
+The test suite contains **680+ tests** covering unit, integration, and E2E evaluation flows. All tests live in the `tests/` directory and run with `pytest`.
+
+```bash
+export $( < .env) && .venv/bin/python -m pytest tests/ -v
+```
+
+## Test Files
+
+### Core Gateway & Routing
+
+| File | What It Tests |
+|------|---------------|
+| `test_task_routing.py` | Task template classification (`investigation`, `feature_request`, `conversational`), including thread reply behavior. Contains `TestConversationalTemplate` with 10 tests for thread follow-up handling. |
+| `test_async_callback.py` | Async agent callback flow, typing indicator integration (`thinking_ts` in metadata), failure reactions. |
+| `test_gateway_trigger.py` | `/slack/trigger` endpoint authentication and routing. |
+| `test_role_resolver.py` | `@RoleName` and `/RoleName` mention parsing and normalization. |
+| `test_message_splitting.py` | Splitting long agent responses to fit Slack's 4000-char limit. |
+
+### Agent Tools
+
+| File | What It Tests |
+|------|---------------|
+| `test_slack_tools.py` | Slack tool functions (send message, react, thread operations). |
+| `test_sentry_tools.py` | Sentry API integration tools (issue lookup, event details). |
+| `test_kubectl_tools.py` | kubectl command execution and output parsing. |
+
+### Integrations
+
+| File | What It Tests |
+|------|---------------|
+| `test_openhands_service_integration.py` | OpenHands agent service `/run` endpoint (requires `--run-integration`). |
+| `test_webhook_integration.py` | GitHub webhook signature verification and event routing. |
+| `test_sentry_integration.py` | Sentry webhook processing and alert routing. |
+| `test_github_app_auth.py` | GitHub App JWT generation and installation token exchange. |
+| `test_gmail_integration.py` | Gmail API connection and message retrieval. |
+| `test_gmail_processor.py` | Email pipeline: escalation detection, ticket extraction, docs portal filtering. |
+| `test_langfuse_integration.py` | Langfuse tracing integration. |
+| `test_browser_integration.py` | Browser/Chrome DevTools MCP integration. |
+
+### Agent Response
+
+| File | What It Tests |
+|------|---------------|
+| `test_response_extraction.py` | Extracting agent responses from OpenHands session output. |
+| `test_extract_response.py` | Additional response extraction edge cases. |
+| `test_system_prompt.py` | System prompt generation for different agent roles. |
+
+### Infrastructure
+
+| File | What It Tests |
+|------|---------------|
+| `test_module_paths.py` | Python import paths resolve correctly across the package. |
+| `test_integration.py` | General integration smoke tests. |
+| `test_eval_rescore.py` | DeepEval rescoring logic for evaluation reports. |
+
+## Running Tests
+
+```bash
+# All tests
+export $( < .env) && .venv/bin/python -m pytest tests/ -v
+
+# Specific file
+.venv/bin/python -m pytest tests/test_task_routing.py -v
+
+# Integration tests (require live services)
+.venv/bin/python -m pytest tests/test_openhands_service_integration.py -v --run-integration -s
+
+# E2E evaluation (posts to real Slack)
+uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
+```
+
+## Test Categories
+
+### Worth Covering (High Value)
+
+- **Pure logic/unit tests**: mention parsing, task template classification, response extraction
+- **Mocked connector tests**: validate polling loops, bot message skipping, thread replies
+- **Routing/handoff tests**: role fan-out, subscription management
+- **DB migration tests**: schema creation with ephemeral database
+- **Sentry triage logic**: pattern matching, severity classification
+- **Email pipeline logic**: escalation detection, ticket extraction
+
+### Not Worth Mocking (Use E2E Instead)
+
+- Full daemon loops with real Slack/Discord (high flake rate)
+- Signal handling and logging output (brittle assertions)
+- DeepEval scoring correctness (third-party behavior)
+- Real Gmail/Sentry/GitHub network tests in CI (too flaky)

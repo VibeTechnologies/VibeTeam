@@ -99,6 +99,50 @@ After installing the app, invite the bot to channels where you want it to operat
 
 The bot must be a member of a channel to receive `message.channels` events from it.
 
+## Typing Indicator
+
+When a message is routed to an agent, the gateway immediately posts a **"⏳ [RoleName] Thinking..."** message in the thread. Once the agent responds, this message is **updated in-place** (via `chat.update`) with the actual response — avoiding duplicate messages.
+
+```
+User posts message
+      │
+      ▼
+Gateway posts "⏳ SoftwareEngineer Thinking..." → returns thinking_ts
+      │
+      ▼
+Agent processes request (may take 30-60s)
+      │
+      ▼
+Agent responds → Gateway calls chat.update(ts=thinking_ts, text=response)
+      │
+      ▼
+User sees the thinking message replaced with the actual response
+```
+
+Implementation (`vibeteam/gateway/routes/slack.py`):
+- `send_thinking_message(channel, thread_ts, role)` — posts the indicator
+- `update_slack_message(channel, ts, text)` — updates via `chat.update` using blocks (avoids Slack's "(edited)" indicator)
+- `thinking_ts` is passed through callback metadata for async agent paths
+
+If the agent fails, the thinking message is updated with error details instead of leaving a stale "Thinking..." message.
+
+## Task Template Classification
+
+The gateway classifies incoming messages to select the appropriate task template for agents:
+
+```python
+def classify_task_template(role, user_message, is_thread_reply=False) -> str:
+    # Returns one of: "investigation", "feature_request", "conversational"
+```
+
+| Template | When Used | Description |
+|----------|-----------|-------------|
+| `investigation` | Initial messages with error/debug/issue keywords | Full structured template with required kubectl/Sentry steps |
+| `feature_request` | Messages with feature/implement/build keywords | Template for PRDs and implementation planning |
+| `conversational` | Thread follow-ups without investigation keywords | Lightweight prompt — agent responds naturally without rigid structure |
+
+The `conversational` template prevents agents from responding with a rigid 5-section investigation report when the user simply asks a follow-up question like "what did you find?" in a thread. Investigation keywords in thread replies still route to the full investigation template.
+
 ## Message Routing Flow
 
 ```
@@ -110,6 +154,7 @@ User posts in Slack channel
         v
   +----- Is it an app_mention? (@VibeTeam mentioned)
   |  YES: Strip bot mention, parse @RoleName, route to agent
+  |       Post "⏳ Thinking..." indicator, then submit to agent
   |
   +----- Is it a DM to the bot?
   |  YES: Route to agent (keyword-based role selection)
@@ -119,7 +164,8 @@ User posts in Slack channel
   |  |      - Fast path: in-memory subscriptions
   |  |      - Slow path: conversations.replies API
   |  |
-  |  +-- Bot participated? Route to agent
+  |  +-- Bot participated? Classify template (conversational vs investigation)
+  |  |   Post "⏳ Thinking..." indicator, route to agent
   |  +-- Bot not in thread? Ignore
   |
   +----- Is it a bot message with @RoleName?

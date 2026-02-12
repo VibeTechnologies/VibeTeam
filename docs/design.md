@@ -249,6 +249,42 @@ Discord support currently runs via polling bots in scripts
 It is not routed through the gateway webhook endpoints.
 ```
 
+## LLM Configuration
+
+### Model
+
+All agents use **Azure OpenAI `gpt-5.2`** (deployment name `gpt-5.2`, model `gpt-5.2-2025-12-11`).
+
+The model is configured via the `AZURE_OPENAI_DEPLOYMENT` environment variable (K8s secret `vibeteam-secrets`). Code-level fallbacks use `gpt-5.2` if the env var is not set.
+
+```
+Gateway (vibeteam/agents/base.py):
+  model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2")
+  → litellm.acompletion(model="azure/gpt-5.2", ...)
+
+Agent Service (agents/config.py):
+  model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2")
+  → OpenHands runtime uses this for agent LLM calls
+```
+
+GPT-5+ models require `max_completion_tokens` instead of `max_tokens`. The codebase handles this in `vibeteam/agents/base.py`:
+
+```python
+if "gpt-5" in self.model:
+    kwargs["max_completion_tokens"] = self.max_tokens
+else:
+    kwargs["max_tokens"] = self.max_tokens
+```
+
+### Environment Variables
+
+| Variable | Value | Source |
+|----------|-------|--------|
+| `AZURE_API_BASE` | `https://vibebrowser-dev.openai.azure.com/` | K8s secret |
+| `AZURE_API_KEY` | (secret) | K8s secret |
+| `AZURE_API_VERSION` | `2024-08-01-preview` | K8s secret |
+| `AZURE_OPENAI_DEPLOYMENT` | `gpt-5.2` | K8s secret |
+
 ## Slack Integration
 
 ```
@@ -260,6 +296,7 @@ It is not routed through the gateway webhook endpoints.
 │    - Single app handles all agent roles                         │
 │    - Responds in threads with [RoleName] prefix                 │
 │    - Reacts with :eyes: when message received                   │
+│    - Shows "⏳ Thinking..." while agents process                │
 │                                                                  │
 │  Events subscribed:                                              │
 │    - app_mention (when @VibeTeam is mentioned)                  │
@@ -268,10 +305,55 @@ It is not routed through the gateway webhook endpoints.
 │  Thread Example:                                                 │
 │    User: "@VibeTeam @SoftwareEngineer fix bug #345"             │
 │    :eyes: (reaction)                                            │
-│    Bot:  "[SoftwareEngineer] Looking at issue #345..."          │
+│    Bot:  "⏳ SoftwareEngineer Thinking..."                      │
+│    Bot:  (message updated) "[SoftwareEngineer] Looking at..."   │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### Typing Indicator
+
+When a message is routed to an agent, the gateway immediately posts a "⏳ [RoleName] Thinking..." message in the thread. Once the agent responds, this message is **updated in-place** (via `chat.update`) with the actual response, avoiding duplicate messages.
+
+```
+User posts message
+      │
+      ▼
+Gateway posts "⏳ SoftwareEngineer Thinking..." → returns thinking_ts
+      │
+      ▼
+Agent processes request (may take 30-60s)
+      │
+      ▼
+Agent responds → Gateway calls chat.update(ts=thinking_ts, text=response)
+      │
+      ▼
+User sees the thinking message replaced with the actual response
+```
+
+Implementation details (`vibeteam/gateway/routes/slack.py`):
+- `send_thinking_message(channel, thread_ts, role)` — posts the indicator
+- `update_slack_message(channel, ts, text)` — updates via `chat.update` using blocks to avoid "(edited)" indicator
+- `thinking_ts` is passed through callback metadata for async agent paths
+
+Error handling: if the agent fails, the thinking message is updated with the error details instead of leaving a stale "Thinking..." message.
+
+### Task Template Classification
+
+The gateway classifies incoming messages to select the appropriate task template for agents. This determines how structured the agent's prompt is.
+
+```python
+def classify_task_template(message_text, is_thread_reply=False) -> str:
+    # Returns one of: "investigation", "feature_request", "conversational"
+```
+
+| Template | When Used | Description |
+|----------|-----------|-------------|
+| `investigation` | Initial messages with error/debug/issue keywords | Full structured template with required kubectl/Sentry steps |
+| `feature_request` | Messages with feature/implement/build keywords | Template for PRDs and implementation planning |
+| `conversational` | Thread follow-ups without investigation keywords | Lightweight prompt — agent responds naturally without rigid structure |
+
+The `conversational` template prevents the agent from responding with a rigid 5-section investigation report when the user simply asks a follow-up question like "what did you find?" in a thread.
 
 ## GitHub Integration
 

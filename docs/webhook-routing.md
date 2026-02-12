@@ -35,6 +35,17 @@ CALLBACK_SECRET=
 DEFAULT_FRAMEWORK=openhands
 ```
 
+## Response Flow
+
+When a message is routed to an agent:
+
+1. Gateway posts a **typing indicator** ("⏳ [RoleName] Thinking...") in the thread.
+2. Gateway classifies the message into a **task template** (`investigation`, `feature_request`, or `conversational`) — see [design.md](design.md#task-template-classification).
+3. Agent processes the request.
+4. Agent response **replaces** the typing indicator via `chat.update`.
+
+Thread follow-ups without investigation keywords get the lightweight `conversational` template so agents respond naturally instead of generating rigid investigation reports.
+
 ## Related Docs
 
 - [design.md](design.md)

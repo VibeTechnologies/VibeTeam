@@ -14,6 +14,21 @@ VibeTeam is a multi-agent system that routes work via `@RoleName` or `/RoleName`
 | **ProductManager** | `@ProductManager` | PRDs, backlog prioritization, user stories | GitHub |
 | **MarketingManager** | `@MarketingManager` | Social media, announcements, content | Chrome DevTools MCP |
 
+## LLM Model
+
+All agents use **Azure OpenAI `gpt-5.2`** via LiteLLM. The deployment name is `gpt-5.2` (dot notation, not dash).
+
+| Setting | Value |
+|---------|-------|
+| Provider | Azure OpenAI |
+| Deployment | `gpt-5.2` |
+| Model version | `gpt-5.2-2025-12-11` |
+| API version | `2024-08-01-preview` |
+| Default max tokens | 4096 |
+| LiteLLM model string | `azure/gpt-5.2` |
+
+The model is configured via the `AZURE_OPENAI_DEPLOYMENT` K8s secret. GPT-5+ models require `max_completion_tokens` instead of `max_tokens` — the codebase handles this automatically.
+
 ## Routing and Sessions
 
 - Threads activate on `@VibeTeam` and persist agent subscriptions.
