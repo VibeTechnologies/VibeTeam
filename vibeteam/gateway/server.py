@@ -284,6 +284,7 @@ async def call_agent_service_async(
     context_id: str | None = None,
     callback_url: str = "",
     callback_metadata: dict[str, Any] | None = None,
+    progress_url: str | None = None,
 ) -> dict[str, Any]:
     """
     Submit a task to the agent service asynchronously.
@@ -300,6 +301,7 @@ async def call_agent_service_async(
         context_id: Context ID for session tracking
         callback_url: URL where agent should POST results
         callback_metadata: Opaque data passed through to callback
+        progress_url: URL where agent should POST progress updates (optional)
 
     Returns:
         {"job_id": "...", "status": "accepted"} or {"error": "..."}
@@ -328,6 +330,10 @@ async def call_agent_service_async(
     if fw == "openhands":
         payload["use_tools"] = True
         payload["skip_context_injection"] = False
+
+    # Pass progress_url so agent service can send intermediate updates
+    if progress_url:
+        payload["progress_url"] = progress_url
 
     try:
         client = get_http_client()

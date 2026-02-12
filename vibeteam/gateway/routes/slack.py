@@ -781,6 +781,7 @@ async def _submit_agent_async(
 
     # Build callback URL
     callback_url = f"{config.GATEWAY_URL}/callback/agent"
+    progress_url = f"{config.GATEWAY_URL}/callback/agent/progress"
 
     # Submit async task
     result = await call_agent_service_async(
@@ -789,6 +790,7 @@ async def _submit_agent_async(
         context_type="slack",
         context_id=f"{channel}:{thread_ts or 'new'}",
         callback_url=callback_url,
+        progress_url=progress_url,
         callback_metadata={
             "channel": channel,
             "thread_ts": thread_ts,
@@ -1069,6 +1071,19 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     if message_ts:
         await remove_reaction(channel, message_ts, "thinking_face")
 
+    if status == "timeout":
+        # Timeout path — agent ran out of time
+        if message_ts:
+            await add_reaction(channel, message_ts, "hourglass")
+        # Post partial response if available, otherwise generic timeout message
+        timeout_response = response_text or (
+            "Sorry, I ran out of time working on this task. "
+            "Please try again or break the request into smaller steps."
+        )
+        timeout_text = f"[{display_name}] :hourglass: {timeout_response}"
+        await send_slack_message(channel, timeout_text, thread_ts)
+        return {"status": "ok", "job_id": job_id, "outcome": "timeout_posted"}
+
     if status == "failed" or error:
         # Failure path
         if message_ts:
@@ -1127,6 +1142,62 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
         )
 
     return {"status": "ok", "job_id": job_id, "outcome": "response_posted"}
+
+
+# ==============================================================================
+# Progress callback endpoint for agent intermediate updates
+# ==============================================================================
+
+
+@router.post("/callback/agent/progress")
+async def handle_agent_progress(request: Request) -> dict[str, Any]:
+    """Handle progress updates from agent service while agent is working.
+
+    The agent service POSTs here periodically with:
+    - job_id, step_number, step_summary, elapsed_seconds
+    - callback_metadata (Slack context: channel, thread_ts, etc.)
+
+    This endpoint posts a progress message to the Slack thread so users
+    can see what the agent is doing instead of just seeing :thinking_face:.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from None
+
+    job_id = payload.get("job_id", "unknown")
+    step_number = payload.get("step_number", 0)
+    step_summary = payload.get("step_summary", "")
+    elapsed_seconds = payload.get("elapsed_seconds", 0)
+    meta = payload.get("callback_metadata", {})
+
+    channel = meta.get("channel", "")
+    thread_ts = meta.get("thread_ts")
+    display_name = meta.get("display_name", meta.get("role", "Agent"))
+
+    if not channel or not step_summary:
+        return {"status": "ignored", "reason": "missing channel or step_summary"}
+
+    # Verify callback authentication
+    if config.CALLBACK_SECRET:
+        callback_secret = meta.get("callback_secret", "")
+        if callback_secret != config.CALLBACK_SECRET:
+            logger.warning(f"[PROGRESS] Invalid callback_secret for job {job_id}")
+            raise HTTPException(status_code=403, detail="Invalid callback secret")
+
+    # Format elapsed time
+    mins, secs = divmod(elapsed_seconds, 60)
+    time_str = f"{mins}m{secs:02d}s" if mins > 0 else f"{secs}s"
+
+    # Post progress as a subtle update
+    progress_text = f"_[{display_name}] Step {step_number} ({time_str}): {step_summary}_"
+    await send_slack_message(channel, progress_text, thread_ts)
+
+    logger.info(
+        f"[PROGRESS] job={job_id} step={step_number} elapsed={time_str}: {step_summary[:80]}"
+    )
+
+    return {"status": "ok", "job_id": job_id}
 
 
 # ==============================================================================

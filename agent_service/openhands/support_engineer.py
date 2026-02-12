@@ -270,6 +270,8 @@ class OpenHandsSupportEngineer:
             # Reduce reasoning overhead for faster responses in benchmark scenarios
             reasoning_effort="medium",
             extended_thinking_budget=10000,
+            timeout=300,  # 5 min per LLM call — prevents infinite hangs
+            num_retries=3,  # Retry transient failures (overall timeout is the safety net)
         )
 
     def _create_agent(self, llm: LLM, use_tools: bool = True) -> Agent:

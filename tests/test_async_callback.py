@@ -1123,3 +1123,346 @@ class TestOpenHandsRunAsync:
         )
 
         assert response.status_code == 422  # Pydantic validation error
+
+
+# ==============================================================================
+# Tests for timeout callback handling
+# ==============================================================================
+
+
+class TestCallbackTimeout:
+    """Test that the /callback/agent endpoint handles status='timeout' correctly."""
+
+    def test_callback_timeout_posts_hourglass_and_message(self, test_client):
+        """Timeout callback adds hourglass reaction and posts timeout message."""
+        payload = {
+            "job_id": "job-timeout-1",
+            "status": "timeout",
+            "response": "I was investigating but ran out of time after 600 seconds.",
+            "error": "Agent execution timed out after 600s",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "support_engineer",
+                "display_name": "SupportEngineer",
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_remove,
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_add,
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            response = test_client.post("/callback/agent", json=payload)
+
+            assert response.status_code == 200
+            result = response.json()
+            assert result["status"] == "ok"
+            assert result["outcome"] == "timeout_posted"
+
+            # Verify thinking_face removed
+            mock_remove.assert_called_once_with("C_TEST", "ts_1234", "thinking_face")
+
+            # Verify hourglass reaction added
+            mock_add.assert_called_once_with("C_TEST", "ts_1234", "hourglass")
+
+            # Verify timeout message posted with partial response
+            mock_send.assert_called_once()
+            sent_text = mock_send.call_args[0][1]
+            assert "[SupportEngineer]" in sent_text
+            assert ":hourglass:" in sent_text
+            assert "ran out of time" in sent_text
+
+    def test_callback_timeout_without_response_uses_default(self, test_client):
+        """Timeout callback with empty response uses a default timeout message."""
+        payload = {
+            "job_id": "job-timeout-2",
+            "status": "timeout",
+            "response": "",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "role": "release_engineer",
+                "display_name": "ReleaseEngineer",
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            response = test_client.post("/callback/agent", json=payload)
+
+            assert response.status_code == 200
+            assert response.json()["outcome"] == "timeout_posted"
+
+            sent_text = mock_send.call_args[0][1]
+            assert "ran out of time" in sent_text
+            assert "try again" in sent_text
+
+
+# ==============================================================================
+# Tests for /callback/agent/progress endpoint
+# ==============================================================================
+
+
+class TestProgressEndpoint:
+    """Test the POST /callback/agent/progress endpoint."""
+
+    def test_progress_posts_to_slack(self, test_client):
+        """Progress update posts a formatted message to Slack thread."""
+        payload = {
+            "job_id": "job-prog-1",
+            "step_number": 3,
+            "step_summary": "Running kubectl get pods",
+            "elapsed_seconds": 45,
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "display_name": "SupportEngineer",
+            },
+        }
+
+        with patch(
+            "vibeteam.gateway.routes.slack.send_slack_message",
+            new_callable=AsyncMock,
+        ) as mock_send:
+            response = test_client.post("/callback/agent/progress", json=payload)
+
+            assert response.status_code == 200
+            result = response.json()
+            assert result["status"] == "ok"
+
+            # Verify progress message sent
+            mock_send.assert_called_once()
+            sent_text = mock_send.call_args[0][1]
+            assert "Step 3" in sent_text
+            assert "kubectl get pods" in sent_text
+            assert "45s" in sent_text
+            # Should be italic (wrapped in underscores)
+            assert sent_text.startswith("_")
+            assert sent_text.endswith("_")
+
+    def test_progress_formats_minutes(self, test_client):
+        """Progress with elapsed > 60s formats as Xm YYs."""
+        payload = {
+            "job_id": "job-prog-2",
+            "step_number": 10,
+            "step_summary": "Analyzing Sentry errors",
+            "elapsed_seconds": 125,  # 2m05s
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "display_name": "SupportEngineer",
+            },
+        }
+
+        with patch(
+            "vibeteam.gateway.routes.slack.send_slack_message",
+            new_callable=AsyncMock,
+        ) as mock_send:
+            response = test_client.post("/callback/agent/progress", json=payload)
+
+            assert response.status_code == 200
+            sent_text = mock_send.call_args[0][1]
+            assert "2m05s" in sent_text
+
+    def test_progress_missing_channel_ignored(self, test_client):
+        """Progress without channel is ignored gracefully."""
+        payload = {
+            "job_id": "job-prog-3",
+            "step_number": 1,
+            "step_summary": "Starting",
+            "elapsed_seconds": 5,
+            "callback_metadata": {},  # No channel
+        }
+
+        response = test_client.post("/callback/agent/progress", json=payload)
+        assert response.status_code == 200
+        assert response.json()["status"] == "ignored"
+
+    def test_progress_missing_summary_ignored(self, test_client):
+        """Progress without step_summary is ignored."""
+        payload = {
+            "job_id": "job-prog-4",
+            "step_number": 1,
+            "step_summary": "",
+            "elapsed_seconds": 5,
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+            },
+        }
+
+        response = test_client.post("/callback/agent/progress", json=payload)
+        assert response.status_code == 200
+        assert response.json()["status"] == "ignored"
+
+    def test_progress_rejects_invalid_secret(self, test_client):
+        """Progress with wrong secret is rejected when CALLBACK_SECRET is set."""
+        payload = {
+            "job_id": "job-prog-bad",
+            "step_number": 1,
+            "step_summary": "Checking pods",
+            "elapsed_seconds": 10,
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "display_name": "SupportEngineer",
+                "callback_secret": "wrong-secret",
+            },
+        }
+
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.CALLBACK_SECRET = "correct-secret"
+
+            response = test_client.post("/callback/agent/progress", json=payload)
+            assert response.status_code == 403
+
+    def test_progress_invalid_json_returns_400(self, test_client):
+        """Progress with invalid JSON returns 400."""
+        response = test_client.post(
+            "/callback/agent/progress",
+            content="not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 400
+
+
+# ==============================================================================
+# Tests for progress_url flowing through async pipeline
+# ==============================================================================
+
+
+class TestProgressUrlFlow:
+    """Test that progress_url is correctly wired through the async pipeline."""
+
+    @pytest.mark.asyncio
+    async def test_submit_passes_progress_url(self):
+        """_submit_agent_async passes progress_url to call_agent_service_async."""
+        from vibeteam.gateway.routes.slack import _submit_agent_async
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.call_agent_service_async",
+                new_callable=AsyncMock,
+                return_value={"job_id": "test-job-progress", "status": "accepted"},
+            ) as mock_call,
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+        ):
+            mock_config.GATEWAY_URL = "http://vibeteam-gateway:8080"
+            mock_config.CALLBACK_SECRET = ""
+
+            await _submit_agent_async(
+                role="support_engineer",
+                display_name="SupportEngineer",
+                user_message="check the errors",
+                channel="C_TEST",
+                thread_ts="ts_1234",
+                message_ts="msg_ts_1234",
+                user_id="U_USER",
+            )
+
+            mock_call.assert_called_once()
+            call_kwargs = mock_call.call_args[1]
+            # Verify progress_url was passed
+            assert "progress_url" in call_kwargs
+            assert "callback/agent/progress" in call_kwargs["progress_url"]
+
+
+# ==============================================================================
+# Tests for _execute_and_callback timeout behavior
+# ==============================================================================
+
+
+@pytest.mark.skipif(not _has_sqlalchemy, reason="sqlalchemy not installed")
+class TestExecuteAndCallbackTimeout:
+    """Test timeout behavior in _execute_and_callback."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_sends_timeout_callback(self):
+        """When agent execution exceeds timeout, a timeout callback is sent."""
+        from agent_service.openhands.server import AsyncRunRequest, _execute_and_callback
+
+        request = AsyncRunRequest(
+            task="investigate the issue",
+            role="support_engineer",
+            context_type="slack",
+            context_id="C123:ts_456",
+            callback_url="http://gateway:8080/callback/agent",
+            callback_metadata={"channel": "C123", "thread_ts": "ts_456"},
+            execution_timeout=1,  # 1 second timeout for test
+        )
+
+        # Mock agent.run to take longer than timeout
+        async def slow_agent(*args, **kwargs):
+            import asyncio
+
+            await asyncio.sleep(10)
+            return {"response": "should never reach here"}
+
+        with (
+            patch("agent_service.openhands.server.get_team") as mock_team,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_agent = MagicMock()
+            mock_agent.run.side_effect = lambda *a, **kw: __import__("time").sleep(10)
+            mock_team.return_value._get_agent.return_value = mock_agent
+
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await _execute_and_callback("job-timeout-test", request)
+
+            # Verify callback was sent with timeout status
+            mock_client.post.assert_called_once()
+            call_args = mock_client.post.call_args
+            callback_url = call_args[0][0]
+            assert callback_url == "http://gateway:8080/callback/agent"
+
+            payload = call_args[1]["json"]
+            assert payload["status"] == "timeout"
+            assert payload["job_id"] == "job-timeout-test"
+            assert "timed out" in payload["error"]
+            assert payload["callback_metadata"]["channel"] == "C123"

@@ -480,6 +480,8 @@ class OpenHandsSoftwareEngineer:
             base_url=self.config.llm.api_base,
             api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
             max_output_tokens=4096,
+            timeout=300,  # 5 min per LLM call — prevents infinite hangs
+            num_retries=3,  # Retry transient failures (overall timeout is the safety net)
         )
 
     def _create_agent(self, llm: LLM) -> Agent:
@@ -976,14 +978,72 @@ section-by-section. If you need more context, use:
 
         # Extract meaningful keywords
         skip_words = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been", "have",
-            "has", "had", "do", "does", "did", "will", "would", "could", "should",
-            "that", "this", "it", "we", "they", "you", "and", "but", "or", "not",
-            "for", "from", "to", "with", "in", "on", "at", "by", "of", "about",
-            "please", "investigate", "reporting", "says", "happens", "user",
-            "browser", "chrome", "extension", "issue", "problem", "bug", "error",
-            "fix", "check", "need", "help", "get", "use", "try", "see",
-            "softwareengineer", "github", "repo", "crashes", "crash", "clicking",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "that",
+            "this",
+            "it",
+            "we",
+            "they",
+            "you",
+            "and",
+            "but",
+            "or",
+            "not",
+            "for",
+            "from",
+            "to",
+            "with",
+            "in",
+            "on",
+            "at",
+            "by",
+            "of",
+            "about",
+            "please",
+            "investigate",
+            "reporting",
+            "says",
+            "happens",
+            "user",
+            "browser",
+            "chrome",
+            "extension",
+            "issue",
+            "problem",
+            "bug",
+            "error",
+            "fix",
+            "check",
+            "need",
+            "help",
+            "get",
+            "use",
+            "try",
+            "see",
+            "softwareengineer",
+            "github",
+            "repo",
+            "crashes",
+            "crash",
+            "clicking",
         }
         words = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", keyword_source.lower())
         keywords = [w for w in words if w not in skip_words and len(w) >= 3]
@@ -1006,17 +1066,25 @@ section-by-section. If you need more context, use:
             try:
                 result = subprocess.run(
                     [
-                        "gh", "search", "code", keyword,
-                        "--repo", repo,
-                        "--json", "path,textMatches",
-                        "--limit", "5",
+                        "gh",
+                        "search",
+                        "code",
+                        keyword,
+                        "--repo",
+                        repo,
+                        "--json",
+                        "path,textMatches",
+                        "--limit",
+                        "5",
                     ],
                     capture_output=True,
                     text=True,
                     timeout=15,
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    sections.append(f"## gh search code '{keyword}':\n```json\n{result.stdout[:2000]}\n```")
+                    sections.append(
+                        f"## gh search code '{keyword}':\n```json\n{result.stdout[:2000]}\n```"
+                    )
             except Exception:
                 pass
 
@@ -1029,7 +1097,9 @@ section-by-section. If you need more context, use:
                 timeout=15,
             )
             if result.returncode == 0 and result.stdout.strip():
-                sections.append(f"## Repository top-level structure:\n```\n{result.stdout[:1500]}\n```")
+                sections.append(
+                    f"## Repository top-level structure:\n```\n{result.stdout[:1500]}\n```"
+                )
         except Exception:
             pass
 

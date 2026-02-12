@@ -322,6 +322,8 @@ class OpenHandsReleaseEngineer:
             base_url=self.config.llm.api_base,
             api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
             max_output_tokens=4096,  # Critical for Azure GPT-4 models
+            timeout=300,  # 5 min per LLM call — prevents infinite hangs
+            num_retries=3,  # Retry transient failures (overall timeout is the safety net)
         )
 
     def _create_agent(self, llm: LLM) -> Agent:
