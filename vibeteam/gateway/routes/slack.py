@@ -1130,12 +1130,20 @@ async def handle_slack_events(
     # even without an explicit @mention of the bot.
     # We check two sources: in-memory subscriptions (fast) and, as a fallback,
     # the Slack thread history (stateless, survives pod restarts).
-    if (
+    thread_handler_match = (
         event_type == "message"
         and not is_bot_message
         and event.get("thread_ts")
         and event.get("channel_type") != "im"
-    ):
+    )
+    logger.info(
+        f"Thread handler check: match={thread_handler_match}, "
+        f"event_type={event_type}, is_bot={is_bot_message}, "
+        f"thread_ts={event.get('thread_ts')}, "
+        f"channel_type={event.get('channel_type')}, "
+        f"user={event.get('user')}, text={event.get('text', '')[:80]}"
+    )
+    if thread_handler_match:
         user_id = event.get("user", "")
         channel = event.get("channel", "")
         text = event.get("text", "")
@@ -1148,12 +1156,17 @@ async def handle_slack_events(
             source="slack",
             thread_id=thread_ts,
         )
+        logger.info(
+            f"Thread {thread_ts}: subscriptions={bool(subscriptions)}, "
+            f"checking bot participation..."
+        )
 
         # Slow path: if no subscriptions found (e.g. after pod restart),
         # check the actual Slack thread to see if the bot has replied before.
         participated = bool(subscriptions)
         if not participated:
             participated = await bot_participated_in_thread(channel, thread_ts)
+            logger.info(f"Thread {thread_ts}: bot_participated={participated}")
             if participated:
                 logger.info(
                     f"No subscriptions for thread {thread_ts}, but bot "
