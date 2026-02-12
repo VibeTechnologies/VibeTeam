@@ -289,6 +289,61 @@ async def remove_reaction(
         return False
 
 
+# Cache the bot user ID after the first lookup
+_bot_user_id: str | None = None
+
+
+async def get_bot_user_id() -> str | None:
+    """Get the bot's own Slack user ID via auth.test (cached)."""
+    global _bot_user_id
+    if _bot_user_id is not None:
+        return _bot_user_id
+    if not config.SLACK_BOT_TOKEN:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://slack.com/api/auth.test",
+                headers={"Authorization": f"Bearer {config.SLACK_BOT_TOKEN}"},
+            )
+            data = resp.json()
+            if data.get("ok"):
+                _bot_user_id = data["user_id"]
+                return _bot_user_id
+    except Exception as e:
+        logger.warning(f"Failed to get bot user ID: {e}")
+    return None
+
+
+async def bot_participated_in_thread(channel: str, thread_ts: str) -> bool:
+    """Check whether the bot has posted any messages in a Slack thread.
+
+    Fetches the thread replies and checks if any message was sent by the bot
+    user. This provides a stateless way to determine bot participation without
+    relying on in-memory subscription state.
+    """
+    bot_id = await get_bot_user_id()
+    if not bot_id or not config.SLACK_BOT_TOKEN:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://slack.com/api/conversations.replies",
+                headers={"Authorization": f"Bearer {config.SLACK_BOT_TOKEN}"},
+                params={"channel": channel, "ts": thread_ts, "limit": 50},
+            )
+            data = resp.json()
+            if not data.get("ok"):
+                logger.warning(f"conversations.replies error: {data.get('error')}")
+                return False
+            for msg in data.get("messages", []):
+                if msg.get("user") == bot_id:
+                    return True
+    except Exception as e:
+        logger.warning(f"Failed to check thread participation: {e}")
+    return False
+
+
 # ==============================================================================
 # Task prompt classification and building
 # ==============================================================================
@@ -1064,12 +1119,12 @@ async def handle_slack_events(
 
         return {"status": "accepted", "event": "message.im"}
 
-    # Handle thread replies in threads where the bot has subscribed agents.
-    # When VibeTeam participates in a thread (via app_mention or trigger), agents
-    # are subscribed to that thread. Subsequent user messages in the thread should
-    # be delivered to the subscribed agents — even without an explicit @mention.
-    # This covers the case: user posts "@SupportEngineer, please create a PR"
-    # in a thread where the bot already replied, without re-mentioning @VibeTeam.
+    # Handle thread replies in threads where the bot has participated.
+    # When VibeTeam participates in a thread (via app_mention or trigger),
+    # subsequent user messages in the thread should be delivered to agents —
+    # even without an explicit @mention of the bot.
+    # We check two sources: in-memory subscriptions (fast) and, as a fallback,
+    # the Slack thread history (stateless, survives pod restarts).
     if (
         event_type == "message"
         and not is_bot_message
@@ -1082,23 +1137,30 @@ async def handle_slack_events(
         message_ts = event.get("ts", "")
         thread_ts = event.get("thread_ts", "")
 
-        # Check if we have agents subscribed to this thread
+        # Fast path: check in-memory subscriptions
         message_router = get_message_router()
         subscriptions = await message_router.get_subscriptions(
             source="slack",
             thread_id=thread_ts,
         )
 
-        if subscriptions:
-            logger.info(
-                f"Thread {thread_ts} has subscribed agents: "
-                f"{[s.agent_role for s in subscriptions]}. Processing message."
-            )
+        # Slow path: if no subscriptions found (e.g. after pod restart),
+        # check the actual Slack thread to see if the bot has replied before.
+        participated = bool(subscriptions)
+        if not participated:
+            participated = await bot_participated_in_thread(channel, thread_ts)
+            if participated:
+                logger.info(
+                    f"No subscriptions for thread {thread_ts}, but bot "
+                    f"participated in thread history. Processing message."
+                )
 
-            # Check for new role mentions — subscribe additional agents if needed
-            role_mentions = message_router.parse_role_mentions(text)
-            if role_mentions:
-                logger.info(f"New role mentions in thread reply: {role_mentions}")
+        if participated:
+            if subscriptions:
+                logger.info(
+                    f"Thread {thread_ts} has subscribed agents: "
+                    f"{[s.agent_role for s in subscriptions]}. Processing message."
+                )
 
             await add_reaction(channel, message_ts, "eyes")
 
