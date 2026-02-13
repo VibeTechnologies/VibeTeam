@@ -3,47 +3,27 @@
 **Date:** 2026-02-13
 **Status:** NOT production ready -- 3 high-severity, 3 medium-severity issues
 
-## Evaluation Test Results
+## Current Task: Fix stripe_webhook_failure eval (Issue #105)
 
-Ran `support_400_errors` scenario against live cluster:
+### Goal
+Fix 3 bugs causing the `stripe_webhook_failure` eval to fail:
 
-| Metric | Score | Threshold | Result |
-|--------|-------|-----------|--------|
-| InvestigationQuality | 0.00 | 0.60 | FAIL |
-| EvidenceBasedDecision | 0.00 | 0.60 | FAIL |
-| HandoffCompletion | 0.00 | 0.60 | FAIL |
+1. [x] Duplicate handoff execution — bot messages re-processed by Slack event handler
+2. [x] Timeout callback error logging — `{e}` produces empty string, no retry
+3. [x] No concurrency controls — unlimited agent executions cause queue starvation
+4. [x] Tests pass (509/509)
+5. [ ] Deploy fixes to cluster
+6. [ ] Re-run stripe_webhook_failure eval and verify pass
+7. [ ] Create PR with results
 
-**Root cause of 0.00 scores:** The agent *did* produce a thorough investigation
-(Sentry queries, kubectl checks, curl tests, root cause analysis) but the eval
-script terminated after 15 seconds of "stable" message count, before the agent
-finished (~86 seconds). The "Thinking..." messages were never replaced in the
-eval's view because `chat.update` doesn't change message count.
-
-The agent's actual response (found in openhands-svc logs at 02:30:04) included:
-- Sentry findings (3 issues found)
-- kubectl pod status review
-- Gateway log analysis
-- Endpoint curl tests
-- Evidence-based root cause analysis
-- Actionable recommendations
-
-## Issues Found (Priority Order)
-
-### HIGH SEVERITY
-
-- [x] 1. PostgreSQL session persistence broken (UUID type mismatch)
-- [x] 2. Database schema drift (3 conflicting definitions)
-- [x] 3. Missing production K8s infrastructure
-
-### MEDIUM SEVERITY
-
-- [x] 4. Eval script timing bug (message counting vs content detection)
-- [x] 5. Gmail processor pods failing (missing secret)
-- [x] 6. AGENTS.md model reference stale
-
-### LOW SEVERITY
-
-- [x] 7. Discord integration incomplete (polling scripts only)
+### Changes Made
+- `vibeteam/gateway/routes/slack.py:1375-1417`: Skip self-posted bot messages that
+  contain role mentions (handoffs already handled by callback handler). Detects
+  own messages via `[DisplayName]` prefix pattern in thread replies.
+- `agent_service/openhands/server.py:27-45`: Added `MAX_CONCURRENT_JOBS` semaphore
+  (default 3, configurable via env var) to prevent resource exhaustion.
+- `agent_service/openhands/server.py:435+,488+`: Timeout callback retry with
+  exponential backoff (3 attempts), `repr(e)` for full error details.
 
 ---
 

@@ -1373,13 +1373,41 @@ async def handle_slack_events(
             return {"status": "accepted", "event": "message.subscribed_thread"}
 
     # Handle bot messages with role mentions in channels (handoffs and eval)
-    # This handles cases where the bot posts /RoleName mentions (eval script or agent handoffs)
+    # IMPORTANT: Bot messages posted by OUR OWN bot (via callback handler) that
+    # contain @RoleName handoff mentions should NOT be re-processed here, because
+    # the callback handler (handle_agent_callback) already submits handoff jobs.
+    # Only process bot messages from OTHER bots (e.g., eval script trigger API)
+    # or external integrations.
     if event_type == "message" and is_bot_message:
         channel = event.get("channel", "")
         text = event.get("text", "")
         message_ts = event.get("ts", "")
         thread_ts = event.get("thread_ts") or message_ts
-        user_id = event.get("bot_id", "bot")  # Use bot_id as user_id for bot messages
+        bot_id = event.get("bot_id", "")
+
+        # Check if this message was posted by our own bot (self-posted handoff).
+        # Our bot's messages from the callback handler contain a "[RoleName]" prefix.
+        # The callback handler already processes handoffs in the response, so
+        # re-processing here would cause duplicate agent executions.
+        is_self_bot_message = False
+        if text:
+            # Our callback handler formats messages as "[DisplayName] ..." or
+            # "[DisplayName:model] ...". If the message starts with this pattern
+            # and is in a thread, it's a response we posted — not a new request.
+            import re as _re
+
+            self_bot_pattern = _re.match(r"^\[[\w:.\-]+\]\s", text)
+            if self_bot_pattern and thread_ts and thread_ts != message_ts:
+                is_self_bot_message = True
+                logger.info(
+                    f"Skipping self-posted bot message with role mention "
+                    f"(handoff already handled by callback): {text[:80]}..."
+                )
+
+        if is_self_bot_message:
+            return {"status": "ignored", "reason": "self_bot_handoff_already_handled"}
+
+        user_id = bot_id or "bot"
 
         # React with thinking face to show we're processing the message
         await add_reaction(channel, message_ts, "thinking_face")
