@@ -947,6 +947,13 @@ async def _run_agent_and_respond(
                 await remove_reaction(channel, message_ts, "thinking_face")
                 await add_reaction(channel, message_ts, "white_check_mark")
 
+            # Build display prefix with model info if available
+            model_name = result.get("model", "")
+            if model_name:
+                agent_prefix = f"[{display_name}:{model_name}]"
+            else:
+                agent_prefix = f"[{display_name}]"
+
             # Split long responses into multiple messages instead of truncating
             # This preserves handoff mentions that might be at the end
             chunks = split_long_message(response)
@@ -954,9 +961,9 @@ async def _run_agent_and_respond(
             # Send each chunk as a separate message
             for i, chunk in enumerate(chunks):
                 if i == 0:
-                    formatted_chunk = f"[{display_name}] {chunk}"
+                    formatted_chunk = f"{agent_prefix} {chunk}"
                 else:
-                    formatted_chunk = f"[{display_name} (cont.)] {chunk}"
+                    formatted_chunk = f"{agent_prefix} (cont.) {chunk}"
                 await send_slack_message(channel, formatted_chunk, thread_ts)
 
             # Check for handoffs in the response and execute them synchronously
@@ -1099,14 +1106,22 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
 
     response = response_text or "I completed the task but have no output to share."
 
+    # Build display prefix with model info if available
+    result_metadata = payload.get("metadata", {})
+    model_name = result_metadata.get("model", "")
+    if model_name:
+        agent_prefix = f"[{display_name}:{model_name}]"
+    else:
+        agent_prefix = f"[{display_name}]"
+
     # Split long responses into multiple messages
     chunks = split_long_message(response)
 
     for i, chunk in enumerate(chunks):
         if i == 0:
-            formatted_chunk = f"[{display_name}] {chunk}"
+            formatted_chunk = f"{agent_prefix} {chunk}"
         else:
-            formatted_chunk = f"[{display_name} (cont.)] {chunk}"
+            formatted_chunk = f"{agent_prefix} (cont.) {chunk}"
         await send_slack_message(channel, formatted_chunk, thread_ts)
 
     # Check for handoffs in the response

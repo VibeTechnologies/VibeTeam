@@ -104,9 +104,9 @@ from .utils import get_prompt_path
 # Fallback context if AGENTS.md files not found
 SUPPORT_ENGINEER_CONTEXT_FALLBACK = """You are Grace, the Support Engineer for VibeTeam.
 
-## ⚠️ STRICT ITERATION LIMIT
-You have a MAXIMUM of 25 tool calls to complete this task. Plan your investigation carefully.
-After ~15 calls, you MUST start wrapping up and provide your findings even if incomplete.
+## ⚠️ EXECUTION TIME LIMIT
+You have a 10-minute execution timeout. Plan your investigation carefully.
+Work efficiently and call finish() with your findings well before time runs out.
 
 **CRITICAL: You MUST call finish() with your final response.**
 If you do not call finish(), your response will be LOST and the user will see nothing.
@@ -356,10 +356,25 @@ class OpenHandsSupportEngineer:
             workspace_path = workspace
 
         try:
+            # Build callbacks list for progress reporting
+            callbacks = []
+            progress_url = kwargs.get("progress_url")
+            if progress_url:
+                from .progress import create_progress_callback
+
+                progress_cb = create_progress_callback(
+                    progress_url=progress_url,
+                    job_id=kwargs.get("job_id", ""),
+                    callback_metadata=kwargs.get("callback_metadata", {}),
+                )
+                callbacks.append(progress_cb)
+
+            # No explicit max_iteration_per_run — use SDK default (500).
+            # The execution timeout (600s) in server.py is the real safety net.
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
-                max_iteration_per_run=25,
+                callbacks=callbacks or None,
             )
 
             # Inject relevant context based on task keywords (unless skipped)
@@ -525,6 +540,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 "session_id": session.session_id,
                 "framework": "openhands",
                 "agent": "support_engineer",
+                "model": self.config.llm.model or "gpt-5.2",
             }
 
         finally:

@@ -53,9 +53,9 @@ from .utils import get_prompt_path
 # Fallback context if AGENTS.md files not found
 SOFTWARE_ENGINEER_CONTEXT_FALLBACK = """You are Alan, the Software Engineer for VibeTeam.
 
-## ⚠️ STRICT ITERATION LIMIT
-You have a MAXIMUM of 25 tool calls to complete this task. Plan your investigation carefully.
-After ~12 calls, you MUST start wrapping up and provide your findings even if incomplete.
+## ⚠️ EXECUTION TIME LIMIT
+You have a 10-minute execution timeout. Plan your investigation carefully.
+Work efficiently and call finish() with your findings well before time runs out.
 
 **CRITICAL: You MUST call finish() with your final response.**
 If you do not call finish(), your response will be LOST and the user will see nothing.
@@ -267,7 +267,7 @@ sed -n '121,160p' VibeWebAgent/src/recorder.js       # Lines 121-160... wasting 
 
 ### For GitHub Issue Investigation — STRICT 3-PHASE WORKFLOW
 
-You have 25 tool calls total. Budget them carefully across these 3 phases:
+You have a 10-minute execution timeout. Budget your time carefully across these 3 phases:
 
 **PHASE 1: REVIEW PRE-FETCHED DATA (iterations 1-3, MAX 3 tool calls)**
 The system has ALREADY cloned the repo and searched for relevant code. Look at the
@@ -386,15 +386,15 @@ When you complete a task, summarize what was done, files changed, and any next s
 
 ## ⚠️ FINAL REMINDER — READ THIS BEFORE EVERY ACTION
 
-**You have a hard limit of 25 tool calls. You CANNOT exceed this.**
+**You have a 10-minute execution timeout. You MUST call finish() before time runs out.**
 
-- After 12 tool calls: STOP all new investigation. Begin writing your structured report.
-- After 17 tool calls: You are in EMERGENCY mode. Call finish() IMMEDIATELY with whatever you have.
-- After 20 tool calls: CRITICAL — you have 5 calls left. finish() NOW or lose everything.
-- If you run out of iterations without calling finish(), your entire response is LOST.
+- When you see a "wrap up" warning: STOP all new investigation. Begin writing your structured report.
+- When you see an "emergency" warning: Call finish() IMMEDIATELY with whatever you have.
+- When you see a "critical" warning: finish() NOW or lose everything.
+- If you run out of time without calling finish(), your entire response is LOST.
   The user will see NOTHING — no analysis, no findings, no recommendations.
 
-**NOTE**: The system will inject warning messages at iterations 12, 17, and 20 to remind you.
+**NOTE**: The system will inject warning messages to remind you when time is running low.
 When you see these warnings, OBEY THEM IMMEDIATELY. Do not continue investigating.
 
 **An incomplete summary with partial findings is 100x more valuable than no response.**
@@ -410,26 +410,26 @@ When calling finish(), include:
 # These give the LLM an external signal it can't ignore (it can't count its own tool calls).
 ITERATION_WARNINGS = {
     "wrap_up": (
-        "⚠️ ITERATION WARNING: You have used 12 of 25 tool calls. "
-        "You are now in Phase 3. STOP all new investigation. "
-        "Start writing your structured report and call finish() with your findings. "
+        "⚠️ ITERATION WARNING: You have used many tool calls. "
+        "Start wrapping up your investigation. "
+        "Begin writing your structured report and call finish() with your findings. "
         "An incomplete report is 100x better than no response."
     ),
     "emergency": (
-        "🚨 EMERGENCY: You have used 17 of 25 tool calls — only 8 remaining. "
+        "🚨 EMERGENCY: You have used a large number of tool calls. "
         "Call finish() IMMEDIATELY with whatever findings you have. "
         "Do NOT run any more grep or read commands. "
         "Write your report NOW and call finish()."
     ),
     "critical": (
-        "🔴 CRITICAL: You have used 20 of 25 tool calls — only 5 remaining. "
+        "🔴 CRITICAL: You are approaching the execution time limit. "
         "If you do not call finish() RIGHT NOW, your entire response will be LOST. "
         "The user will see NOTHING. Call finish() with your findings IMMEDIATELY."
     ),
 }
 
 # Thresholds at which warnings are injected (iteration count -> warning level)
-ITERATION_WARNING_THRESHOLDS = {12: "wrap_up", 17: "emergency", 20: "critical"}
+ITERATION_WARNING_THRESHOLDS = {50: "wrap_up", 75: "emergency", 100: "critical"}
 
 
 def _inject_warning(conversation: Any, level: str) -> None:
@@ -1177,7 +1177,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
         try:
             # Create iteration-counting callback that injects warnings at thresholds.
             # The LLM cannot count its own tool calls, so we inject explicit messages
-            # at iterations 12, 17, and 20 to force Phase 3 transition and finish().
+            # at iterations 50, 75, and 100 to nudge it toward wrapping up and calling finish().
             iteration_count = {"value": 0}  # mutable counter for closure
             warnings_sent: set[str] = set()
 
@@ -1205,11 +1205,26 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                         )
                         t.start()
 
+            # Build callbacks list — always include iteration counter,
+            # optionally add progress callback for real-time Slack updates
+            agent_callbacks: list[Any] = [_count_iterations]
+            progress_url = kwargs.get("progress_url")
+            if progress_url:
+                from .progress import create_progress_callback
+
+                progress_cb = create_progress_callback(
+                    progress_url=progress_url,
+                    job_id=kwargs.get("job_id", ""),
+                    callback_metadata=kwargs.get("callback_metadata", {}),
+                )
+                agent_callbacks.append(progress_cb)
+
+            # No explicit max_iteration_per_run — use SDK default (500).
+            # The execution timeout (600s) in server.py is the real safety net.
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
-                max_iteration_per_run=25,
-                callbacks=[_count_iterations],
+                callbacks=agent_callbacks,
             )
 
             # Inject context if keywords match
@@ -1305,6 +1320,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 "session_id": session.session_id,
                 "framework": "openhands",
                 "agent": "software_engineer",
+                "model": self.config.llm.model or "gpt-5.2",
                 "workspace": workspace_path,
             }
 

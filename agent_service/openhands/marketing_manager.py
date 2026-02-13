@@ -266,6 +266,7 @@ class OpenHandsMarketingManager:
                 "session_id": session.session_id,
                 "framework": "openhands",
                 "agent": "marketing_manager",
+                "model": self.config.llm.model or "gpt-5.2",
             }
 
         finally:

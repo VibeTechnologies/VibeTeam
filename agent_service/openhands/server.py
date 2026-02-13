@@ -374,6 +374,11 @@ async def _execute_and_callback(
                         workspace=request.workspace,
                         use_tools=request.use_tools,
                         skip_context_injection=request.skip_context_injection,
+                        # Progress callback params — agents use these to send
+                        # real-time updates to the gateway while working
+                        progress_url=request.progress_url,
+                        job_id=job_id,
+                        callback_metadata=request.callback_metadata,
                     ),
                     timeout=execution_timeout,
                 )
@@ -507,6 +512,7 @@ async def _execute_and_callback(
                 "latency_ms": latency_ms,
                 "message_count": 2,
                 "workspace": request.workspace,
+                "model": result.get("model", ""),
             },
             callback_metadata=request.callback_metadata,
         )

@@ -554,8 +554,8 @@ class TestSoftwareEngineerIterationBudget:
     The github_issue eval fails when the SWE agent exhausts all iterations
     searching code without calling finish(). These tests ensure:
     1. The prompt has a FINAL REMINDER at the end about calling finish()
-    2. The iteration limit numbers are consistent (25 max, wrap up at 12)
-    3. max_iteration_per_run is set to 25 with iteration warning callbacks
+    2. The prompt mentions the execution time limit
+    3. No explicit max_iteration_per_run — SDK default (500) used, execution timeout is the safety net
     4. The GitHub Issue workflow includes an iteration check step
     5. FORBIDDEN ACTIONS section prevents sequential file reading
     6. ITERATION_WARNINGS dict and _inject_warning() exist at module level
@@ -625,46 +625,46 @@ class TestSoftwareEngineerIterationBudget:
             "FINAL REMINDER must escalate urgency for high iteration counts"
         )
 
-    def test_iteration_limit_is_25_in_prompt(self):
-        """The STRICT ITERATION LIMIT section must say 25, not 35."""
+    def test_execution_time_limit_in_prompt(self):
+        """The EXECUTION TIME LIMIT section must exist and mention time/timeout."""
         content = self._read_swe_context()
         ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
         ctx_end = content.find('"""', ctx_start + 30)
         assert ctx_start != -1 and ctx_end != -1, "SOFTWARE_ENGINEER_CONTEXT not found"
         ctx = content[ctx_start:ctx_end]
 
-        # Find the STRICT ITERATION LIMIT section
-        limit_start = ctx.find("STRICT ITERATION LIMIT")
-        assert limit_start != -1, "STRICT ITERATION LIMIT section not found"
+        # Find the EXECUTION TIME LIMIT section
+        limit_start = ctx.find("EXECUTION TIME LIMIT")
+        assert limit_start != -1, "EXECUTION TIME LIMIT section not found"
         # Get the next ~200 chars
         limit_section = ctx[limit_start : limit_start + 200]
 
-        assert "25" in limit_section, (
-            f"STRICT ITERATION LIMIT must mention 25 max iterations. Found: {limit_section[:100]}"
+        assert "10-minute" in limit_section or "timeout" in limit_section, (
+            f"EXECUTION TIME LIMIT must mention the time limit. Found: {limit_section[:100]}"
         )
 
-    def test_wrap_up_at_12_iterations(self):
-        """The prompt must tell the agent to wrap up at ~12 iterations."""
+    def test_prompt_mentions_finish_before_timeout(self):
+        """The prompt must tell the agent to call finish() before time runs out."""
         content = self._read_swe_context()
         ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
         ctx_end = content.find('"""', ctx_start + 30)
         ctx = content[ctx_start:ctx_end]
 
-        limit_start = ctx.find("STRICT ITERATION LIMIT")
+        limit_start = ctx.find("EXECUTION TIME LIMIT")
         assert limit_start != -1
         limit_section = ctx[limit_start : limit_start + 200]
 
-        assert "12" in limit_section, (
-            f"STRICT ITERATION LIMIT must tell agent to wrap up at ~12 calls. "
+        assert "finish()" in limit_section or "finish()" in ctx[limit_start:], (
+            f"EXECUTION TIME LIMIT must tell agent to call finish() before timeout. "
             f"Found: {limit_section[:100]}"
         )
 
-    def test_max_iteration_per_run_is_25(self):
-        """max_iteration_per_run must be set to 25 for SWE agent (with warning callbacks)."""
+    def test_no_explicit_max_iteration_per_run(self):
+        """max_iteration_per_run should NOT be set — rely on SDK default (500) and execution timeout."""
         content = self._read_swe_context()
-        assert "max_iteration_per_run=25" in content, (
-            "SWE agent must use max_iteration_per_run=25 with iteration warning callbacks. "
-            "Warnings at 12/17/20 replace the need for 35 iterations."
+        assert "max_iteration_per_run=" not in content, (
+            "SWE agent should not set max_iteration_per_run explicitly. "
+            "The SDK default (500) is used; the execution timeout (600s) is the real safety net."
         )
 
     def test_github_issue_workflow_has_iteration_check(self):
@@ -682,9 +682,9 @@ class TestSoftwareEngineerIterationBudget:
             "GitHub Issue workflow must include an iteration budget check step"
         )
 
-    def test_other_agents_still_use_25_iterations(self):
-        """SupportEngineer should use max_iteration_per_run=25, ReleaseEngineer uses 15."""
-        # SupportEngineer uses 25 iterations
+    def test_other_agents_no_explicit_max_iteration(self):
+        """SupportEngineer and ReleaseEngineer should NOT set explicit max_iteration_per_run."""
+        # SupportEngineer — uses SDK default (500), execution timeout is the safety net
         se_filepath = os.path.join(
             os.path.dirname(__file__),
             os.pardir,
@@ -694,11 +694,12 @@ class TestSoftwareEngineerIterationBudget:
         )
         with open(se_filepath) as f:
             se_content = f.read()
-        assert "max_iteration_per_run=25" in se_content, (
-            "support_engineer.py should use max_iteration_per_run=25."
+        assert "max_iteration_per_run=" not in se_content, (
+            "support_engineer.py should not set max_iteration_per_run explicitly. "
+            "The SDK default (500) is used; execution timeout is the real safety net."
         )
 
-        # ReleaseEngineer uses 15 iterations (reduced to prevent timeout)
+        # ReleaseEngineer — uses SDK default (500), execution timeout is the safety net
         re_filepath = os.path.join(
             os.path.dirname(__file__),
             os.pardir,
@@ -708,8 +709,9 @@ class TestSoftwareEngineerIterationBudget:
         )
         with open(re_filepath) as f:
             re_content = f.read()
-        assert "max_iteration_per_run=15" in re_content, (
-            "release_engineer.py should use max_iteration_per_run=15."
+        assert "max_iteration_per_run=" not in re_content, (
+            "release_engineer.py should not set max_iteration_per_run explicitly. "
+            "The SDK default (500) is used; execution timeout is the real safety net."
         )
 
     def test_has_forbidden_actions_section(self):
@@ -842,9 +844,9 @@ class TestSoftwareEngineerIterationBudget:
         assert "ITERATION_WARNING_THRESHOLDS" in content, (
             "ITERATION_WARNING_THRESHOLDS dict must be defined"
         )
-        # Verify thresholds match prompt (12, 17, 20)
-        assert "12:" in content and "17:" in content and "20:" in content, (
-            "ITERATION_WARNING_THRESHOLDS must have entries for 12, 17, and 20"
+        # Verify thresholds exist (50, 75, 100 — high limits since execution timeout is the real safety net)
+        assert "50:" in content and "75:" in content and "100:" in content, (
+            "ITERATION_WARNING_THRESHOLDS must have entries for 50, 75, and 100"
         )
 
     def test_inject_warning_function_exists(self):
@@ -898,7 +900,7 @@ class TestSoftwareEngineerIterationBudget:
         )
 
     def test_warning_thresholds_match_prompt(self):
-        """Warning thresholds (12, 17, 20) must match FINAL REMINDER section."""
+        """Warning guidance in FINAL REMINDER must use time-based language, not specific iteration counts."""
         content = self._read_swe_context()
         ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
         ctx_end = content.find('"""', ctx_start + 30)
@@ -908,15 +910,10 @@ class TestSoftwareEngineerIterationBudget:
         assert reminder_start != -1
         reminder_section = ctx[reminder_start:]
 
-        # Verify the same thresholds appear in both the prompt and the code
-        assert "12 tool calls" in reminder_section, (
-            "FINAL REMINDER must reference 12 tool calls (matches wrap_up threshold)"
-        )
-        assert "17 tool calls" in reminder_section, (
-            "FINAL REMINDER must reference 17 tool calls (matches emergency threshold)"
-        )
-        assert "20 tool calls" in reminder_section, (
-            "FINAL REMINDER must reference 20 tool calls (matches critical threshold)"
+        # Verify the FINAL REMINDER uses time-based guidance and mentions warnings
+        assert "finish()" in reminder_section, "FINAL REMINDER must tell agent to call finish()"
+        assert "warning" in reminder_section.lower(), (
+            "FINAL REMINDER must reference the injected warnings"
         )
 
     def test_prompt_mentions_system_warnings(self):

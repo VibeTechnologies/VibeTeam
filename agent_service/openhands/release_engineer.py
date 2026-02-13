@@ -58,9 +58,9 @@ from .utils import get_prompt_path
 # Fallback context if AGENTS.md files not found
 RELEASE_ENGINEER_CONTEXT_FALLBACK = """You are Einstein, the Release Engineer for VibeTeam.
 
-## ⚠️ STRICT ITERATION LIMIT
-You have a MAXIMUM of 15 tool calls to complete this task. Plan your actions carefully.
-After ~10 calls, you MUST start wrapping up and provide your findings even if incomplete.
+## ⚠️ EXECUTION TIME LIMIT
+You have a 10-minute execution timeout. Plan your actions carefully.
+Work efficiently and call finish() with your results well before time runs out.
 
 **CRITICAL: You MUST call finish() with your final response.**
 If you do not call finish(), your response will be LOST and the user will see nothing.
@@ -394,11 +394,26 @@ class OpenHandsReleaseEngineer:
             workspace_path = workspace
 
         try:
+            # Build callbacks list for progress reporting
+            callbacks = []
+            progress_url = kwargs.get("progress_url")
+            if progress_url:
+                from .progress import create_progress_callback
+
+                progress_cb = create_progress_callback(
+                    progress_url=progress_url,
+                    job_id=kwargs.get("job_id", ""),
+                    callback_metadata=kwargs.get("callback_metadata", {}),
+                )
+                callbacks.append(progress_cb)
+
             # Create local conversation with required workspace
+            # No explicit max_iteration_per_run — use SDK default (500).
+            # The execution timeout (600s) in server.py is the real safety net.
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
-                max_iteration_per_run=15,
+                callbacks=callbacks or None,
             )
 
             # Inject relevant context (ReleaseEngineer almost always needs kubectl)
@@ -452,6 +467,7 @@ just because you have the current state above.
                 "session_id": session.session_id,
                 "framework": "openhands",
                 "agent": "release_engineer",
+                "model": self.config.llm.model or "gpt-5.2",
                 "workspace": workspace_path,
             }
 
