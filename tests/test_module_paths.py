@@ -23,7 +23,6 @@ exactly as production would resolve paths.
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 
@@ -153,9 +152,7 @@ class TestModulePathConsistency:
     def test_agent_service_openhands_is_a_package(self):
         """agent_service/openhands/ must have __init__.py."""
         init = REPO_ROOT / "agent_service" / "openhands" / "__init__.py"
-        assert init.is_file(), (
-            "agent_service/openhands/__init__.py is missing."
-        )
+        assert init.is_file(), "agent_service/openhands/__init__.py is missing."
 
     @pytest.mark.parametrize(
         "filepath,description",
@@ -229,8 +226,8 @@ class TestNoStaleAgentsOpenhands:
 
     # Patterns that indicate a stale reference (Python module or dir path)
     STALE_PATTERNS = [
-        (r'\bagents\.openhands\.', "Python module path 'agents.openhands.'"),
-        (r'\bagents/openhands/', "Directory path 'agents/openhands/'"),
+        (r"\bagents\.openhands\.", "Python module path 'agents.openhands.'"),
+        (r"\bagents/openhands/", "Directory path 'agents/openhands/'"),
         (r'"agents",\s*"openhands"', 'os.path.join segment "agents", "openhands"'),
     ]
 
