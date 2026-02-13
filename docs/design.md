@@ -399,22 +399,43 @@ The `conversational` template prevents the agent from responding with a rigid 5-
 
 ## Database Schema
 
+The ORM in `agents/shared/db.py` is the single source of truth.
+The `Uuid` column type (SQLAlchemy 2.0+) maps to native `UUID` on
+PostgreSQL and `CHAR(32)` on SQLite, so all queries are dialect-agnostic.
+
 ```sql
--- Agent sessions
+-- Agent sessions (managed by ORM – agents/shared/db.py)
 CREATE TABLE sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY,              -- sqlalchemy.Uuid
     key VARCHAR(255) UNIQUE NOT NULL,
     framework VARCHAR(50) NOT NULL,
     role VARCHAR(50) NOT NULL,
-    source VARCHAR(50) NOT NULL,
-    thread_id VARCHAR(255) NOT NULL,
-    workspace VARCHAR(500),
+    context_type VARCHAR(50) NOT NULL,
+    context_id VARCHAR(255) NOT NULL,
     messages JSONB DEFAULT '[]',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
 );
 
--- Thread subscriptions
+-- Task results (managed by ORM – agents/shared/db.py)
+CREATE TABLE task_results (
+    id UUID PRIMARY KEY,              -- sqlalchemy.Uuid
+    session_id UUID,                  -- FK to sessions.id (logical, not enforced)
+    framework VARCHAR(50) NOT NULL,
+    role VARCHAR(50) NOT NULL,
+    task TEXT NOT NULL,
+    response TEXT,
+    status VARCHAR(20) DEFAULT 'pending',
+    error TEXT,
+    tokens_used VARCHAR(20),
+    latency_ms VARCHAR(20),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+-- Thread subscriptions (managed by migrate_db.py)
 CREATE TABLE thread_subscriptions (
     id SERIAL PRIMARY KEY,
     source VARCHAR(50) NOT NULL,
@@ -425,7 +446,7 @@ CREATE TABLE thread_subscriptions (
     UNIQUE (source, thread_id, agent_role)
 );
 
--- Index for fast lookups
+-- Indexes
 CREATE INDEX idx_subscriptions_thread ON thread_subscriptions(source, thread_id);
 CREATE INDEX idx_sessions_key ON sessions(key);
 ```

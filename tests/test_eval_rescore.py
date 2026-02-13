@@ -281,12 +281,12 @@ class TestHandoffTimeoutExtension:
         source = inspect.getsource(run_evaluation)
         assert "stable_time_with_handoff = 300" in source
 
-    def test_stable_time_no_handoff_is_15(self):
-        """Verify stable_time_no_handoff constant is 15."""
+    def test_stable_time_no_handoff_is_30(self):
+        """Verify stable_time_no_handoff constant is 30 (increased from 15 to handle async agents)."""
         import inspect
 
         source = inspect.getsource(run_evaluation)
-        assert "stable_time_no_handoff = 15" in source
+        assert "stable_time_no_handoff = 30" in source
 
     def test_effective_timeout_in_source(self):
         """Verify effective_timeout variable is used for auto-extension."""

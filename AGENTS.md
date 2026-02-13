@@ -191,7 +191,7 @@ Create or update the `vibeteam-secrets` secret:
 kubectl create secret generic vibeteam-secrets -n vibeteam \
   --from-literal=AZURE_API_KEY="..." \
   --from-literal=AZURE_API_BASE="https://YOUR-RESOURCE.openai.azure.com/" \
-  --from-literal=AZURE_OPENAI_DEPLOYMENT="gpt-4.1-mini" \
+  --from-literal=AZURE_OPENAI_DEPLOYMENT="gpt-5.2" \
   --from-literal=GITHUB_TOKEN="..." \
   --from-literal=SENTRY_AUTH_TOKEN="..." \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -210,7 +210,7 @@ Required in `.env` (for local development and evaluation):
 
 ## Model Configuration
 
-VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-4.1-mini` (with dot).
+VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-5.2` (with dot).
 
 ## kubectl Access for Agents
 

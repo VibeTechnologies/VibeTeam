@@ -1,0 +1,68 @@
+# NetworkPolicies for VibeTeam
+# Restricts pod-to-pod communication to only what's needed.
+---
+# PostgreSQL: only gateway and agent services can connect
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-vibeteam
+  namespace: vibeteam
+  labels:
+    team: vibeteam
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              team: vibeteam
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Gateway: allow external ingress on 8080 + internal from agent callbacks
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-ingress
+  namespace: vibeteam
+  labels:
+    team: vibeteam
+spec:
+  podSelector:
+    matchLabels:
+      app: vibeteam-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    # External traffic (via ingress controller)
+    - ports:
+        - protocol: TCP
+          port: 8080
+---
+# Agent services: only gateway can call them
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-services-ingress
+  namespace: vibeteam
+  labels:
+    team: vibeteam
+spec:
+  podSelector:
+    matchLabels:
+      component: agent-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: vibeteam-gateway
+      ports:
+        - protocol: TCP
+          port: 8080

@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Column, DateTime, String, Text, select
+from sqlalchemy import JSON, Column, DateTime, String, Text, Uuid, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -33,7 +33,7 @@ class Session(Base):
 
     __tablename__ = "sessions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     key = Column(String(255), unique=True, nullable=False, index=True)
     framework = Column(String(50), nullable=False)
     role = Column(String(50), nullable=False)
@@ -69,8 +69,8 @@ class TaskResult(Base):
 
     __tablename__ = "task_results"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    session_id = Column(String(36), nullable=True, index=True)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    session_id = Column(Uuid, nullable=True, index=True)
     framework = Column(String(50), nullable=False)
     role = Column(String(50), nullable=False)
     task = Column(Text, nullable=False)
@@ -207,7 +207,7 @@ class SessionStore:
             else:
                 db.add(
                     Session(
-                        id=str(uuid.uuid4()),
+                        id=uuid.uuid4(),
                         key=session_data["key"],
                         framework=session_data["framework"],
                         role=session_data["role"],

@@ -66,6 +66,12 @@ SLACK_TRIGGER_SECRET=
 # Discord
 DISCORD_BOT_TOKEN=
 
+# Gmail OAuth (see Gmail Integration section below)
+GMAIL_CLIENT_ID=
+GMAIL_CLIENT_SECRET=
+GMAIL_REFRESH_TOKEN=
+GMAIL_USER_EMAIL=support@vibebrowser.app
+
 # Gateway/Services
 OPENHANDS_SERVICE_URL=http://openhands-svc:8080
 CREWAI_SERVICE_URL=http://crewai-svc:8080
@@ -81,3 +87,57 @@ DATABASE_URL=postgresql://...
 ## Evaluation
 
 See [eval-architecture.md](eval-architecture.md) for scenarios, scoring, and run instructions.
+
+## Gmail Integration
+
+The SupportEngineer agent triages incoming support emails via a Gmail processor daemon (`k8s/base/gmail-processor.yaml`). This requires OAuth2 credentials.
+
+### Setup
+
+1. **Create OAuth credentials** in [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
+   - Application type: "Desktop app"
+   - Enable the Gmail API
+   - Download the client secret JSON
+
+2. **Generate a refresh token** using the OAuth consent flow:
+   ```bash
+   # Use the google-auth-oauthlib helper
+   python -c "
+   from google_auth_oauthlib.flow import InstalledAppFlow
+   flow = InstalledAppFlow.from_client_secrets_file(
+       'client_secret.json',
+       scopes=['https://www.googleapis.com/auth/gmail.readonly',
+               'https://www.googleapis.com/auth/gmail.modify']
+   )
+   creds = flow.run_local_server(port=8090)
+   print('Refresh token:', creds.refresh_token)
+   "
+   ```
+
+3. **Create the K8s secret** (required for gmail-processor pods):
+   ```bash
+   kubectl create secret generic gmail-oauth-secret -n vibeteam \
+     --from-literal=GMAIL_CLIENT_ID="..." \
+     --from-literal=GMAIL_CLIENT_SECRET="..." \
+     --from-literal=GMAIL_REFRESH_TOKEN="..." \
+     --from-literal=GMAIL_USER_EMAIL="support@vibebrowser.app" \
+     --dry-run=client -o yaml | kubectl apply -f -
+   ```
+
+4. **Restart the gmail-processor**:
+   ```bash
+   kubectl rollout restart deployment/gmail-processor -n vibeteam
+   ```
+
+The template at `k8s/base/gmail-secrets.yaml` shows the expected secret structure.
+
+## Discord Integration
+
+| Component | Status |
+|-----------|--------|
+| Connector code | Complete (`vibeteam/connectors/discord.py`, 661 lines) |
+| Bot script | Complete (`scripts/run_discord_bot.py`) — polling-based |
+| Gateway webhook route | Not implemented |
+| K8s deployment | Not implemented |
+
+Discord currently works only via the standalone polling bot script. It is **not** integrated into the gateway webhook-routing architecture and has no K8s deployment. To use Discord as a production integration channel, a gateway route and K8s deployment would need to be added.

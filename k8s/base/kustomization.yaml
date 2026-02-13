@@ -16,6 +16,10 @@ resources:
   - scheduler-svc.yaml
   # Gmail email processor (daemon polling for support emails)
   - gmail-processor.yaml
+  # Production infrastructure
+  - hpa.yaml
+  - pdb.yaml
+  - network-policy.yaml
   # Multi-framework agent deployments (AutoGen, CrewAI, OpenHands)
   - frameworks/
   # Note: Slack agents removed - gateway receives webhooks and routes to agent services
