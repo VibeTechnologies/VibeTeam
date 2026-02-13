@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from scripts.eval_slack_e2e import (
     ROLE_DISPLAY,
     SCENARIOS,
+    _is_placeholder,
     build_transcript,
     run_evaluation,
 )
@@ -660,3 +661,195 @@ class TestCLIThreadTsValidation:
             mock_run.assert_called_once()
             coro = mock_run.call_args[0][0]
             coro.close()
+
+
+# ==============================================================================
+# Tests: _is_placeholder detection
+# ==============================================================================
+
+
+class TestIsPlaceholder:
+    """Tests for _is_placeholder() — detects progress/thinking messages vs real responses."""
+
+    # -- Placeholder messages (should return True) --
+
+    def test_italicized_progress_update(self):
+        """Italicized step progress: _[Role] Step N (Xs): summary_"""
+        assert _is_placeholder("_[SupportEngineer] Step 3 (45s): Checking Sentry for errors_")
+
+    def test_italicized_progress_step_1(self):
+        assert _is_placeholder("_[ReleaseEngineer] Step 1 (2s): Starting investigation_")
+
+    def test_thinking_placeholder_with_emoji(self):
+        """:hourglass_flowing_sand: [Role] Thinking..."""
+        assert _is_placeholder(":hourglass_flowing_sand: [SupportEngineer] Thinking...")
+
+    def test_plain_thinking_short(self):
+        """Short message containing Thinking..."""
+        assert _is_placeholder("Thinking...")
+
+    def test_thinking_with_context(self):
+        assert _is_placeholder("[SupportEngineer] Thinking... please wait")
+
+    def test_processing_status(self):
+        assert _is_placeholder(":gear: [SupportEngineer] Processing request")
+
+    def test_working_status(self):
+        assert _is_placeholder(":hourglass: [ReleaseEngineer] Working on it")
+
+    def test_whitespace_padded_progress(self):
+        """Leading/trailing whitespace should be stripped."""
+        assert _is_placeholder("  _[SupportEngineer] Step 2 (10s): Querying kubectl_  ")
+
+    # -- Substantive messages (should return False) --
+
+    def test_real_support_response(self):
+        """Real investigation response should NOT be a placeholder."""
+        text = (
+            "[SupportEngineer] I've checked Sentry and found 3 error groups: "
+            "VIBE-API-GATEWAY-5 (400 errors on /api/v1/auth), "
+            "VIBE-API-GATEWAY-3 (timeout on /api/v1/sessions). "
+            "Running kubectl get pods to check infrastructure..."
+        )
+        assert not _is_placeholder(text)
+
+    def test_real_handoff_response(self):
+        text = (
+            "[SupportEngineer] Found the issue — the API gateway pod is in CrashLoopBackOff. "
+            "@ReleaseEngineer please rollback the latest deployment."
+        )
+        assert not _is_placeholder(text)
+
+    def test_real_software_engineer_response(self):
+        text = "[SoftwareEngineer] Fixed the routing config in PR #123. The 400 errors were caused by a missing auth middleware."
+        assert not _is_placeholder(text)
+
+    def test_long_thinking_message_is_real(self):
+        """A long message that happens to contain 'Thinking...' is NOT a placeholder."""
+        text = "Thinking... After reviewing the Sentry data, I found that " + "x" * 200
+        assert not _is_placeholder(text)
+
+    def test_plain_text_response(self):
+        assert not _is_placeholder("Everything looks healthy. No issues found in the cluster.")
+
+    def test_empty_string(self):
+        assert not _is_placeholder("")
+
+    def test_multiline_response(self):
+        text = "[SupportEngineer] Investigation results:\n- Pod status: Running\n- No OOMKills\n- Sentry: 0 new errors"
+        assert not _is_placeholder(text)
+
+
+# ==============================================================================
+# Tests: has_substantive_response logic in polling loop
+# ==============================================================================
+
+
+class TestSubstantiveResponseDetection:
+    """Tests that the polling loop correctly waits for substantive responses."""
+
+    def test_has_substantive_response_flag_in_source(self):
+        """Verify has_substantive_response flag exists in run_evaluation."""
+        import inspect
+
+        source = inspect.getsource(run_evaluation)
+        assert "has_substantive_response = False" in source
+        assert "has_substantive_response = True" in source
+
+    def test_placeholder_check_before_exit(self):
+        """Verify the polling loop checks for placeholders before exiting."""
+        import inspect
+
+        source = inspect.getsource(run_evaluation)
+        assert "if not has_substantive_response:" in source
+        assert "Only placeholder messages so far" in source
+
+    def test_substantive_detection_print(self):
+        """Verify the loop prints when it detects a substantive response."""
+        import inspect
+
+        source = inspect.getsource(run_evaluation)
+        assert "Substantive agent response detected." in source
+
+    @pytest.fixture
+    def mock_env(self, monkeypatch):
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token")
+        monkeypatch.setenv("SLACK_TRIGGER_SECRET", "test-secret")
+
+    @pytest.mark.asyncio
+    async def test_placeholder_only_keeps_waiting(self, mock_env):
+        """When only placeholder messages exist, eval should keep waiting (not exit early)."""
+        mock_slack = MagicMock()
+        mock_slack.post_message.return_value = make_slack_message(
+            ts="100.000", text="@SupportEngineer check errors", is_bot=False
+        )
+
+        call_count = 0
+
+        def mock_replies(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 1:
+                # First poll: only the user message
+                return [make_slack_message(ts="100.000", text="@SupportEngineer check errors")]
+            elif call_count <= 3:
+                # Polls 2-3: only placeholder progress messages
+                return [
+                    make_slack_message(ts="100.000", text="@SupportEngineer check errors"),
+                    make_slack_message(
+                        ts="101.000",
+                        text="_[SupportEngineer] Step 1 (2s): Starting investigation_",
+                        is_bot=True,
+                        thread_ts="100.000",
+                    ),
+                ]
+            else:
+                # Poll 4+: real substantive response arrives
+                return [
+                    make_slack_message(ts="100.000", text="@SupportEngineer check errors"),
+                    make_slack_message(
+                        ts="101.000",
+                        text="_[SupportEngineer] Step 1 (2s): Starting investigation_",
+                        is_bot=True,
+                        thread_ts="100.000",
+                    ),
+                    make_slack_message(
+                        ts="102.000",
+                        text="[SupportEngineer] Checked Sentry and kubectl. All pods healthy. No errors found.",
+                        is_bot=True,
+                        thread_ts="100.000",
+                    ),
+                ]
+
+        mock_slack.get_thread_replies.side_effect = mock_replies
+
+        with (
+            patch("scripts.eval_slack_e2e.SlackConnector", return_value=mock_slack),
+            patch("scripts.eval_slack_e2e.httpx.AsyncClient") as mock_httpx_cls,
+            patch("scripts.eval_slack_e2e.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"roles": ["support_engineer"]}
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_httpx_cls.return_value = mock_client
+
+            result = await run_evaluation(
+                scenario_name="support_400_errors",
+                channel="C_TEST",
+                wait_timeout=10,
+                poll_interval=1,
+                skip_eval=True,
+            )
+
+        # Should have captured the substantive response, not just the placeholder
+        conversation = result["conversation"]
+        roles = [role for role, _ in conversation]
+        assert "support_engineer" in roles
+        # The substantive message text should appear
+        texts = [text for _, text in conversation]
+        substantive_found = any("Checked Sentry" in t for t in texts)
+        assert substantive_found, f"Expected substantive response in conversation, got: {texts}"

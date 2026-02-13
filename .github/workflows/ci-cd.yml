@@ -192,14 +192,15 @@ jobs:
           # Apply manifests
           kubectl apply -k .
           
-          # Rollout deployments
-          echo "Rolling out vibeteam-gateway..."
-          kubectl -n $K8S_NAMESPACE rollout restart deployment/vibeteam-gateway
-          kubectl -n $K8S_NAMESPACE rollout status deployment/vibeteam-gateway --timeout=120s
-          
-          echo "Rolling out autogen-svc..."
-          kubectl -n $K8S_NAMESPACE rollout restart deployment/autogen-svc || true
-          kubectl -n $K8S_NAMESPACE rollout status deployment/autogen-svc --timeout=120s || true
+          # Rollout ALL deployments that use git-sync or need code refresh
+          # Python doesn't hot-reload — pods must restart to pick up new code
+          for DEPLOY in vibeteam-gateway openhands-svc autogen-svc crewai-svc; do
+            echo "Rolling out ${DEPLOY}..."
+            # Unpause if paused (e.g., during eval runs), then restart
+            kubectl -n $K8S_NAMESPACE rollout resume deployment/${DEPLOY} 2>/dev/null || true
+            kubectl -n $K8S_NAMESPACE rollout restart deployment/${DEPLOY} || true
+            kubectl -n $K8S_NAMESPACE rollout status deployment/${DEPLOY} --timeout=120s || true
+          done
       
       - name: Verify deployment
         run: |

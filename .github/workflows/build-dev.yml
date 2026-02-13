@@ -5,9 +5,10 @@ on:
     branches: [master, main]
     paths:
       - 'agents/**'
+      - 'agent_service/**'
       - 'vibeteam/**'
       - 'Dockerfile*'
-      - 'agents/**/Dockerfile*'
+      - 'pyproject.toml'
   workflow_dispatch:
     inputs:
       framework:
@@ -52,7 +53,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: agents/crewai/Dockerfile.dev
+          file: agent_service/crewai/Dockerfile.dev
           push: true
           tags: |
             ${{ env.REGISTRY }}/vibetechnologies/vibeteam-crewai:dev
@@ -82,7 +83,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: agents/openhands/Dockerfile.dev
+          file: agent_service/openhands/Dockerfile.dev
           push: true
           tags: |
             ${{ env.REGISTRY }}/vibetechnologies/vibeteam-openhands:dev
@@ -112,7 +113,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: agents/autogen/Dockerfile.dev
+          file: agent_service/autogen/Dockerfile.dev
           push: true
           tags: |
             ${{ env.REGISTRY }}/vibetechnologies/vibeteam-autogen:dev

@@ -447,6 +447,29 @@ class AzureOpenAIModel(DeepEvalBaseLLM):  # type: ignore[misc]
 # ==============================================================================
 
 
+def _is_placeholder(text: str) -> bool:
+    """Check if a bot message is a placeholder/progress update, not a real response.
+
+    Placeholder patterns posted by the gateway while agent is working:
+    - "Thinking..." messages: ":hourglass_flowing_sand: [Role] Thinking..."
+    - Progress updates: "_[Role] Step N (Xs): summary_" (italicized)
+    - Timeout notices: ":hourglass: ..."
+    """
+    import re
+
+    stripped = text.strip()
+    # Progress updates are posted as italicized messages: _[Role] Step N ..._
+    if stripped.startswith("_[") and stripped.endswith("_"):
+        return True
+    # Thinking placeholders
+    if "Thinking..." in stripped and len(stripped) < 200:
+        return True
+    # Very short messages that look like status updates
+    if re.match(r"^:[\w_]+:\s*\[[\w]+\]\s*(Thinking|Processing|Working)", stripped):
+        return True
+    return False
+
+
 def build_transcript(messages: list[tuple[str, str]]) -> str:
     """Build transcript from (role, text) pairs."""
     lines = []
@@ -763,12 +786,17 @@ async def run_evaluation(
         print(f"\n>>> Step 2: Waiting for agent response (timeout: {wait_timeout}s)")
         start_time = time.time()
         last_message_count = 1  # We posted 1 message
-        stable_time_no_handoff = 30  # Increased from 15s to account for async agent processing
+        # Stable time: how long to wait after the last change before concluding.
+        # Agent async processing can take 90-120s, and progress/placeholder messages
+        # arrive early. We use a short stable time (30s) once a substantive response
+        # is detected, but require at least one substantive response before exiting.
+        stable_time_no_handoff = 30
         stable_time_with_handoff = 300  # 5min wait for handoff agent
         last_change_time = 0.0  # Tracks BOTH new messages AND content edits
         last_content_fingerprint = ""  # Hash of all message texts to detect chat.update edits
         pending_handoff = False
         effective_timeout = wait_timeout
+        has_substantive_response = False  # True once a real (non-placeholder) bot msg arrives
 
         def _content_fingerprint(replies: list) -> str:
             """Create a fingerprint of all message texts to detect in-place edits."""
@@ -819,6 +847,13 @@ async def run_evaluation(
                         continue
                     else:
                         pending_handoff = False
+
+                    # Check if any bot message is substantive (not a placeholder)
+                    if not has_substantive_response:
+                        substantive = [m for m in bot_messages if not _is_placeholder(m.text)]
+                        if substantive:
+                            has_substantive_response = True
+                            print("    Substantive agent response detected.")
             else:
                 # First poll — initialize fingerprint without treating as a change
                 if last_content_fingerprint == "":
@@ -831,6 +866,21 @@ async def run_evaluation(
                     stable_time_with_handoff if pending_handoff else stable_time_no_handoff
                 )
                 if time_since_last >= stable_time:
+                    # Only exit if we have a substantive response, not just placeholders
+                    if not has_substantive_response:
+                        # Re-check: messages may have been updated in-place
+                        substantive = [m for m in bot_messages if not _is_placeholder(m.text)]
+                        if substantive:
+                            has_substantive_response = True
+                        else:
+                            # Still only placeholders — keep waiting
+                            elapsed = int(time.time() - start_time)
+                            print(
+                                f"    Only placeholder messages so far, "
+                                f"waiting for substantive response... ({elapsed}s)"
+                            )
+                            continue
+
                     latest_bot_msg = bot_messages[-1]
                     has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
                     if not has_handoff:
