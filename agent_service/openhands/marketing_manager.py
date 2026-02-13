@@ -109,6 +109,8 @@ class OpenHandsMarketingManager:
             base_url=self.config.llm.api_base,
             api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
             max_output_tokens=4096,
+            timeout=300,  # 5 min per LLM call — prevents infinite hangs
+            num_retries=3,  # Retry transient failures (overall timeout is the safety net)
         )
 
     def _create_agent(self, llm: LLM, *, use_tools: bool = True) -> Agent:
@@ -264,6 +266,7 @@ class OpenHandsMarketingManager:
                 "session_id": session.session_id,
                 "framework": "openhands",
                 "agent": "marketing_manager",
+                "model": self.config.llm.model or "gpt-5.2",
             }
 
         finally:
