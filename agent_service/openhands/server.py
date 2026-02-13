@@ -28,6 +28,21 @@ from .team import OpenHandsTeam, create_team
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Concurrency control: limit the number of simultaneous agent executions
+# to prevent resource exhaustion when multiple jobs arrive concurrently.
+# Default: 3 concurrent jobs (configurable via MAX_CONCURRENT_JOBS env var).
+MAX_CONCURRENT_JOBS = int(os.environ.get("MAX_CONCURRENT_JOBS", "3"))
+_job_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """Lazily create the semaphore (must be created inside event loop)."""
+    global _job_semaphore
+    if _job_semaphore is None:
+        _job_semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
+        logger.info(f"Initialized job semaphore with max_concurrent_jobs={MAX_CONCURRENT_JOBS}")
+    return _job_semaphore
+
 
 # Request/Response Models
 class RunRequest(BaseModel):
@@ -345,206 +360,230 @@ async def _execute_and_callback(
     - Overall execution timeout (default 600s / 10 min) prevents infinite hangs
     - On timeout, extracts partial results from whatever events exist
     - Sends progress updates to request.progress_url if provided
+    - Concurrency limited by semaphore to prevent resource exhaustion
     """
     import httpx
 
-    start_time = time.time()
-    context_id = request.context_id or str(uuid.uuid4())[:8]
-    execution_timeout = request.execution_timeout
+    semaphore = _get_semaphore()
+    logger.info(
+        f"[job={job_id}] Waiting for semaphore "
+        f"(active={MAX_CONCURRENT_JOBS - semaphore._value}/{MAX_CONCURRENT_JOBS})"
+    )
 
-    try:
-        team = get_team()
-        role = request.role
+    async with semaphore:
+        start_time = time.time()
+        context_id = request.context_id or str(uuid.uuid4())[:8]
+        execution_timeout = request.execution_timeout
 
-        logger.info(
-            f"[job={job_id}] Starting agent execution: role={role}, timeout={execution_timeout}s"
-        )
-
-        if role:
-            agent = team._get_agent(role)
-            # Wrap agent.run in asyncio.wait_for to enforce overall timeout.
-            # This prevents the agent from hanging forever if an LLM call gets stuck.
-            try:
-                result = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        agent.run,
-                        task=request.task,
-                        context_type=request.context_type,
-                        context_id=context_id,
-                        workspace=request.workspace,
-                        use_tools=request.use_tools,
-                        skip_context_injection=request.skip_context_injection,
-                        # Progress callback params — agents use these to send
-                        # real-time updates to the gateway while working
-                        progress_url=request.progress_url,
-                        job_id=job_id,
-                        callback_metadata=request.callback_metadata,
-                    ),
-                    timeout=execution_timeout,
-                )
-            except asyncio.TimeoutError:
-                elapsed = int(time.time() - start_time)
-                logger.error(
-                    f"[job={job_id}] Agent execution timed out after {elapsed}s "
-                    f"(limit={execution_timeout}s)"
-                )
-                agent_role = role or "team"
-
-                # Send timeout callback
-                payload = CallbackPayload(
-                    job_id=job_id,
-                    status="timeout",
-                    error=f"Agent execution timed out after {elapsed}s",
-                    response=(
-                        f"I was working on this task but ran out of time after "
-                        f"{elapsed} seconds. The operation was cancelled. "
-                        f"Please try again or break the task into smaller steps."
-                    ),
-                    agents_used=[agent_role],
-                    metadata={
-                        "latency_ms": elapsed * 1000,
-                        "timeout_seconds": execution_timeout,
-                        "timed_out": True,
-                    },
-                    callback_metadata=request.callback_metadata,
-                )
-                # Jump to callback sending
-                try:
-                    async with httpx.AsyncClient() as client:
-                        cb_response = await client.post(
-                            request.callback_url,
-                            json=payload.model_dump(),
-                            timeout=30.0,
-                        )
-                        logger.info(
-                            f"[job={job_id}] Timeout callback sent: "
-                            f"status={cb_response.status_code}"
-                        )
-                except Exception as e:
-                    logger.error(f"[job={job_id}] Failed to send timeout callback: {e}")
-                return
-        else:
-            try:
-                result = await asyncio.wait_for(
-                    team.run_async(
-                        task=request.task,
-                        context_type=request.context_type,
-                        context_id=context_id,
-                        workspace=request.workspace,
-                    ),
-                    timeout=execution_timeout,
-                )
-            except asyncio.TimeoutError:
-                elapsed = int(time.time() - start_time)
-                logger.error(f"[job={job_id}] Team execution timed out after {elapsed}s")
-                payload = CallbackPayload(
-                    job_id=job_id,
-                    status="timeout",
-                    error=f"Agent execution timed out after {elapsed}s",
-                    response=(
-                        f"I was working on this task but ran out of time after "
-                        f"{elapsed} seconds. The operation was cancelled. "
-                        f"Please try again or break the task into smaller steps."
-                    ),
-                    agents_used=["team"],
-                    metadata={
-                        "latency_ms": elapsed * 1000,
-                        "timeout_seconds": execution_timeout,
-                        "timed_out": True,
-                    },
-                    callback_metadata=request.callback_metadata,
-                )
-                try:
-                    async with httpx.AsyncClient() as client:
-                        cb_response = await client.post(
-                            request.callback_url,
-                            json=payload.model_dump(),
-                            timeout=30.0,
-                        )
-                        logger.info(
-                            f"[job={job_id}] Timeout callback sent: "
-                            f"status={cb_response.status_code}"
-                        )
-                except Exception as e:
-                    logger.error(f"[job={job_id}] Failed to send timeout callback: {e}")
-                return
-
-        latency_ms = int((time.time() - start_time) * 1000)
-        agent_role = result.get("agent", role or "team")
-        session_key = f"openhands:{agent_role}:{request.context_type}:{context_id}"
-
-        # Save to PostgreSQL
         try:
-            store = get_postgres_store()
-            await store.save(
-                {
-                    "key": session_key,
-                    "framework": "openhands",
-                    "role": agent_role,
-                    "context_type": request.context_type,
-                    "context_id": context_id,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": request.task,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
-                        {
-                            "role": "assistant",
-                            "content": result.get("response", ""),
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
-                    ],
-                }
-            )
-        except Exception as e:
-            logger.warning(f"[job={job_id}] Failed to save session to PostgreSQL: {e}")
+            team = get_team()
+            role = request.role
 
-        # Build callback payload
-        payload = CallbackPayload(
-            job_id=job_id,
-            status="completed",
-            response=result.get("response", ""),
-            session_id=result.get("session_id", context_id),
-            session_key=session_key,
-            agents_used=[agent_role],
-            metadata={
-                "latency_ms": latency_ms,
-                "message_count": 2,
-                "workspace": request.workspace,
-                "model": result.get("model", ""),
-            },
-            callback_metadata=request.callback_metadata,
-        )
-
-        logger.info(
-            f"[job={job_id}] Agent completed in {latency_ms}ms, "
-            f"response_len={len(payload.response)}, sending callback"
-        )
-
-    except Exception as e:
-        logger.error(f"[job={job_id}] Agent execution failed: {e}")
-        payload = CallbackPayload(
-            job_id=job_id,
-            status="failed",
-            error=str(e),
-            callback_metadata=request.callback_metadata,
-        )
-
-    # POST result to callback URL
-    try:
-        async with httpx.AsyncClient() as client:
-            cb_response = await client.post(
-                request.callback_url,
-                json=payload.model_dump(),
-                timeout=30.0,
-            )
             logger.info(
-                f"[job={job_id}] Callback sent to {request.callback_url}: "
-                f"status={cb_response.status_code}"
+                f"[job={job_id}] Starting agent execution: role={role}, timeout={execution_timeout}s"
             )
-    except Exception as e:
-        logger.error(f"[job={job_id}] Failed to send callback to {request.callback_url}: {e}")
+
+            if role:
+                agent = team._get_agent(role)
+                # Wrap agent.run in asyncio.wait_for to enforce overall timeout.
+                # This prevents the agent from hanging forever if an LLM call gets stuck.
+                try:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            agent.run,
+                            task=request.task,
+                            context_type=request.context_type,
+                            context_id=context_id,
+                            workspace=request.workspace,
+                            use_tools=request.use_tools,
+                            skip_context_injection=request.skip_context_injection,
+                            # Progress callback params — agents use these to send
+                            # real-time updates to the gateway while working
+                            progress_url=request.progress_url,
+                            job_id=job_id,
+                            callback_metadata=request.callback_metadata,
+                        ),
+                        timeout=execution_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    elapsed = int(time.time() - start_time)
+                    logger.error(
+                        f"[job={job_id}] Agent execution timed out after {elapsed}s "
+                        f"(limit={execution_timeout}s)"
+                    )
+                    agent_role = role or "team"
+
+                    # Send timeout callback
+                    payload = CallbackPayload(
+                        job_id=job_id,
+                        status="timeout",
+                        error=f"Agent execution timed out after {elapsed}s",
+                        response=(
+                            f"I was working on this task but ran out of time after "
+                            f"{elapsed} seconds. The operation was cancelled. "
+                            f"Please try again or break the task into smaller steps."
+                        ),
+                        agents_used=[agent_role],
+                        metadata={
+                            "latency_ms": elapsed * 1000,
+                            "timeout_seconds": execution_timeout,
+                            "timed_out": True,
+                        },
+                        callback_metadata=request.callback_metadata,
+                    )
+                    # Jump to callback sending (with retry for resilience)
+                    for attempt in range(3):
+                        try:
+                            async with httpx.AsyncClient() as client:
+                                cb_response = await client.post(
+                                    request.callback_url,
+                                    json=payload.model_dump(),
+                                    timeout=30.0,
+                                )
+                                logger.info(
+                                    f"[job={job_id}] Timeout callback sent: "
+                                    f"status={cb_response.status_code}"
+                                )
+                            break  # Success — exit retry loop
+                        except Exception as e:
+                            logger.error(
+                                f"[job={job_id}] Failed to send timeout callback "
+                                f"(attempt {attempt + 1}/3): {repr(e)}"
+                            )
+                            if attempt < 2:
+                                await asyncio.sleep(2**attempt)  # Exponential backoff
+                    return
+            else:
+                try:
+                    result = await asyncio.wait_for(
+                        team.run_async(
+                            task=request.task,
+                            context_type=request.context_type,
+                            context_id=context_id,
+                            workspace=request.workspace,
+                        ),
+                        timeout=execution_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    elapsed = int(time.time() - start_time)
+                    logger.error(f"[job={job_id}] Team execution timed out after {elapsed}s")
+                    payload = CallbackPayload(
+                        job_id=job_id,
+                        status="timeout",
+                        error=f"Agent execution timed out after {elapsed}s",
+                        response=(
+                            f"I was working on this task but ran out of time after "
+                            f"{elapsed} seconds. The operation was cancelled. "
+                            f"Please try again or break the task into smaller steps."
+                        ),
+                        agents_used=["team"],
+                        metadata={
+                            "latency_ms": elapsed * 1000,
+                            "timeout_seconds": execution_timeout,
+                            "timed_out": True,
+                        },
+                        callback_metadata=request.callback_metadata,
+                    )
+                    for attempt in range(3):
+                        try:
+                            async with httpx.AsyncClient() as client:
+                                cb_response = await client.post(
+                                    request.callback_url,
+                                    json=payload.model_dump(),
+                                    timeout=30.0,
+                                )
+                                logger.info(
+                                    f"[job={job_id}] Timeout callback sent: "
+                                    f"status={cb_response.status_code}"
+                                )
+                            break
+                        except Exception as e:
+                            logger.error(
+                                f"[job={job_id}] Failed to send timeout callback "
+                                f"(attempt {attempt + 1}/3): {repr(e)}"
+                            )
+                            if attempt < 2:
+                                await asyncio.sleep(2**attempt)
+                    return
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            agent_role = result.get("agent", role or "team")
+            session_key = f"openhands:{agent_role}:{request.context_type}:{context_id}"
+
+            # Save to PostgreSQL
+            try:
+                store = get_postgres_store()
+                await store.save(
+                    {
+                        "key": session_key,
+                        "framework": "openhands",
+                        "role": agent_role,
+                        "context_type": request.context_type,
+                        "context_id": context_id,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": request.task,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            },
+                            {
+                                "role": "assistant",
+                                "content": result.get("response", ""),
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            },
+                        ],
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"[job={job_id}] Failed to save session to PostgreSQL: {e}")
+
+            # Build callback payload
+            payload = CallbackPayload(
+                job_id=job_id,
+                status="completed",
+                response=result.get("response", ""),
+                session_id=result.get("session_id", context_id),
+                session_key=session_key,
+                agents_used=[agent_role],
+                metadata={
+                    "latency_ms": latency_ms,
+                    "message_count": 2,
+                    "workspace": request.workspace,
+                    "model": result.get("model", ""),
+                },
+                callback_metadata=request.callback_metadata,
+            )
+
+            logger.info(
+                f"[job={job_id}] Agent completed in {latency_ms}ms, "
+                f"response_len={len(payload.response)}, sending callback"
+            )
+
+        except Exception as e:
+            logger.error(f"[job={job_id}] Agent execution failed: {e}")
+            payload = CallbackPayload(
+                job_id=job_id,
+                status="failed",
+                error=str(e),
+                callback_metadata=request.callback_metadata,
+            )
+
+        # POST result to callback URL
+        try:
+            async with httpx.AsyncClient() as client:
+                cb_response = await client.post(
+                    request.callback_url,
+                    json=payload.model_dump(),
+                    timeout=30.0,
+                )
+                logger.info(
+                    f"[job={job_id}] Callback sent to {request.callback_url}: "
+                    f"status={cb_response.status_code}"
+                )
+        except Exception as e:
+            logger.error(
+                f"[job={job_id}] Failed to send callback to {request.callback_url}: {repr(e)}"
+            )
 
 
 @app.post("/run/async", response_model=AsyncRunResponse)
