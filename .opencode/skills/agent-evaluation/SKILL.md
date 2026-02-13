@@ -12,11 +12,70 @@ metadata:
 
 OpenCode evaluates VibeTeam agents using `agents/benchmark.py` and reports results in table format.
 
+## CRITICAL: Pre-Flight Deployment Verification
+
+**Before running ANY evaluation**, you MUST verify that the deployed code matches the repo code.
+Git-sync updates files on disk, but Python processes don't hot-reload — pods must be restarted.
+
+### Step 1: Check deployed commit matches repo HEAD
+
+```bash
+# Get the commit SHA running in the cluster
+export $( < .env )
+DEPLOYED_SHA=$(kubectl exec deployment/vibeteam-gateway -n vibeteam -c gateway -- cat /code/.git/worktrees/*/HEAD 2>/dev/null)
+LOCAL_SHA=$(git rev-parse origin/master)
+echo "Deployed: $DEPLOYED_SHA"
+echo "Repo:     $LOCAL_SHA"
+```
+
+If they differ, wait for git-sync (30s) or manually restart pods.
+
+### Step 2: Verify the Python process loaded current code
+
+```bash
+# Check when the pod last started (Python loads modules at startup)
+kubectl get pods -n vibeteam -l app=vibeteam-gateway -o jsonpath='{.items[*].status.containerStatuses[0].state.running.startedAt}'
+kubectl get pods -n vibeteam -l app=openhands-svc -o jsonpath='{.items[*].status.containerStatuses[0].state.running.startedAt}'
+```
+
+If pods started BEFORE the latest commit, the Python process is running stale code. Restart:
+
+```bash
+kubectl rollout resume deployment/vibeteam-gateway -n vibeteam 2>/dev/null || true
+kubectl rollout restart deployment/vibeteam-gateway -n vibeteam
+kubectl rollout resume deployment/openhands-svc -n vibeteam 2>/dev/null || true
+kubectl rollout restart deployment/openhands-svc -n vibeteam
+kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=120s
+kubectl rollout status deployment/openhands-svc -n vibeteam --timeout=120s
+```
+
+### Step 3: Verify specific code changes
+
+If you changed a specific file (e.g., removed "Thinking..." messages), verify it's gone:
+
+```bash
+# Example: check that "Thinking..." is not in the deployed gateway code
+kubectl exec deployment/vibeteam-gateway -n vibeteam -c gateway -- grep -rn "Thinking" /code/current/vibeteam/ 2>/dev/null
+# Should return nothing
+```
+
+### Step 4: Pause rollouts before eval
+
+```bash
+kubectl rollout pause deployment/vibeteam-gateway -n vibeteam
+kubectl rollout pause deployment/openhands-svc -n vibeteam
+```
+
+**Only proceed with evaluation after all checks pass.**
+
+---
+
 ## Workflow
 
-1. Run each agent (AutoGen, CrewAI, OpenHands) with the given task
-2. Call `ComparativeEvaluator.evaluate()` from `agents/benchmark.py`
-3. Present results in the table format below
+1. **Pre-flight checks** (see above) — verify deployed code matches repo
+2. Run each agent (AutoGen, CrewAI, OpenHands) with the given task
+3. Call `ComparativeEvaluator.evaluate()` from `agents/benchmark.py`
+4. Present results in the table format below
 
 ---
 
