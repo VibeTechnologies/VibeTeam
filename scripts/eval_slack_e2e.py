@@ -763,22 +763,41 @@ async def run_evaluation(
         print(f"\n>>> Step 2: Waiting for agent response (timeout: {wait_timeout}s)")
         start_time = time.time()
         last_message_count = 1  # We posted 1 message
-        stable_time_no_handoff = 15
+        stable_time_no_handoff = 30  # Increased from 15s to account for async agent processing
         stable_time_with_handoff = 300  # 5min wait for handoff agent
-        last_new_message_time = 0.0
+        last_change_time = 0.0  # Tracks BOTH new messages AND content edits
+        last_content_fingerprint = ""  # Hash of all message texts to detect chat.update edits
         pending_handoff = False
         effective_timeout = wait_timeout
+
+        def _content_fingerprint(replies: list) -> str:
+            """Create a fingerprint of all message texts to detect in-place edits."""
+            import hashlib
+
+            content = "|".join(r.text for r in replies)
+            return hashlib.md5(content.encode()).hexdigest()
 
         while time.time() - start_time < effective_timeout:
             await asyncio.sleep(poll_interval)
 
             replies = slack.get_thread_replies(channel=channel, thread_ts=thread_ts, limit=50)
             current_count = len(replies)
+            current_fingerprint = _content_fingerprint(replies)
 
-            if current_count > last_message_count:
-                print(f"    New messages detected: {current_count - last_message_count}")
+            # Detect changes: new messages OR content edits (chat.update)
+            count_changed = current_count > last_message_count
+            content_changed = (
+                current_fingerprint != last_content_fingerprint and last_content_fingerprint != ""
+            )
+
+            if count_changed or content_changed:
+                if count_changed:
+                    print(f"    New messages detected: {current_count - last_message_count}")
+                if content_changed and not count_changed:
+                    print("    Message content updated (chat.update detected)")
                 last_message_count = current_count
-                last_new_message_time = time.time()
+                last_content_fingerprint = current_fingerprint
+                last_change_time = time.time()
 
                 bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
                 if bot_messages:
@@ -800,10 +819,14 @@ async def run_evaluation(
                         continue
                     else:
                         pending_handoff = False
+            else:
+                # First poll — initialize fingerprint without treating as a change
+                if last_content_fingerprint == "":
+                    last_content_fingerprint = current_fingerprint
 
             bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
-            if bot_messages and last_new_message_time > 0:
-                time_since_last = time.time() - last_new_message_time
+            if bot_messages and last_change_time > 0:
+                time_since_last = time.time() - last_change_time
                 stable_time = (
                     stable_time_with_handoff if pending_handoff else stable_time_no_handoff
                 )

@@ -9,7 +9,7 @@ metadata:
     app: vibeteam-gateway
     team: vibeteam
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: vibeteam-gateway

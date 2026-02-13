@@ -1,0 +1,46 @@
+# HorizontalPodAutoscaler for VibeTeam Gateway
+# The gateway is stateless and handles webhook routing — safe to scale horizontally.
+# OpenHands agent service uses Recreate strategy (3-6Gi per pod) and is NOT
+# autoscaled here; scale it manually if the cluster has capacity.
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vibeteam-gateway
+  namespace: vibeteam
+  labels:
+    app: vibeteam-gateway
+    team: vibeteam
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vibeteam-gateway
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60

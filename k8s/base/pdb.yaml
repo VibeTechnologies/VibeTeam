@@ -1,0 +1,36 @@
+# PodDisruptionBudgets for VibeTeam
+# Prevents voluntary disruptions (node drains, upgrades) from taking
+# all pods offline simultaneously.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vibeteam-gateway
+  namespace: vibeteam
+  labels:
+    app: vibeteam-gateway
+    team: vibeteam
+spec:
+  # At least 1 gateway pod must remain available during disruptions.
+  # Works with HPA minReplicas=2 to allow rolling node maintenance.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: vibeteam-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: openhands-svc
+  namespace: vibeteam
+  labels:
+    app: openhands-svc
+    team: vibeteam
+spec:
+  # OpenHands runs a single replica with Recreate strategy.
+  # minAvailable=0 allows voluntary disruption but documents the intent.
+  # Set to 1 if you scale to 2+ replicas.
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: openhands-svc
