@@ -141,96 +141,46 @@ SCENARIOS = {
                 "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
                 "If only one agent responded and they made a handoff that was never picked up, score 0.2 max."
             ),
-        },
-        "threshold": 0.60,
-    },
-    "support_notify_check": {
-        "name": "Support Engineer - Notification Request",
-        "message": (
-            "@SupportEngineer please notify the team that the deployment of PR #123 "
-            "to staging is complete and verified."
-        ),
-        "expected_agent": "support_engineer",
-        "evaluation_criteria": {
-            "NotificationOnly": (
-                "Did the SupportEngineer JUST notify without investigating? "
-                "REQUIRED: "
-                "(1) Confirm the message acknowledges the request; "
-                "(2) Confirm NO investigation steps (Sentry/kubectl) were taken; "
-                "(3) Confirm the output is a clear notification message. "
-                "Score 0.0-0.3 if it tries to investigate or check Sentry."
+            "ResponseEfficiency": (
+                "Evaluate whether the agent's investigation was efficient and focused, "
+                "avoiding unnecessary repetition, redundant tool usage, or circular handoffs. "
+                "SCORING: "
+                "Score 0.0-0.3: Circular handoffs or repeated tool calls with no new information. "
+                "Score 0.3-0.5: Investigation unfocused with significant redundancy. "
+                "Score 0.5-0.7: Somewhat verbose but reached a conclusion. "
+                "Score 0.7-0.9: Focused investigation with clear, concise conclusion. "
+                "Score 0.9-1.0: Highly efficient — minimal steps to reach an evidence-based conclusion."
             ),
         },
-        "threshold": 0.80,
-    },
-    "github_issue": {
-        "name": "Software Engineer - GitHub Issue Triage",
-        "message": (
-            "@SoftwareEngineer we have a new GitHub issue #449 reporting that the "
-            "browser extension crashes when clicking the record button. The user says "
-            "it happens on Chrome 120 with the latest extension version. Please investigate."
-        ),
-        "expected_agent": "software_engineer",
-        "evaluation_criteria": {
-            "IssueAnalysis": (
-                "Did the SoftwareEngineer ACTUALLY investigate the GitHub issue? "
-                "REQUIRED: "
-                "(1) Successfully fetch and read the GitHub issue content; "
-                "(2) Analyze the code related to the record button functionality; "
-                "(3) Identify potential causes based on code analysis, not speculation. "
-                "SCORING: "
-                "Score 0.0-0.3: Failed to access GitHub or code, only generic suggestions. "
-                "Score 0.3-0.6: Accessed issue but superficial analysis without code review. "
-                "Score 0.6-0.8: Reviewed relevant code, identified likely cause. "
-                "Score 0.8-1.0: Full analysis with specific code references and fix proposal."
-            ),
-            "TaskCompletion": (
-                "Was the issue investigated and a clear path forward provided? "
-                "REQUIRED: "
-                "(1) Specific diagnosis with evidence from investigation (Sentry, kubectl, code search); "
-                "(2) Either: PR created with fix, OR detailed fix instructions, OR clear identification of where the issue lies with next steps. "
-                "IMPORTANT: If the relevant code is not in the repository, identifying this limitation and providing "
-                "recommendations for what code to investigate externally counts as partial completion (0.5-0.7). "
-                "Score 0.0-0.3 if only generic suggestions without investigation. "
-                "Score 0.3-0.5 if investigated but no actionable findings. "
-                "Score 0.5-0.7 if identified the issue location/cause but couldn't fix (e.g., code not in repo). "
-                "Score 0.7-0.9 if provided detailed fix instructions or triaged properly. "
-                "Score 0.9-1.0 if PR created or issue fully resolved."
-            ),
-            "EvidenceBasedDecision": (
-                "Did the agent make EVIDENCE-BASED decisions, not speculative ones? "
-                "CRITICAL: The agent should base all recommendations on actual findings from code review or GitHub data. "
-                "REQUIRED FOR HIGH SCORE: "
-                "(1) Recommendations must be supported by actual findings from tools (GitHub, code search); "
-                "(2) If no bug is found in code, agent should say so rather than speculate; "
-                "(3) If recommending a fix, there MUST be evidence of the bug location. "
-                "SCORING: "
-                "Score 0.0-0.3: Made speculative fix suggestions without finding the actual bug. "
-                "Score 0.3-0.5: Some code review but recommendations not clearly tied to findings. "
-                "Score 0.5-0.7: Recommendations loosely aligned with findings but some speculation. "
-                "Score 0.7-0.9: Recommendations clearly tied to evidence found. "
-                "Score 0.9-1.0: Perfect alignment - actions match evidence, no unnecessary speculation."
-            ),
-            "HandoffCompletion": (
-                "If the agent handed off to another agent, did that handoff actually complete? "
-                "CRITICAL: The agent should NOT hand off to themselves (e.g., SoftwareEngineer tagging @SoftwareEngineer). "
-                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
-                "REQUIRED FOR HIGH SCORE: "
-                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
-                "(2) The target agent must have taken meaningful action (not just acknowledged); "
-                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
-                "SCORING: "
-                "Score 0.0-0.2: Self-handoff (e.g., tagging own role) or handoff with NO response. "
-                "Score 0.2-0.4: Handoff made but NO response from target agent - task left incomplete. "
-                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
-                "Score 0.6-0.8: Handoff made, target responded with partial action. "
-                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
-                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed with resolution. "
-                "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
-                "If only one agent responded and they made a handoff that was never picked up, score 0.2 max."
-            ),
+        "evaluation_steps": {
+            "InvestigationQuality": [
+                "Check if the agent queried Sentry for errors related to 400 errors or the API gateway",
+                "Check if the agent used kubectl to inspect pod status, events, and logs",
+                "Check if the agent identified a root cause with evidence from internal tools",
+                "Check if the agent took concrete action or provided findings enabling resolution",
+                "Score 0.0-0.2 if no investigation; 0.2-0.4 if external-only; 0.4-0.6 if partial tools; 0.6-0.8 if root cause found; 0.8-1.0 if full investigation with resolution",
+            ],
+            "EvidenceBasedDecision": [
+                "Check if the agent's recommendations are supported by actual findings (not speculation)",
+                "If no errors/issues found in tools, check that agent reported healthy infrastructure",
+                "If agent recommended rollback, verify there was evidence of issues (failing pods, errors in logs)",
+                "Score 0.0-0.3 if drastic action with no evidence; 0.5-0.7 if loosely aligned; 0.7-0.9 if clearly evidence-based; 0.9-1.0 if perfect alignment",
+            ],
+            "HandoffCompletion": [
+                "Check if the agent completed the task without handoff (score 1.0) OR made a handoff that was picked up",
+                "If handoff was made, check that the target agent responded and took meaningful action",
+                "Check that the agent did NOT hand off to themselves",
+                "Score 0.0-0.2 if self-handoff or no response; 0.2-0.4 if handoff abandoned; 0.6-0.8 if partial; 0.8-1.0 if complete",
+            ],
+            "ResponseEfficiency": [
+                "Count the number of distinct tool calls or investigation steps. More than 15 unique steps suggests inefficiency — score <= 0.7.",
+                "Check for repeated tool calls that return the same information. Redundant calls score <= 0.5.",
+                "Check for circular handoffs (agent A hands to B, B hands back to A without progress). Circular handoffs score <= 0.3.",
+                "Evaluate the final response: is it concise and actionable? Verbose low-signal responses score <= 0.6.",
+                "Score 0.8-1.0 if investigation was focused. Score 0.5-0.7 if somewhat verbose but thorough. Score 0.0-0.5 if unfocused or repetitive.",
+            ],
         },
-        "threshold": 0.60,
+        "threshold": 0.70,
     },
     "release_deploy": {
         "name": "Release Engineer - Deployment Request",
@@ -338,18 +288,22 @@ SCENARIOS = {
             ),
             "EvidenceBasedDecision": (
                 "Did the agent make EVIDENCE-BASED decisions, not speculative ones? "
-                "CRITICAL: If investigation shows the endpoint IS working (returns 200), agent should NOT escalate. "
+                "CRITICAL: The Stripe webhook endpoint may genuinely be broken (returning errors to Stripe). "
+                "If the agent's own curl test returns an error or non-2xx, that IS evidence of a real problem. "
+                "If the agent's curl test returns 200, the issue may be intermittent or environment-specific. "
                 "REQUIRED FOR HIGH SCORE: "
                 "(1) Recommendations must be supported by actual findings from tools; "
-                "(2) If curl shows endpoint working, report that fact - don't assume it's broken; "
-                "(3) If recommending code changes, there MUST be evidence of code issues in logs/Sentry; "
-                "(4) Agent should check Stripe dashboard or request more details if local tests pass. "
+                "(2) If curl returns an error, the agent should treat that as evidence and investigate further; "
+                "(3) If curl returns 200 but Stripe reports failures, agent should note the discrepancy "
+                "and investigate possible causes (IP restrictions, payload differences, timing); "
+                "(4) Agent should check the CORRECT namespace (vibe for production, vibe-dev for staging) "
+                "not just vibeteam (internal agents namespace). "
                 "SCORING: "
-                "Score 0.0-0.3: Recommended fixes/escalation despite endpoint working correctly. "
+                "Score 0.0-0.3: Recommended fixes/escalation with NO investigation, or checked wrong namespace. "
                 "Score 0.3-0.5: Made speculative recommendations not supported by findings. "
                 "Score 0.5-0.7: Recommendations loosely aligned with findings but some speculation. "
                 "Score 0.7-0.9: Recommendations clearly tied to evidence found. "
-                "Score 0.9-1.0: Perfect alignment - if endpoint works, says so; if broken, provides evidence."
+                "Score 0.9-1.0: Perfect alignment - evidence-based diagnosis with correct namespace awareness."
             ),
             "HandoffCompletion": (
                 "If the agent handed off to another agent, did that handoff actually complete? "
@@ -369,8 +323,53 @@ SCENARIOS = {
                 "NOTE: If only one agent responded and they completed the task without handoff, score 1.0. "
                 "If only one agent responded and they made a handoff that was never picked up, score 0.2 max."
             ),
+            "ResponseEfficiency": (
+                "Evaluate whether the agent's investigation was efficient and focused, "
+                "avoiding unnecessary repetition, redundant tool usage, or circular handoffs. "
+                "SCORING: "
+                "Score 0.0-0.3: Circular handoffs or repeated tool calls with no new information. "
+                "Score 0.3-0.5: Investigation unfocused with significant redundancy. "
+                "Score 0.5-0.7: Somewhat verbose but reached a conclusion. "
+                "Score 0.7-0.9: Focused investigation with clear, concise conclusion. "
+                "Score 0.9-1.0: Highly efficient — minimal steps to reach an evidence-based conclusion."
+            ),
         },
-        "threshold": 0.60,
+        "evaluation_steps": {
+            "InvestigationQuality": [
+                "Check if the agent tested the webhook endpoint (curl/HTTP request to https://api.vibebrowser.app/stripe/webhook)",
+                "Check if the agent used kubectl to inspect pod status in the CORRECT namespace (vibe for production, not just vibeteam)",
+                "Check if the agent queried Sentry for errors related to /stripe/webhook",
+                "Check if the agent identified a root cause with evidence (pod issues, log errors, endpoint errors)",
+                "Score 0.0-0.2 if no investigation; 0.2-0.4 if only external checks; 0.4-0.6 if partial tool use; 0.6-0.8 if issue identified; 0.8-1.0 if full investigation with root cause",
+            ],
+            "TaskCompletion": [
+                "Check if the agent used internal tools (kubectl, Sentry, curl) to investigate",
+                "Check if a clear diagnosis was provided based on evidence",
+                "Check if the agent took action (fix, specific handoff with findings, or concrete recommendation)",
+                "Score 0.0-0.2 if nothing investigated; 0.2-0.4 if some info but no outcome; 0.4-0.6 if investigation without next steps; 0.6-0.8 if thorough investigation with handoff; 0.8-1.0 if root cause identified with action",
+            ],
+            "EvidenceBasedDecision": [
+                "Check if the agent's recommendations are supported by actual tool findings (not speculation)",
+                "Check if the agent checked the CORRECT Kubernetes namespace (vibe for production API, not vibeteam)",
+                "If the endpoint returned an error, check if the agent treated it as evidence of a real problem",
+                "If the endpoint returned 200 but Stripe reports failures, check if the agent noted the discrepancy",
+                "Score 0.0-0.3 if recommending without evidence or wrong namespace; 0.5-0.7 if loosely aligned; 0.7-0.9 if clearly evidence-based; 0.9-1.0 if perfect alignment",
+            ],
+            "HandoffCompletion": [
+                "Check if the agent completed the task without handoff (score 1.0) OR made a handoff that was picked up",
+                "If handoff was made, check that the target agent responded and took meaningful action",
+                "Check that the agent did NOT hand off to themselves (self-tagging)",
+                "Score 0.0-0.2 if self-handoff or no response; 0.2-0.4 if handoff abandoned; 0.6-0.8 if partial; 0.8-1.0 if complete",
+            ],
+            "ResponseEfficiency": [
+                "Count the number of distinct tool calls or investigation steps. More than 15 unique steps suggests inefficiency — score <= 0.7.",
+                "Check for repeated tool calls that return the same information. Redundant calls score <= 0.5.",
+                "Check for circular handoffs (agent A hands to B, B hands back to A without progress). Circular handoffs score <= 0.3.",
+                "Evaluate the final response: is it concise and actionable, or padded with generic disclaimers and repeated context? Verbose low-signal responses score <= 0.6.",
+                "Score 0.8-1.0 if investigation was focused and conclusion was reached efficiently. Score 0.5-0.7 if somewhat verbose but thorough. Score 0.0-0.5 if unfocused or repetitive.",
+            ],
+        },
+        "threshold": 0.70,
     },
 }
 
@@ -1018,16 +1017,25 @@ async def run_evaluation(
                 for metric_name, criteria in scenario["evaluation_criteria"].items():
                     print(f"    Evaluating: {metric_name}")
 
-                    metric = GEval(
-                        name=metric_name,
-                        criteria=criteria,
-                        evaluation_params=[
+                    # Build evaluation_steps from the criteria's SCORING rubric
+                    # if available, so the LLM judge follows our rubric faithfully
+                    # instead of auto-generating potentially divergent steps.
+                    eval_steps = scenario.get("evaluation_steps", {}).get(metric_name)
+
+                    geval_kwargs: dict = {
+                        "name": metric_name,
+                        "criteria": criteria,
+                        "evaluation_params": [
                             LLMTestCaseParams.INPUT,
                             LLMTestCaseParams.ACTUAL_OUTPUT,
                         ],
-                        threshold=scenario["threshold"],
-                        model=model,
-                    )
+                        "threshold": scenario["threshold"],
+                        "model": model,
+                    }
+                    if eval_steps:
+                        geval_kwargs["evaluation_steps"] = eval_steps
+
+                    metric = GEval(**geval_kwargs)
 
                     metric.measure(test_case)
 
