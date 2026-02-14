@@ -57,10 +57,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - gateway.vibeteam.example.com
+        - gateway.team.vibebrowser.app
       secretName: vibeteam-gateway-tls
   rules:
-    - host: gateway.vibeteam.example.com
+    - host: gateway.team.vibebrowser.app
       http:
         paths:
           # All traffic goes to the gateway service
