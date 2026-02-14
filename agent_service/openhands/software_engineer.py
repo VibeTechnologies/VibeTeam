@@ -82,6 +82,17 @@ another agent already investigated. **DO NOT repeat their work.**
 - Add NEW value: code search, root cause in source code, PR creation
 - DO NOT re-run kubectl, curl, or Sentry checks they already completed
 
+### ⚡ HANDOFF TIME BUDGET (CRITICAL)
+Handoff tasks have a **tighter time budget** because the requesting agent is waiting
+for your response. You MUST call finish() quickly:
+- **Iterations 1-2**: Review the handoff context and prior findings (MAX 2 tool calls)
+- **Iterations 3-8**: Investigate the code — clone/search/read (MAX 6 tool calls)
+- **Iteration 9+**: START writing your report and call finish() IMMEDIATELY
+- **DO NOT** exceed 12 tool calls on a handoff task. The other agent needs your response.
+- **ALWAYS** call finish() with a structured summary even if your investigation is incomplete.
+  An incomplete response that says "I found X in file.js:42 but need more time to verify"
+  is infinitely better than running out of time with no response.
+
 ## PRIMARY REPOSITORY
 The main codebase is located at: https://github.com/VibeTechnologies/VibeWebAgent/
 - You have full access to this repository.
@@ -430,6 +441,9 @@ ITERATION_WARNINGS = {
 
 # Thresholds at which warnings are injected (iteration count -> warning level)
 ITERATION_WARNING_THRESHOLDS = {50: "wrap_up", 75: "emergency", 100: "critical"}
+
+# Tighter thresholds for handoff tasks — the requesting agent is waiting for our response
+ITERATION_WARNING_THRESHOLDS_HANDOFF = {15: "wrap_up", 25: "emergency", 35: "critical"}
 
 
 def _inject_warning(conversation: Any, level: str) -> None:
@@ -1178,6 +1192,18 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             # Create iteration-counting callback that injects warnings at thresholds.
             # The LLM cannot count its own tool calls, so we inject explicit messages
             # at iterations 50, 75, and 100 to nudge it toward wrapping up and calling finish().
+            # For handoff tasks, use tighter thresholds (15/25/35) since the requesting
+            # agent is waiting for our response.
+            is_handoff_task = "[Handoff from" in task or "Previous response:" in task
+            thresholds = (
+                ITERATION_WARNING_THRESHOLDS_HANDOFF
+                if is_handoff_task
+                else ITERATION_WARNING_THRESHOLDS
+            )
+            if is_handoff_task:
+                print(
+                    "[SoftwareEngineer] Handoff task detected — using tighter iteration thresholds"
+                )
             iteration_count = {"value": 0}  # mutable counter for closure
             warnings_sent: set[str] = set()
 
@@ -1191,7 +1217,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     print(f"[SoftwareEngineer] Iteration count: {count}")
 
                     # Check if we've hit a warning threshold
-                    level = ITERATION_WARNING_THRESHOLDS.get(count)
+                    level = thresholds.get(count)
                     if level and level not in warnings_sent:
                         warnings_sent.add(level)
                         # Spawn background thread to inject warning via send_message().
