@@ -82,22 +82,51 @@ When you identify issues outside your expertise, delegate to the appropriate tea
 
 ## Cluster Investigation Commands
 
-When investigating production issues, use these kubectl commands:
+When investigating production issues, first determine the correct namespace:
 
+| Issue Type | Check Namespace | Why |
+|------------|----------------|-----|
+| Customer API errors, billing, payments | `vibe` (Production) | Customer-facing services run here |
+| Staging/pre-prod issues | `vibe-dev` (Staging) | Staging services run here |
+| Agent infrastructure issues | `vibeteam` (Internal) | VibeTeam agents run here |
+
+**CRITICAL**: Production services (user-portal, stripe-service, litellm, api.vibebrowser.app) are in the `vibe` namespace — NOT `vibeteam`.
+
+### Production Investigation (`vibe` namespace)
 ```bash
-# Check all pods in vibeteam namespace
+# Check production pods
+kubectl get pods -n vibe
+
+# Check production pod details
+kubectl get pods -n vibe -o wide
+
+# Production service logs
+kubectl logs deployment/stripe-service -n vibe --tail=50
+kubectl logs deployment/user-portal -n vibe --tail=50
+kubectl logs deployment/litellm -n vibe --tail=50
+
+# Production events
+kubectl get events -n vibe --sort-by='.lastTimestamp' | tail -20
+```
+
+### Staging Investigation (`vibe-dev` namespace)
+```bash
+kubectl get pods -n vibe-dev
+kubectl get events -n vibe-dev --sort-by='.lastTimestamp' | tail -20
+```
+
+### Internal Agent Infrastructure (`vibeteam` namespace)
+```bash
+# Check agent infrastructure pods
 kubectl get pods -n vibeteam
 
-# Check pod status with more details
-kubectl get pods -n vibeteam -o wide
-
-# Get recent logs from a deployment (last 50 lines)
+# Agent gateway logs
 kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=50
 
-# Get logs with timestamps for time correlation
+# Agent service logs
 kubectl logs deployment/openhands-svc -n vibeteam --tail=100 --timestamps
 
-# Check for recent events (errors, restarts, OOM)
+# Agent infrastructure events
 kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -20
 
 # Check deployment rollout status

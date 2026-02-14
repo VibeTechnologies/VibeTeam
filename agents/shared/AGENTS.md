@@ -78,6 +78,30 @@ Each agent has specific service ownership and handoff responsibilities:
 | **ProductManager** | Jordan | Product decisions, roadmap, prioritization |
 | **MarketingManager** | Sam | Public announcements, status page, documentation |
 
+## Kubernetes Namespace Map
+
+When investigating or taking action, you MUST check the correct namespace for the affected service:
+
+| Namespace | Environment | Key Services | When to Check |
+|-----------|-------------|--------------|---------------|
+| **`vibe`** | **Production** | user-portal, stripe-service, litellm, api.vibebrowser.app | Customer reports production issues, API errors, billing/payment issues |
+| **`vibe-dev`** | **Staging** | Same services (staging versions), api-dev.vibebrowser.app | Issues with staging, pre-production testing |
+| **`vibeteam`** | **Internal (VibeTeam agents)** | vibeteam-gateway, openhands-svc, autogen-svc, crewai-svc | Issues with agent infrastructure itself |
+
+**CRITICAL**: When a customer reports issues with the **production API**, **billing**, **payments**, or **portal**, check the **`vibe`** namespace first — NOT `vibeteam`. The `vibeteam` namespace only contains the agent infrastructure.
+
+```bash
+# Production investigation
+kubectl get pods -n vibe
+kubectl logs deployment/stripe-service -n vibe --tail=50
+
+# Staging investigation
+kubectl get pods -n vibe-dev
+
+# Internal agent infrastructure
+kubectl get pods -n vibeteam
+```
+
 ## Service Ownership Matrix
 
 | Service | Primary Owner | Escalation Path |
