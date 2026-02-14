@@ -12,9 +12,9 @@ Fix 3 bugs causing the `stripe_webhook_failure` eval to fail:
 2. [x] Timeout callback error logging — `{e}` produces empty string, no retry
 3. [x] No concurrency controls — unlimited agent executions cause queue starvation
 4. [x] Tests pass (509/509)
-5. [ ] Deploy fixes to cluster
-6. [ ] Re-run stripe_webhook_failure eval and verify pass
-7. [ ] Create PR with results
+5. [x] Deploy fixes to cluster
+6. [x] Re-run stripe_webhook_failure eval and verify pass
+7. [x] Create PR with results
 
 ### Changes Made
 - `vibeteam/gateway/routes/slack.py:1375-1417`: Skip self-posted bot messages that
@@ -140,9 +140,9 @@ unused by the gateway.
 - [x] Add HPA for gateway and agent services
 - [x] Add PodDisruptionBudgets
 - [x] Add NetworkPolicies (especially for postgres)
-- [ ] Add comprehensive rate limiting (all endpoints)
+- [x] Add comprehensive rate limiting (all endpoints)
 - [x] Fix eval script to detect message content changes
 - [x] Set up Gmail OAuth credentials
-- [ ] Add Prometheus metrics + alerting
-- [ ] Document ingress/TLS setup
+- [x] Add Prometheus metrics + alerting
+- [x] Document ingress/TLS setup
 - [x] Update AGENTS.md model reference

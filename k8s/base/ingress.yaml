@@ -1,0 +1,73 @@
+# Ingress for VibeTeam Gateway
+# Routes external HTTPS traffic to the gateway service.
+#
+# Prerequisites:
+# 1. An Ingress controller (e.g., Traefik, Nginx) must be installed in the cluster.
+#    Traefik is referenced in the agent RBAC (agent-rbac.yaml), so it is the
+#    expected controller.
+# 2. cert-manager must be installed for automatic TLS certificate provisioning
+#    via Let's Encrypt.
+# 3. A ClusterIssuer named "letsencrypt-prod" must exist:
+#
+#      apiVersion: cert-manager.io/v1
+#      kind: ClusterIssuer
+#      metadata:
+#        name: letsencrypt-prod
+#      spec:
+#        acme:
+#          server: https://acme-v02.api.letsencrypt.org/directory
+#          email: ops@vibetechnologies.com
+#          privateKeySecretRef:
+#            name: letsencrypt-prod-key
+#          solvers:
+#            - http01:
+#                ingress:
+#                  class: traefik
+#
+# 4. DNS for the host must point to the cluster's external IP / load balancer.
+#
+# To override the hostname, use a kustomize patch in the relevant overlay:
+#
+#   # k8s/overlays/prod/ingress-patch.yaml
+#   - op: replace
+#     path: /spec/rules/0/host
+#     value: api.vibeteam.io
+#   - op: replace
+#     path: /spec/tls/0/hosts/0
+#     value: api.vibeteam.io
+#
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vibeteam-gateway-ingress
+  namespace: vibeteam
+  labels:
+    app: vibeteam-gateway
+    team: vibeteam
+  annotations:
+    # cert-manager: auto-provision TLS certificates from Let's Encrypt
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Traefik-specific: enable HTTPS redirect
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # Rate limiting at ingress level (defense in depth — app also rate-limits)
+    traefik.ingress.kubernetes.io/router.middlewares: ""
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - gateway.vibeteam.example.com
+      secretName: vibeteam-gateway-tls
+  rules:
+    - host: gateway.vibeteam.example.com
+      http:
+        paths:
+          # All traffic goes to the gateway service
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vibeteam-gateway
+                port:
+                  number: 8080

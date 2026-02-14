@@ -20,6 +20,7 @@ resources:
   - hpa.yaml
   - pdb.yaml
   - network-policy.yaml
+  - ingress.yaml
   # Multi-framework agent deployments (AutoGen, CrewAI, OpenHands)
   - frameworks/
   # Note: Slack agents removed - gateway receives webhooks and routes to agent services

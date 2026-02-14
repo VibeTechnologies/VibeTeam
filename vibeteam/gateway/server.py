@@ -458,6 +458,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ==============================================================================
+# Middleware (applied in reverse order — last added runs first)
+# ==============================================================================
+
+from vibeteam.gateway.middleware import MetricsMiddleware, RateLimitMiddleware
+
+# Metrics first (outermost), then rate limiting
+app.add_middleware(RateLimitMiddleware, skip_health=True)
+app.add_middleware(MetricsMiddleware)
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -478,6 +488,23 @@ async def health_check():
         timestamp=datetime.now(timezone.utc).isoformat(),
         services=services,
     )
+
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Metrics endpoint for monitoring.
+
+    Returns per-endpoint request counts, error counts, and latency percentiles.
+    Compatible with Prometheus JSON exporter or direct scraping.
+    """
+    from vibeteam.gateway.middleware import get_metrics_snapshot
+
+    return {
+        "service": "vibeteam-gateway",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "endpoints": get_metrics_snapshot(),
+    }
 
 
 # ==============================================================================

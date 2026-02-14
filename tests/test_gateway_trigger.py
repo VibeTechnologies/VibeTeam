@@ -184,10 +184,14 @@ class TestTriggerRateLimit:
             mock_config.SLACK_TRIGGER_SECRET = ""
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
 
-            # Reset the rate limiter to ensure clean state
+            # Reset both the per-endpoint trigger limiter and global middleware limiter
             from vibeteam.gateway.routes.slack import _trigger_rate_limiter
 
             _trigger_rate_limiter.reset()
+
+            from vibeteam.gateway.middleware import get_endpoint_limiter
+
+            get_endpoint_limiter().reset()
 
             # Fire requests up to the limit + 1
             for i in range(_trigger_rate_limiter.max_requests):
@@ -209,6 +213,11 @@ class TestTriggerAsyncMode:
         from vibeteam.gateway.routes.slack import _trigger_rate_limiter
 
         _trigger_rate_limiter.reset()
+
+        # Also reset global middleware rate limiter
+        from vibeteam.gateway.middleware import get_endpoint_limiter
+
+        get_endpoint_limiter().reset()
 
     def test_default_mode_is_sync(self, client: TestClient, _patch_run_agent):
         """Without use_async, mode should be 'sync' and run_agent called with use_async=False."""
