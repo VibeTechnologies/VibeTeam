@@ -22,12 +22,12 @@ from typing import Any
 
 from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
 from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.kubectl_tools import get_kubectl_context
+from agents.shared.kubectl_tools import get_multi_namespace_context
 
 
 def fetch_kubectl_context() -> str:
-    """Fetch Kubernetes context using shared tools."""
-    return get_kubectl_context()
+    """Fetch Kubernetes context for both production and internal namespaces."""
+    return get_multi_namespace_context()
 
 
 # OpenHands imports - will fail gracefully if not installed
