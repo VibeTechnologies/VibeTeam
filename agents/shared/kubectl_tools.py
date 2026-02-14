@@ -18,15 +18,24 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Default namespace for VibeTeam
+# Default namespace for VibeTeam internal infrastructure
 DEFAULT_NAMESPACE = "vibeteam"
 
-# Key deployments to monitor
+# Production namespace for customer-facing services
+PRODUCTION_NAMESPACE = "vibe"
+
+# Key deployments to monitor per namespace
 KEY_DEPLOYMENTS = [
     "vibeteam-gateway",
     "openhands-svc",
     "autogen-svc",
     "crewai-svc",
+]
+
+PRODUCTION_DEPLOYMENTS = [
+    "user-portal",
+    "stripe-service",
+    "litellm",
 ]
 
 
@@ -232,9 +241,11 @@ def get_kubectl_context(
         futures["events"] = pool.submit(get_events, namespace)
         for dep in deployments:
             futures[f"logs:{dep}"] = pool.submit(get_deployment_logs, dep, namespace, log_tail)
-        futures["rollout:vibeteam-gateway"] = pool.submit(
-            get_rollout_history, "vibeteam-gateway", namespace
-        )
+        # Only fetch rollout history for vibeteam namespace (where gateway runs)
+        if namespace == DEFAULT_NAMESPACE:
+            futures["rollout:vibeteam-gateway"] = pool.submit(
+                get_rollout_history, "vibeteam-gateway", namespace
+            )
 
         # Collect results
         results: dict[str, KubectlResult] = {}
@@ -274,7 +285,7 @@ def get_kubectl_context(
 
     # Pods
     pods_result = results["pods"]
-    sections.append("### kubectl get pods -n vibeteam")
+    sections.append(f"### kubectl get pods -n {namespace}")
     sections.append("```")
     if pods_result.success:
         sections.append(pods_result.stdout.strip() or "(no pods found)")
@@ -285,7 +296,7 @@ def get_kubectl_context(
 
     # Events
     events_result = results["events"]
-    sections.append("### kubectl get events -n vibeteam (warnings/errors)")
+    sections.append(f"### kubectl get events -n {namespace} (warnings/errors)")
     sections.append("```")
     if events_result.success:
         events_output = events_result.stdout.strip()
@@ -301,7 +312,9 @@ def get_kubectl_context(
     # Deployment logs
     for deployment in deployments:
         logs_result = results[f"logs:{deployment}"]
-        sections.append(f"### kubectl logs deployment/{deployment} -n vibeteam --tail={log_tail}")
+        sections.append(
+            f"### kubectl logs deployment/{deployment} -n {namespace} --tail={log_tail}"
+        )
         sections.append("```")
         if logs_result.success:
             log_lines = logs_result.stdout.strip().split("\n")
@@ -313,17 +326,49 @@ def get_kubectl_context(
         sections.append("```")
         sections.append("")
 
-    # Rollout history
-    history_result = results["rollout:vibeteam-gateway"]
-    sections.append("### kubectl rollout history deployment/vibeteam-gateway")
-    sections.append("```")
-    if history_result.success:
-        sections.append(history_result.stdout.strip() or "(no history)")
-    else:
-        sections.append(f"Error: {history_result.stderr}")
-    sections.append("```")
+    # Rollout history (only for vibeteam namespace where gateway runs)
+    if namespace == DEFAULT_NAMESPACE:
+        history_result = results.get("rollout:vibeteam-gateway")
+        if history_result:
+            sections.append("### kubectl rollout history deployment/vibeteam-gateway")
+            sections.append("```")
+            if history_result.success:
+                sections.append(history_result.stdout.strip() or "(no history)")
+            else:
+                sections.append(f"Error: {history_result.stderr}")
+            sections.append("```")
 
     return "\n".join(sections)
+
+
+def get_multi_namespace_context(log_tail: int = 50) -> str:
+    """
+    Fetch kubectl context for both production (vibe) and internal (vibeteam) namespaces.
+
+    This gives agents visibility into customer-facing services AND internal
+    agent infrastructure in a single pre-injection, eliminating the namespace
+    knowledge gap where agents only saw vibeteam data.
+
+    Args:
+        log_tail: Number of log lines to fetch per deployment
+
+    Returns:
+        Formatted string with kubectl context for both namespaces
+    """
+    # Fetch both namespaces
+    vibeteam_context = get_kubectl_context(
+        namespace=DEFAULT_NAMESPACE,
+        deployments=KEY_DEPLOYMENTS,
+        log_tail=log_tail,
+    )
+    production_context = get_kubectl_context(
+        namespace=PRODUCTION_NAMESPACE,
+        deployments=PRODUCTION_DEPLOYMENTS,
+        log_tail=log_tail,
+    )
+
+    # Combine with clear separation
+    return vibeteam_context + "\n\n---\n\n" + production_context
 
 
 # Convenience function matching other tools' patterns

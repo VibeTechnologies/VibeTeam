@@ -27,9 +27,7 @@ from agents.shared.docs_tools import get_docs_context
 
 # Import shared tools for context injection
 from agents.shared.gmail_tools import get_email_context
-from agents.shared.kubectl_tools import get_kubectl_context
-from agents.shared.langfuse_tools import get_langfuse_context
-from agents.shared.sentry_tools import get_sentry_context
+from agents.shared.kubectl_tools import get_multi_namespace_context
 
 
 def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
@@ -38,8 +36,8 @@ def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
 
 
 def fetch_kubectl_context() -> str:
-    """Fetch Kubernetes context using shared tools."""
-    return get_kubectl_context()
+    """Fetch Kubernetes context for both production and internal namespaces."""
+    return get_multi_namespace_context()
 
 
 def fetch_gmail_context(max_results: int = 5) -> str:
