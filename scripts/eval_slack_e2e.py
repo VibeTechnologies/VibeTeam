@@ -797,6 +797,11 @@ async def run_evaluation(
         pending_handoff = False
         effective_timeout = wait_timeout
         has_substantive_response = False  # True once a real (non-placeholder) bot msg arrives
+        # Track substantive responses per agent role for handoff completion.
+        # When a handoff is detected, we need a substantive response from the
+        # handoff *target* agent, not just the original agent.
+        handoff_source_agent = ""  # e.g. "SupportEngineer" — the agent that initiated handoff
+        handoff_target_responded = False  # True once the handoff target posts a real response
 
         def _content_fingerprint(replies: list) -> str:
             """Create a fingerprint of all message texts to detect in-place edits."""
@@ -804,6 +809,18 @@ async def run_evaluation(
 
             content = "|".join(r.text for r in replies)
             return hashlib.md5(content.encode()).hexdigest()
+
+        def _extract_agent_prefix(text: str) -> str:
+            """Extract the agent name from a bot message prefix like '[SupportEngineer]'.
+
+            Works for both substantive messages ('[Agent] ...') and progress
+            messages ('_[Agent] Step N ..._').
+            """
+            import re
+
+            # Match [AgentName] at start, optionally preceded by _ (italic progress)
+            m = re.match(r"_?\[([A-Za-z]+)\]", text.strip())
+            return m.group(1) if m else ""
 
         while time.time() - start_time < effective_timeout:
             await asyncio.sleep(poll_interval)
@@ -844,9 +861,36 @@ async def run_evaluation(
                         else:
                             print("    Handoff detected in response! Waiting for next agent...")
                         pending_handoff = True
+                        # Track which agent initiated the handoff so we can
+                        # distinguish its messages from the handoff target's
+                        handoff_source_agent = _extract_agent_prefix(latest_bot_msg.text)
+                        handoff_target_responded = False
                         continue
                     else:
-                        pending_handoff = False
+                        # DON'T clear pending_handoff on placeholder/progress messages!
+                        # The handoff target agent posts progress updates (_[Agent] Step N_)
+                        # before its final substantive response. We must keep waiting.
+                        if pending_handoff and not handoff_target_responded:
+                            # Check if this is a substantive response from the handoff target
+                            new_substantive = [
+                                m for m in bot_messages if not _is_placeholder(m.text)
+                            ]
+                            for msg in new_substantive:
+                                agent = _extract_agent_prefix(msg.text)
+                                if agent and agent != handoff_source_agent:
+                                    handoff_target_responded = True
+                                    pending_handoff = False
+                                    print(
+                                        f"    Handoff target [{agent}] posted substantive response."
+                                    )
+                                    break
+                            # If still only progress from target, keep waiting
+                            if not handoff_target_responded:
+                                # Progress messages from handoff target reset the timer
+                                # but don't clear handoff state
+                                pass
+                        else:
+                            pending_handoff = False
 
                     # Check if any bot message is substantive (not a placeholder)
                     if not has_substantive_response:
