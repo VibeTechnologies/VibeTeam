@@ -28,6 +28,8 @@ from agents.shared.docs_tools import get_docs_context
 # Import shared tools for context injection
 from agents.shared.gmail_tools import get_email_context
 from agents.shared.kubectl_tools import get_multi_namespace_context
+from agents.shared.langfuse_tools import get_langfuse_context
+from agents.shared.sentry_tools import get_sentry_context
 
 
 def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:

@@ -15,9 +15,9 @@ from unittest.mock import patch
 
 from agents.shared.kubectl_tools import (
     DEFAULT_NAMESPACE,
-    KubectlResult,
     PRODUCTION_DEPLOYMENTS,
     PRODUCTION_NAMESPACE,
+    KubectlResult,
     _extract_deployment_names,
     get_kubectl_context,
     get_multi_namespace_context,
