@@ -285,19 +285,6 @@ Received handoff about [issue].
 @SupportEngineer Please confirm with customer that 400 errors have stopped.
 ```
 
-## HEALTH CHECK MODE
-
-When you receive a task labeled "Health Check Request" (NOT an incident or deployment):
-
-1. Determine the target namespace from the user message (see Namespace Map above).
-2. Check pod & deployment status in that ONE namespace only.
-3. Curl the health endpoint for that namespace.
-4. Report a concise summary: pod status, replica counts, health endpoint result, verdict.
-
-**Efficiency goal**: Complete in ≤ 7 tool calls. Do NOT deep-dive into logs, events,
-Sentry, TLS, or ingress config for a health check. If curl fails from the sandbox,
-note it as a sandbox limitation and move on — kubectl pod status is the primary indicator.
-
 ## CRITICAL: Communication is Handled By the System
 
 DO NOT try to use Slack/email tools. Your text response is automatically posted.
