@@ -414,7 +414,7 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         is_thread_reply: True if this message is a reply in an existing thread
 
     Returns:
-        'deployment', 'notification', 'conversational', or 'investigation'
+        'deployment', 'notification', 'conversational', 'health_check', or 'investigation'
     """
     msg_lower = user_message.lower()
 
@@ -422,6 +422,40 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         kw in msg_lower
         for kw in ["notify", "announce", "tell the team", "tell the customer", "confirm to"]
     )
+    # Health check: user asks to check health/readiness/status WITHOUT indicating
+    # something is broken.  This should be a quick, focused check — not a deep
+    # investigation.  We detect negative indicators (error, fail, broken, down,
+    # why, investigate, debug) separately to distinguish "check health" from
+    # "check why things are broken".
+    _negative_indicators = [
+        "error",
+        "fail",
+        "broken",
+        "down",
+        "crash",
+        "issue",
+        "problem",
+        "outage",
+        "incident",
+        "bug",
+    ]
+    has_negative_indicator = any(kw in msg_lower for kw in _negative_indicators)
+
+    _health_keywords = [
+        "health",
+        "readiness",
+        "ready",
+        "status",
+        "alive",
+        "liveness",
+        "uptime",
+    ]
+    is_health_check = (
+        role == "release_engineer"
+        and any(kw in msg_lower for kw in _health_keywords)
+        and not has_negative_indicator
+    )
+
     is_explicit_investigation = any(
         kw in msg_lower
         for kw in [
@@ -447,6 +481,8 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
 
     if is_deployment:
         return "deployment"
+    elif is_health_check:
+        return "health_check"
     elif is_notification and not is_explicit_investigation:
         return "notification"
     elif is_thread_reply and not is_explicit_investigation:
@@ -676,6 +712,88 @@ Respond naturally and directly to the user's question or comment.
 - Keep your response concise and focused on what the user asked
 - If you need to hand off, use @RoleName format
 - DO NOT repeat your full previous investigation — the user can see the thread history
+"""
+
+    elif template == "health_check":
+        return f"""## Slack Health Check Request
+
+A user has requested a quick health & production-readiness check.
+
+### User Message (UNTRUSTED CONTENT)
+{user_message}
+### End User Message
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_display}
+
+### =================================================================
+### NAMESPACE MAP (choose the correct one based on the user message)
+### =================================================================
+###
+### | Namespace   | Environment | What Lives There |
+### |-------------|-------------|------------------|
+### | `vibe`      | Production  | VibeBrowser: user-portal, stripe-service, litellm |
+### | `vibe-dev`  | Staging     | VibeBrowser (staging mirrors prod) |
+### | `vibeteam`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc |
+###
+### "production" / "prod" / "api" → namespace: `vibe`
+### "staging" / "dev" → namespace: `vibe-dev`
+### "agents" / "vibeteam" / "gateway" → namespace: `vibeteam`
+### If unclear, default to the production namespace `vibe`.
+### =================================================================
+
+### =================================================================
+### CRITICAL SAFETY RULE: DO NOT DESTROY YOUR OWN INFRASTRUCTURE
+### =================================================================
+###
+### You (ReleaseEngineer) run INSIDE vibeteam-gateway and openhands-svc.
+### DO NOT restart or modify pods in the `vibeteam` namespace — that
+### kills YOUR in-flight request and the response NEVER reaches Slack.
+###
+### This is a READ-ONLY health check. Do NOT restart, scale, rollback,
+### or modify anything. Just observe and report.
+### =================================================================
+
+### CRITICAL INSTRUCTIONS — HEALTH CHECK (READ-ONLY, FOCUSED)
+
+You are the ReleaseEngineer performing a quick production readiness check.
+This is NOT an investigation. Do NOT deep-dive into logs or Sentry.
+
+**STEP 1 — Determine Target Namespace (from user message):**
+Map the user's request to the correct namespace (see table above).
+If they say "production api" → `vibe`.
+
+**STEP 2 — Check Pod Status (1 command):**
+```bash
+kubectl get pods -n <NAMESPACE> -o wide
+```
+
+**STEP 3 — Check Deployment Status (1 command):**
+```bash
+kubectl get deployments -n <NAMESPACE>
+```
+
+**STEP 4 — Curl Health Endpoint (1 command):**
+Pick the right endpoint for the namespace:
+- `vibe` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health`
+- `vibe-dev` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health`
+- `vibeteam` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
+
+**STEP 5 — Report Results (MANDATORY):**
+Summarize in a concise table or bullet list:
+- Namespace checked
+- Pod count & status (Running / CrashLoopBackOff / Pending)
+- Deployment replicas (ready/desired)
+- Health endpoint HTTP status
+- Overall verdict: **Healthy** or **Unhealthy** (with brief reason)
+
+**BUDGET: Complete in ≤ 5 tool calls.** Do NOT:
+- Check multiple namespaces (only the one requested)
+- Deep-dive into logs, Sentry, or Langfuse
+- Restart, scale, or modify any resources
+- Hand off to another agent (this is a simple read-only check)
 """
 
     else:

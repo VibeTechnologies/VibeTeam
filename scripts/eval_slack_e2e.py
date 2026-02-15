@@ -484,6 +484,79 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "release_health_check": {
+        "name": "Release Engineer - Production Health Check",
+        "message": (
+            "@ReleaseEngineer check out health and production readiness of our production api"
+        ),
+        "expected_agent": "release_engineer",
+        "evaluation_criteria": {
+            "ResponseEfficiency": (
+                "Was the health check focused and concise, avoiding unnecessary scope creep? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Agent checked only the correct namespace (vibe for production); "
+                "(2) Agent completed in a small number of tool calls (ideally ≤ 5-7); "
+                "(3) Agent did NOT check multiple unrelated namespaces, dig into Sentry/Langfuse, "
+                "or run an exhaustive investigation when a simple health check was requested. "
+                "SCORING: "
+                "Score 0.0-0.3: Agent ran >15 tool calls, checked every namespace, deep-dived into logs. "
+                "Score 0.3-0.5: Unfocused — checked multiple namespaces or ran many unnecessary commands. "
+                "Score 0.5-0.7: Somewhat focused but could have been more concise. "
+                "Score 0.7-0.9: Focused check of the right namespace with a clear summary. "
+                "Score 0.9-1.0: Highly efficient — ≤5 tool calls, right namespace, concise report."
+            ),
+            "TaskCompletion": (
+                "Did the agent actually report on the health and production readiness? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Reported pod status (Running / not Running); "
+                "(2) Reported deployment replica status (ready/desired); "
+                "(3) Tested a health endpoint with curl and reported the HTTP status; "
+                "(4) Gave a clear overall verdict (healthy or unhealthy). "
+                "SCORING: "
+                "Score 0.0-0.3: No health information reported, or just generic text without evidence. "
+                "Score 0.3-0.5: Some kubectl output but no synthesis or verdict. "
+                "Score 0.5-0.7: Reported pod/deployment status but missed health endpoint test. "
+                "Score 0.7-0.9: Reported pods, deployments, and health endpoint with clear verdict. "
+                "Score 0.9-1.0: Complete health report with evidence and concise verdict."
+            ),
+            "CorrectNamespace": (
+                "Did the agent check the CORRECT Kubernetes namespace for 'production api'? "
+                "CRITICAL: The production API lives in namespace `vibe`, NOT `vibeteam`. "
+                "`vibeteam` is the internal agent infrastructure namespace. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Agent used `-n vibe` for kubectl commands (production API namespace); "
+                "(2) Agent curled the production endpoint (api.vibebrowser.app), not the internal gateway. "
+                "SCORING: "
+                "Score 0.0-0.3: Only checked `vibeteam` namespace (wrong namespace entirely). "
+                "Score 0.3-0.5: Checked `vibeteam` AND `vibe` (unnecessary extra work). "
+                "Score 0.5-0.7: Checked `vibe` but also checked unrelated namespaces. "
+                "Score 0.7-0.9: Correctly focused on `vibe` namespace. "
+                "Score 0.9-1.0: Only checked `vibe` namespace and production endpoint — perfect targeting."
+            ),
+        },
+        "evaluation_steps": {
+            "ResponseEfficiency": [
+                "Count the number of tool calls / kubectl commands the agent ran",
+                "Check if the agent only checked the requested namespace (vibe for production)",
+                "Check if the agent avoided deep-diving into Sentry, Langfuse, or extensive log analysis",
+                "Score 0.0-0.3 if >15 calls; 0.3-0.5 if unfocused; 0.5-0.7 if somewhat focused; 0.7-0.9 if focused; 0.9-1.0 if ≤5 calls with clear summary",
+            ],
+            "TaskCompletion": [
+                "Check if the agent reported pod status from kubectl output",
+                "Check if the agent reported deployment replica counts",
+                "Check if the agent tested a health endpoint with curl and reported the HTTP status code",
+                "Check if the agent gave a clear overall verdict (healthy/unhealthy)",
+                "Score 0.0-0.3 if no health data; 0.3-0.5 if raw output only; 0.5-0.7 if partial; 0.7-0.9 if complete; 0.9-1.0 if concise and complete",
+            ],
+            "CorrectNamespace": [
+                "Check if kubectl commands used -n vibe (production namespace)",
+                "Check if curl targeted api.vibebrowser.app (production endpoint)",
+                "Check if the agent did NOT only check vibeteam namespace (internal agents)",
+                "Score 0.0-0.3 if only vibeteam; 0.3-0.5 if mixed; 0.7-0.9 if correctly vibe; 0.9-1.0 if only vibe",
+            ],
+        },
+        "threshold": 0.70,
+    },
 }
 
 # Role display names
