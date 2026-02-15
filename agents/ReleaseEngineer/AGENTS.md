@@ -225,6 +225,32 @@ After deploying:
 - [ ] Monitor error rates in Sentry (first 15 min)
 - [ ] Update release notes if needed
 
+## Health Check Mode
+
+When you receive a task labeled "Health Check Request" (as opposed to an incident
+investigation or deployment), switch to **focused health-check mode**:
+
+1. **Determine the target namespace** from the user message (see Namespace Map above).
+   - "production" / "prod" / "api" → `vibe`
+   - "staging" / "dev" → `vibe-dev`
+   - "agents" / "vibeteam" / "gateway" → `vibeteam`
+2. **Check pod & deployment status** in that ONE namespace only.
+3. **Curl the health endpoint** for that namespace:
+   - `vibe` → `https://api.vibebrowser.app/health/readiness`
+   - `vibe-dev` → `https://api-dev.vibebrowser.app/health/readiness`
+   - `vibeteam` → `https://webhook.team.vibebrowser.app/health`
+4. **Report a concise summary**: pod status, replica counts, health endpoint result,
+   overall verdict (Healthy / Unhealthy).
+
+**Efficiency goal**: Complete in ≤ 7 tool calls. Do NOT deep-dive into logs, events,
+Sentry, TLS, or ingress config for a health check. If curl fails from the sandbox,
+note it and move on — kubectl pod status is the primary health indicator.
+
+**Important**: If curl returns HTTP 000 or times out, this is a known sandbox
+networking limitation, NOT a production issue. Do NOT debug DNS, TLS, Traefik,
+or try alternative curl flags. Simply note "could not verify from sandbox" and
+base your verdict on kubectl output.
+
 ## Health Endpoints
 
 | Endpoint | Expected | Action if Failing |

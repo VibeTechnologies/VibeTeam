@@ -728,85 +728,47 @@ A user has requested a quick health & production-readiness check.
 - Channel: {channel}
 - Thread: {thread_display}
 
-### =================================================================
-### NAMESPACE MAP (choose the correct one based on the user message)
-### =================================================================
-###
-### | Namespace   | Environment | What Lives There |
-### |-------------|-------------|------------------|
-### | `vibe`      | Production  | VibeBrowser: user-portal, stripe-service, litellm |
-### | `vibe-dev`  | Staging     | VibeBrowser (staging mirrors prod) |
-### | `vibeteam`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc |
-###
-### "production" / "prod" / "api" → namespace: `vibe`
-### "staging" / "dev" → namespace: `vibe-dev`
-### "agents" / "vibeteam" / "gateway" → namespace: `vibeteam`
-### If unclear, default to the production namespace `vibe`.
-### =================================================================
+### Namespace Map
+| Namespace   | Environment | What Lives There |
+|-------------|-------------|------------------|
+| `vibe`      | Production  | VibeBrowser: user-portal, stripe-service, litellm |
+| `vibe-dev`  | Staging     | VibeBrowser (staging mirrors prod) |
+| `vibeteam`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc |
 
-### =================================================================
-### CRITICAL SAFETY RULE: DO NOT DESTROY YOUR OWN INFRASTRUCTURE
-### =================================================================
-###
-### You (ReleaseEngineer) run INSIDE vibeteam-gateway and openhands-svc.
-### DO NOT restart or modify pods in the `vibeteam` namespace — that
-### kills YOUR in-flight request and the response NEVER reaches Slack.
-###
-### This is a READ-ONLY health check. Do NOT restart, scale, rollback,
-### or modify anything. Just observe and report.
-### =================================================================
+"production" / "prod" / "api" → namespace: `vibe`
+"staging" / "dev" → namespace: `vibe-dev`
+"agents" / "vibeteam" / "gateway" → namespace: `vibeteam`
+If unclear, default to the production namespace `vibe`.
 
-### CRITICAL INSTRUCTIONS — HEALTH CHECK (READ-ONLY, FOCUSED)
+### Safety Rule
+This is a READ-ONLY health check. Do NOT restart, scale, rollback,
+or modify any resources. Just observe and report.
 
-You are the ReleaseEngineer performing a quick production readiness check.
-This is NOT an investigation. Do NOT deep-dive into logs, events, or Sentry.
+### Instructions
 
-Run EXACTLY these commands in order, then report. No more, no less.
+You are the ReleaseEngineer performing a focused health check.
+Follow "Health Check Mode" from your system instructions:
 
-**STEP 1 — Determine Target Namespace (from user message):**
-Map the user's request to the correct namespace (see table above).
-If they say "production api" → `vibe`.
+1. **Determine the target namespace** from the user message.
+2. **Check pods & deployments** in that namespace:
+   ```bash
+   kubectl get pods -n <NAMESPACE> -o wide && kubectl get deployments -n <NAMESPACE>
+   ```
+3. **Curl the health endpoint**:
+   - `vibe` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health/readiness`
+   - `vibe-dev` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health/readiness`
+   - `vibeteam` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
+4. **Report** a concise summary: namespace, pod status, replica counts,
+   health endpoint result, overall verdict (Healthy / Unhealthy).
 
-**STEP 2 — Check Pod & Deployment Status (1 command, combine into one call):**
-```bash
-kubectl get pods -n <NAMESPACE> -o wide && kubectl get deployments -n <NAMESPACE>
-```
+**Curl may fail from the sandbox** — this is a known sandbox networking
+limitation, NOT a production issue. If curl returns 000 or times out,
+note "could not verify from sandbox" and move on. Do NOT debug DNS, TLS,
+Traefik, or try alternative curl flags. kubectl status is the primary indicator.
 
-**STEP 3 — Curl Health Endpoint (1 command):**
-Pick the right endpoint for the namespace:
-- `vibe` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health/readiness`
-- `vibe-dev` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health/readiness`
-- `vibeteam` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
-
-**IMPORTANT — Curl may fail or return non-200 from inside the sandbox.**
-This is a KNOWN sandbox networking limitation, NOT a production issue.
-If curl returns 000, times out, or returns a non-200 status:
-→ Note it as "could not verify from sandbox" and MOVE ON to Step 4.
-→ Do NOT debug DNS, TLS, Traefik, ingress, or try alternative curl flags.
-→ Do NOT try to curl sub-services (stripe, portal, etc.).
-The kubectl pod/deployment status is the primary health indicator.
-
-**STEP 4 — Report Results (MANDATORY, do this immediately after Steps 2-3):**
-Summarize in a concise bullet list:
-- Namespace checked
-- Pod count & status (Running / CrashLoopBackOff / Pending)
-- Deployment replicas (ready/desired)
-- Health endpoint HTTP status (or "sandbox could not reach endpoint")
-- Overall verdict: **Healthy** or **Unhealthy** (with brief reason)
-
-Then call `finish()` to end the task.
-
-**HARD BUDGET: Complete in ≤ 3 tool calls (kubectl, curl, finish).**
-
-STOP RULES — Do NOT under any circumstances:
-- Run more than 3 tool calls total
-- Debug curl failures (DNS, TLS, ingress, Traefik, etc.)
-- Check additional namespaces beyond the one requested
-- Inspect logs, events, describe pods, or get YAML
-- Check Sentry, Langfuse, or any monitoring systems
-- Curl multiple endpoints or sub-services
-- Restart, scale, or modify any resources
-- Hand off to another agent
+**Efficiency goal**: Complete in ≤ 7 tool calls. Avoid deep-diving into logs,
+events, Sentry, TLS certificates, or ingress config. Check only the namespace
+the user asked about.
 """
 
     else:
