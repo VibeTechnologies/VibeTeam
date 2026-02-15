@@ -759,41 +759,54 @@ A user has requested a quick health & production-readiness check.
 ### CRITICAL INSTRUCTIONS — HEALTH CHECK (READ-ONLY, FOCUSED)
 
 You are the ReleaseEngineer performing a quick production readiness check.
-This is NOT an investigation. Do NOT deep-dive into logs or Sentry.
+This is NOT an investigation. Do NOT deep-dive into logs, events, or Sentry.
+
+Run EXACTLY these commands in order, then report. No more, no less.
 
 **STEP 1 — Determine Target Namespace (from user message):**
 Map the user's request to the correct namespace (see table above).
 If they say "production api" → `vibe`.
 
-**STEP 2 — Check Pod Status (1 command):**
+**STEP 2 — Check Pod & Deployment Status (1 command, combine into one call):**
 ```bash
-kubectl get pods -n <NAMESPACE> -o wide
+kubectl get pods -n <NAMESPACE> -o wide && kubectl get deployments -n <NAMESPACE>
 ```
 
-**STEP 3 — Check Deployment Status (1 command):**
-```bash
-kubectl get deployments -n <NAMESPACE>
-```
-
-**STEP 4 — Curl Health Endpoint (1 command):**
+**STEP 3 — Curl Health Endpoint (1 command):**
 Pick the right endpoint for the namespace:
-- `vibe` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health`
-- `vibe-dev` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health`
+- `vibe` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health/readiness`
+- `vibe-dev` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health/readiness`
 - `vibeteam` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
 
-**STEP 5 — Report Results (MANDATORY):**
-Summarize in a concise table or bullet list:
+**IMPORTANT — Curl may fail or return non-200 from inside the sandbox.**
+This is a KNOWN sandbox networking limitation, NOT a production issue.
+If curl returns 000, times out, or returns a non-200 status:
+→ Note it as "could not verify from sandbox" and MOVE ON to Step 4.
+→ Do NOT debug DNS, TLS, Traefik, ingress, or try alternative curl flags.
+→ Do NOT try to curl sub-services (stripe, portal, etc.).
+The kubectl pod/deployment status is the primary health indicator.
+
+**STEP 4 — Report Results (MANDATORY, do this immediately after Steps 2-3):**
+Summarize in a concise bullet list:
 - Namespace checked
 - Pod count & status (Running / CrashLoopBackOff / Pending)
 - Deployment replicas (ready/desired)
-- Health endpoint HTTP status
+- Health endpoint HTTP status (or "sandbox could not reach endpoint")
 - Overall verdict: **Healthy** or **Unhealthy** (with brief reason)
 
-**BUDGET: Complete in ≤ 5 tool calls.** Do NOT:
-- Check multiple namespaces (only the one requested)
-- Deep-dive into logs, Sentry, or Langfuse
+Then call `finish()` to end the task.
+
+**HARD BUDGET: Complete in ≤ 3 tool calls (kubectl, curl, finish).**
+
+STOP RULES — Do NOT under any circumstances:
+- Run more than 3 tool calls total
+- Debug curl failures (DNS, TLS, ingress, Traefik, etc.)
+- Check additional namespaces beyond the one requested
+- Inspect logs, events, describe pods, or get YAML
+- Check Sentry, Langfuse, or any monitoring systems
+- Curl multiple endpoints or sub-services
 - Restart, scale, or modify any resources
-- Hand off to another agent (this is a simple read-only check)
+- Hand off to another agent
 """
 
     else:
