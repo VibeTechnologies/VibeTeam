@@ -660,11 +660,13 @@ class TestSoftwareEngineerIterationBudget:
         )
 
     def test_no_explicit_max_iteration_per_run(self):
-        """max_iteration_per_run should NOT be set — rely on SDK default (500) and execution timeout."""
+        """max_iteration_per_run should be set via kwargs, not hardcoded in the source."""
         content = self._read_swe_context()
-        assert "max_iteration_per_run=" not in content, (
-            "SWE agent should not set max_iteration_per_run explicitly. "
-            "The SDK default (500) is used; the execution timeout (600s) is the real safety net."
+        # The agent should read max_iterations from kwargs and pass to LocalConversation.
+        # It should NOT hardcode a specific value — the gateway controls the limit.
+        assert "max_iterations" in content, (
+            "SWE agent must read max_iterations from kwargs and pass to LocalConversation. "
+            "This prevents runaway execution when asyncio.wait_for timeout cannot kill the thread."
         )
 
     def test_github_issue_workflow_has_iteration_check(self):
@@ -683,8 +685,8 @@ class TestSoftwareEngineerIterationBudget:
         )
 
     def test_other_agents_no_explicit_max_iteration(self):
-        """SupportEngineer and ReleaseEngineer should NOT set explicit max_iteration_per_run."""
-        # SupportEngineer — uses SDK default (500), execution timeout is the safety net
+        """SupportEngineer and ReleaseEngineer must use max_iterations from kwargs."""
+        # SupportEngineer — reads max_iterations from kwargs, passes to LocalConversation
         se_filepath = os.path.join(
             os.path.dirname(__file__),
             os.pardir,
@@ -694,12 +696,13 @@ class TestSoftwareEngineerIterationBudget:
         )
         with open(se_filepath) as f:
             se_content = f.read()
-        assert "max_iteration_per_run=" not in se_content, (
-            "support_engineer.py should not set max_iteration_per_run explicitly. "
-            "The SDK default (500) is used; execution timeout is the real safety net."
+        assert "max_iterations" in se_content, (
+            "support_engineer.py must read max_iterations from kwargs. "
+            "asyncio.wait_for timeout cannot kill the agent thread; "
+            "max_iteration_per_run is the real safety net."
         )
 
-        # ReleaseEngineer — uses SDK default (500), execution timeout is the safety net
+        # ReleaseEngineer — reads max_iterations from kwargs, passes to LocalConversation
         re_filepath = os.path.join(
             os.path.dirname(__file__),
             os.pardir,
@@ -709,9 +712,10 @@ class TestSoftwareEngineerIterationBudget:
         )
         with open(re_filepath) as f:
             re_content = f.read()
-        assert "max_iteration_per_run=" not in re_content, (
-            "release_engineer.py should not set max_iteration_per_run explicitly. "
-            "The SDK default (500) is used; execution timeout is the real safety net."
+        assert "max_iterations" in re_content, (
+            "release_engineer.py must read max_iterations from kwargs. "
+            "asyncio.wait_for timeout cannot kill the agent thread; "
+            "max_iteration_per_run is the real safety net."
         )
 
     def test_has_forbidden_actions_section(self):

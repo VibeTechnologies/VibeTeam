@@ -1245,12 +1245,14 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                 )
                 agent_callbacks.append(progress_cb)
 
-            # No explicit max_iteration_per_run — use SDK default (500).
-            # The execution timeout (600s) in server.py is the real safety net.
+            # max_iterations caps the number of agent iterations (tool calls)
+            # to prevent runaway execution. Default is 30.
+            max_iterations = kwargs.get("max_iterations", 30)
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
                 callbacks=agent_callbacks,
+                max_iteration_per_run=max_iterations,
             )
 
             # Inject context if keywords match

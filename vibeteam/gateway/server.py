@@ -286,6 +286,7 @@ async def call_agent_service_async(
     callback_metadata: dict[str, Any] | None = None,
     progress_url: str | None = None,
     skip_context_injection: bool = False,
+    max_iterations: int = 30,
 ) -> dict[str, Any]:
     """
     Submit a task to the agent service asynchronously.
@@ -306,6 +307,7 @@ async def call_agent_service_async(
         skip_context_injection: If True, skip pre-fetched kubectl/Sentry context
             injection. Used for focused tasks like health checks where the task
             prompt already contains all necessary instructions.
+        max_iterations: Maximum agent iterations before forced stop (default: 30)
 
     Returns:
         {"job_id": "...", "status": "accepted"} or {"error": "..."}
@@ -334,6 +336,7 @@ async def call_agent_service_async(
     if fw == "openhands":
         payload["use_tools"] = True
         payload["skip_context_injection"] = skip_context_injection
+        payload["max_iterations"] = max_iterations
 
     # Pass progress_url so agent service can send intermediate updates
     if progress_url:

@@ -880,6 +880,17 @@ async def _submit_agent_async(
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     skip_context = template == "health_check"
 
+    # Set max_iterations based on task type to prevent scope creep.
+    # Health checks need very few tool calls; investigations need more.
+    max_iterations_map = {
+        "health_check": 15,
+        "conversational": 10,
+        "notification": 10,
+        "deployment": 25,
+        "investigation": 30,
+    }
+    max_iterations = max_iterations_map.get(template, 30)
+
     # Build callback URL
     callback_url = f"{config.GATEWAY_URL}/callback/agent"
     progress_url = f"{config.GATEWAY_URL}/callback/agent/progress"
@@ -893,6 +904,7 @@ async def _submit_agent_async(
         callback_url=callback_url,
         progress_url=progress_url,
         skip_context_injection=skip_context,
+        max_iterations=max_iterations,
         callback_metadata={
             "channel": channel,
             "thread_ts": thread_ts,
