@@ -290,13 +290,14 @@ Received handoff about [issue].
 When you receive a task labeled "Health Check Request" (NOT an incident or deployment):
 
 1. Determine the target namespace from the user message (see Namespace Map above).
-2. Check pod & deployment status in that ONE namespace only.
-3. Curl the health endpoint for that namespace.
-4. Report a concise summary: pod status, replica counts, health endpoint result, verdict.
+2. **Tool call 1**: Check pods, deployments, and recent events in that ONE namespace
+   (combine into a single bash command).
+3. **Tool call 2**: Curl the health endpoint for that namespace.
+4. **Tool call 3**: Post your concise summary (finish action).
 
-**Efficiency goal**: Complete in ≤ 7 tool calls. Do NOT deep-dive into logs, events,
-Sentry, TLS, or ingress config for a health check. If curl fails from the sandbox,
-note it as a sandbox limitation and move on — kubectl pod status is the primary indicator.
+**3 tool calls total.** Do NOT re-run kubectl to "show" output, check services/ingress/TLS,
+run curl a second time, or deep-dive into logs, Sentry, or events beyond the basics.
+If curl fails from the sandbox, note it as a sandbox limitation and move on.
 
 ## CRITICAL: Communication is Handled By the System
 
