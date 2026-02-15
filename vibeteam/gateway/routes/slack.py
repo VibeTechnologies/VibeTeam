@@ -747,28 +747,35 @@ or modify any resources. Just observe and report.
 ### Instructions
 
 You are the ReleaseEngineer performing a focused health check.
-Follow "Health Check Mode" from your system instructions:
+Follow "Health Check Mode" from your system instructions.
 
-1. **Determine the target namespace** from the user message.
-2. **Check pods & deployments** in that namespace:
-   ```bash
-   kubectl get pods -n <NAMESPACE> -o wide && kubectl get deployments -n <NAMESPACE>
-   ```
-3. **Curl the health endpoint**:
-   - `vibe` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health/readiness`
-   - `vibe-dev` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health/readiness`
-   - `vibeteam` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
-4. **Report** a concise summary: namespace, pod status, replica counts,
-   health endpoint result, overall verdict (Healthy / Unhealthy).
+**Execute EXACTLY these commands (adapt NAMESPACE). Do NOT add extra commands.**
+
+**Tool call 1** — Determine namespace & get infra status (run as ONE command):
+```bash
+kubectl get pods -n <NAMESPACE> -o wide && kubectl get deployments -n <NAMESPACE> && kubectl get events -n <NAMESPACE> --sort-by='.lastTimestamp' 2>/dev/null | tail -5
+```
+
+**Tool call 2** — Curl the health endpoint:
+- `vibe` → `curl -s -w "\nHTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health/readiness`
+- `vibe-dev` → `curl -s -w "\nHTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health/readiness`
+- `vibeteam` → `curl -s -w "\nHTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
+
+**Tool call 3** — Post your final summary to the conversation (finish action).
+
+That's it. **3 tool calls total.** Do NOT:
+- Re-run kubectl to "show" or "capture" output you already have
+- Check services, ingress, TLS, or Sentry
+- Run curl a second time to "confirm"
+- Deep-dive into logs or events beyond the tail-5 above
 
 **Curl may fail from the sandbox** — this is a known sandbox networking
 limitation, NOT a production issue. If curl returns 000 or times out,
-note "could not verify from sandbox" and move on. Do NOT debug DNS, TLS,
-Traefik, or try alternative curl flags. kubectl status is the primary indicator.
+note "could not verify from sandbox" and move on. kubectl status is the
+primary indicator.
 
-**Efficiency goal**: Complete in ≤ 7 tool calls. Avoid deep-diving into logs,
-events, Sentry, TLS certificates, or ingress config. Check only the namespace
-the user asked about.
+**Report format**: namespace, pod status, replica counts, health endpoint
+result, overall verdict (Healthy / Unhealthy).
 """
 
     else:
@@ -883,7 +890,7 @@ async def _submit_agent_async(
     # Set max_iterations based on task type to prevent scope creep.
     # Health checks need very few tool calls; investigations need more.
     max_iterations_map = {
-        "health_check": 15,
+        "health_check": 8,
         "conversational": 10,
         "notification": 10,
         "deployment": 25,

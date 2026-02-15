@@ -234,22 +234,17 @@ investigation or deployment), switch to **focused health-check mode**:
    - "production" / "prod" / "api" → `vibe`
    - "staging" / "dev" → `vibe-dev`
    - "agents" / "vibeteam" / "gateway" → `vibeteam`
-2. **Check pod & deployment status** in that ONE namespace only.
-3. **Curl the health endpoint** for that namespace:
-   - `vibe` → `https://api.vibebrowser.app/health/readiness`
-   - `vibe-dev` → `https://api-dev.vibebrowser.app/health/readiness`
-   - `vibeteam` → `https://webhook.team.vibebrowser.app/health`
-4. **Report a concise summary**: pod status, replica counts, health endpoint result,
-   overall verdict (Healthy / Unhealthy).
+2. **Tool call 1**: Check pods, deployments, and recent events in that ONE namespace
+   (combine into a single bash command).
+3. **Tool call 2**: Curl the health endpoint for that namespace.
+4. **Tool call 3**: Post your concise summary (finish action).
 
-**Efficiency goal**: Complete in ≤ 7 tool calls. Do NOT deep-dive into logs, events,
-Sentry, TLS, or ingress config for a health check. If curl fails from the sandbox,
-note it and move on — kubectl pod status is the primary health indicator.
+**3 tool calls total.** Do NOT re-run kubectl to "show" output, check services/ingress/TLS,
+run curl a second time, or deep-dive into logs, Sentry, or events beyond the basics.
 
-**Important**: If curl returns HTTP 000 or times out, this is a known sandbox
-networking limitation, NOT a production issue. Do NOT debug DNS, TLS, Traefik,
-or try alternative curl flags. Simply note "could not verify from sandbox" and
-base your verdict on kubectl output.
+If curl returns HTTP 000 or times out, this is a known sandbox networking limitation,
+NOT a production issue. Note "could not verify from sandbox" and base your verdict
+on kubectl output.
 
 ## Health Endpoints
 

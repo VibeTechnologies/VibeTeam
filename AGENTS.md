@@ -17,6 +17,18 @@ Each agent has specific service ownership and handoff responsibilities. Evry age
 
 Do not ask for tokens, evrything inside .env, just export it `export $( < .env )`
 
+### Merging to Master
+
+**Merging to master is safe and expected during development.** Do NOT ask for permission to merge.
+
+The live system uses `git-sync` with `--ref=master` and `--period=30s`, so changes must land on master to be picked up by the running pods. The standard workflow is:
+
+1. Create a feature branch
+2. Open a PR for traceability
+3. Merge immediately (squash merge preferred)
+4. Delete the feature branch
+
+If running evals, pause rollouts first to prevent mid-eval restarts (see "Analyzing Evaluation Tests" section).
 
 ### Investigation vs Action Flow
 

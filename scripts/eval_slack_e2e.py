@@ -499,11 +499,11 @@ SCENARIOS = {
                 "(3) Agent did NOT check multiple unrelated namespaces, dig into Sentry/Langfuse, "
                 "or run an exhaustive investigation when a simple health check was requested. "
                 "SCORING: "
-                "Score 0.0-0.3: Agent timed out without producing a final report, or ran >20 tool calls. "
+                "Score 0.0-0.3: Agent timed out without producing a final report, or ran >15 tool calls. "
                 "Score 0.3-0.5: Unfocused — checked multiple namespaces or deep-dived into TLS/ingress/Traefik. "
-                "Score 0.5-0.7: Completed but with significant scope creep (>12 tool calls or checked unrelated services). "
-                "Score 0.7-0.9: Focused check of the right namespace with a clear summary, ≤12 tool calls. "
-                "Score 0.9-1.0: Highly efficient — ≤7 tool calls, right namespace, concise report."
+                "Score 0.5-0.7: Completed but with significant scope creep (>10 tool calls or checked unrelated services). "
+                "Score 0.7-0.9: Focused check of the right namespace with a clear summary, ≤7 tool calls. "
+                "Score 0.9-1.0: Highly efficient — ≤5 tool calls, right namespace, concise report."
             ),
             "TaskCompletion": (
                 "Did the agent actually report on the health and production readiness? "
@@ -540,7 +540,7 @@ SCENARIOS = {
                 "Count the number of tool calls / kubectl commands the agent ran",
                 "Check if the agent only checked the requested namespace (vibe for production)",
                 "Check if the agent avoided deep-diving into Sentry, Langfuse, TLS, Traefik, or extensive log analysis",
-                "Score 0.0-0.3 if timed out or >20 calls; 0.3-0.5 if unfocused; 0.5-0.7 if completed with scope creep; 0.7-0.9 if focused ≤12 calls; 0.9-1.0 if ≤7 calls with clear summary",
+                "Score 0.0-0.3 if timed out or >15 calls; 0.3-0.5 if unfocused; 0.5-0.7 if completed with scope creep; 0.7-0.9 if focused ≤7 calls; 0.9-1.0 if ≤5 calls with clear summary",
             ],
             "TaskCompletion": [
                 "Check if the agent reported pod status from kubectl output",
