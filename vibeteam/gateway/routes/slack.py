@@ -910,6 +910,14 @@ async def _submit_agent_async(
         thread_ts=thread_ts,
     )
 
+    # Determine if we should skip heavy context injection.
+    # Health checks are self-contained — the template has all instructions.
+    # Pre-fetched context (logs, events from all namespaces) causes the agent
+    # to rabbit-hole into investigating every anomaly it sees.
+    is_thread_reply = thread_ts is not None
+    template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
+    skip_context = template == "health_check"
+
     # Build callback URL
     callback_url = f"{config.GATEWAY_URL}/callback/agent"
     progress_url = f"{config.GATEWAY_URL}/callback/agent/progress"
@@ -922,6 +930,7 @@ async def _submit_agent_async(
         context_id=f"{channel}:{thread_ts or 'new'}",
         callback_url=callback_url,
         progress_url=progress_url,
+        skip_context_injection=skip_context,
         callback_metadata={
             "channel": channel,
             "thread_ts": thread_ts,
