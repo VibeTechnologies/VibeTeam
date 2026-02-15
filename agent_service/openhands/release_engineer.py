@@ -285,6 +285,19 @@ Received handoff about [issue].
 @SupportEngineer Please confirm with customer that 400 errors have stopped.
 ```
 
+## HEALTH CHECK MODE
+
+When you receive a task labeled "Health Check Request" (NOT an incident or deployment):
+
+1. Determine the target namespace from the user message (see Namespace Map above).
+2. Check pod & deployment status in that ONE namespace only.
+3. Curl the health endpoint for that namespace.
+4. Report a concise summary: pod status, replica counts, health endpoint result, verdict.
+
+**Efficiency goal**: Complete in ≤ 7 tool calls. Do NOT deep-dive into logs, events,
+Sentry, TLS, or ingress config for a health check. If curl fails from the sandbox,
+note it as a sandbox limitation and move on — kubectl pod status is the primary indicator.
+
 ## CRITICAL: Communication is Handled By the System
 
 DO NOT try to use Slack/email tools. Your text response is automatically posted.
@@ -408,12 +421,14 @@ class OpenHandsReleaseEngineer:
                 callbacks.append(progress_cb)
 
             # Create local conversation with required workspace
-            # No explicit max_iteration_per_run — use SDK default (500).
-            # The execution timeout (600s) in server.py is the real safety net.
+            # max_iterations caps the number of agent iterations (tool calls)
+            # to prevent runaway execution. Default is 30; health checks use 15.
+            max_iterations = kwargs.get("max_iterations", 30)
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
                 callbacks=callbacks or None,
+                max_iteration_per_run=max_iterations,
             )
 
             # Inject relevant context (ReleaseEngineer almost always needs kubectl)

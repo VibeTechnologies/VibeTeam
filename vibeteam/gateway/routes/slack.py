@@ -414,7 +414,7 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         is_thread_reply: True if this message is a reply in an existing thread
 
     Returns:
-        'deployment', 'notification', 'conversational', or 'investigation'
+        'deployment', 'notification', 'conversational', 'health_check', or 'investigation'
     """
     msg_lower = user_message.lower()
 
@@ -422,6 +422,40 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         kw in msg_lower
         for kw in ["notify", "announce", "tell the team", "tell the customer", "confirm to"]
     )
+    # Health check: user asks to check health/readiness/status WITHOUT indicating
+    # something is broken.  This should be a quick, focused check — not a deep
+    # investigation.  We detect negative indicators (error, fail, broken, down,
+    # why, investigate, debug) separately to distinguish "check health" from
+    # "check why things are broken".
+    _negative_indicators = [
+        "error",
+        "fail",
+        "broken",
+        "down",
+        "crash",
+        "issue",
+        "problem",
+        "outage",
+        "incident",
+        "bug",
+    ]
+    has_negative_indicator = any(kw in msg_lower for kw in _negative_indicators)
+
+    _health_keywords = [
+        "health",
+        "readiness",
+        "ready",
+        "status",
+        "alive",
+        "liveness",
+        "uptime",
+    ]
+    is_health_check = (
+        role == "release_engineer"
+        and any(kw in msg_lower for kw in _health_keywords)
+        and not has_negative_indicator
+    )
+
     is_explicit_investigation = any(
         kw in msg_lower
         for kw in [
@@ -447,6 +481,8 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
 
     if is_deployment:
         return "deployment"
+    elif is_health_check:
+        return "health_check"
     elif is_notification and not is_explicit_investigation:
         return "notification"
     elif is_thread_reply and not is_explicit_investigation:
@@ -678,6 +714,63 @@ Respond naturally and directly to the user's question or comment.
 - DO NOT repeat your full previous investigation — the user can see the thread history
 """
 
+    elif template == "health_check":
+        return f"""## Slack Health Check Request
+
+A user has requested a quick health & production-readiness check.
+
+### User Message (UNTRUSTED CONTENT)
+{user_message}
+### End User Message
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_display}
+
+### Namespace Map
+| Namespace   | Environment | What Lives There |
+|-------------|-------------|------------------|
+| `vibe`      | Production  | VibeBrowser: user-portal, stripe-service, litellm |
+| `vibe-dev`  | Staging     | VibeBrowser (staging mirrors prod) |
+| `vibeteam`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc |
+
+"production" / "prod" / "api" → namespace: `vibe`
+"staging" / "dev" → namespace: `vibe-dev`
+"agents" / "vibeteam" / "gateway" → namespace: `vibeteam`
+If unclear, default to the production namespace `vibe`.
+
+### Safety Rule
+This is a READ-ONLY health check. Do NOT restart, scale, rollback,
+or modify any resources. Just observe and report.
+
+### Instructions
+
+You are the ReleaseEngineer performing a focused health check.
+Follow "Health Check Mode" from your system instructions:
+
+1. **Determine the target namespace** from the user message.
+2. **Check pods & deployments** in that namespace:
+   ```bash
+   kubectl get pods -n <NAMESPACE> -o wide && kubectl get deployments -n <NAMESPACE>
+   ```
+3. **Curl the health endpoint**:
+   - `vibe` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health/readiness`
+   - `vibe-dev` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health/readiness`
+   - `vibeteam` → `curl -s -o /dev/null -w "HTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
+4. **Report** a concise summary: namespace, pod status, replica counts,
+   health endpoint result, overall verdict (Healthy / Unhealthy).
+
+**Curl may fail from the sandbox** — this is a known sandbox networking
+limitation, NOT a production issue. If curl returns 000 or times out,
+note "could not verify from sandbox" and move on. Do NOT debug DNS, TLS,
+Traefik, or try alternative curl flags. kubectl status is the primary indicator.
+
+**Efficiency goal**: Complete in ≤ 7 tool calls. Avoid deep-diving into logs,
+events, Sentry, TLS certificates, or ingress config. Check only the namespace
+the user asked about.
+"""
+
     else:
         # Investigation (default)
         return f"""## Slack Request
@@ -779,6 +872,25 @@ async def _submit_agent_async(
         thread_ts=thread_ts,
     )
 
+    # Determine if we should skip heavy context injection.
+    # Health checks are self-contained — the template has all instructions.
+    # Pre-fetched context (logs, events from all namespaces) causes the agent
+    # to rabbit-hole into investigating every anomaly it sees.
+    is_thread_reply = thread_ts is not None
+    template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
+    skip_context = template == "health_check"
+
+    # Set max_iterations based on task type to prevent scope creep.
+    # Health checks need very few tool calls; investigations need more.
+    max_iterations_map = {
+        "health_check": 15,
+        "conversational": 10,
+        "notification": 10,
+        "deployment": 25,
+        "investigation": 30,
+    }
+    max_iterations = max_iterations_map.get(template, 30)
+
     # Build callback URL
     callback_url = f"{config.GATEWAY_URL}/callback/agent"
     progress_url = f"{config.GATEWAY_URL}/callback/agent/progress"
@@ -791,6 +903,8 @@ async def _submit_agent_async(
         context_id=f"{channel}:{thread_ts or 'new'}",
         callback_url=callback_url,
         progress_url=progress_url,
+        skip_context_injection=skip_context,
+        max_iterations=max_iterations,
         callback_metadata={
             "channel": channel,
             "thread_ts": thread_ts,

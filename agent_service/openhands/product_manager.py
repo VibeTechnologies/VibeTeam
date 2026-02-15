@@ -199,9 +199,13 @@ class OpenHandsProductManager:
             workspace_path = workspace
 
         try:
+            # max_iterations caps the number of agent iterations (tool calls)
+            # to prevent runaway execution. Default is 30.
+            max_iterations = kwargs.get("max_iterations", 30)
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
+                max_iteration_per_run=max_iterations,
             )
 
             full_task = f"{PRODUCT_MANAGER_CONTEXT_FALLBACK}\n\nTask: {task}"

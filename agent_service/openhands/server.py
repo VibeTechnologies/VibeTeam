@@ -107,6 +107,10 @@ class AsyncRunRequest(BaseModel):
         600,
         description="Overall execution timeout in seconds (default: 600 = 10 min)",
     )
+    max_iterations: int = Field(
+        30,
+        description="Maximum agent iterations (tool calls) before forced stop (default: 30)",
+    )
 
 
 class AsyncRunResponse(BaseModel):
@@ -397,6 +401,7 @@ async def _execute_and_callback(
                             workspace=request.workspace,
                             use_tools=request.use_tools,
                             skip_context_injection=request.skip_context_injection,
+                            max_iterations=request.max_iterations,
                             # Progress callback params — agents use these to send
                             # real-time updates to the gateway while working
                             progress_url=request.progress_url,
