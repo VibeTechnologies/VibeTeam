@@ -285,6 +285,7 @@ async def call_agent_service_async(
     callback_url: str = "",
     callback_metadata: dict[str, Any] | None = None,
     progress_url: str | None = None,
+    skip_context_injection: bool = False,
 ) -> dict[str, Any]:
     """
     Submit a task to the agent service asynchronously.
@@ -302,6 +303,9 @@ async def call_agent_service_async(
         callback_url: URL where agent should POST results
         callback_metadata: Opaque data passed through to callback
         progress_url: URL where agent should POST progress updates (optional)
+        skip_context_injection: If True, skip pre-fetched kubectl/Sentry context
+            injection. Used for focused tasks like health checks where the task
+            prompt already contains all necessary instructions.
 
     Returns:
         {"job_id": "...", "status": "accepted"} or {"error": "..."}
@@ -329,7 +333,7 @@ async def call_agent_service_async(
     # For openhands, add parameters
     if fw == "openhands":
         payload["use_tools"] = True
-        payload["skip_context_injection"] = False
+        payload["skip_context_injection"] = skip_context_injection
 
     # Pass progress_url so agent service can send intermediate updates
     if progress_url:
