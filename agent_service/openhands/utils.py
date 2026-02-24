@@ -40,7 +40,7 @@ def _get_context_window_from_env() -> tuple[str | None, int | None]:
     api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
     api_version = os.getenv("AZURE_API_VERSION")
 
-    model = resolve_azure_model(model, api_base=api_base)
+    model = resolve_azure_model(model, api_base=api_base, api_version=api_version)
 
     ctx_tokens = get_model_context_window(
         model,
