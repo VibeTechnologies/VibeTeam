@@ -16,22 +16,56 @@ from typing import Any
 
 import requests
 
+logger = logging.getLogger(__name__)
+
+RESPONSES_ONLY_MODELS = {"gpt-5.2-codex"}
+RESPONSES_MIN_API_VERSION = (2025, 3, 1)
+
+
+def _parse_api_version(version: str | None) -> tuple[int, int, int] | None:
+    if not version:
+        return None
+    parts = version.split("-")
+    if len(parts) < 3:
+        return None
+    try:
+        return (int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return None
+
+
+def _azure_api_version_supports_responses(version: str | None) -> bool:
+    parsed = _parse_api_version(version)
+    if not parsed:
+        return False
+    return parsed >= RESPONSES_MIN_API_VERSION
+
+
+def _azure_allow_responses_models() -> bool:
+    flag = os.getenv("AZURE_ALLOW_RESPONSES_MODELS", "").lower() in {"1", "true", "yes"}
+    if not flag:
+        return False
+    return _azure_api_version_supports_responses(os.getenv("AZURE_API_VERSION"))
+
+
 try:
     from openhands.sdk import LLM
 
     OPENHANDS_LLM_AVAILABLE = True
 
     class AzureLLM(LLM):
-        """LLM subclass that forces completion API for Azure OpenAI.
+        """LLM subclass with Azure-specific Responses API handling.
 
-        Azure OpenAI doesn't support the Responses API endpoint, so we override
-        uses_responses_api() to always return False. Without this, the SDK
-        attempts to call the Responses API and gets a 404 from Azure.
+        Azure OpenAI supports the Responses API only for newer API versions.
+        We default to chat completions unless responses are explicitly enabled.
         """
 
         def uses_responses_api(self) -> bool:
-            """Azure OpenAI doesn't support the Responses API."""
-            return False
+            """Enable responses API only when explicitly allowed and required."""
+            if not _azure_allow_responses_models():
+                return False
+            model_name = _normalize_model_name(getattr(self, "model", None))
+            return model_name in RESPONSES_ONLY_MODELS
 
 except ImportError:
     OPENHANDS_LLM_AVAILABLE = False
@@ -39,16 +73,12 @@ except ImportError:
     AzureLLM = None  # type: ignore[assignment,misc]
 
 
-logger = logging.getLogger(__name__)
-
-RESPONSES_ONLY_MODELS = {"gpt-5.2-codex"}
-
-
 def resolve_azure_model(
     model: str | None,
     *,
     api_base: str | None = None,
     allow_responses_models: bool | None = None,
+    api_version: str | None = None,
 ) -> str | None:
     """Resolve Azure model names that are Responses-only.
 
@@ -70,11 +100,14 @@ def resolve_azure_model(
         return model
 
     if allow_responses_models is None:
-        allow_responses_models = (
-            os.getenv("AZURE_ALLOW_RESPONSES_MODELS", "").lower() in {"1", "true", "yes"}
-        )
+        allow_responses_models = _azure_allow_responses_models()
 
-    if normalized in RESPONSES_ONLY_MODELS and not allow_responses_models:
+    if allow_responses_models and _azure_api_version_supports_responses(
+        api_version or os.getenv("AZURE_API_VERSION")
+    ):
+        return model
+
+    if normalized in RESPONSES_ONLY_MODELS:
         logger.warning(
             "Azure does not support /responses; falling back from %s to gpt-5.2",
             model,

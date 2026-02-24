@@ -95,7 +95,11 @@ class LLMConfig:
         try:
             from agents.shared.llm import resolve_azure_model
 
-            self.model = resolve_azure_model(self.model, api_base=self.api_base)
+            self.model = resolve_azure_model(
+                self.model,
+                api_base=self.api_base,
+                api_version=os.getenv("AZURE_API_VERSION"),
+            )
         except Exception:
             # Keep configured model if resolution fails (avoid import-time issues).
             pass

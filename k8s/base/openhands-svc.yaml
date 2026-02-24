@@ -61,7 +61,10 @@ spec:
                   name: vibeteam-secrets
                   key: AZURE_OPENAI_DEPLOYMENT
             - name: AZURE_API_VERSION
-              value: "2024-08-01-preview"
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_VERSION
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
