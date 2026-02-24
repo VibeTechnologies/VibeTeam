@@ -23,6 +23,7 @@ from agents.config import AgentConfig
 from agents.shared.db import close_db, get_postgres_store, init_db
 
 from .team import OpenHandsTeam, create_team
+from .utils import configure_text_truncation
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -187,6 +188,9 @@ def get_team() -> OpenHandsTeam:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info("Starting OpenHands service...")
+
+    # Raise OpenHands TextContent limit to avoid premature truncation.
+    configure_text_truncation()
 
     # Initialize database
     try:
