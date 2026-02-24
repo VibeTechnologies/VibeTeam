@@ -1173,6 +1173,10 @@ async def run_evaluation(
         # Get Azure credentials
         api_key = os.environ.get("AZURE_OPENAI_API_KEY", os.environ.get("AZURE_API_KEY"))
         api_base = os.environ.get("AZURE_OPENAI_ENDPOINT", os.environ.get("AZURE_API_BASE"))
+        api_version = os.environ.get(
+            "AZURE_EVAL_API_VERSION",
+            os.environ.get("AZURE_API_VERSION", "2024-08-01-preview"),
+        )
 
         # Warn if credentials appear to be from wrong environment
         if api_base and "vibebrowser" not in api_base.lower():
@@ -1193,6 +1197,7 @@ async def run_evaluation(
                         "BENCHMARK_JUDGE_MODEL",
                         os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2"),
                     ),
+                    api_version=api_version,
                 )
 
                 transcript = build_transcript(conversation)
