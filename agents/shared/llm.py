@@ -41,6 +41,48 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+RESPONSES_ONLY_MODELS = {"gpt-5.2-codex"}
+
+
+def resolve_azure_model(
+    model: str | None,
+    *,
+    api_base: str | None = None,
+    allow_responses_models: bool | None = None,
+) -> str | None:
+    """Resolve Azure model names that are Responses-only.
+
+    Azure OpenAI does not currently support the /responses API. If a model is
+    marked as responses-only in LiteLLM (e.g., gpt-5.2-codex), we must fall back
+    to a chat-completions-compatible model to avoid 404s.
+    """
+    if not model:
+        return None
+
+    normalized = model.split("/", 1)[1] if model.startswith("azure/") else model
+    api_base = _normalize_api_base(
+        api_base
+        or os.getenv("AZURE_OPENAI_ENDPOINT")
+        or os.getenv("AZURE_API_BASE")
+    )
+
+    if not api_base or "openai.azure.com" not in api_base:
+        return model
+
+    if allow_responses_models is None:
+        allow_responses_models = (
+            os.getenv("AZURE_ALLOW_RESPONSES_MODELS", "").lower() in {"1", "true", "yes"}
+        )
+
+    if normalized in RESPONSES_ONLY_MODELS and not allow_responses_models:
+        logger.warning(
+            "Azure does not support /responses; falling back from %s to gpt-5.2",
+            model,
+        )
+        return "gpt-5.2"
+
+    return model
+
 
 def _normalize_model_name(model: str | None) -> str | None:
     if not model:
@@ -233,4 +275,5 @@ __all__ = [
     "LLM",
     "OPENHANDS_LLM_AVAILABLE",
     "get_model_context_window",
+    "resolve_azure_model",
 ]

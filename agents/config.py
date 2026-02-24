@@ -92,6 +92,13 @@ class LLMConfig:
         self.api_key = (
             self.api_key or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
         )
+        try:
+            from agents.shared.llm import resolve_azure_model
+
+            self.model = resolve_azure_model(self.model, api_base=self.api_base)
+        except Exception:
+            # Keep configured model if resolution fails (avoid import-time issues).
+            pass
 
 
 @dataclass
