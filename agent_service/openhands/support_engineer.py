@@ -99,7 +99,7 @@ except ImportError:
 from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 
-from .utils import get_prompt_path
+from .utils import build_condenser, get_prompt_path
 
 # Fallback context if AGENTS.md files not found
 SUPPORT_ENGINEER_CONTEXT_FALLBACK = """You are Grace, the Support Engineer for VibeTeam.
@@ -298,6 +298,7 @@ class OpenHandsSupportEngineer:
         return Agent(
             llm=llm,
             tools=tools,
+            condenser=build_condenser(llm),
             # Use our custom template that renders agent_context into the system prompt.
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
             system_prompt_filename=get_prompt_path(),

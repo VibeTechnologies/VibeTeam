@@ -49,7 +49,7 @@ except ImportError:
 from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 
-from .utils import get_prompt_path
+from .utils import build_condenser, get_prompt_path
 
 # OpenHands uses Jinja2 templates for system prompts.
 # We use agents/openhands/prompts/agent_system.j2 as a custom template
@@ -354,6 +354,7 @@ class OpenHandsReleaseEngineer:
                 Tool(name=TerminalTool.name),
                 Tool(name=FileEditorTool.name),
             ],
+            condenser=build_condenser(llm),
             # Use our custom template that renders agent_context into the system prompt.
             # Without this, the default system_prompt.j2 ignores agent_context kwargs.
             system_prompt_filename=get_prompt_path(),

@@ -6,6 +6,8 @@ import logging
 import os
 from typing import Any
 
+from agents.shared.llm import get_model_context_window
+
 logger = logging.getLogger(__name__)
 
 # Base directory for the agents/openhands package.
@@ -19,6 +21,143 @@ logger = logging.getLogger(__name__)
 # We solve this by resolving the path from the symlink at *call* time rather
 # than at import time.
 _CODE_CURRENT = "/code/current"
+
+# Default text content limit override (characters). We set this higher than the
+# OpenHands SDK default (50k) to avoid premature truncation when larger context
+# windows are available.
+DEFAULT_TEXT_CONTENT_LIMIT = 200_000
+DISABLE_TEXT_CONTENT_LIMIT = 2_000_000_000
+DEFAULT_CONDENSE_TOKEN_RATIO = 0.7
+
+
+def _get_context_window_from_env() -> tuple[str | None, int | None]:
+    model = (
+        os.getenv("AZURE_OPENAI_DEPLOYMENT")
+        or os.getenv("OPENAI_MODEL")
+        or os.getenv("OPENAI_DEPLOYMENT")
+    )
+    api_base = os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_API_BASE")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
+    api_version = os.getenv("AZURE_API_VERSION")
+
+    ctx_tokens = get_model_context_window(
+        model,
+        api_base=api_base or os.getenv("OPENAI_API_BASE"),
+        api_key=api_key or os.getenv("OPENAI_API_KEY"),
+        api_version=api_version,
+    )
+    return model, ctx_tokens
+
+
+def configure_text_truncation() -> None:
+    """Configure OpenHands TextContent truncation limit.
+
+    OpenHands SDK hard-caps TextContent at 50k chars. We raise the limit so
+    larger context windows (e.g., GPT-5.2) can be utilized without truncation.
+
+    Set OPENHANDS_TEXT_CONTENT_LIMIT to override the default (200k). Set it to
+    0 or a negative value to disable truncation (very large limit).
+    """
+    limit_raw = os.getenv("OPENHANDS_TEXT_CONTENT_LIMIT")
+    model_name, ctx_tokens = _get_context_window_from_env()
+    if ctx_tokens:
+        logger.info(
+            "Model %s context window (API): %d tokens",
+            model_name or "unknown",
+            ctx_tokens,
+        )
+    else:
+        logger.info("Model context window not available via API")
+    if limit_raw is None or limit_raw == "":
+        if ctx_tokens:
+            # Rough char estimate (~4 chars per token).
+            estimated = int(ctx_tokens * 4)
+            limit = max(DEFAULT_TEXT_CONTENT_LIMIT, estimated)
+        else:
+            limit = DEFAULT_TEXT_CONTENT_LIMIT
+    else:
+        try:
+            limit = int(limit_raw)
+        except ValueError:
+            logger.warning(
+                "Invalid OPENHANDS_TEXT_CONTENT_LIMIT=%r; using default %d",
+                limit_raw,
+                DEFAULT_TEXT_CONTENT_LIMIT,
+            )
+            limit = DEFAULT_TEXT_CONTENT_LIMIT
+
+    if limit <= 0:
+        # Explicitly disable truncation by setting a very large limit.
+        limit = DISABLE_TEXT_CONTENT_LIMIT
+        logger.info("OPENHANDS_TEXT_CONTENT_LIMIT <= 0; disabling truncation")
+
+    try:
+        from openhands.sdk.llm import message as oh_message
+        from openhands.sdk.utils import truncate as oh_truncate
+
+        oh_message.DEFAULT_TEXT_CONTENT_LIMIT = limit
+        oh_truncate.DEFAULT_TEXT_CONTENT_LIMIT = limit
+        logger.info("Set OpenHands TextContent limit to %d chars", limit)
+    except Exception as e:
+        logger.warning("Failed to configure OpenHands text truncation: %s", e)
+
+
+def build_condenser(llm: Any) -> Any | None:
+    """Create an OpenHands condenser to auto-compact long conversations.
+
+    Controlled via env vars:
+    - OPENHANDS_CONDENSE_MAX_EVENTS (default 120)
+    - OPENHANDS_CONDENSE_MAX_TOKENS (default 120000; set empty to disable token-based)
+    - OPENHANDS_CONDENSE_KEEP_FIRST (default 4)
+    """
+    try:
+        from openhands.sdk.context.condenser import LLMSummarizingCondenser
+    except Exception as e:
+        logger.warning("OpenHands condenser unavailable: %s", e)
+        return None
+
+    max_events_raw = os.getenv("OPENHANDS_CONDENSE_MAX_EVENTS", "120")
+    keep_first_raw = os.getenv("OPENHANDS_CONDENSE_KEEP_FIRST", "4")
+    max_tokens_raw = os.getenv("OPENHANDS_CONDENSE_MAX_TOKENS")
+    token_ratio_raw = os.getenv("OPENHANDS_CONDENSE_TOKEN_RATIO", str(DEFAULT_CONDENSE_TOKEN_RATIO))
+
+    try:
+        max_events = int(max_events_raw)
+    except ValueError:
+        max_events = 120
+    try:
+        keep_first = int(keep_first_raw)
+    except ValueError:
+        keep_first = 4
+
+    max_tokens = None
+    if max_tokens_raw is not None and max_tokens_raw != "":
+        try:
+            max_tokens_val = int(max_tokens_raw)
+            if max_tokens_val > 0:
+                max_tokens = max_tokens_val
+        except ValueError:
+            max_tokens = None
+    else:
+        # If not explicitly set, derive from API model context window (if available).
+        _, ctx_tokens = _get_context_window_from_env()
+        if ctx_tokens:
+            try:
+                ratio = float(token_ratio_raw)
+            except ValueError:
+                ratio = DEFAULT_CONDENSE_TOKEN_RATIO
+            if ratio > 0:
+                max_tokens = int(ctx_tokens * ratio)
+
+    if max_events <= 0 and max_tokens is None:
+        return None
+
+    return LLMSummarizingCondenser(
+        llm=llm,
+        max_size=max_events,
+        max_tokens=max_tokens,
+        keep_first=max(0, keep_first),
+    )
 
 
 def get_prompt_path(prompt_filename: str = "agent_system.j2") -> str:

@@ -45,7 +45,7 @@ except ImportError:
 from agents.shared.agents_md_loader import compose_agent_context
 from agents.shared.llm import LLM, AzureLLM
 
-from .utils import get_prompt_path
+from .utils import build_condenser, get_prompt_path
 
 # Fallback context if AGENTS.md files not found
 MARKETING_MANAGER_CONTEXT_FALLBACK = """You are Sam, the Marketing Manager for VibeTeam.
@@ -132,6 +132,7 @@ class OpenHandsMarketingManager:
         # (pydantic expects a dict, not NoneType).
         agent_kwargs: dict[str, Any] = {
             "llm": llm,
+            "condenser": build_condenser(llm),
             "system_prompt_filename": get_prompt_path(),
             "system_prompt_kwargs": {
                 "agent_context": agent_context,
