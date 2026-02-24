@@ -10,8 +10,6 @@ resources:
   # Gateway (routes webhooks to agent microservices)
   - vibeteam-gateway.yaml
   # Agent Microservices (FastAPI servers handling all agent roles)
-  - autogen-svc.yaml
-  - crewai-svc.yaml
   - openhands-svc.yaml
   - scheduler-svc.yaml
   # Gmail email processor (daemon polling for support emails)

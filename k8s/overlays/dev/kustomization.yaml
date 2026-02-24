@@ -12,30 +12,5 @@ resources:
 patches:
   - path: openhands-svc-patch.yaml
   - path: gateway-patch.yaml
-  # JSON patches for other deployments
-  - target:
-      kind: Deployment
-      name: crewai-agents
-    patch: |
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: ghcr.io/vibetechnologies/vibeteam-crewai:dev
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: GITHUB_BRANCH
-          value: "master"
-  - target:
-      kind: Deployment
-      name: autogen-agents
-    patch: |
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: ghcr.io/vibetechnologies/vibeteam-autogen:dev
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: GITHUB_BRANCH
-          value: "master"
 
 # Note: Avoid commonLabels/commonAnnotations as they affect selectors which are immutable
