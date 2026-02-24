@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any
 
-from agents.shared.llm import get_model_context_window
+from agents.shared.llm import get_model_context_window, resolve_azure_model
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,8 @@ def _get_context_window_from_env() -> tuple[str | None, int | None]:
     api_base = os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_API_BASE")
     api_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
     api_version = os.getenv("AZURE_API_VERSION")
+
+    model = resolve_azure_model(model, api_base=api_base)
 
     ctx_tokens = get_model_context_window(
         model,
