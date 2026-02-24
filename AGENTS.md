@@ -224,6 +224,8 @@ Required in `.env` (for local development and evaluation):
 
 VibeTeam uses Azure OpenAI. The model name format is `azure/gpt-5.2` (with dot).
 
+Azure Responses API support requires `AZURE_API_VERSION >= 2025-03-01-preview`. `gpt-5.2-codex` is responses-only, so set `AZURE_API_VERSION=2025-04-01-preview` and `AZURE_ALLOW_RESPONSES_MODELS=true`. Ensure `AZURE_OPENAI_ENDPOINT` is the resource root (e.g., `https://<resource>.openai.azure.com/`), not `/openai` and not a full query URL.
+
 ## kubectl Access for Agents
 
 Agents have kubectl installed and RBAC configured for cluster access:
