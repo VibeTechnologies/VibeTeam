@@ -52,6 +52,7 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.shared.role_resolver import ROLE_PATTERN
+from agents.shared.llm import resolve_azure_model
 from vibeteam.connectors.slack import SlackConnector
 
 # Try to import DeepEval
@@ -259,6 +260,120 @@ SCENARIOS = {
                 "Check that the page title is reported.",
                 "Check that console errors count is reported.",
                 "Check that the main document HTTP status code is reported and a screenshot is confirmed.",
+            ],
+            "ResponseEfficiency": [
+                "Check for redundant tool usage or repeated steps in the response.",
+                "Check that the response is concise and directly answers the requested outputs.",
+                "Score 0.7+ if the response is focused and complete.",
+            ],
+        },
+        "threshold": 0.70,
+    },
+    "marketing_reddit_engagement": {
+        "name": "Marketing Manager - Reddit Community Engagement (Soft Promo)",
+        "message": (
+            "@MarketingManager run a marketing evaluation for vibebrowser.app. "
+            "Use Chrome DevTools MCP (CDP) to browse reddit.com and identify 3 relevant "
+            "communities where Vibe Browser fits (e.g., browser productivity, webdev, "
+            "automation, research). For each community, open the rules sidebar and "
+            "note any self-promotion restrictions. Choose 1 recent thread per community "
+            "that would benefit from a helpful comment. Draft: 2 comments and 1 post "
+            "that are value-first and non-obvious about promotion. Mention vibebrowser.app "
+            "subtly in only ONE of the three drafts. Do NOT actually post—just draft text. "
+            "Report: subreddit names, thread titles, rules notes, and the 3 drafts. "
+            "Also report the page title for each subreddit and confirm that CDP tools "
+            "were used (include at least one screenshot capture)."
+        ),
+        "expected_agent": "marketing_manager",
+        "timeout": 900,
+        "evaluation_criteria": {
+            "ChromeDevToolsUsage": (
+                "Did the agent clearly use Chrome DevTools MCP (CDP) to perform the task? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit mention of Chrome DevTools MCP/CDP usage; "
+                "(2) Evidence of DevTools-derived artifacts such as page titles or "
+                "screenshot capture; "
+                "(3) No reliance on generic assumptions without browsing evidence. "
+                "SCORING: "
+                "Score 0.0-0.3: No indication of DevTools/CDP usage. "
+                "Score 0.3-0.6: Vague mention of tooling but no DevTools artifacts. "
+                "Score 0.6-0.8: Clear DevTools usage with at least one artifact. "
+                "Score 0.8-1.0: Clear DevTools usage with multiple artifacts (titles + screenshot)."
+            ),
+            "CommunityFitAndRules": (
+                "Did the agent pick relevant communities and respect their rules? "
+                "REQUIRED: "
+                "(1) Three communities selected that plausibly fit Vibe Browser; "
+                "(2) Rules notes include self-promo restrictions or 'no self-promo' if absent; "
+                "(3) Drafts reflect rule awareness (no spam or aggressive marketing). "
+                "SCORING: "
+                "Score 0.0-0.3: Communities irrelevant or rules ignored. "
+                "Score 0.3-0.6: Partial relevance or vague rules notes. "
+                "Score 0.6-0.8: Relevant communities with clear rules notes. "
+                "Score 0.8-1.0: Strong relevance and explicit compliance with rules."
+            ),
+            "TaskCompletion": (
+                "Did the agent complete all requested outputs? "
+                "REQUIRED: "
+                "(1) 3 subreddit names; "
+                "(2) 1 thread title per subreddit; "
+                "(3) rules notes per subreddit; "
+                "(4) 2 comment drafts + 1 post draft; "
+                "(5) mention vibebrowser.app in only one draft; "
+                "(6) page title for each subreddit; "
+                "(7) confirmation of a screenshot capture. "
+                "SCORING: "
+                "Score 0.0-0.3: Missing most outputs. "
+                "Score 0.3-0.5: Partial outputs (1-3 items). "
+                "Score 0.5-0.7: Most outputs but 1-2 missing. "
+                "Score 0.7-0.9: All outputs provided with minor gaps. "
+                "Score 0.9-1.0: Complete and concise, all outputs present."
+            ),
+            "SoftPromoQuality": (
+                "Are the drafts value-first and non-obvious about promotion? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Drafts are helpful and context-aware; "
+                "(2) Only one draft mentions vibebrowser.app; "
+                "(3) The mention is subtle (e.g., framed as a tool used in a workflow), "
+                "not salesy. "
+                "SCORING: "
+                "Score 0.0-0.3: Spammy, salesy, or repeated promotion. "
+                "Score 0.3-0.6: Some value but still promotional or mentions too often. "
+                "Score 0.6-0.8: Helpful drafts with subtle, limited mention. "
+                "Score 0.8-1.0: Strongly helpful, authentic tone, single subtle mention."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused, without unnecessary "
+                "tool repetition or irrelevant commentary. "
+                "SCORING: "
+                "Score 0.0-0.3: Excessive verbosity or repeated steps. "
+                "Score 0.3-0.5: Some redundancy but completed. "
+                "Score 0.5-0.7: Reasonably concise with minor fluff. "
+                "Score 0.7-0.9: Focused response with clear outputs. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "ChromeDevToolsUsage": [
+                "Check that the agent explicitly mentions using Chrome DevTools MCP/CDP tools.",
+                "Check for DevTools-derived artifacts such as page titles and screenshot mention.",
+                "Score <= 0.3 if no DevTools evidence; 0.6+ if DevTools artifacts are present.",
+            ],
+            "CommunityFitAndRules": [
+                "Check that three communities were selected and are relevant.",
+                "Check that rules notes include self-promo restrictions (or explicitly note none found).",
+                "Check that drafts respect the rules and avoid spammy behavior.",
+            ],
+            "TaskCompletion": [
+                "Check that subreddit names, thread titles, and rules notes are all present.",
+                "Check that there are 2 comment drafts and 1 post draft.",
+                "Check that vibebrowser.app is mentioned only once.",
+                "Check that page titles are reported and a screenshot capture is confirmed.",
+            ],
+            "SoftPromoQuality": [
+                "Check that drafts are helpful and not salesy.",
+                "Check that the single mention of vibebrowser.app is subtle and contextual.",
+                "Score <= 0.5 if promotion is repeated or too obvious.",
             ],
             "ResponseEfficiency": [
                 "Check for redundant tool usage or repeated steps in the response.",
@@ -1258,13 +1373,25 @@ async def run_evaluation(
 
         if api_key and api_base:
             try:
+                raw_model = os.environ.get(
+                    "BENCHMARK_JUDGE_MODEL",
+                    os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2"),
+                )
+                resolved_model = resolve_azure_model(
+                    raw_model, api_base=api_base, api_version=api_version
+                )
+                # Azure deployment names should NOT include "azure/" prefix
+                if resolved_model and resolved_model.startswith("azure/"):
+                    resolved_model = resolved_model.split("/", 1)[1]
+                if resolved_model and resolved_model != raw_model:
+                    print(
+                        f"    WARNING: Judge model '{raw_model}' is not chat-compatible. "
+                        f"Using '{resolved_model}' instead."
+                    )
                 model = AzureOpenAIModel(
                     api_key=api_key,
                     api_base=api_base,
-                    model=os.environ.get(
-                        "BENCHMARK_JUDGE_MODEL",
-                        os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2"),
-                    ),
+                    model=resolved_model or raw_model or "gpt-5.2",
                     api_version=api_version,
                 )
 
