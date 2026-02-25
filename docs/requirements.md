@@ -8,10 +8,10 @@ VibeTeam is a multi-agent system that routes work via `@RoleName` or `/RoleName`
 
 | Role | Mention | Function | Tools |
 |------|---------|----------|-------|
-| **SoftwareEngineer** | `@SoftwareEngineer` | Code implementation, bug fixes, tests, PRs | Shell, Git, GitHub |
-| **ReleaseEngineer** | `@ReleaseEngineer` | Deployments, releases, k3s/k8s, CI/CD | kubectl, GitHub |
-| **SupportEngineer** | `@SupportEngineer` | Customer support, error analysis | Sentry, Gmail, Langfuse |
-| **ProductManager** | `@ProductManager` | PRDs, backlog prioritization, user stories | GitHub |
+| **SoftwareEngineer** | `@SoftwareEngineer` | Code implementation, bug fixes, tests, PRs | Shell, Git, GitHub, Chrome DevTools MCP |
+| **ReleaseEngineer** | `@ReleaseEngineer` | Deployments, releases, k3s/k8s, CI/CD | kubectl, GitHub, Chrome DevTools MCP |
+| **SupportEngineer** | `@SupportEngineer` | Customer support, error analysis | Sentry, Gmail, Langfuse, Chrome DevTools MCP |
+| **ProductManager** | `@ProductManager` | PRDs, backlog prioritization, user stories | GitHub, Chrome DevTools MCP |
 | **MarketingManager** | `@MarketingManager` | Social media, announcements, content | Chrome DevTools MCP |
 
 ## LLM Model
@@ -43,6 +43,10 @@ The model is configured via the `AZURE_OPENAI_DEPLOYMENT` K8s secret. GPT-5+ mod
 | CrewAI | Optional | Available via `crewai-svc` when deployed |
 | AutoGen | Optional | Available via `autogen-svc` when deployed |
 | OpenCode | Experimental | CLI-based, limited tool injection |
+
+## Browser Automation (Chrome DevTools MCP)
+
+All agent roles can use Chrome DevTools MCP when a CDP browser is available. In production, this connects to the shared Browserless service via the `CHROME_DEVTOOLS_BROWSER_URL` environment variable. Agent containers require Node.js (for `npx chrome-devtools-mcp@latest`).
 
 ## Environment Variables (Required)
 
@@ -79,6 +83,7 @@ AUTOGEN_SERVICE_URL=http://autogen-svc:8080
 SCHEDULER_SERVICE_URL=http://scheduler-svc:8080
 DEFAULT_FRAMEWORK=openhands
 CALLBACK_SECRET=
+CHROME_DEVTOOLS_BROWSER_URL=http://browserless:3000
 
 # Database
 DATABASE_URL=postgresql://...

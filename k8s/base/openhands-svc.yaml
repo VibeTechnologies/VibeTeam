@@ -75,6 +75,8 @@ spec:
                 secretKeyRef:
                   name: vibeteam-secrets
                   key: SENTRY_AUTH_TOKEN
+            - name: CHROME_DEVTOOLS_BROWSER_URL
+              value: "http://browserless:3000"
           resources:
             requests:
               memory: "3Gi"

@@ -62,6 +62,10 @@
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Browser Automation (Chrome DevTools MCP)
+
+Agents use Chrome DevTools MCP to automate a real Chrome instance over CDP. In production, a shared Browserless service runs inside the cluster and exposes CDP on port 3000. Agent pods connect to it via `CHROME_DEVTOOLS_BROWSER_URL=http://browserless:3000`, and network policy restricts access to agent pods only.
+
 ## Message Router
 
 ### Thread Subscription Model
