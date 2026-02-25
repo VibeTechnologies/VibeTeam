@@ -134,6 +134,19 @@ def configure_textcontent_json_serialization() -> None:
                 kwargs["default"] = _safe_default
             return _json.dumps(obj, **kwargs)
 
+        # Patch stdlib JSONEncoder default to handle TextContent everywhere
+        try:
+            _json_default = _json.JSONEncoder.default
+
+            def _json_default_wrapped(self, obj):  # type: ignore[no-self-use]
+                if isinstance(obj, TextContent):
+                    return obj.text
+                return _json_default(self, obj)
+
+            _json.JSONEncoder.default = _json_default_wrapped  # type: ignore[assignment]
+        except Exception:
+            pass
+
         # Patch only the agent module's json reference to avoid
         # mutating the stdlib json module globally.
         class _JsonProxy(types.SimpleNamespace):
