@@ -23,7 +23,7 @@ from agents.config import AgentConfig
 from agents.shared.db import close_db, get_postgres_store, init_db
 
 from .team import OpenHandsTeam, create_team
-from .utils import configure_text_truncation
+from .utils import configure_text_truncation, configure_textcontent_json_serialization
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -195,6 +195,8 @@ async def lifespan(app: FastAPI):
 
     # Raise OpenHands TextContent limit to avoid premature truncation.
     configure_text_truncation()
+    # Patch OpenHands JSON serialization to avoid TextContent crashes.
+    configure_textcontent_json_serialization()
 
     # Initialize database
     try:

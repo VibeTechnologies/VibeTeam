@@ -28,6 +28,7 @@ _CODE_CURRENT = "/code/current"
 DEFAULT_TEXT_CONTENT_LIMIT = 200_000
 DISABLE_TEXT_CONTENT_LIMIT = 2_000_000_000
 DEFAULT_CONDENSE_TOKEN_RATIO = 0.7
+_TEXTCONTENT_JSON_PATCHED = False
 
 
 def _get_context_window_from_env() -> tuple[str | None, int | None]:
@@ -102,6 +103,71 @@ def configure_text_truncation() -> None:
         logger.info("Set OpenHands TextContent limit to %d chars", limit)
     except Exception as e:
         logger.warning("Failed to configure OpenHands text truncation: %s", e)
+
+
+def configure_textcontent_json_serialization() -> None:
+    """Patch OpenHands JSON serialization to handle TextContent safely.
+
+    OpenHands SDK logs LLM messages with json.dumps() in agent.py. The model
+    dumps include TextContent objects that are not JSON-serializable, which
+    crashes the agent loop. We patch the JSON encoder and the agent module's
+    json.dumps to safely coerce TextContent into plain strings.
+    """
+    global _TEXTCONTENT_JSON_PATCHED
+    if _TEXTCONTENT_JSON_PATCHED:
+        return
+
+    try:
+        from openhands.sdk.llm import TextContent  # type: ignore
+        import openhands.sdk.agent.agent as agent_mod  # type: ignore
+        import json as _json
+
+        def _safe_default(obj):
+            if isinstance(obj, TextContent):
+                return obj.text
+            return str(obj)
+
+        def _safe_dumps(obj, **kwargs):
+            return _json.dumps(obj, default=_safe_default, **kwargs)
+
+        # Patch the agent module's json.dumps used in debug logging
+        agent_mod.json.dumps = _safe_dumps  # type: ignore[assignment]
+
+        # Patch OpenHands JSON encoders used elsewhere (event serialization)
+        try:
+            from openhands.io.json import OpenHandsJSONEncoder as IOEncoder  # type: ignore
+
+            _io_default = IOEncoder.default
+
+            def _io_default_wrapped(self, obj):  # type: ignore[no-self-use]
+                if isinstance(obj, TextContent):
+                    return obj.text
+                return _io_default(self, obj)
+
+            IOEncoder.default = _io_default_wrapped  # type: ignore[assignment]
+        except Exception:
+            pass
+
+        try:
+            from openhands.sdk.utils.json import (  # type: ignore
+                OpenHandsJSONEncoder as SDKEncoder,
+            )
+
+            _sdk_default = SDKEncoder.default
+
+            def _sdk_default_wrapped(self, obj):  # type: ignore[no-self-use]
+                if isinstance(obj, TextContent):
+                    return obj.text
+                return _sdk_default(self, obj)
+
+            SDKEncoder.default = _sdk_default_wrapped  # type: ignore[assignment]
+        except Exception:
+            pass
+
+        _TEXTCONTENT_JSON_PATCHED = True
+        logger.info("Patched OpenHands JSON serialization for TextContent")
+    except Exception as e:
+        logger.warning("Failed to patch OpenHands JSON serialization: %s", e)
 
 
 def build_condenser(llm: Any) -> Any | None:
