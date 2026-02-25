@@ -160,6 +160,21 @@ class OpenHandsMarketingManager:
         context_parts = []
         task_lower = task.lower()
 
+        # Avoid Playwright/browser_tools when the task explicitly requests
+        # Chrome DevTools MCP/CDP usage.
+        if any(
+            keyword in task_lower
+            for keyword in (
+                "chrome devtools",
+                "devtools mcp",
+                "chrome devtools mcp",
+                "cdp",
+                "chrome cdp",
+                "mcp",
+            )
+        ):
+            return ""
+
         # Check for URL patterns
         import re
 
