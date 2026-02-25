@@ -419,6 +419,7 @@ class OpenHandsReleaseEngineer:
                     progress_url=progress_url,
                     job_id=kwargs.get("job_id", ""),
                     callback_metadata=kwargs.get("callback_metadata", {}),
+                    on_progress=kwargs.get("progress_heartbeat"),
                 )
                 callbacks.append(progress_cb)
 
