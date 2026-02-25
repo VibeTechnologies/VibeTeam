@@ -121,6 +121,7 @@ def configure_textcontent_json_serialization() -> None:
         from openhands.sdk.llm import TextContent  # type: ignore
         import openhands.sdk.agent.agent as agent_mod  # type: ignore
         import json as _json
+        import types
 
         def _safe_default(obj):
             if isinstance(obj, TextContent):
@@ -133,8 +134,15 @@ def configure_textcontent_json_serialization() -> None:
                 kwargs["default"] = _safe_default
             return _json.dumps(obj, **kwargs)
 
-        # Patch the agent module's json.dumps used in debug logging
-        agent_mod.json.dumps = _safe_dumps  # type: ignore[assignment]
+        # Patch only the agent module's json reference to avoid
+        # mutating the stdlib json module globally.
+        class _JsonProxy(types.SimpleNamespace):
+            def __getattr__(self, name):  # type: ignore[override]
+                if name == "dumps":
+                    return _safe_dumps
+                return getattr(_json, name)
+
+        agent_mod.json = _JsonProxy()  # type: ignore[assignment]
 
         # Patch OpenHands JSON encoders used elsewhere (event serialization)
         try:
