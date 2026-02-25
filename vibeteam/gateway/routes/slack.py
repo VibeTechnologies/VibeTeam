@@ -120,6 +120,64 @@ def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
 _message_router: Router | None = None
 
 
+# ==============================================================================
+# Slack Event Deduplication
+# ==============================================================================
+
+
+_SLACK_EVENT_TTL_SECONDS = 15 * 60
+_SLACK_EVENT_MAX_ENTRIES = 4096
+_slack_event_seen: dict[str, float] = {}
+_slack_event_lock = threading.Lock()
+
+
+def _slack_event_key(payload: dict[str, Any], event: dict[str, Any]) -> str | None:
+    """Build a stable dedup key for a Slack event."""
+    event_id = payload.get("event_id")
+    if event_id:
+        return f"id:{event_id}"
+
+    channel = event.get("channel")
+    event_ts = event.get("ts") or payload.get("event_time")
+    if channel and event_ts:
+        return f"fallback:{channel}:{event_ts}"
+
+    return None
+
+
+def _is_duplicate_slack_event(key: str | None) -> bool:
+    """Return True if we've already processed this Slack event."""
+    if not key:
+        return False
+
+    now = time.monotonic()
+    with _slack_event_lock:
+        # Prune expired entries
+        expired = [k for k, ts in _slack_event_seen.items() if now - ts > _SLACK_EVENT_TTL_SECONDS]
+        for k in expired:
+            _slack_event_seen.pop(k, None)
+
+        if key in _slack_event_seen:
+            return True
+
+        _slack_event_seen[key] = now
+
+        # Bound cache size (drop oldest)
+        if len(_slack_event_seen) > _SLACK_EVENT_MAX_ENTRIES:
+            oldest = sorted(_slack_event_seen.items(), key=lambda item: item[1])[
+                : len(_slack_event_seen) - _SLACK_EVENT_MAX_ENTRIES
+            ]
+            for k, _ in oldest:
+                _slack_event_seen.pop(k, None)
+
+    return False
+
+
+def _schedule_background(coro: Any) -> None:
+    """Schedule background work for Slack events."""
+    asyncio.create_task(coro)
+
+
 def get_message_router() -> Router:
     """Get or create the message router."""
     global _message_router
@@ -1341,11 +1399,195 @@ async def handle_agent_progress(request: Request) -> dict[str, Any]:
 # ==============================================================================
 
 
+async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
+    """Process Slack events in a background task."""
+    try:
+        event = payload.get("event", {})
+        event_type = event.get("type")
+
+        logger.info(
+            f"Received Slack event: {event_type}, "
+            f"subtype={event.get('subtype')}, "
+            f"thread_ts={bool(event.get('thread_ts'))}, "
+            f"channel_type={event.get('channel_type')}"
+        )
+
+        # Handle bot messages: process if they contain role mentions (handoffs/eval)
+        # Per requirements: "Bot Messages: Router processes bot's own messages to detect handoffs"
+        is_bot_message = event.get("bot_id") or event.get("subtype") == "bot_message"
+        if is_bot_message:
+            text = event.get("text", "")
+            message_router = get_message_router()
+            has_role_mention = bool(message_router.parse_role_mentions(text))
+            if not has_role_mention:
+                # Ignore bot messages without role mentions to prevent loops
+                return {"status": "ignored", "reason": "bot_message_no_role_mention"}
+            # Continue processing - bot message has a role mention (handoff or eval)
+            logger.info(f"Processing bot message with role mention: {text[:80]}...")
+
+        # Handle app_mention events
+        if event_type == "app_mention":
+            user_id = event.get("user", "")
+            channel = event.get("channel", "")
+            text = event.get("text", "")
+            message_ts = event.get("ts", "")
+            thread_ts = event.get("thread_ts") or message_ts
+
+            # Remove the bot mention from the text
+            clean_text = re.sub(r"<@[A-Z0-9]+>\\s*", "", text).strip()
+
+            # React with thinking face to show we're working on it
+            if message_ts:
+                await add_reaction(channel, message_ts, "thinking_face")
+
+            await run_agent_for_slack(clean_text, channel, thread_ts, user_id, message_ts=message_ts)
+
+            return {"status": "accepted", "event": "app_mention"}
+
+        # Handle direct messages
+        if event_type == "message" and event.get("channel_type") == "im":
+            user_id = event.get("user", "")
+            channel = event.get("channel", "")
+            text = event.get("text", "")
+            message_ts = event.get("ts", "")
+            thread_ts = event.get("thread_ts") or message_ts
+
+            # React with thinking face to show we're working on it
+            if message_ts:
+                await add_reaction(channel, message_ts, "thinking_face")
+
+            await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
+
+            return {"status": "accepted", "event": "message.im"}
+
+        # Handle thread replies in threads where the bot has participated.
+        # When VibeTeam participates in a thread (via app_mention or trigger),
+        # subsequent user messages in the thread should be delivered to agents —
+        # even without an explicit @mention of the bot.
+        # We check two sources: in-memory subscriptions (fast) and, as a fallback,
+        # the Slack thread history (stateless, survives pod restarts).
+        thread_handler_match = (
+            event_type == "message"
+            and not is_bot_message
+            and event.get("thread_ts")
+            and event.get("channel_type") != "im"
+        )
+        logger.info(
+            f"Thread handler check: match={thread_handler_match}, "
+            f"event_type={event_type}, is_bot={is_bot_message}, "
+            f"thread_ts={event.get('thread_ts')}, "
+            f"channel_type={event.get('channel_type')}, "
+            f"user={event.get('user')}, text={event.get('text', '')[:80]}"
+        )
+        if thread_handler_match:
+            user_id = event.get("user", "")
+            channel = event.get("channel", "")
+            text = event.get("text", "")
+            message_ts = event.get("ts", "")
+            thread_ts = event.get("thread_ts", "")
+
+            # Fast path: check in-memory subscriptions
+            message_router = get_message_router()
+            subscriptions = await message_router.get_subscriptions(
+                source="slack",
+                thread_id=thread_ts,
+            )
+            logger.info(
+                f"Thread {thread_ts}: subscriptions={bool(subscriptions)}, "
+                f"checking bot participation..."
+            )
+
+            # Slow path: if no subscriptions found (e.g. after pod restart),
+            # check the actual Slack thread to see if the bot has replied before.
+            participated = bool(subscriptions)
+            if not participated:
+                participated = await bot_participated_in_thread(channel, thread_ts)
+                logger.info(f"Thread {thread_ts}: bot_participated={participated}")
+                if participated:
+                    logger.info(
+                        f"No subscriptions for thread {thread_ts}, but bot "
+                        f"participated in thread history. Processing message."
+                    )
+
+            if participated:
+                if subscriptions:
+                    logger.info(
+                        f"Thread {thread_ts} has subscribed agents: "
+                        f"{[s.agent_role for s in subscriptions]}. Processing message."
+                    )
+
+                if message_ts:
+                    await add_reaction(channel, message_ts, "thinking_face")
+
+                await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
+
+                return {"status": "accepted", "event": "message.subscribed_thread"}
+
+        # Handle bot messages with role mentions in channels (handoffs and eval)
+        # IMPORTANT: Bot messages posted by OUR OWN bot (via callback handler) that
+        # contain @RoleName handoff mentions should NOT be re-processed here, because
+        # the callback handler (handle_agent_callback) already submits handoff jobs.
+        # Only process bot messages from OTHER bots (e.g., eval script trigger API)
+        # or external integrations.
+        if event_type == "message" and is_bot_message:
+            channel = event.get("channel", "")
+            text = event.get("text", "")
+            message_ts = event.get("ts", "")
+            thread_ts = event.get("thread_ts") or message_ts
+            bot_id = event.get("bot_id", "")
+
+            # Check if this message was posted by our own bot (self-posted handoff).
+            # Our bot's messages from the callback handler contain a "[RoleName]" prefix.
+            # The callback handler already processes handoffs in the response, so
+            # re-processing here would cause duplicate agent executions.
+            is_self_bot_message = False
+            if text:
+                # Our callback handler formats messages as "[DisplayName] ..." or
+                # "[DisplayName:model] ...". If the message starts with this pattern
+                # and is in a thread, it's a response we posted — not a new request.
+                import re as _re
+
+                self_bot_pattern = _re.match(r"^\[[\w:.\-]+\]\s", text)
+                if self_bot_pattern and thread_ts and thread_ts != message_ts:
+                    is_self_bot_message = True
+                    logger.info(
+                        f"Skipping self-posted bot message with role mention "
+                        f"(handoff already handled by callback): {text[:80]}..."
+                    )
+
+            if is_self_bot_message:
+                return {"status": "ignored", "reason": "self_bot_handoff_already_handled"}
+
+            user_id = bot_id or "bot"
+
+            # React with thinking face to show we're processing the message
+            if message_ts:
+                await add_reaction(channel, message_ts, "thinking_face")
+
+            await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
+
+            return {"status": "accepted", "event": "message.bot_with_role_mention"}
+
+        logger.info(
+            f"Event fell through all handlers: event_type={event_type}, "
+            f"is_bot_message={is_bot_message}, "
+            f"has_thread_ts={bool(event.get('thread_ts'))}, "
+            f"channel_type={event.get('channel_type')}"
+        )
+        return {"status": "ignored", "event": event_type}
+
+    except Exception as e:
+        logger.exception(f"Failed to process Slack event: {e}")
+        return {"status": "error", "detail": str(e)}
+
+
 @router.post("/slack/events")
 async def handle_slack_events(
     request: Request,
     x_slack_request_timestamp: str = Header(None, alias="X-Slack-Request-Timestamp"),
     x_slack_signature: str = Header(None, alias="X-Slack-Signature"),
+    x_slack_retry_num: str | None = Header(None, alias="X-Slack-Retry-Num"),
+    x_slack_retry_reason: str | None = Header(None, alias="X-Slack-Retry-Reason"),
 ) -> dict[str, Any]:
     """Handle incoming Slack events."""
     payload_bytes = await request.body()
@@ -1366,187 +1608,38 @@ async def handle_slack_events(
         logger.warning("Invalid Slack signature")
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    # Handle events
     event = payload.get("event", {})
     event_type = event.get("type")
+    event_key = _slack_event_key(payload, event)
 
-    logger.info(
-        f"Received Slack event: {event_type}, "
-        f"subtype={event.get('subtype')}, "
-        f"thread_ts={bool(event.get('thread_ts'))}, "
-        f"channel_type={event.get('channel_type')}"
-    )
-
-    # Handle bot messages: process if they contain role mentions (handoffs/eval)
-    # Per requirements: "Bot Messages: Router processes bot's own messages to detect handoffs"
-    is_bot_message = event.get("bot_id") or event.get("subtype") == "bot_message"
-    if is_bot_message:
-        text = event.get("text", "")
-        message_router = get_message_router()
-        has_role_mention = bool(message_router.parse_role_mentions(text))
-        if not has_role_mention:
-            # Ignore bot messages without role mentions to prevent loops
-            return {"status": "ignored", "reason": "bot_message_no_role_mention"}
-        # Continue processing - bot message has a role mention (handoff or eval)
-        logger.info(f"Processing bot message with role mention: {text[:80]}...")
-
-    # Handle app_mention events
-    if event_type == "app_mention":
-        user_id = event.get("user", "")
-        channel = event.get("channel", "")
-        text = event.get("text", "")
-        message_ts = event.get("ts", "")
-        thread_ts = event.get("thread_ts") or message_ts
-
-        # Remove the bot mention from the text
-        clean_text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
-
-        # React with thinking face to show we're working on it
-        await add_reaction(channel, message_ts, "thinking_face")
-
-        # Process in background
-        asyncio.create_task(
-            run_agent_for_slack(clean_text, channel, thread_ts, user_id, message_ts=message_ts)
-        )
-
-        return {"status": "accepted", "event": "app_mention"}
-
-    # Handle direct messages
-    if event_type == "message" and event.get("channel_type") == "im":
-        user_id = event.get("user", "")
-        channel = event.get("channel", "")
-        text = event.get("text", "")
-        message_ts = event.get("ts", "")
-        thread_ts = event.get("thread_ts") or message_ts
-
-        # React with thinking face to show we're working on it
-        await add_reaction(channel, message_ts, "thinking_face")
-
-        # Process in background
-        asyncio.create_task(
-            run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
-        )
-
-        return {"status": "accepted", "event": "message.im"}
-
-    # Handle thread replies in threads where the bot has participated.
-    # When VibeTeam participates in a thread (via app_mention or trigger),
-    # subsequent user messages in the thread should be delivered to agents —
-    # even without an explicit @mention of the bot.
-    # We check two sources: in-memory subscriptions (fast) and, as a fallback,
-    # the Slack thread history (stateless, survives pod restarts).
-    thread_handler_match = (
-        event_type == "message"
-        and not is_bot_message
-        and event.get("thread_ts")
-        and event.get("channel_type") != "im"
-    )
-    logger.info(
-        f"Thread handler check: match={thread_handler_match}, "
-        f"event_type={event_type}, is_bot={is_bot_message}, "
-        f"thread_ts={event.get('thread_ts')}, "
-        f"channel_type={event.get('channel_type')}, "
-        f"user={event.get('user')}, text={event.get('text', '')[:80]}"
-    )
-    if thread_handler_match:
-        user_id = event.get("user", "")
-        channel = event.get("channel", "")
-        text = event.get("text", "")
-        message_ts = event.get("ts", "")
-        thread_ts = event.get("thread_ts", "")
-
-        # Fast path: check in-memory subscriptions
-        message_router = get_message_router()
-        subscriptions = await message_router.get_subscriptions(
-            source="slack",
-            thread_id=thread_ts,
-        )
+    if _is_duplicate_slack_event(event_key):
         logger.info(
-            f"Thread {thread_ts}: subscriptions={bool(subscriptions)}, "
-            f"checking bot participation..."
+            f"Ignoring duplicate Slack event: key={event_key}, "
+            f"retry_num={x_slack_retry_num}, retry_reason={x_slack_retry_reason}"
+        )
+        return {"status": "ignored", "event": event_type, "reason": "duplicate_event"}
+
+    if x_slack_retry_num:
+        logger.info(
+            f"Slack retry header received: retry_num={x_slack_retry_num}, "
+            f"retry_reason={x_slack_retry_reason}"
         )
 
-        # Slow path: if no subscriptions found (e.g. after pod restart),
-        # check the actual Slack thread to see if the bot has replied before.
-        participated = bool(subscriptions)
-        if not participated:
-            participated = await bot_participated_in_thread(channel, thread_ts)
-            logger.info(f"Thread {thread_ts}: bot_participated={participated}")
-            if participated:
-                logger.info(
-                    f"No subscriptions for thread {thread_ts}, but bot "
-                    f"participated in thread history. Processing message."
-                )
+    # Process in background to avoid Slack retrying due to slow responses
+    _schedule_background(_process_slack_event(payload))
 
-        if participated:
-            if subscriptions:
-                logger.info(
-                    f"Thread {thread_ts} has subscribed agents: "
-                    f"{[s.agent_role for s in subscriptions]}. Processing message."
-                )
+    # Return immediately to satisfy Slack's 3s requirement
+    event_label = event_type or "unknown"
+    if event_type == "message":
+        channel_type = event.get("channel_type")
+        if channel_type == "im":
+            event_label = "message.im"
+        elif event.get("bot_id") or event.get("subtype") == "bot_message":
+            event_label = "message.bot_with_role_mention"
+        elif event.get("thread_ts"):
+            event_label = "message.thread"
 
-            await add_reaction(channel, message_ts, "thinking_face")
-
-            asyncio.create_task(
-                run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
-            )
-
-            return {"status": "accepted", "event": "message.subscribed_thread"}
-
-    # Handle bot messages with role mentions in channels (handoffs and eval)
-    # IMPORTANT: Bot messages posted by OUR OWN bot (via callback handler) that
-    # contain @RoleName handoff mentions should NOT be re-processed here, because
-    # the callback handler (handle_agent_callback) already submits handoff jobs.
-    # Only process bot messages from OTHER bots (e.g., eval script trigger API)
-    # or external integrations.
-    if event_type == "message" and is_bot_message:
-        channel = event.get("channel", "")
-        text = event.get("text", "")
-        message_ts = event.get("ts", "")
-        thread_ts = event.get("thread_ts") or message_ts
-        bot_id = event.get("bot_id", "")
-
-        # Check if this message was posted by our own bot (self-posted handoff).
-        # Our bot's messages from the callback handler contain a "[RoleName]" prefix.
-        # The callback handler already processes handoffs in the response, so
-        # re-processing here would cause duplicate agent executions.
-        is_self_bot_message = False
-        if text:
-            # Our callback handler formats messages as "[DisplayName] ..." or
-            # "[DisplayName:model] ...". If the message starts with this pattern
-            # and is in a thread, it's a response we posted — not a new request.
-            import re as _re
-
-            self_bot_pattern = _re.match(r"^\[[\w:.\-]+\]\s", text)
-            if self_bot_pattern and thread_ts and thread_ts != message_ts:
-                is_self_bot_message = True
-                logger.info(
-                    f"Skipping self-posted bot message with role mention "
-                    f"(handoff already handled by callback): {text[:80]}..."
-                )
-
-        if is_self_bot_message:
-            return {"status": "ignored", "reason": "self_bot_handoff_already_handled"}
-
-        user_id = bot_id or "bot"
-
-        # React with thinking face to show we're processing the message
-        await add_reaction(channel, message_ts, "thinking_face")
-
-        # Process in background
-        asyncio.create_task(
-            run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
-        )
-
-        return {"status": "accepted", "event": "message.bot_with_role_mention"}
-
-    logger.info(
-        f"Event fell through all handlers: event_type={event_type}, "
-        f"is_bot_message={is_bot_message}, "
-        f"has_thread_ts={bool(event.get('thread_ts'))}, "
-        f"channel_type={event.get('channel_type')}"
-    )
-    return {"status": "ignored", "event": event_type}
+    return {"status": "accepted", "event": event_label}
 
 
 @router.post("/slack/trigger")

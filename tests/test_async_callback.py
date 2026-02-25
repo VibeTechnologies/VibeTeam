@@ -10,6 +10,8 @@ Tests the complete async flow:
 
 from __future__ import annotations
 
+import asyncio
+import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,6 +20,7 @@ from fastapi.testclient import TestClient
 
 from vibeteam.gateway.routes.slack import (
     _build_task_prompt,
+    _process_slack_event,
     classify_task_template,
 )
 
@@ -831,6 +834,7 @@ class TestSlackEventsPassMessageTs:
             event["bot_id"] = "B_BOT"
         return {
             "type": "event_callback",
+            "event_id": f"Ev_{uuid.uuid4().hex}",
             "event": event,
         }
 
@@ -840,10 +844,6 @@ class TestSlackEventsPassMessageTs:
 
         with (
             patch(
-                "vibeteam.gateway.routes.slack.verify_slack_signature",
-                return_value=True,
-            ),
-            patch(
                 "vibeteam.gateway.routes.slack.add_reaction",
                 new_callable=AsyncMock,
             ),
@@ -852,17 +852,7 @@ class TestSlackEventsPassMessageTs:
                 new_callable=AsyncMock,
             ) as mock_run,
         ):
-            response = test_client.post(
-                "/slack/events",
-                json=payload,
-                headers={
-                    "X-Slack-Request-Timestamp": "123",
-                    "X-Slack-Signature": "v0=test",
-                },
-            )
-
-            assert response.status_code == 200
-            assert response.json()["event"] == "app_mention"
+            asyncio.run(_process_slack_event(payload))
 
             # Verify message_ts was passed
             mock_run.assert_called_once()
@@ -876,10 +866,6 @@ class TestSlackEventsPassMessageTs:
 
         with (
             patch(
-                "vibeteam.gateway.routes.slack.verify_slack_signature",
-                return_value=True,
-            ),
-            patch(
                 "vibeteam.gateway.routes.slack.add_reaction",
                 new_callable=AsyncMock,
             ),
@@ -888,17 +874,7 @@ class TestSlackEventsPassMessageTs:
                 new_callable=AsyncMock,
             ) as mock_run,
         ):
-            response = test_client.post(
-                "/slack/events",
-                json=payload,
-                headers={
-                    "X-Slack-Request-Timestamp": "123",
-                    "X-Slack-Signature": "v0=test",
-                },
-            )
-
-            assert response.status_code == 200
-            assert response.json()["event"] == "message.im"
+            asyncio.run(_process_slack_event(payload))
 
             mock_run.assert_called_once()
             assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"
@@ -911,10 +887,6 @@ class TestSlackEventsPassMessageTs:
 
         with (
             patch(
-                "vibeteam.gateway.routes.slack.verify_slack_signature",
-                return_value=True,
-            ),
-            patch(
                 "vibeteam.gateway.routes.slack.add_reaction",
                 new_callable=AsyncMock,
             ),
@@ -923,17 +895,7 @@ class TestSlackEventsPassMessageTs:
                 new_callable=AsyncMock,
             ) as mock_run,
         ):
-            response = test_client.post(
-                "/slack/events",
-                json=payload,
-                headers={
-                    "X-Slack-Request-Timestamp": "123",
-                    "X-Slack-Signature": "v0=test",
-                },
-            )
-
-            assert response.status_code == 200
-            assert response.json()["event"] == "message.bot_with_role_mention"
+            asyncio.run(_process_slack_event(payload))
 
             mock_run.assert_called_once()
             assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"
