@@ -32,6 +32,7 @@ def create_progress_callback(
     job_id: str,
     callback_metadata: dict[str, Any],
     start_time: float | None = None,
+    on_progress: Callable[[], None] | None = None,
 ) -> Callable[[Any], None]:
     """Create a callback function that sends progress updates to the gateway.
 
@@ -90,6 +91,13 @@ def create_progress_callback(
             summary = summary[:197] + "..."
 
         elapsed = int(now - _start)
+
+        # Notify caller (e.g., update heartbeat for idle timeout logic)
+        if on_progress:
+            try:
+                on_progress()
+            except Exception:
+                pass
 
         # Send progress update (best-effort, non-blocking within this sync context)
         _send_progress_sync(

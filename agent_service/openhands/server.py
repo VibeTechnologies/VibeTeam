@@ -106,7 +106,10 @@ class AsyncRunRequest(BaseModel):
     )
     execution_timeout: int = Field(
         600,
-        description="Overall execution timeout in seconds (default: 600 = 10 min)",
+        description=(
+            "Execution timeout in seconds. If progress updates are enabled, this is treated "
+            "as an idle timeout (no progress within the window). Otherwise it is a hard cap."
+        ),
     )
     max_iterations: int = Field(
         30,
@@ -365,7 +368,7 @@ async def _execute_and_callback(
     timeout, it sends the result to request.callback_url.
 
     Features:
-    - Overall execution timeout (default 600s / 10 min) prevents infinite hangs
+    - Timeout is treated as idle timeout when progress updates are enabled
     - On timeout, extracts partial results from whatever events exist
     - Sends progress updates to request.progress_url if provided
     - Concurrency limited by semaphore to prevent resource exhaustion
@@ -382,6 +385,21 @@ async def _execute_and_callback(
         start_time = time.time()
         context_id = request.context_id or str(uuid.uuid4())[:8]
         execution_timeout = request.execution_timeout
+        last_progress: dict[str, float] = {"time": start_time}
+        progress_enabled = bool(request.progress_url)
+
+        def _progress_heartbeat() -> None:
+            last_progress["time"] = time.time()
+
+        async def _run_with_idle_timeout(run_fn):
+            task = asyncio.create_task(asyncio.to_thread(run_fn))
+            while True:
+                done, _ = await asyncio.wait({task}, timeout=1.0)
+                if done:
+                    return done.pop().result()
+                if time.time() - last_progress["time"] > execution_timeout:
+                    task.cancel()
+                    raise asyncio.TimeoutError()
 
         try:
             team = get_team()
@@ -396,9 +414,8 @@ async def _execute_and_callback(
                 # Wrap agent.run in asyncio.wait_for to enforce overall timeout.
                 # This prevents the agent from hanging forever if an LLM call gets stuck.
                 try:
-                    result = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            agent.run,
+                    def _run_agent():
+                        return agent.run(
                             task=request.task,
                             context_type=request.context_type,
                             context_id=context_id,
@@ -411,14 +428,21 @@ async def _execute_and_callback(
                             progress_url=request.progress_url,
                             job_id=job_id,
                             callback_metadata=request.callback_metadata,
-                        ),
-                        timeout=execution_timeout,
-                    )
+                            progress_heartbeat=_progress_heartbeat if progress_enabled else None,
+                        )
+
+                    if progress_enabled:
+                        result = await _run_with_idle_timeout(_run_agent)
+                    else:
+                        result = await asyncio.wait_for(
+                            asyncio.to_thread(_run_agent),
+                            timeout=execution_timeout,
+                        )
                 except asyncio.TimeoutError:
                     elapsed = int(time.time() - start_time)
                     logger.error(
                         f"[job={job_id}] Agent execution timed out after {elapsed}s "
-                        f"(limit={execution_timeout}s)"
+                        f"(limit={execution_timeout}s, progress_enabled={progress_enabled})"
                     )
                     agent_role = role or "team"
 
@@ -436,6 +460,7 @@ async def _execute_and_callback(
                         metadata={
                             "latency_ms": elapsed * 1000,
                             "timeout_seconds": execution_timeout,
+                            "timeout_mode": "idle" if progress_enabled else "absolute",
                             "timed_out": True,
                         },
                         callback_metadata=request.callback_metadata,
