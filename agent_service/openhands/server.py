@@ -326,7 +326,7 @@ async def run_task(request: RunRequest):
         )
 
     except Exception as e:
-        logger.error(f"Task execution failed: {e}")
+        logger.exception("Task execution failed")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -613,7 +613,7 @@ async def _execute_and_callback(
             )
 
         except Exception as e:
-            logger.error(f"[job={job_id}] Agent execution failed: {e}")
+            logger.exception(f"[job={job_id}] Agent execution failed")
             payload = CallbackPayload(
                 job_id=job_id,
                 status="failed",

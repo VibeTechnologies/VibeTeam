@@ -16,6 +16,7 @@ Note: OpenHands SDK v1.2.1 uses:
 - LocalConversation: agent, workspace (both required)
 """
 
+import logging
 import os
 import tempfile
 from typing import Any
@@ -82,6 +83,8 @@ When posting to social media:
 2. Take a screenshot for approval (if needed)
 3. Confirm before publishing
 """
+
+logger = logging.getLogger(__name__)
 
 
 class OpenHandsMarketingManager:
@@ -274,7 +277,27 @@ class OpenHandsMarketingManager:
             browser_context = self._inject_browser_context(task)
 
             full_task = f"{MARKETING_MANAGER_CONTEXT_FALLBACK}\n\n{browser_context}Task: {task}"
-            response = conversation.ask_agent(full_task)
+            response = ""
+            try:
+                # Use the full agentic loop with tools
+                conversation.send_message(full_task)
+                conversation.run()
+            except Exception:
+                logger.exception("MarketingManager conversation.run() failed")
+                # Attempt to salvage a response from conversation events
+                try:
+                    from .utils import extract_response_from_events
+
+                    response = extract_response_from_events(conversation.state.events)
+                except Exception:
+                    logger.exception("Failed to extract response from events after run failure")
+                if not response:
+                    raise
+            else:
+                # Extract the agent's final response from conversation events
+                from .utils import extract_response_from_events
+
+                response = extract_response_from_events(conversation.state.events)
 
             session.add_message("user", task)
             session.add_message("assistant", response)
