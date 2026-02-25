@@ -1378,7 +1378,10 @@ async def run_evaluation(
                     os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2"),
                 )
                 resolved_model = resolve_azure_model(
-                    raw_model, api_base=api_base, api_version=api_version
+                    raw_model,
+                    api_base=api_base,
+                    api_version=api_version,
+                    allow_responses_models=False,
                 )
                 # Azure deployment names should NOT include "azure/" prefix
                 if resolved_model and resolved_model.startswith("azure/"):

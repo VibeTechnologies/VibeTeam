@@ -128,7 +128,10 @@ def configure_textcontent_json_serialization() -> None:
             return str(obj)
 
         def _safe_dumps(obj, **kwargs):
-            return _json.dumps(obj, default=_safe_default, **kwargs)
+            # Respect caller-provided default if present
+            if "default" not in kwargs:
+                kwargs["default"] = _safe_default
+            return _json.dumps(obj, **kwargs)
 
         # Patch the agent module's json.dumps used in debug logging
         agent_mod.json.dumps = _safe_dumps  # type: ignore[assignment]
