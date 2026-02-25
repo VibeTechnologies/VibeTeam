@@ -415,9 +415,7 @@ async def _execute_and_callback(
             team = get_team()
             role = request.role
 
-            timeout_log = (
-                f"{execution_timeout}s" if execution_timeout is not None else "disabled"
-            )
+            timeout_log = f"{execution_timeout}s" if execution_timeout is not None else "disabled"
             logger.info(
                 f"[job={job_id}] Starting agent execution: role={role}, timeout={timeout_log}"
             )
@@ -427,6 +425,7 @@ async def _execute_and_callback(
                 # Wrap agent.run in asyncio.wait_for to enforce overall timeout.
                 # This prevents the agent from hanging forever if an LLM call gets stuck.
                 try:
+
                     def _run_agent():
                         return agent.run(
                             task=request.task,

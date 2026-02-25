@@ -91,9 +91,7 @@ def resolve_azure_model(
 
     normalized = model.split("/", 1)[1] if model.startswith("azure/") else model
     api_base = _normalize_api_base(
-        api_base
-        or os.getenv("AZURE_OPENAI_ENDPOINT")
-        or os.getenv("AZURE_API_BASE")
+        api_base or os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_API_BASE")
     )
 
     if not api_base or "openai.azure.com" not in api_base:

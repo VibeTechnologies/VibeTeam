@@ -1445,7 +1445,9 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             if message_ts:
                 await add_reaction(channel, message_ts, "thinking_face")
 
-            await run_agent_for_slack(clean_text, channel, thread_ts, user_id, message_ts=message_ts)
+            await run_agent_for_slack(
+                clean_text, channel, thread_ts, user_id, message_ts=message_ts
+            )
 
             return {"status": "accepted", "event": "app_mention"}
 
