@@ -970,6 +970,11 @@ async def _submit_agent_async(
         progress_url=progress_url,
         skip_context_injection=skip_context,
         max_iterations=max_iterations,
+        execution_timeout=(
+            config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS
+            if config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS > 0
+            else None
+        ),
         callback_metadata={
             "channel": channel,
             "thread_ts": thread_ts,

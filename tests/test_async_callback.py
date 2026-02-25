@@ -691,6 +691,7 @@ class TestSubmitAgentAsync:
             patch("vibeteam.gateway.routes.slack.config") as mock_config,
         ):
             mock_config.GATEWAY_URL = "http://vibeteam-gateway:8080"
+            mock_config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS = 0
 
             await _submit_agent_async(
                 role="support_engineer",
@@ -738,6 +739,7 @@ class TestSubmitAgentAsync:
         ):
             mock_config.GATEWAY_URL = "http://vibeteam-gateway:8080"
             mock_config.CALLBACK_SECRET = "super-secret-value"
+            mock_config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS = 0
 
             await _submit_agent_async(
                 role="support_engineer",
@@ -781,6 +783,7 @@ class TestSubmitAgentAsync:
         ):
             mock_config.GATEWAY_URL = "http://vibeteam-gateway:8080"
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
+            mock_config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS = 0
 
             await _submit_agent_async(
                 role="support_engineer",
@@ -1350,6 +1353,7 @@ class TestProgressUrlFlow:
         ):
             mock_config.GATEWAY_URL = "http://vibeteam-gateway:8080"
             mock_config.CALLBACK_SECRET = ""
+            mock_config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS = 0
 
             await _submit_agent_async(
                 role="support_engineer",

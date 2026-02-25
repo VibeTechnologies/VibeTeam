@@ -104,11 +104,12 @@ class AsyncRunRequest(BaseModel):
         None,
         description="URL to POST progress updates to while agent is working (optional)",
     )
-    execution_timeout: int = Field(
+    execution_timeout: int | None = Field(
         600,
         description=(
             "Execution timeout in seconds. If progress updates are enabled, this is treated "
-            "as an idle timeout (no progress within the window). Otherwise it is a hard cap."
+            "as an idle timeout (no progress within the window). Otherwise it is a hard cap. "
+            "Use 0 or null to disable timeout enforcement."
         ),
     )
     max_iterations: int = Field(
@@ -385,8 +386,15 @@ async def _execute_and_callback(
         start_time = time.time()
         context_id = request.context_id or str(uuid.uuid4())[:8]
         execution_timeout = request.execution_timeout
+        if execution_timeout is not None and execution_timeout <= 0:
+            execution_timeout = None
         last_progress: dict[str, float] = {"time": start_time}
         progress_enabled = bool(request.progress_url)
+        timeout_provided = "execution_timeout" in request.model_fields_set
+        if progress_enabled and not timeout_provided:
+            # No hard/idle timeout by default when progress updates are enabled.
+            # This avoids canceling long-running jobs that are actively working.
+            execution_timeout = None
 
         def _progress_heartbeat() -> None:
             last_progress["time"] = time.time()
@@ -397,6 +405,8 @@ async def _execute_and_callback(
                 done, _ = await asyncio.wait({task}, timeout=1.0)
                 if done:
                     return done.pop().result()
+                if execution_timeout is None:
+                    continue
                 if time.time() - last_progress["time"] > execution_timeout:
                     task.cancel()
                     raise asyncio.TimeoutError()
@@ -405,8 +415,11 @@ async def _execute_and_callback(
             team = get_team()
             role = request.role
 
+            timeout_log = (
+                f"{execution_timeout}s" if execution_timeout is not None else "disabled"
+            )
             logger.info(
-                f"[job={job_id}] Starting agent execution: role={role}, timeout={execution_timeout}s"
+                f"[job={job_id}] Starting agent execution: role={role}, timeout={timeout_log}"
             )
 
             if role:
@@ -434,10 +447,13 @@ async def _execute_and_callback(
                     if progress_enabled:
                         result = await _run_with_idle_timeout(_run_agent)
                     else:
-                        result = await asyncio.wait_for(
-                            asyncio.to_thread(_run_agent),
-                            timeout=execution_timeout,
-                        )
+                        if execution_timeout is None:
+                            result = await asyncio.to_thread(_run_agent)
+                        else:
+                            result = await asyncio.wait_for(
+                                asyncio.to_thread(_run_agent),
+                                timeout=execution_timeout,
+                            )
                 except asyncio.TimeoutError:
                     elapsed = int(time.time() - start_time)
                     logger.error(
@@ -447,13 +463,17 @@ async def _execute_and_callback(
                     agent_role = role or "team"
 
                     # Send timeout callback
+                    timeout_detail = (
+                        f"No progress for {execution_timeout} seconds (idle timeout). "
+                        if progress_enabled
+                        else f"Exceeded {execution_timeout} seconds (hard timeout). "
+                    )
                     payload = CallbackPayload(
                         job_id=job_id,
                         status="timeout",
                         error=f"Agent execution timed out after {elapsed}s",
                         response=(
-                            f"I was working on this task but ran out of time after "
-                            f"{elapsed} seconds. The operation was cancelled. "
+                            f"I was working on this task but timed out. {timeout_detail}"
                             f"Please try again or break the task into smaller steps."
                         ),
                         agents_used=[agent_role],

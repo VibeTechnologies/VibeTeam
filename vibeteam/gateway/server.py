@@ -50,6 +50,9 @@ class GatewayConfig:
     # Slack configuration
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+    SLACK_AGENT_IDLE_TIMEOUT_SECONDS = int(
+        os.environ.get("SLACK_AGENT_IDLE_TIMEOUT_SECONDS", "0")
+    )
 
     # Trigger API authentication (for /slack/trigger, /discord/trigger, etc.)
     # Set this to a shared secret to protect trigger endpoints from unauthorized access.
@@ -287,6 +290,7 @@ async def call_agent_service_async(
     progress_url: str | None = None,
     skip_context_injection: bool = False,
     max_iterations: int = 30,
+    execution_timeout: int | None = None,
 ) -> dict[str, Any]:
     """
     Submit a task to the agent service asynchronously.
@@ -308,6 +312,7 @@ async def call_agent_service_async(
             injection. Used for focused tasks like health checks where the task
             prompt already contains all necessary instructions.
         max_iterations: Maximum agent iterations before forced stop (default: 30)
+        execution_timeout: Optional execution/idle timeout passed to agent service
 
     Returns:
         {"job_id": "...", "status": "accepted"} or {"error": "..."}
@@ -337,6 +342,8 @@ async def call_agent_service_async(
         payload["use_tools"] = True
         payload["skip_context_injection"] = skip_context_injection
         payload["max_iterations"] = max_iterations
+        if execution_timeout is not None:
+            payload["execution_timeout"] = execution_timeout
 
     # Pass progress_url so agent service can send intermediate updates
     if progress_url:

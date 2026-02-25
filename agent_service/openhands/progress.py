@@ -60,7 +60,14 @@ def create_progress_callback(
         """
         event_type = type(event).__name__
 
-        # Only report on ActionEvents (tool calls), not observations or messages
+        # Notify caller (e.g., update heartbeat for idle timeout logic)
+        if on_progress:
+            try:
+                on_progress()
+            except Exception:
+                pass
+
+        # Only report to Slack on ActionEvents (tool calls), not observations or messages
         if event_type != "ActionEvent":
             return
 
@@ -91,13 +98,6 @@ def create_progress_callback(
             summary = summary[:197] + "..."
 
         elapsed = int(now - _start)
-
-        # Notify caller (e.g., update heartbeat for idle timeout logic)
-        if on_progress:
-            try:
-                on_progress()
-            except Exception:
-                pass
 
         # Send progress update (best-effort, non-blocking within this sync context)
         _send_progress_sync(
