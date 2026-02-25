@@ -9,7 +9,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
+    ca-certificates \
     build-essential \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI for agent operations
@@ -27,11 +30,11 @@ RUN KUBECTL_VERSION="v1.31.4" \
     && rm kubectl
 
 # Copy and install requirements first (cached layer)
-COPY agents/crewai/requirements.txt /tmp/requirements.txt
+COPY agent_service/crewai/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Copy dev entrypoint
-COPY agents/crewai/entrypoint-dev.sh /entrypoint-dev.sh
+COPY agent_service/crewai/entrypoint-dev.sh /entrypoint-dev.sh
 RUN chmod +x /entrypoint-dev.sh
 
 # Environment variables
