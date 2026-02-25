@@ -50,9 +50,7 @@ class GatewayConfig:
     # Slack configuration
     SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET", "")
     SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-    SLACK_AGENT_IDLE_TIMEOUT_SECONDS = int(
-        os.environ.get("SLACK_AGENT_IDLE_TIMEOUT_SECONDS", "0")
-    )
+    SLACK_AGENT_IDLE_TIMEOUT_SECONDS = int(os.environ.get("SLACK_AGENT_IDLE_TIMEOUT_SECONDS", "0"))
 
     # Trigger API authentication (for /slack/trigger, /discord/trigger, etc.)
     # Set this to a shared secret to protect trigger endpoints from unauthorized access.
