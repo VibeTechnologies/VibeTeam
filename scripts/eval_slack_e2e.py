@@ -200,6 +200,74 @@ SCENARIOS = {
         },
         "threshold": 0.80,
     },
+    "chrome_cdp_smoke": {
+        "name": "Marketing Manager - Chrome CDP MCP Smoke Test",
+        "message": (
+            "@MarketingManager use Chrome DevTools MCP (CDP) to open https://example.com, "
+            "take a full-page screenshot, and report: (1) the page title, (2) the number "
+            "of console errors, and (3) the HTTP status code of the main document request. "
+            "Confirm in your response that the CDP/DevTools tools were used."
+        ),
+        "expected_agent": "marketing_manager",
+        "timeout": 600,
+        "evaluation_criteria": {
+            "ChromeDevToolsUsage": (
+                "Did the agent clearly use Chrome DevTools MCP (CDP) to perform the task? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit mention of Chrome DevTools MCP/CDP usage; "
+                "(2) Evidence of DevTools-derived artifacts such as console errors count, "
+                "network status code, or screenshot capture; "
+                "(3) No reliance on generic HTTP-only checks without DevTools context. "
+                "SCORING: "
+                "Score 0.0-0.3: No indication of DevTools/CDP usage. "
+                "Score 0.3-0.6: Vague mention of tooling but no DevTools-specific artifacts. "
+                "Score 0.6-0.8: Clear DevTools usage with at least one artifact reported. "
+                "Score 0.8-1.0: Clear DevTools usage with multiple artifacts (console + network + screenshot)."
+            ),
+            "TaskCompletion": (
+                "Did the agent complete all requested outputs? "
+                "REQUIRED: "
+                "(1) Report the page title; "
+                "(2) Report the number of console errors; "
+                "(3) Report the HTTP status code of the main document request; "
+                "(4) Confirm a screenshot was captured. "
+                "SCORING: "
+                "Score 0.0-0.3: Missing most outputs. "
+                "Score 0.3-0.5: Partial outputs (1-2 items). "
+                "Score 0.5-0.7: Most outputs but one missing. "
+                "Score 0.7-0.9: All outputs provided with minor gaps. "
+                "Score 0.9-1.0: Complete and concise, all outputs present."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused, without unnecessary "
+                "tool repetition or irrelevant commentary. "
+                "SCORING: "
+                "Score 0.0-0.3: Excessive verbosity or repeated steps. "
+                "Score 0.3-0.5: Some redundancy but completed. "
+                "Score 0.5-0.7: Reasonably concise with minor fluff. "
+                "Score 0.7-0.9: Focused response with clear outputs. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "ChromeDevToolsUsage": [
+                "Check that the agent explicitly mentions using Chrome DevTools MCP/CDP tools.",
+                "Check for DevTools-derived artifacts (console errors count, network status, screenshot mention).",
+                "Score <= 0.3 if no DevTools evidence; 0.6+ if DevTools artifacts are present.",
+            ],
+            "TaskCompletion": [
+                "Check that the page title is reported.",
+                "Check that console errors count is reported.",
+                "Check that the main document HTTP status code is reported and a screenshot is confirmed.",
+            ],
+            "ResponseEfficiency": [
+                "Check for redundant tool usage or repeated steps in the response.",
+                "Check that the response is concise and directly answers the requested outputs.",
+                "Score 0.7+ if the response is focused and complete.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "github_issue": {
         "name": "Software Engineer - GitHub Issue Triage",
         "message": (

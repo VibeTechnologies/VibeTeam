@@ -23,6 +23,12 @@ class MCPServerConfig:
 
 
 # MCP Server Configurations
+CHROME_DEVTOOLS_BROWSER_URL = os.getenv("CHROME_DEVTOOLS_BROWSER_URL", "")
+CHROME_MCP_ENABLED = bool(CHROME_DEVTOOLS_BROWSER_URL)
+_chrome_args = ["-y", "chrome-devtools-mcp@latest"]
+if CHROME_DEVTOOLS_BROWSER_URL:
+    _chrome_args.append(f"--browser-url={CHROME_DEVTOOLS_BROWSER_URL}")
+
 MCP_SERVERS = {
     # Gmail - for SupportEngineer
     "gmail": MCPServerConfig(
@@ -36,10 +42,10 @@ MCP_SERVERS = {
         args=["-y", "@anthropic/mcp-server-google-calendar"],
         env={"GCAL_CREDENTIALS_PATH": os.getenv("GCAL_CREDENTIALS_PATH", "credentials.json")},
     ),
-    # Chrome DevTools - for MarketingManager
+    # Chrome DevTools - for browser automation via MCP
     "chrome": MCPServerConfig(
         command="npx",
-        args=["-y", "@anthropic/mcp-server-chrome-devtools"],
+        args=_chrome_args,
     ),
     # GitHub - for ReleaseEngineer
     "github": MCPServerConfig(
@@ -117,16 +123,19 @@ class AgentConfig:
 
 
 # Pre-configured agent configs
+_CHROME_SERVER = {"chrome": MCP_SERVERS["chrome"]} if CHROME_MCP_ENABLED else {}
+
 RELEASE_ENGINEER_CONFIG = AgentConfig(
     mcp_servers={
         "github": MCP_SERVERS["github"],
         "filesystem": MCP_SERVERS["filesystem"],
+        **_CHROME_SERVER,
     },
 )
 
 MARKETING_MANAGER_CONFIG = AgentConfig(
     mcp_servers={
-        "chrome": MCP_SERVERS["chrome"],
+        **_CHROME_SERVER,
     },
 )
 
@@ -135,6 +144,7 @@ SUPPORT_ENGINEER_CONFIG = AgentConfig(
         "gmail": MCP_SERVERS["gmail"],
         "gcalendar": MCP_SERVERS["gcalendar"],
         "sentry": MCP_SERVERS["sentry"],
+        **_CHROME_SERVER,
     },
 )
 
@@ -142,12 +152,14 @@ SOFTWARE_ENGINEER_CONFIG = AgentConfig(
     mcp_servers={
         "github": MCP_SERVERS["github"],
         "filesystem": MCP_SERVERS["filesystem"],
+        **_CHROME_SERVER,
     },
 )
 
 PRODUCT_MANAGER_CONFIG = AgentConfig(
     mcp_servers={
         "github": MCP_SERVERS["github"],
+        **_CHROME_SERVER,
     },
 )
 

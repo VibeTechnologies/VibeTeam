@@ -1,0 +1,77 @@
+# Browserless Chrome (CDP) for Chrome DevTools MCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: browserless
+  labels:
+    app: browserless
+    team: vibeteam
+    component: browserless
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: browserless
+  template:
+    metadata:
+      labels:
+        app: browserless
+        team: vibeteam
+        component: browserless
+    spec:
+      containers:
+        - name: browserless
+          image: browserless/chrome:latest
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: PORT
+              value: "3000"
+          resources:
+            requests:
+              cpu: 250m
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+          readinessProbe:
+            httpGet:
+              path: /json/version
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /json/version
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: browserless
+  labels:
+    app: browserless
+    team: vibeteam
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: http
+      name: http
+  selector:
+    app: browserless
