@@ -536,6 +536,96 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "marketing_google_finance_news": {
+        "name": "Marketing Manager - Google Finance News Read (MSFT/NVDA)",
+        "message": (
+            "@MarketingManager use Chrome DevTools MCP (CDP) to open Google Finance and read the latest news "
+            "for MSFT and NVDA. Go to https://www.google.com/finance/quote/MSFT:NASDAQ and "
+            "https://www.google.com/finance/quote/NVDA:NASDAQ, open the News section, and capture the "
+            "top 3 most recent headlines for each ticker (include source and published time as shown). "
+            "Report: per ticker, page title, headlines with source and time, and 1-2 bullet summary of themes. "
+            "Confirm CDP usage and include at least one screenshot capture. Do not use other sources."
+        ),
+        "expected_agent": "marketing_manager",
+        "timeout": 900,
+        "evaluation_criteria": {
+            "ChromeDevToolsUsage": (
+                "Did the agent clearly use Chrome DevTools MCP (CDP) to perform the task? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit mention of Chrome DevTools MCP/CDP usage; "
+                "(2) Evidence of DevTools-derived artifacts such as page titles, "
+                "news headlines with timestamps, or screenshot capture; "
+                "(3) No reliance on generic assumptions without browsing evidence. "
+                "SCORING: "
+                "Score 0.0-0.3: No indication of DevTools/CDP usage. "
+                "Score 0.3-0.6: Vague mention of tooling but no DevTools artifacts. "
+                "Score 0.6-0.8: Clear DevTools usage with at least one artifact. "
+                "Score 0.8-1.0: Clear DevTools usage with multiple artifacts (titles + headlines + screenshot)."
+            ),
+            "GoogleFinanceNewsCoverage": (
+                "Did the agent read Google Finance news for MSFT and NVDA? "
+                "REQUIRED: "
+                "(1) Evidence the Google Finance pages were opened (page titles or explicit mention); "
+                "(2) At least 2 headlines per ticker (3 preferred) listed from Google Finance; "
+                "(3) Each headline includes the source and published time as shown on the page. "
+                "CRITICAL: This test requires reading Google Finance. If the response is generic, "
+                "uses other sources, or claims access was blocked, score 0.3 or lower. "
+                "SCORING: "
+                "Score 0.0-0.3: Missing one ticker or no evidence of reading GF news. "
+                "Score 0.3-0.6: Partial headlines or missing sources/timestamps. "
+                "Score 0.6-0.8: Solid coverage for both tickers with sources/timestamps. "
+                "Score 0.8-1.0: Thorough, clearly drawn from Google Finance for both tickers."
+            ),
+            "TaskCompletion": (
+                "Did the agent complete all requested outputs? "
+                "REQUIRED: "
+                "(1) MSFT and NVDA sections; "
+                "(2) page title per ticker; "
+                "(3) top 3 headlines per ticker with source and time; "
+                "(4) 1-2 bullet summary of common themes; "
+                "(5) confirmation of CDP usage and at least one screenshot capture. "
+                "SCORING: "
+                "Score 0.0-0.3: Missing most outputs. "
+                "Score 0.3-0.5: Partial outputs (1-2 items). "
+                "Score 0.5-0.7: Most outputs but 1-2 missing. "
+                "Score 0.7-0.9: All outputs provided with minor gaps. "
+                "Score 0.9-1.0: Complete and concise, all outputs present."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused, without unnecessary "
+                "tool repetition or irrelevant commentary. "
+                "SCORING: "
+                "Score 0.0-0.3: Excessive verbosity or repeated steps. "
+                "Score 0.3-0.5: Some redundancy but completed. "
+                "Score 0.5-0.7: Reasonably concise with minor fluff. "
+                "Score 0.7-0.9: Focused response with clear outputs. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "ChromeDevToolsUsage": [
+                "Check that the agent explicitly mentions using Chrome DevTools MCP/CDP tools.",
+                "Check for DevTools-derived artifacts such as page titles, timestamps, or screenshot mention.",
+                "Score <= 0.3 if no DevTools evidence; 0.6+ if DevTools artifacts are present.",
+            ],
+            "GoogleFinanceNewsCoverage": [
+                "Check that both MSFT and NVDA are covered.",
+                "Check that at least 2 headlines per ticker are listed.",
+                "Check that each headline includes a source and published time.",
+                "Score <= 0.3 if the response is generic or cites non-Google Finance sources.",
+            ],
+            "TaskCompletion": [
+                "Check that page titles, headlines, sources/times, and theme summary are present.",
+                "Check that CDP usage is confirmed and a screenshot capture is mentioned.",
+            ],
+            "ResponseEfficiency": [
+                "Check for redundant tool usage or repeated steps in the response.",
+                "Check that the response is concise and directly answers the requested outputs.",
+                "Score 0.7+ if the response is focused and complete.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "github_issue": {
         "name": "Software Engineer - GitHub Issue Triage",
         "message": (
