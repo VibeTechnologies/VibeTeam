@@ -23,7 +23,23 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from agents.shared.db import close_db, get_postgres_store, init_db
+try:
+    from agents.shared.db import close_db, get_postgres_store, init_db
+except Exception:
+    close_db = None
+    get_postgres_store = None
+    init_db = None
+
+try:
+    from vibeteam.agents_config import get_agent_entry, resolve_openclaw_agent_id
+except Exception:  # Fallback for images missing vibeteam.agents_config
+
+    def get_agent_entry(_role: str | None):  # type: ignore[override]
+        return None
+
+    def resolve_openclaw_agent_id(_role: str | None) -> str | None:  # type: ignore[override]
+        return None
+
 
 try:
     from vibeteam.agents_config import get_agent_entry, resolve_openclaw_agent_id
@@ -319,13 +335,15 @@ async def run_openclaw_task(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting OpenClaw service...")
-    try:
-        await init_db()
-    except Exception as e:
-        logger.warning(f"Database initialization failed (may not be available): {e}")
+    if init_db:
+        try:
+            await init_db()
+        except Exception as e:
+            logger.warning("Database initialization failed (may not be available): %s", e)
     yield
     logger.info("Shutting down OpenClaw service...")
-    await close_db()
+    if close_db:
+        await close_db()
 
 
 app = FastAPI(
@@ -370,33 +388,34 @@ async def run_task(request: RunRequest):
 
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # Store session in DB (namespaced key)
-        try:
-            store = get_postgres_store()
-            await store.save(
-                {
-                    "key": f"openclaw:{session_key}",
-                    "framework": "openclaw",
-                    "role": request.role or "product_manager",
-                    "context_type": request.context_type,
-                    "context_id": context_id,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": request.task,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
-                        {
-                            "role": "assistant",
-                            "content": response_text,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
-                    ],
-                    "metadata": {"openclaw_session_key": session_key, **metadata},
-                }
-            )
-        except Exception as e:
-            logger.warning(f"Failed to save session to PostgreSQL: {e}")
+        # Store session in DB (namespaced key) when available
+        if get_postgres_store:
+            try:
+                store = get_postgres_store()
+                await store.save(
+                    {
+                        "key": f"openclaw:{session_key}",
+                        "framework": "openclaw",
+                        "role": request.role or "product_manager",
+                        "context_type": request.context_type,
+                        "context_id": context_id,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": request.task,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            },
+                            {
+                                "role": "assistant",
+                                "content": response_text,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            },
+                        ],
+                        "metadata": {"openclaw_session_key": session_key, **metadata},
+                    }
+                )
+            except Exception as e:
+                logger.warning("Failed to save session to PostgreSQL: %s", e)
 
         return RunResponse(
             response=response_text,
@@ -490,6 +509,8 @@ async def run_task_stream(request: RunRequest):
 @app.get("/sessions/{session_id}", response_model=SessionResponse)
 async def get_session(session_id: str):
     try:
+        if not get_postgres_store:
+            raise HTTPException(status_code=404, detail="Session store unavailable")
         store = get_postgres_store()
         session = await store.load_by_id(session_id)
         if not session:
@@ -515,6 +536,8 @@ async def get_session(session_id: str):
 @app.get("/sessions")
 async def list_sessions(prefix: str = "", limit: int = 100):
     try:
+        if not get_postgres_store:
+            return {"sessions": [], "count": 0}
         store = get_postgres_store()
         sessions = await store.list_sessions(prefix=f"openclaw:{prefix}", limit=limit)
         return {"sessions": sessions, "count": len(sessions)}
