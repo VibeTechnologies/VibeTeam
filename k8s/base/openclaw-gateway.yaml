@@ -1,0 +1,145 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw-gateway
+  labels:
+    app: openclaw-gateway
+    team: vibeteam
+    component: openclaw-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openclaw-gateway
+  template:
+    metadata:
+      labels:
+        app: openclaw-gateway
+        team: vibeteam
+        component: openclaw-gateway
+    spec:
+      serviceAccountName: vibeteam-agent
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      initContainers:
+        - name: init-openclaw-dirs
+          image: ghcr.io/openclaw/openclaw:latest
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /home/node/.openclaw/agents/product-manager/agent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: openclaw-state
+              mountPath: /home/node/.openclaw
+      containers:
+        - name: gateway
+          image: ghcr.io/openclaw/openclaw:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          command:
+            - node
+            - openclaw.mjs
+            - gateway
+            - --bind
+            - lan
+            - --port
+            - "18789"
+          workingDir: /app
+          ports:
+            - containerPort: 18789
+              name: gateway
+          env:
+            - name: HOME
+              value: /home/node
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secret
+                  key: OPENCLAW_GATEWAY_TOKEN
+                  optional: true
+            - name: LITELLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LITELLM_BASE_URL
+                  optional: true
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LITELLM_API_KEY
+                  optional: true
+          volumeMounts:
+            - name: openclaw-state
+              mountPath: /home/node/.openclaw
+            - name: openclaw-config
+              mountPath: /home/node/.openclaw/openclaw.json
+              subPath: openclaw.json
+            - name: openclaw-agent-prompts
+              mountPath: /home/node/.openclaw/agents/product-manager/agent/AGENTS.md
+              subPath: AGENTS.md
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: 18789
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /v1/models
+              port: 18789
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: openclaw-state
+          emptyDir: {}
+        - name: openclaw-config
+          configMap:
+            name: openclaw-config
+        - name: openclaw-agent-prompts
+          configMap:
+            name: openclaw-agent-prompts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw-gateway
+  labels:
+    app: openclaw-gateway
+    team: vibeteam
+spec:
+  selector:
+    app: openclaw-gateway
+  ports:
+    - protocol: TCP
+      port: 18789
+      targetPort: 18789
+      name: gateway
+  type: ClusterIP

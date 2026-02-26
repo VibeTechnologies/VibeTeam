@@ -5,12 +5,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gmail-processor
-  namespace: vibeteam
   labels:
     app: gmail-processor
     team: vibeteam
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: gmail-processor

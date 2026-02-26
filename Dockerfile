@@ -23,8 +23,9 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy package files
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md agents.yaml ./
 COPY vibeteam/ ./vibeteam/
+COPY agent_service/ ./agent_service/
 COPY agents/ ./agents/
 COPY scripts/ ./scripts/
 COPY docs/ ./docs/
@@ -53,10 +54,12 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
 COPY --from=builder /app/vibeteam ./vibeteam
+COPY --from=builder /app/agent_service ./agent_service
 COPY --from=builder /app/agents ./agents
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/docs ./docs
 COPY --from=builder /app/pyproject.toml ./
+COPY --from=builder /app/agents.yaml ./
 
 # Set environment
 ENV PATH="/app/.venv/bin:$PATH"
