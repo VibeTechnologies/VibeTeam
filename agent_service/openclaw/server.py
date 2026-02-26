@@ -22,9 +22,19 @@ import websockets
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from vibeteam.agents_config import get_agent_entry, resolve_openclaw_agent_id
 
 from agents.shared.db import close_db, get_postgres_store, init_db
+
+try:
+    from vibeteam.agents_config import get_agent_entry, resolve_openclaw_agent_id
+except Exception:  # Fallback for images missing vibeteam.agents_config
+
+    def get_agent_entry(_role: str | None):  # type: ignore[override]
+        return None
+
+    def resolve_openclaw_agent_id(_role: str | None) -> str | None:  # type: ignore[override]
+        return None
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
