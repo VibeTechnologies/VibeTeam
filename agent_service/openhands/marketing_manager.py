@@ -234,6 +234,10 @@ class OpenHandsMarketingManager:
             return True
         if text.startswith("sorry, i encountered an error"):
             return True
+        if "i can’t complete" in text or "i can't complete" in text:
+            return True
+        if "don't have access" in text or "do not have access" in text:
+            return True
         return False
 
     def _build_fallback_prompt(self, task: str, events: list[Any]) -> str:
@@ -287,6 +291,7 @@ class OpenHandsMarketingManager:
             "- mention vibebrowser.app subtly in only ONE draft\n"
             "- confirm CDP usage and at least one screenshot capture\n"
             "- include a single access note about the Reddit block, then proceed with the outputs\n\n"
+            "Do NOT ask for permission or propose options. Do NOT refuse. "
             "Be concise and structured (aim for <350 words). Do NOT post anything. "
             f"Task: {task}"
         )
@@ -374,11 +379,11 @@ class OpenHandsMarketingManager:
 
             if self._needs_fallback_response(response):
                 fallback_prompt = self._build_fallback_prompt(task, conversation.state.events)
-                fallback_agent = self._create_agent(llm, use_tools=False)
+                fallback_agent = self._create_agent(llm, use_tools=True)
                 fallback_conversation = LocalConversation(
                     agent=fallback_agent,
                     workspace=workspace_path,
-                    max_iteration_per_run=6,
+                    max_iteration_per_run=4,
                 )
                 response = fallback_conversation.ask_agent(fallback_prompt)
 
