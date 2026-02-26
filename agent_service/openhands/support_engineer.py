@@ -448,7 +448,7 @@ class OpenHandsSupportEngineer:
                     injected_context.append(kubectl_ctx)
                     extra_guidance_lines.append(
                         "When reporting Sentry, list issue short IDs, titles, and counts. "
-                        "If none, state \"No unresolved issues found\" and answer whether anything needs action."
+                        'If none, state "No unresolved issues found" and answer whether anything needs action.'
                     )
 
                 # Gmail context for email-related tasks
@@ -456,7 +456,7 @@ class OpenHandsSupportEngineer:
                     injected_context.append(fetch_gmail_context())
                     extra_guidance_lines.append(
                         "When reporting Gmail, list each unread email with subject, sender, date, and ID. "
-                        "If none, say \"No unread emails in inbox.\" If action is needed, draft the reply text."
+                        'If none, say "No unread emails in inbox." If action is needed, draft the reply text.'
                     )
 
                 # Calendar context for scheduling-related tasks
