@@ -490,12 +490,14 @@ class OpenHandsMarketingManager:
 
             full_task = f"{MARKETING_MANAGER_CONTEXT_FALLBACK}\n\n{browser_context}Task: {task}"
             response = ""
+            run_failed = False
             fallback_conversation: LocalConversation | None = None
             try:
                 # Use the full agentic loop with tools
                 conversation.send_message(full_task)
                 conversation.run()
             except Exception:
+                run_failed = True
                 logger.exception("MarketingManager conversation.run() failed")
                 # Attempt to salvage a response from conversation events
                 try:
@@ -504,8 +506,6 @@ class OpenHandsMarketingManager:
                     response = extract_response_from_events(conversation.state.events)
                 except Exception:
                     logger.exception("Failed to extract response from events after run failure")
-                if not response:
-                    raise
             else:
                 # Extract the agent's final response from conversation events
                 from .utils import extract_response_from_events
@@ -514,7 +514,7 @@ class OpenHandsMarketingManager:
 
             if self._needs_fallback_response(response, task):
                 fallback_prompt = self._build_fallback_prompt(task, conversation.state.events)
-                fallback_agent = self._create_agent(llm, use_tools=True)
+                fallback_agent = self._create_agent(llm, use_tools=not run_failed)
                 fallback_conversation = LocalConversation(
                     agent=fallback_agent,
                     workspace=workspace_path,
