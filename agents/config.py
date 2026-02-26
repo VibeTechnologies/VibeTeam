@@ -25,7 +25,7 @@ class MCPServerConfig:
 # MCP Server Configurations
 CHROME_DEVTOOLS_BROWSER_URL = os.getenv("CHROME_DEVTOOLS_BROWSER_URL", "")
 CHROME_MCP_ENABLED = bool(CHROME_DEVTOOLS_BROWSER_URL)
-_chrome_args = ["-y", "chrome-devtools-mcp@latest"]
+_chrome_args = ["-y", "chrome-devtools-mcp@0.18.1"]
 if CHROME_DEVTOOLS_BROWSER_URL:
     _chrome_args.append(f"--browser-url={CHROME_DEVTOOLS_BROWSER_URL}")
 
