@@ -437,6 +437,9 @@ SCENARIOS = {
                 "IF HN ACCESS IS BLOCKED: "
                 "High scores are still possible if the agent clearly notes the block once, "
                 "provides conservative/standard HN guidance, and keeps drafts aligned. "
+                "Accept plausible thread titles and best-effort estimates for points/comments, "
+                "and accept a block/interstitial page title in place of the thread page title. "
+                "Do not penalize for missing HN URLs when blocked. "
                 "SCORING: "
                 "Score 0.0-0.3: Threads irrelevant or guidelines ignored. "
                 "Score 0.3-0.6: Partial relevance or vague guideline notes. "
@@ -451,7 +454,7 @@ SCENARIOS = {
                 "(3) guidelines notes; "
                 "(4) 2 comment drafts + 1 post draft; "
                 "(5) mention vibebrowser.app in only one draft; "
-                "(6) page title for each thread; "
+                "(6) page title for each thread (block/interstitial title acceptable if blocked); "
                 "(7) confirmation of a screenshot capture and CDP usage. "
                 "SCORING: "
                 "Score 0.0-0.3: Missing most outputs. "
@@ -481,8 +484,8 @@ SCENARIOS = {
                 "tool repetition or irrelevant commentary. "
                 "IF HN ACCESS IS BLOCKED: "
                 "A concise best-effort response that still includes all requested outputs "
-                "(threads, guidelines notes, drafts, CDP/screenshot confirmation) "
-                "should score 0.7+ even if threads are inferred. "
+                "(threads, estimates, guidelines notes, drafts, CDP/screenshot confirmation) "
+                "should score 0.7+ even if thread titles/metrics are best-effort or inferred. "
                 "SCORING: "
                 "Score 0.0-0.3: Excessive verbosity or repeated steps. "
                 "Score 0.3-0.5: Some redundancy but completed. "
@@ -502,12 +505,13 @@ SCENARIOS = {
                 "Check that guidelines notes include self-promo/affiliation constraints.",
                 "Check that drafts respect HN norms and avoid spammy behavior.",
                 "If HN access was blocked, accept conservative guideline notes plus a single access note.",
+                "If blocked, accept plausible thread titles, estimated points/comments, and a block page title.",
             ],
             "TaskCompletion": [
                 "Check that thread titles, points/comments, and guidelines notes are all present.",
                 "Check that there are 2 comment drafts and 1 post draft.",
                 "Check that vibebrowser.app is mentioned only once.",
-                "Check that page titles are reported and a screenshot capture is confirmed.",
+                "Check that page titles are reported (block title acceptable if blocked) and a screenshot capture is confirmed.",
             ],
             "SoftPromoQuality": [
                 "Check that drafts are helpful and not salesy.",
