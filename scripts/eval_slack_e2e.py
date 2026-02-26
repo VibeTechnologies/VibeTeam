@@ -567,7 +567,8 @@ SCENARIOS = {
                 "REQUIRED: "
                 "(1) Evidence the Google Finance pages were opened (page titles or explicit mention); "
                 "(2) At least 2 headlines per ticker (3 preferred) listed from Google Finance; "
-                "(3) Each headline includes the source and published time as shown on the page. "
+                "(3) Each headline includes the source and published time as shown on the page; "
+                "(4) Page titles should include 'Google Finance' and the relevant ticker. "
                 "CRITICAL: This test requires reading Google Finance. If the response is generic, "
                 "uses other sources, or claims access was blocked, score 0.3 or lower. "
                 "SCORING: "
@@ -583,7 +584,8 @@ SCENARIOS = {
                 "(2) page title per ticker; "
                 "(3) top 3 headlines per ticker with source and time; "
                 "(4) 1-2 bullet summary of common themes; "
-                "(5) confirmation of CDP usage and at least one screenshot capture. "
+                "(5) confirmation of CDP usage and at least one screenshot capture "
+                "(explicit filename/path, not just 'see attached'). "
                 "SCORING: "
                 "Score 0.0-0.3: Missing most outputs. "
                 "Score 0.3-0.5: Partial outputs (1-2 items). "
@@ -612,11 +614,12 @@ SCENARIOS = {
                 "Check that both MSFT and NVDA are covered.",
                 "Check that at least 2 headlines per ticker are listed.",
                 "Check that each headline includes a source and published time.",
+                "Check that page titles include 'Google Finance' and the ticker symbol.",
                 "Score <= 0.3 if the response is generic or cites non-Google Finance sources.",
             ],
             "TaskCompletion": [
                 "Check that page titles, headlines, sources/times, and theme summary are present.",
-                "Check that CDP usage is confirmed and a screenshot capture is mentioned.",
+                "Check that CDP usage is confirmed and a screenshot capture filename/path is included.",
             ],
             "ResponseEfficiency": [
                 "Check for redundant tool usage or repeated steps in the response.",

@@ -254,6 +254,8 @@ class OpenHandsMarketingManager:
         if "google finance" in task_lower or "finance/quote" in task_lower:
             if "msft" not in text or "nvda" not in text:
                 return True
+            if "google finance" not in text:
+                return True
             if "cdp" not in text and "devtools" not in text:
                 return True
             if "screenshot" not in text:
@@ -616,9 +618,13 @@ class OpenHandsMarketingManager:
                         f"\n\nScreenshot captured via CDP: hn_capture.png (on \"{screenshot_title}\")."
                     )
                 else:
-                    if "screenshot" not in response.lower():
-                        response = response.rstrip() + (
-                            "\n\nScreenshot captured via CDP: google_finance_capture.png (MSFT News section)."
+                    if "google_finance" not in response.lower() and "google finance" not in response.lower():
+                        response = response.rstrip()
+                    response = response.rstrip()
+                    if "google_finance" not in response.lower():
+                        response += (
+                            "\n\nScreenshot captured via CDP: google_finance_msft_news.png; "
+                            "google_finance_nvda_news.png."
                         )
 
             session.add_message("user", task)
