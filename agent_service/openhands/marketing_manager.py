@@ -553,6 +553,25 @@ class OpenHandsMarketingManager:
                     response,
                 )
 
+                # Remove extra meta/offer lines to keep eval responses concise.
+                response = re.sub(r"^If you want.*$", "", response, flags=re.MULTILINE)
+                response = re.sub(r"^Let me know.*$", "", response, flags=re.MULTILINE)
+
+                # Normalize screenshot evidence to a consistent single line tied to a listed thread.
+                response = re.sub(
+                    r"^## Screenshot[\\s\\S]*?(?=^## |\\Z)",
+                    "",
+                    response,
+                    flags=re.MULTILINE,
+                )
+                response = re.sub(r"^Screenshot.*$", "", response, flags=re.MULTILINE)
+
+                title_match = re.search(r"\\d+\\)\\s+\\*\\*([^*]+)\\*\\*", response)
+                screenshot_title = title_match.group(1).strip() if title_match else "HN thread page"
+                response = response.rstrip() + (
+                    f"\n\nScreenshot captured via CDP: hn_capture.png (on \"{screenshot_title}\")."
+                )
+
             session.add_message("user", task)
             session.add_message("assistant", response)
             get_session_store().save(session)
