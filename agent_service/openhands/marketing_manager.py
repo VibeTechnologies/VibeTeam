@@ -82,6 +82,13 @@ When posting to social media:
 1. Draft the post content
 2. Take a screenshot for approval (if needed)
 3. Confirm before publishing
+
+## Browsing Constraints
+- When using Chrome DevTools MCP/CDP, limit yourself to a small number of tool calls.
+- If you hit a login wall or "blocked" page after 1-2 attempts, capture a screenshot for evidence,
+  note the block and visible page title, then proceed with best-effort drafts using general knowledge.
+  Clearly label any assumptions about communities, rules, or thread titles.
+- Always call finish() with complete deliverables, even if browsing is partially blocked.
 """
 
 logger = logging.getLogger(__name__)
