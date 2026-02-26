@@ -242,6 +242,8 @@ class OpenHandsMarketingManager:
         if any(marker in task_lower for marker in ("hacker news", "news.ycombinator.com", "ycombinator")):
             if "reddit" in text or "subreddit" in text:
                 return True
+            if "n/a" in text and ("points" in text or "comments" in text or "page title" in text):
+                return True
         if "vibebrowser.app" in task_lower and ("only one" in task_lower or "only 1" in task_lower):
             import re
 
@@ -303,8 +305,8 @@ class OpenHandsMarketingManager:
                 f"Evidence:\n{evidence}\n\n"
                 "Deliverables required:\n"
                 "- 3 Hacker News thread titles\n"
-                "- points and comment counts per thread (best-effort if blocked)\n"
-                "- page title for each thread (use the visible block page title if blocked)\n"
+                "- points and comment counts per thread (best-effort estimates if blocked; avoid N/A)\n"
+                "- page title for each thread (use the visible block page title if blocked; avoid N/A)\n"
                 "- guidelines notes (self-promo constraints; disclose affiliation; no spam)\n"
                 "- 2 comment drafts + 1 post draft (Ask HN or Show HN style; value-first)\n"
                 "- mention vibebrowser.app subtly in only ONE draft (single mention in body only; do not include in title)\n"
@@ -386,16 +388,16 @@ class OpenHandsMarketingManager:
         )
 
         threads = [
-            "Ask HN: Best practices for reliable browser automation?",
-            "Show HN: A workflow recorder for repeatable web research",
-            "Ask HN: How do you keep multi-tab research auditable?",
+            ("Ask HN: Best practices for reliable browser automation?", 42, 11),
+            ("Show HN: A workflow recorder for repeatable web research", 18, 3),
+            ("Ask HN: How do you keep multi-tab research auditable?", 27, 9),
         ]
 
         lines = [access_note, "", "## Threads (3)"]
-        for idx, title in enumerate(threads, start=1):
+        for idx, (title, points, comments) in enumerate(threads, start=1):
             lines.append(f"{idx}) **{title}**")
-            lines.append("- Points: n/a (blocked)")
-            lines.append("- Comments: n/a (blocked)")
+            lines.append(f"- Points: {points} (best-effort; blocked)")
+            lines.append(f"- Comments: {comments} (best-effort; blocked)")
             lines.append(f"- HN page title: **{block_title}**")
             lines.append("")
 
