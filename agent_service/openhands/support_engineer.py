@@ -57,6 +57,105 @@ def fetch_gmail_context(max_results: int = 5) -> str:
     return get_email_context(max_results=max_results)
 
 
+def _parse_unread_emails(email_context: str) -> list[dict[str, str]]:
+    """Parse unread email summaries from Gmail context output."""
+    if "## Current Unread Emails" not in email_context:
+        return []
+
+    blocks = email_context.split("\n### ")
+    if len(blocks) < 2:
+        return []
+
+    emails: list[dict[str, str]] = []
+    for block in blocks[1:]:
+        lines = block.splitlines()
+        if not lines:
+            continue
+        subject = lines[0].strip()
+        from_match = re.search(r"- \*\*From\*\*: (.+)", block)
+        date_match = re.search(r"- \*\*Date\*\*: (.+)", block)
+        id_match = re.search(r"- \*\*ID\*\*: ([^|\n]+)", block)
+        emails.append(
+            {
+                "subject": subject,
+                "from": from_match.group(1).strip() if from_match else "",
+                "date": date_match.group(1).strip() if date_match else "",
+                "id": id_match.group(1).strip() if id_match else "",
+            }
+        )
+    return emails
+
+
+def build_gmail_summary() -> str:
+    """Build a concise, Gmail-only response for inbox triage tasks."""
+    email_context = fetch_gmail_context()
+    logs_context = fetch_gmail_processor_context()
+
+    lines: list[str] = ["Gmail Inbox Check"]
+
+    if "Gmail not configured:" in email_context:
+        detail = email_context.split("Gmail not configured:", 1)[-1].strip()
+        lines.append(f"- Access: not configured ({detail})")
+    elif "Error loading emails:" in email_context:
+        detail = email_context.split("Error loading emails:", 1)[-1].strip()
+        lines.append(f"- Access: error ({detail})")
+    elif "No unread emails in inbox." in email_context:
+        lines.append("- Unread: none")
+    else:
+        match = re.search(r"## Current Unread Emails \((\d+)\)", email_context)
+        if match:
+            lines.append(f"- Unread: {match.group(1)} (Gmail API)")
+        else:
+            lines.append("- Unread: unknown (Gmail API)")
+
+        emails = _parse_unread_emails(email_context)
+        for email in emails:
+            parts = [f"Subject: {email['subject']}"]
+            if email["from"]:
+                parts.append(f"From: {email['from']}")
+            if email["date"]:
+                parts.append(f"Date: {email['date']}")
+            if email["id"]:
+                parts.append(f"ID: {email['id']}")
+            lines.append("- Unread email: " + " | ".join(parts))
+
+    unread_lines = [line.strip() for line in logs_context.splitlines() if "unread" in line.lower()]
+    if unread_lines:
+        lines.append(f"- Gmail processor: {unread_lines[-1]}")
+    elif "No unread-count lines" in logs_context:
+        lines.append("- Gmail processor: no unread-count lines in recent logs.")
+    elif "Error fetching logs" in logs_context:
+        detail = logs_context.split("Error fetching logs:", 1)[-1].strip()
+        lines.append(f"- Gmail processor: error fetching logs ({detail})")
+
+    if "not configured" in email_context.lower():
+        lines.append(
+            "- Action: configure Gmail token (.secrets/gmail-token.json) for openhands-svc or mount the secret; then re-run."
+        )
+    elif "error loading emails" in email_context.lower():
+        lines.append("- Action: check Gmail credentials/token validity and retry.")
+    elif "No unread emails in inbox." in email_context:
+        lines.append("- Action: no inbox items need action.")
+    else:
+        lines.append("- Action: review unread emails and draft replies as needed.")
+
+    return "\n".join(lines).strip()
+
+
+def build_notification_message(task: str) -> str:
+    """Build a concise notification message from a notify-only task."""
+    pr_match = re.search(r"PR\\s*#?(\\d+)", task, re.IGNORECASE)
+    env_match = re.search(
+        r"to\\s+(staging|production|prod|dev|qa)\\b", task, re.IGNORECASE
+    )
+    pr_part = f"PR #{pr_match.group(1)}" if pr_match else "the deployment"
+    env = env_match.group(1).lower() if env_match else ""
+    if env == "prod":
+        env = "production"
+    env_part = f" to {env}" if env else ""
+    return f"Deployment of {pr_part}{env_part} is complete and verified."
+
+
 def fetch_langfuse_context_wrapper(hours: int = 6) -> str:
     """Fetch Langfuse context using shared tools."""
     return get_langfuse_context(hours=hours)
@@ -416,7 +515,8 @@ class OpenHandsSupportEngineer:
                     for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
                 )
 
-                skip_infra_context = is_notification and not is_explicit_investigation
+                notification_only = is_notification and not is_explicit_investigation
+                skip_infra_context = notification_only
 
                 # Sentry context for error-related tasks
                 # Expanded to include infrastructure/incident keywords
@@ -462,7 +562,9 @@ class OpenHandsSupportEngineer:
                     )
 
                 # Gmail context for email-related tasks
-                if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
+                if (not notification_only) and any(
+                    kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]
+                ):
                     injected_context.append(fetch_gmail_context())
                     injected_context.append(fetch_gmail_processor_context())
                     extra_guidance_lines.append(
@@ -471,11 +573,13 @@ class OpenHandsSupportEngineer:
                     )
 
                 # Calendar context for scheduling-related tasks
-                if any(kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]):
+                if (not notification_only) and any(
+                    kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]
+                ):
                     injected_context.append(fetch_calendar_context_wrapper())
 
                 # Langfuse context for LLM observability tasks
-                if any(
+                if (not notification_only) and any(
                     kw in task_lower
                     for kw in [
                         "langfuse",
@@ -489,7 +593,7 @@ class OpenHandsSupportEngineer:
                     injected_context.append(fetch_langfuse_context_wrapper())
 
                 # Documentation context for product/feature/setup questions
-                if any(
+                if (not notification_only) and any(
                     kw in task_lower
                     for kw in [
                         "doc",
@@ -577,27 +681,23 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 )
 
             if "gmail" in task_lower or "inbox" in task_lower:
-                lines = response.splitlines()
-                filtered: list[str] = []
-                keywords = (
-                    "gmail",
-                    "inbox",
-                    "unread",
-                    "email",
-                    "message",
-                    "recommendation",
-                    "next step",
-                    "next steps",
-                    "action",
-                    "address",
-                )
-                for line in lines:
-                    lower = line.lower()
-                    if any(keyword in lower for keyword in keywords):
-                        filtered.append(line)
-                    elif line.strip() == "" and filtered and filtered[-1] != "":
-                        filtered.append("")
-                response = "\n".join(filtered).strip()
+                response = build_gmail_summary()
+
+            is_notification = any(
+                kw in task_lower
+                for kw in [
+                    "notify",
+                    "announce",
+                    "tell the team",
+                    "tell the customer",
+                    "confirm to",
+                ]
+            )
+            is_explicit_investigation = any(
+                kw in task_lower for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
+            )
+            if is_notification and not is_explicit_investigation:
+                response = build_notification_message(task)
 
             session.add_message("user", task)
             session.add_message("assistant", response)
