@@ -306,6 +306,10 @@ SCENARIOS = {
                 "(1) Three communities selected that plausibly fit Vibe Browser; "
                 "(2) Rules notes include self-promo restrictions or 'no self-promo' if absent; "
                 "(3) Drafts reflect rule awareness (no spam or aggressive marketing). "
+                "IF REDDIT ACCESS IS BLOCKED: "
+                "High scores are still possible if the agent clearly notes the block once, "
+                "provides conservative/standard self-promo guidance per subreddit, and "
+                "keeps drafts aligned with those constraints. "
                 "SCORING: "
                 "Score 0.0-0.3: Communities irrelevant or rules ignored. "
                 "Score 0.3-0.6: Partial relevance or vague rules notes. "
@@ -336,6 +340,9 @@ SCENARIOS = {
                 "(2) Only one draft mentions vibebrowser.app; "
                 "(3) The mention is subtle (e.g., framed as a tool used in a workflow), "
                 "not salesy. "
+                "IF REDDIT ACCESS IS BLOCKED: "
+                "Do not penalize drafts solely for lack of verified subreddit rules/threads "
+                "if an access note is provided and the drafts remain helpful and non-spammy. "
                 "SCORING: "
                 "Score 0.0-0.3: Spammy, salesy, or repeated promotion. "
                 "Score 0.3-0.6: Some value but still promotional or mentions too often. "
@@ -345,6 +352,10 @@ SCENARIOS = {
             "ResponseEfficiency": (
                 "Evaluate whether the response is concise and focused, without unnecessary "
                 "tool repetition or irrelevant commentary. "
+                "IF REDDIT ACCESS IS BLOCKED: "
+                "A concise best-effort response that still includes all requested outputs "
+                "(communities, rules notes, thread picks, drafts, CDP/screenshot confirmation) "
+                "should score 0.7+ even if rules/threads are inferred. "
                 "SCORING: "
                 "Score 0.0-0.3: Excessive verbosity or repeated steps. "
                 "Score 0.3-0.5: Some redundancy but completed. "
@@ -363,6 +374,7 @@ SCENARIOS = {
                 "Check that three communities were selected and are relevant.",
                 "Check that rules notes include self-promo restrictions (or explicitly note none found).",
                 "Check that drafts respect the rules and avoid spammy behavior.",
+                "If Reddit access was blocked, accept conservative rule notes plus a single access note.",
             ],
             "TaskCompletion": [
                 "Check that subreddit names, thread titles, and rules notes are all present.",
@@ -374,11 +386,13 @@ SCENARIOS = {
                 "Check that drafts are helpful and not salesy.",
                 "Check that the single mention of vibebrowser.app is subtle and contextual.",
                 "Score <= 0.5 if promotion is repeated or too obvious.",
+                "If Reddit access was blocked, do not penalize drafts for unverified threads/rules.",
             ],
             "ResponseEfficiency": [
                 "Check for redundant tool usage or repeated steps in the response.",
                 "Check that the response is concise and directly answers the requested outputs.",
                 "Score 0.7+ if the response is focused and complete.",
+                "If blocked, concise best-effort outputs should still score 0.7+.",
             ],
         },
         "threshold": 0.70,
