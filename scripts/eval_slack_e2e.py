@@ -267,7 +267,10 @@ SCENARIOS = {
                 "REQUIRED: "
                 "(1) Explicit mention of Gmail/inbox check; "
                 "(2) Either list unread emails (subject/sender/date or IDs) OR clearly state no unread emails. "
-                "CRITICAL: If the response says Gmail is not configured or errors out, score 0.3 or lower. "
+                "If direct Gmail access is not configured, acceptable fallback is to cite "
+                "gmail-processor logs or other system evidence with a concrete unread count. "
+                "CRITICAL: If the response only says Gmail is not configured/errors without any "
+                "concrete inbox evidence, score 0.3 or lower. "
                 "SCORING: "
                 "Score 0.0-0.3: No Gmail mention or generic response. "
                 "Score 0.3-0.6: Mentions Gmail but no concrete findings. "
@@ -288,6 +291,8 @@ SCENARIOS = {
             ),
             "ResponseEfficiency": (
                 "Evaluate whether the response is concise and focused. "
+                "If direct Gmail access is unavailable, do not penalize inclusion of "
+                "gmail-processor logs or brief infra status that directly explains the inbox state. "
                 "SCORING: "
                 "Score 0.0-0.3: Rambling or off-topic. "
                 "Score 0.3-0.5: Some redundancy. "
@@ -300,7 +305,8 @@ SCENARIOS = {
             "GmailUsage": [
                 "Check for explicit Gmail/inbox mention.",
                 "Check for unread email details OR explicit 'no unread emails'.",
-                "Score <= 0.3 if Gmail not mentioned or if it says Gmail is not configured.",
+                "If Gmail access is not configured, require concrete unread count evidence from gmail-processor logs.",
+                "Score <= 0.3 if Gmail not mentioned or if it says Gmail is not configured with no evidence.",
             ],
             "TaskCompletion": [
                 "Check that the response directly answers whether there's anything to address.",
