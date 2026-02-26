@@ -244,6 +244,11 @@ class OpenHandsMarketingManager:
                 return True
             if "n/a" in text and ("points" in text or "comments" in text or "page title" in text):
                 return True
+            if text.count("access note") > 1:
+                return True
+            comment_drafts = text.count("comment draft") + text.count("draft comment")
+            if comment_drafts > 2 or text.count("post draft") > 1:
+                return True
         if "vibebrowser.app" in task_lower and ("only one" in task_lower or "only 1" in task_lower):
             import re
 
