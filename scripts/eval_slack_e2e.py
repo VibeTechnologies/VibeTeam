@@ -1666,7 +1666,7 @@ async def run_evaluation(
 
                     latest_bot_msg = bot_messages[-1]
                     has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
-                    if not has_handoff:
+                    if not has_handoff or scenario.get("skip_handoff", False):
                         print(
                             f"    Conversation stable for {int(time_since_last)}s, "
                             "no pending handoffs."
