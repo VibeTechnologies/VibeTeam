@@ -201,6 +201,117 @@ SCENARIOS = {
         },
         "threshold": 0.80,
     },
+    "support_sentry_triage": {
+        "name": "Support Engineer - Sentry Triage Check",
+        "message": "@VibeTeam @SupportEngineer. Check Sentry issues. Anything to address?",
+        "expected_agent": "support_engineer",
+        "timeout": 600,
+        "evaluation_criteria": {
+            "SentryUsage": (
+                "Did the SupportEngineer actually check Sentry and report findings? "
+                "REQUIRED: "
+                "(1) Explicit mention of Sentry check; "
+                "(2) Either list specific issues (IDs/messages/counts) OR clearly state no issues found. "
+                "CRITICAL: If the response says Sentry is not configured or errors out, score 0.3 or lower. "
+                "SCORING: "
+                "Score 0.0-0.3: No Sentry mention or generic response. "
+                "Score 0.3-0.6: Mentions Sentry but no concrete findings. "
+                "Score 0.6-0.8: Reports Sentry findings or confirms none. "
+                "Score 0.8-1.0: Clear, specific Sentry findings with context."
+            ),
+            "TaskCompletion": (
+                "Did the agent answer 'Anything to address?' based on findings? "
+                "REQUIRED: "
+                "(1) Clear yes/no or action recommendation; "
+                "(2) Tied to the Sentry findings. "
+                "SCORING: "
+                "Score 0.0-0.3: No answer to the question. "
+                "Score 0.3-0.6: Vague answer without tying to Sentry. "
+                "Score 0.6-0.8: Clear answer tied to findings. "
+                "Score 0.8-1.0: Clear answer plus next steps or monitoring guidance."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused. "
+                "SCORING: "
+                "Score 0.0-0.3: Rambling or off-topic. "
+                "Score 0.3-0.5: Some redundancy. "
+                "Score 0.5-0.7: Reasonably concise. "
+                "Score 0.7-0.9: Focused and efficient. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "SentryUsage": [
+                "Check for explicit Sentry mention.",
+                "Check for issue IDs/messages/counts OR explicit 'no issues found'.",
+                "Score <= 0.3 if Sentry not mentioned or if it says Sentry is not configured.",
+            ],
+            "TaskCompletion": [
+                "Check that the response directly answers whether there's anything to address.",
+                "Verify the answer is tied to Sentry findings.",
+            ],
+            "ResponseEfficiency": [
+                "Check that the response is concise and directly answers the request.",
+            ],
+        },
+        "threshold": 0.70,
+    },
+    "support_gmail_inbox": {
+        "name": "Support Engineer - Gmail Inbox Triage",
+        "message": "@VibeTeam @SupportEngineer, check Gmail inbox, anything to address? If so, work on it.",
+        "expected_agent": "support_engineer",
+        "timeout": 600,
+        "evaluation_criteria": {
+            "GmailUsage": (
+                "Did the SupportEngineer actually check Gmail inbox and report findings? "
+                "REQUIRED: "
+                "(1) Explicit mention of Gmail/inbox check; "
+                "(2) Either list unread emails (subject/sender/date or IDs) OR clearly state no unread emails. "
+                "CRITICAL: If the response says Gmail is not configured or errors out, score 0.3 or lower. "
+                "SCORING: "
+                "Score 0.0-0.3: No Gmail mention or generic response. "
+                "Score 0.3-0.6: Mentions Gmail but no concrete findings. "
+                "Score 0.6-0.8: Reports unread emails or confirms none. "
+                "Score 0.8-1.0: Clear, specific inbox triage with actionable context."
+            ),
+            "TaskCompletion": (
+                "Did the agent answer 'anything to address' and work on it if needed? "
+                "REQUIRED: "
+                "(1) Clear yes/no on items to address; "
+                "(2) If items exist, draft replies or outline actions per email; "
+                "(3) If no items, state inbox is clear. "
+                "SCORING: "
+                "Score 0.0-0.3: No answer to the question. "
+                "Score 0.3-0.6: Vague answer without tying to inbox findings. "
+                "Score 0.6-0.8: Clear answer tied to inbox findings. "
+                "Score 0.8-1.0: Clear answer plus draft responses or next steps."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused. "
+                "SCORING: "
+                "Score 0.0-0.3: Rambling or off-topic. "
+                "Score 0.3-0.5: Some redundancy. "
+                "Score 0.5-0.7: Reasonably concise. "
+                "Score 0.7-0.9: Focused and efficient. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "GmailUsage": [
+                "Check for explicit Gmail/inbox mention.",
+                "Check for unread email details OR explicit 'no unread emails'.",
+                "Score <= 0.3 if Gmail not mentioned or if it says Gmail is not configured.",
+            ],
+            "TaskCompletion": [
+                "Check that the response directly answers whether there's anything to address.",
+                "Verify it is tied to inbox findings and includes draft actions if needed.",
+            ],
+            "ResponseEfficiency": [
+                "Check that the response is concise and directly answers the request.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "chrome_cdp_smoke": {
         "name": "Marketing Manager - Chrome CDP MCP Smoke Test",
         "message": (

@@ -383,6 +383,7 @@ class OpenHandsSupportEngineer:
 
             # Inject relevant context based on task keywords (unless skipped)
             injected_context = []
+            extra_guidance_lines: list[str] = []
 
             if not skip_context_injection:
                 task_lower = task.lower()
@@ -445,10 +446,18 @@ class OpenHandsSupportEngineer:
                     # This eliminates the need for agents to run kubectl manually
                     kubectl_ctx = fetch_kubectl_context()
                     injected_context.append(kubectl_ctx)
+                    extra_guidance_lines.append(
+                        "When reporting Sentry, list issue short IDs, titles, and counts. "
+                        "If none, state \"No unresolved issues found\" and answer whether anything needs action."
+                    )
 
                 # Gmail context for email-related tasks
                 if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
                     injected_context.append(fetch_gmail_context())
+                    extra_guidance_lines.append(
+                        "When reporting Gmail, list each unread email with subject, sender, date, and ID. "
+                        "If none, say \"No unread emails in inbox.\" If action is needed, draft the reply text."
+                    )
 
                 # Calendar context for scheduling-related tasks
                 if any(kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]):
@@ -487,6 +496,14 @@ class OpenHandsSupportEngineer:
 
             # Build full task with context
             context_str = "\n\n".join(injected_context) if injected_context else ""
+            guidance_block = ""
+            if extra_guidance_lines:
+                guidance_block = (
+                    "\n### ADDITIONAL OUTPUT REQUIREMENTS\n"
+                    + "\n".join(f"- {line}" for line in extra_guidance_lines)
+                    + "\n"
+                )
+
             if context_str:
                 # Add very clear visual separators so agents know this is the injected data
                 context_block = f"""
@@ -505,14 +522,14 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 # Do NOT include it again here — duplicating it wastes ~17k chars
                 # and pushes the context past OpenHands' 50k char limit, causing
                 # truncation that makes the agent blind to injected data.
-                full_task = f"""{context_block}
+                full_task = f"""{context_block}{guidance_block}
 
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
 """
             else:
-                full_task = f"""
+                full_task = f"""{guidance_block}
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
