@@ -568,28 +568,24 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             if "gmail" in task_lower or "inbox" in task_lower:
                 lines = response.splitlines()
                 filtered: list[str] = []
-                mode: str | None = None
+                keywords = (
+                    "gmail",
+                    "inbox",
+                    "unread",
+                    "email",
+                    "message",
+                    "recommendation",
+                    "next step",
+                    "next steps",
+                    "action",
+                    "address",
+                )
                 for line in lines:
-                    lower = line.strip().lower()
-                    if lower.startswith("sentry"):
-                        mode = "skip"
-                        continue
-                    if lower.startswith("kubectl findings"):
-                        mode = "kubectl"
-                        continue
-                    if lower.startswith("endpoint test"):
-                        mode = "skip"
-                        continue
-                    if lower == "" and mode is not None:
-                        mode = None
-                        continue
-                    if mode == "skip":
-                        continue
-                    if mode == "kubectl":
-                        if "gmail" in lower or "unread" in lower:
-                            filtered.append(line)
-                        continue
-                    filtered.append(line)
+                    lower = line.lower()
+                    if any(keyword in lower for keyword in keywords):
+                        filtered.append(line)
+                    elif line.strip() == "" and filtered and filtered[-1] != "":
+                        filtered.append("")
                 response = "\n".join(filtered).strip()
 
             session.add_message("user", task)
