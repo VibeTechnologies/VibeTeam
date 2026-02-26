@@ -194,6 +194,33 @@ def configure_textcontent_json_serialization() -> None:
         logger.warning("Failed to patch OpenHands JSON serialization: %s", e)
 
 
+def coerce_text(value: Any) -> str:
+    """Coerce OpenHands TextContent (or sequences of it) into a plain string."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        from openhands.sdk.llm import TextContent  # type: ignore
+
+        if isinstance(value, TextContent):
+            return value.text or ""
+    except Exception:
+        pass
+
+    if isinstance(value, (list, tuple)):
+        parts = [coerce_text(item) for item in value]
+        return "".join(part for part in parts if part)
+
+    if hasattr(value, "text"):
+        try:
+            return str(getattr(value, "text"))
+        except Exception:
+            pass
+
+    return str(value)
+
+
 def build_condenser(llm: Any) -> Any | None:
     """Create an OpenHands condenser to auto-compact long conversations.
 
@@ -305,9 +332,9 @@ def extract_response_from_events(events: list[Any]) -> str:
                     logger.info(
                         "Extracted response from %s.message (%d chars)",
                         action_name,
-                        len(message),
+                        len(coerce_text(message)),
                     )
-                    response = message
+                    response = coerce_text(message)
                     break
                 # Fallback to thought (check both action and event)
                 thought = getattr(action, "thought", "") or getattr(event, "thought", "")
@@ -315,9 +342,9 @@ def extract_response_from_events(events: list[Any]) -> str:
                     logger.info(
                         "Extracted response from %s.thought (%d chars)",
                         action_name,
-                        len(thought),
+                        len(coerce_text(thought)),
                     )
-                    response = thought
+                    response = coerce_text(thought)
                     break
 
         # Check for MessageEvent (direct response without finish tool)
@@ -327,7 +354,7 @@ def extract_response_from_events(events: list[Any]) -> str:
                 if hasattr(llm_msg, "content") and llm_msg.content:
                     for block in llm_msg.content:
                         if hasattr(block, "text") and block.text:
-                            response = block.text
+                            response = coerce_text(block.text)
                             break
             if response:
                 logger.info(
@@ -350,9 +377,9 @@ def extract_response_from_events(events: list[Any]) -> str:
                     if thought:
                         logger.info(
                             "Extracted response from ThinkAction.thought fallback (%d chars)",
-                            len(thought),
+                            len(coerce_text(thought)),
                         )
-                        response = thought
+                        response = coerce_text(thought)
                         break
 
     if not response:
@@ -372,9 +399,9 @@ def extract_response_from_events(events: list[Any]) -> str:
                     logger.info(
                         "Extracted response from last ActionEvent.thought fallback (%s, %d chars)",
                         action_name,
-                        len(thought),
+                        len(coerce_text(thought)),
                     )
-                    response = thought
+                    response = coerce_text(thought)
                     break
 
     if not response:
