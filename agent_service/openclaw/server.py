@@ -457,7 +457,7 @@ async def run_task_async(request: AsyncRunRequest):
 async def run_task_stream(request: RunRequest):
     async def generate():
         context_id = request.context_id or str(uuid.uuid4())[:8]
-        yield f"data: {{\"event\": \"start\", \"context_id\": \"{context_id}\"}}\n\n"
+        yield f'data: {{"event": "start", "context_id": "{context_id}"}}\n\n'
         try:
             result = await run_task(request)
             payload = {

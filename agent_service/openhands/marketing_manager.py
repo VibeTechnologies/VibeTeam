@@ -260,7 +260,10 @@ class OpenHandsMarketingManager:
                 return True
             if "screenshot" not in text:
                 return True
-        if any(marker in task_lower for marker in ("hacker news", "news.ycombinator.com", "ycombinator")):
+        if any(
+            marker in task_lower
+            for marker in ("hacker news", "news.ycombinator.com", "ycombinator")
+        ):
             if "reddit" in text or "subreddit" in text:
                 return True
             if "n/a" in text and ("points" in text or "comments" in text or "page title" in text):
@@ -422,7 +425,8 @@ class OpenHandsMarketingManager:
         combined_lower = " ".join(t.lower() for t in texts)
         task_lower = (task or "").lower()
         is_hn = any(
-            marker in task_lower for marker in ("hacker news", "news.ycombinator.com", "ycombinator")
+            marker in task_lower
+            for marker in ("hacker news", "news.ycombinator.com", "ycombinator")
         )
 
         if not is_hn:
@@ -613,12 +617,17 @@ class OpenHandsMarketingManager:
                     response = re.sub(r"^Screenshot.*$", "", response, flags=re.MULTILINE)
 
                     title_match = re.search(r"\d+\)\s+\*\*([^*]+)\*\*", response)
-                    screenshot_title = title_match.group(1).strip() if title_match else "HN thread page"
+                    screenshot_title = (
+                        title_match.group(1).strip() if title_match else "HN thread page"
+                    )
                     response = response.rstrip() + (
-                        f"\n\nScreenshot captured via CDP: hn_capture.png (on \"{screenshot_title}\")."
+                        f'\n\nScreenshot captured via CDP: hn_capture.png (on "{screenshot_title}").'
                     )
                 else:
-                    if "google_finance" not in response.lower() and "google finance" not in response.lower():
+                    if (
+                        "google_finance" not in response.lower()
+                        and "google finance" not in response.lower()
+                    ):
                         response = response.rstrip()
                     response = response.rstrip()
                     if "google_finance" not in response.lower():
