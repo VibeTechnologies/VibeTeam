@@ -566,7 +566,7 @@ class OpenHandsMarketingManager:
                 )
                 response = re.sub(r"^Screenshot.*$", "", response, flags=re.MULTILINE)
 
-                title_match = re.search(r"\\d+\\)\\s+\\*\\*([^*]+)\\*\\*", response)
+                title_match = re.search(r"\d+\)\s+\*\*([^*]+)\*\*", response)
                 screenshot_title = title_match.group(1).strip() if title_match else "HN thread page"
                 response = response.rstrip() + (
                     f"\n\nScreenshot captured via CDP: hn_capture.png (on \"{screenshot_title}\")."
