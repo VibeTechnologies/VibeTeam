@@ -27,7 +27,7 @@ from agents.shared.docs_tools import get_docs_context
 
 # Import shared tools for context injection
 from agents.shared.gmail_tools import get_email_context
-from agents.shared.kubectl_tools import get_multi_namespace_context
+from agents.shared.kubectl_tools import get_deployment_logs, get_multi_namespace_context
 from agents.shared.langfuse_tools import get_langfuse_context
 from agents.shared.sentry_tools import get_sentry_context
 
@@ -41,6 +41,16 @@ def fetch_kubectl_context() -> str:
     """Fetch Kubernetes context for both production and internal namespaces."""
     return get_multi_namespace_context()
 
+
+def fetch_gmail_processor_context(tail: int = 80) -> str:
+    """Fetch recent gmail-processor logs and keep unread-count lines only."""
+    result = get_deployment_logs("gmail-processor", namespace="vibeteam", tail=tail)
+    if not result.success:
+        return f"## Gmail Processor Logs\n\nError fetching logs: {result.stderr or result.stdout}"
+    lines = [line for line in result.stdout.splitlines() if "unread" in line.lower()]
+    if not lines:
+        return "## Gmail Processor Logs\n\nNo unread-count lines found in recent logs."
+    return "## Gmail Processor Logs (unread counts)\n\n" + "\n".join(lines)
 
 def fetch_gmail_context(max_results: int = 5) -> str:
     """Fetch Gmail context using shared tools."""
@@ -454,6 +464,7 @@ class OpenHandsSupportEngineer:
                 # Gmail context for email-related tasks
                 if any(kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]):
                     injected_context.append(fetch_gmail_context())
+                    injected_context.append(fetch_gmail_processor_context())
                     extra_guidance_lines.append(
                         "When reporting Gmail, list each unread email with subject, sender, date, and ID. "
                         'If none, say "No unread emails in inbox." If action is needed, draft the reply text.'
