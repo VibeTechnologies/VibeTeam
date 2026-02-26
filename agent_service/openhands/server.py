@@ -23,7 +23,11 @@ from agents.config import AgentConfig
 from agents.shared.db import close_db, get_postgres_store, init_db
 
 from .team import OpenHandsTeam, create_team
-from .utils import configure_text_truncation, configure_textcontent_json_serialization
+from .utils import (
+    coerce_text,
+    configure_text_truncation,
+    configure_textcontent_json_serialization,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -282,6 +286,7 @@ async def run_task(request: RunRequest):
             )
 
         latency_ms = int((time.time() - start_time) * 1000)
+        response_text = coerce_text(result.get("response", ""))
 
         # Build session key
         agent_role = result.get("agent", role or "team")
@@ -305,7 +310,7 @@ async def run_task(request: RunRequest):
                         },
                         {
                             "role": "assistant",
-                            "content": result.get("response", ""),
+                            "content": response_text,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         },
                     ],
@@ -315,7 +320,7 @@ async def run_task(request: RunRequest):
             logger.warning(f"Failed to save session to PostgreSQL: {e}")
 
         return RunResponse(
-            response=result.get("response", ""),
+            response=response_text,
             session_id=result.get("session_id", context_id),
             session_key=session_key,
             framework="openhands",
@@ -563,6 +568,7 @@ async def _execute_and_callback(
 
             latency_ms = int((time.time() - start_time) * 1000)
             agent_role = result.get("agent", role or "team")
+            response_text = coerce_text(result.get("response", ""))
             session_key = f"openhands:{agent_role}:{request.context_type}:{context_id}"
 
             # Save to PostgreSQL
@@ -583,7 +589,7 @@ async def _execute_and_callback(
                             },
                             {
                                 "role": "assistant",
-                                "content": result.get("response", ""),
+                                "content": response_text,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             },
                         ],
@@ -596,7 +602,7 @@ async def _execute_and_callback(
             payload = CallbackPayload(
                 job_id=job_id,
                 status="completed",
-                response=result.get("response", ""),
+                response=response_text,
                 session_id=result.get("session_id", context_id),
                 session_key=session_key,
                 agents_used=[agent_role],
@@ -697,7 +703,8 @@ async def run_task_stream(request: RunRequest):
             # Send result
             import json
 
-            yield f"data: {json.dumps({'event': 'message', 'content': result.get('response', '')})}\n\n"
+            response_text = coerce_text(result.get("response", ""))
+            yield f"data: {json.dumps({'event': 'message', 'content': response_text})}\n\n"
             yield f"data: {json.dumps({'event': 'done', 'session_id': result.get('session_id', context_id)})}\n\n"
 
         except Exception as e:
