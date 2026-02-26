@@ -206,6 +206,7 @@ SCENARIOS = {
         "message": "@VibeTeam @SupportEngineer. Check Sentry issues. Anything to address?",
         "expected_agent": "support_engineer",
         "timeout": 600,
+        "skip_handoff": True,
         "evaluation_criteria": {
             "SentryUsage": (
                 "Did the SupportEngineer actually check Sentry and report findings? "
@@ -261,6 +262,7 @@ SCENARIOS = {
         "message": "@VibeTeam @SupportEngineer, check Gmail inbox, anything to address? If so, work on it.",
         "expected_agent": "support_engineer",
         "timeout": 600,
+        "skip_handoff": True,
         "evaluation_criteria": {
             "GmailUsage": (
                 "Did the SupportEngineer actually check Gmail inbox and report findings? "
@@ -1585,7 +1587,7 @@ async def run_evaluation(
                 if bot_messages:
                     latest_bot_msg = bot_messages[-1]
                     has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
-                    if has_handoff:
+                    if has_handoff and not scenario.get("skip_handoff", False):
                         # Auto-extend timeout on handoff detection
                         remaining = (start_time + effective_timeout) - time.time()
                         if handoff_timeout_extension > remaining:
