@@ -1239,7 +1239,12 @@ async def run_evaluation(
         print(">>> Step 1: Posting message to Slack")
         print(f"    Message: {user_message[:80]}...")
 
-        initial_msg = slack.post_message(channel=channel, text=user_message)
+        # Post without role mentions to avoid duplicate processing from Slack bot events.
+        posted_message = ROLE_PATTERN.sub("", user_message).strip()
+        if not posted_message:
+            posted_message = "Evaluation run (role mention omitted to avoid duplicate routing)."
+
+        initial_msg = slack.post_message(channel=channel, text=posted_message)
         thread_ts = initial_msg.ts
         print(f"    Thread TS: {thread_ts}")
         print("    Posted successfully!")
