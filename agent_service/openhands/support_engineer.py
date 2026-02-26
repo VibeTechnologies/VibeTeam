@@ -559,7 +559,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 or "sentry issues" in task_lower
             ):
                 response = re.sub(
-                    r"@(ProductManager|MarketingManager|SupportEngineer|ReleaseEngineer|SoftwareEngineer)\\b",
+                    r"[@/](ProductManager|MarketingManager|SupportEngineer|ReleaseEngineer|SoftwareEngineer)\\b",
                     r"\\1",
                     response,
                     flags=re.IGNORECASE,
