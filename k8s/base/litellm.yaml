@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  labels:
+    app: litellm
+    team: vibeteam
+data:
+  config.yaml: |
+    model_list:
+      - model_name: gpt-5.2
+        litellm_params:
+          model: azure/gpt-5.2
+          api_base: ${AZURE_API_BASE}
+          api_key: ${AZURE_API_KEY}
+          api_version: ${AZURE_API_VERSION}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  labels:
+    app: litellm
+    team: vibeteam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: litellm
+  template:
+    metadata:
+      labels:
+        app: litellm
+        team: vibeteam
+    spec:
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:main-stable
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config
+            - /app/config.yaml
+            - --port
+            - "4000"
+          env:
+            - name: AZURE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_KEY
+            - name: AZURE_API_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_BASE
+            - name: AZURE_API_VERSION
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: AZURE_API_VERSION
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LITELLM_MASTER_KEY
+                  optional: true
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LITELLM_API_KEY
+                  optional: true
+          ports:
+            - containerPort: 4000
+              name: http
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+          readinessProbe:
+            tcpSocket:
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 4000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+      volumes:
+        - name: litellm-config
+          configMap:
+            name: litellm-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  labels:
+    app: litellm
+    team: vibeteam
+spec:
+  selector:
+    app: litellm
+  ports:
+    - name: http
+      port: 4000
+      targetPort: 4000

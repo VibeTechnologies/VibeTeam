@@ -12,7 +12,13 @@ resources:
   - vibeteam-gateway.yaml
   # Agent Microservices (FastAPI servers handling all agent roles)
   - openhands-svc.yaml
+  - openclaw-svc.yaml
+  # OpenClaw gateway (shared, multi-persona)
+  - openclaw-config.yaml
+  - openclaw-gateway.yaml
   - scheduler-svc.yaml
+  # LiteLLM proxy (in-namespace for OpenClaw)
+  - litellm.yaml
   # Gmail email processor (daemon polling for support emails)
   - gmail-processor.yaml
   # Production infrastructure
@@ -24,3 +30,11 @@ resources:
   - frameworks/
   # Note: Slack agents removed - gateway receives webhooks and routes to agent services
   # Old per-role slack-agents/ polling pattern was incorrect per design.md
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: openclaw-agent-prompts
+    files:
+      - AGENTS.md=openclaw-prompts/ProductManager.AGENTS.md
