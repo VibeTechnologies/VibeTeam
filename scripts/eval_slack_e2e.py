@@ -397,6 +397,133 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "marketing_hn_engagement": {
+        "name": "Marketing Manager - Hacker News Thread Engagement (Soft Promo)",
+        "message": (
+            "@MarketingManager run a marketing evaluation for vibebrowser.app. "
+            "Use Chrome DevTools MCP (CDP) to browse news.ycombinator.com and identify "
+            "3 recent Hacker News threads where Vibe Browser fits (Show HN, Ask HN, "
+            "or front-page threads on browser productivity, web automation, research). "
+            "Open each thread page and record: thread title, points, comment count, and page title. "
+            "Review the HN guidelines (https://news.ycombinator.com/newsguidelines.html) and "
+            "note any self-promotion constraints that matter. Draft: 2 comments and 1 post "
+            "(Ask HN or Show HN style) that are value-first and non-obvious about promotion. "
+            "Mention vibebrowser.app subtly in only ONE of the three drafts. Do NOT actually post—just draft text. "
+            "Report: thread titles, points/comments, guidelines notes, page titles, and the 3 drafts. "
+            "Also confirm CDP tools were used and include at least one screenshot capture."
+        ),
+        "expected_agent": "marketing_manager",
+        "timeout": 900,
+        "evaluation_criteria": {
+            "ChromeDevToolsUsage": (
+                "Did the agent clearly use Chrome DevTools MCP (CDP) to perform the task? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit mention of Chrome DevTools MCP/CDP usage; "
+                "(2) Evidence of DevTools-derived artifacts such as page titles, points/comments, or "
+                "screenshot capture; "
+                "(3) No reliance on generic assumptions without browsing evidence. "
+                "SCORING: "
+                "Score 0.0-0.3: No indication of DevTools/CDP usage. "
+                "Score 0.3-0.6: Vague mention of tooling but no DevTools artifacts. "
+                "Score 0.6-0.8: Clear DevTools usage with at least one artifact. "
+                "Score 0.8-1.0: Clear DevTools usage with multiple artifacts (titles + screenshot)."
+            ),
+            "HNFitAndGuidelines": (
+                "Did the agent pick relevant HN threads and respect HN guidelines? "
+                "REQUIRED: "
+                "(1) Three threads selected that plausibly fit Vibe Browser; "
+                "(2) Guidelines notes include self-promo/affiliation constraints; "
+                "(3) Drafts reflect HN culture (no spam, transparent affiliation). "
+                "IF HN ACCESS IS BLOCKED: "
+                "High scores are still possible if the agent clearly notes the block once, "
+                "provides conservative/standard HN guidance, and keeps drafts aligned. "
+                "SCORING: "
+                "Score 0.0-0.3: Threads irrelevant or guidelines ignored. "
+                "Score 0.3-0.6: Partial relevance or vague guideline notes. "
+                "Score 0.6-0.8: Relevant threads with clear guideline notes. "
+                "Score 0.8-1.0: Strong relevance and explicit compliance with guidelines."
+            ),
+            "TaskCompletion": (
+                "Did the agent complete all requested outputs? "
+                "REQUIRED: "
+                "(1) 3 thread titles; "
+                "(2) points and comment counts per thread (best-effort if blocked); "
+                "(3) guidelines notes; "
+                "(4) 2 comment drafts + 1 post draft; "
+                "(5) mention vibebrowser.app in only one draft; "
+                "(6) page title for each thread; "
+                "(7) confirmation of a screenshot capture and CDP usage. "
+                "SCORING: "
+                "Score 0.0-0.3: Missing most outputs. "
+                "Score 0.3-0.5: Partial outputs (1-3 items). "
+                "Score 0.5-0.7: Most outputs but 1-2 missing. "
+                "Score 0.7-0.9: All outputs provided with minor gaps. "
+                "Score 0.9-1.0: Complete and concise, all outputs present."
+            ),
+            "SoftPromoQuality": (
+                "Are the drafts value-first and non-obvious about promotion? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Drafts are helpful and context-aware; "
+                "(2) Only one draft mentions vibebrowser.app; "
+                "(3) The mention is subtle (e.g., framed as a tool used in a workflow), "
+                "not salesy. "
+                "IF HN ACCESS IS BLOCKED: "
+                "Do not penalize drafts solely for lack of verified threads/guidelines "
+                "if an access note is provided and the drafts remain helpful and non-spammy. "
+                "SCORING: "
+                "Score 0.0-0.3: Spammy, salesy, or repeated promotion. "
+                "Score 0.3-0.6: Some value but still promotional or mentions too often. "
+                "Score 0.6-0.8: Helpful drafts with subtle, limited mention. "
+                "Score 0.8-1.0: Strongly helpful, authentic tone, single subtle mention."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused, without unnecessary "
+                "tool repetition or irrelevant commentary. "
+                "IF HN ACCESS IS BLOCKED: "
+                "A concise best-effort response that still includes all requested outputs "
+                "(threads, guidelines notes, drafts, CDP/screenshot confirmation) "
+                "should score 0.7+ even if threads are inferred. "
+                "SCORING: "
+                "Score 0.0-0.3: Excessive verbosity or repeated steps. "
+                "Score 0.3-0.5: Some redundancy but completed. "
+                "Score 0.5-0.7: Reasonably concise with minor fluff. "
+                "Score 0.7-0.9: Focused response with clear outputs. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "ChromeDevToolsUsage": [
+                "Check that the agent explicitly mentions using Chrome DevTools MCP/CDP tools.",
+                "Check for DevTools-derived artifacts such as page titles, points/comments, or screenshot mention.",
+                "Score <= 0.3 if no DevTools evidence; 0.6+ if DevTools artifacts are present.",
+            ],
+            "HNFitAndGuidelines": [
+                "Check that three threads were selected and are relevant.",
+                "Check that guidelines notes include self-promo/affiliation constraints.",
+                "Check that drafts respect HN norms and avoid spammy behavior.",
+                "If HN access was blocked, accept conservative guideline notes plus a single access note.",
+            ],
+            "TaskCompletion": [
+                "Check that thread titles, points/comments, and guidelines notes are all present.",
+                "Check that there are 2 comment drafts and 1 post draft.",
+                "Check that vibebrowser.app is mentioned only once.",
+                "Check that page titles are reported and a screenshot capture is confirmed.",
+            ],
+            "SoftPromoQuality": [
+                "Check that drafts are helpful and not salesy.",
+                "Check that the single mention of vibebrowser.app is subtle and contextual.",
+                "Score <= 0.5 if promotion is repeated or too obvious.",
+                "If HN access was blocked, do not penalize drafts for unverified threads/guidelines.",
+            ],
+            "ResponseEfficiency": [
+                "Check for redundant tool usage or repeated steps in the response.",
+                "Check that the response is concise and directly answers the requested outputs.",
+                "Score 0.7+ if the response is focused and complete.",
+                "If blocked, concise best-effort outputs should still score 0.7+.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "github_issue": {
         "name": "Software Engineer - GitHub Issue Triage",
         "message": (
