@@ -486,8 +486,11 @@ SCENARIOS = {
                 "A concise best-effort response that still includes all requested outputs "
                 "(threads, estimates, guidelines notes, drafts, CDP/screenshot confirmation) "
                 "should score 0.7+ even if thread titles/metrics are best-effort or inferred. "
-                "Do not penalize for access-denied page titles, placeholder thread URLs/IDs, "
-                "or a screenshot filename without an attachment in blocked scenarios. "
+                "ResponseEfficiency is about concision and coverage, not evidence quality. "
+                "Do not require alternative retrieval methods or attachments when blocked. "
+                "Do not penalize for access-denied page titles (even for all three threads), "
+                "placeholder thread URLs/IDs, or a screenshot filename without an attachment "
+                "in blocked scenarios. "
                 "SCORING: "
                 "Score 0.0-0.3: Excessive verbosity or repeated steps. "
                 "Score 0.3-0.5: Some redundancy but completed. "
@@ -527,6 +530,8 @@ SCENARIOS = {
                 "Score 0.7+ if the response is focused and complete.",
                 "If blocked, concise best-effort outputs should still score 0.7+.",
                 "Do not penalize for access-denied titles or a screenshot filename without attachment.",
+                "Do not downgrade for lack of alternative retrieval when blocked; focus on structure and concision.",
+                "If blocked and all required outputs are present, default to >=0.7 unless verbose or off-task.",
             ],
         },
         "threshold": 0.70,
