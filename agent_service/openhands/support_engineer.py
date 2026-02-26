@@ -562,6 +562,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                     r"@(ProductManager|MarketingManager|SupportEngineer|ReleaseEngineer|SoftwareEngineer)\\b",
                     r"\\1",
                     response,
+                    flags=re.IGNORECASE,
                 )
 
             session.add_message("user", task)
