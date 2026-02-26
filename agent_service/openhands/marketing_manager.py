@@ -480,7 +480,7 @@ class OpenHandsMarketingManager:
                 "Title: Ask HN: How do you keep browser research workflows reliable at scale?",
                 "Body: I am collecting patterns for making research workflows durable across changing "
                 "pages (auth, dynamic DOMs, paywalls, multi-tab comparisons). I am prototyping one "
-                f"approach at vibebrowser.app and would appreciate feedback on failure modes and "
+                "approach at vibebrowser.app and would appreciate feedback on failure modes and "
                 "observability you consider essential.",
                 "",
                 "CDP confirmation: Chrome DevTools MCP/CDP was used.",

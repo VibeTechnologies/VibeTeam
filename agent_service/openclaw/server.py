@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """
 OpenClaw Agent Microservice.
 
 FastAPI server exposing OpenClaw gateway execution via WebSocket RPC.
 """
+
+from __future__ import annotations
 
 import asyncio
 import json
@@ -22,9 +22,9 @@ import websockets
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from vibeteam.agents_config import get_agent_entry, resolve_openclaw_agent_id
 
 from agents.shared.db import close_db, get_postgres_store, init_db
-from vibeteam.agents_config import get_agent_entry, resolve_openclaw_agent_id
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

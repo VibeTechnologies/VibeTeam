@@ -118,10 +118,11 @@ def configure_textcontent_json_serialization() -> None:
         return
 
     try:
-        from openhands.sdk.llm import TextContent  # type: ignore
-        import openhands.sdk.agent.agent as agent_mod  # type: ignore
         import json as _json
         import types
+
+        import openhands.sdk.agent.agent as agent_mod  # type: ignore
+        from openhands.sdk.llm import TextContent  # type: ignore
 
         def _safe_default(obj):
             if isinstance(obj, TextContent):
@@ -214,7 +215,7 @@ def coerce_text(value: Any) -> str:
 
     if hasattr(value, "text"):
         try:
-            return str(getattr(value, "text"))
+            return str(value.text)
         except Exception:
             pass
 
