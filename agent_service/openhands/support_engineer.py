@@ -565,6 +565,33 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                     flags=re.IGNORECASE,
                 )
 
+            if "gmail" in task_lower or "inbox" in task_lower:
+                lines = response.splitlines()
+                filtered: list[str] = []
+                mode: str | None = None
+                for line in lines:
+                    lower = line.strip().lower()
+                    if lower.startswith("sentry"):
+                        mode = "skip"
+                        continue
+                    if lower.startswith("kubectl findings"):
+                        mode = "kubectl"
+                        continue
+                    if lower.startswith("endpoint test"):
+                        mode = "skip"
+                        continue
+                    if lower == "" and mode is not None:
+                        mode = None
+                        continue
+                    if mode == "skip":
+                        continue
+                    if mode == "kubectl":
+                        if "gmail" in lower or "unread" in lower:
+                            filtered.append(line)
+                        continue
+                    filtered.append(line)
+                response = "\n".join(filtered).strip()
+
             session.add_message("user", task)
             session.add_message("assistant", response)
             get_session_store().save(session)
