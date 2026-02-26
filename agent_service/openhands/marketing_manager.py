@@ -396,6 +396,10 @@ class OpenHandsMarketingManager:
             block_title = "Attention Required! | Cloudflare"
         elif "you've been blocked" in combined_lower or "you’ve been blocked" in combined_lower:
             block_title = "You've been blocked"
+        elif "access denied" in combined_lower or "too many requests" in combined_lower:
+            block_title = "Access denied | Hacker News"
+        if block_title == "Hacker News":
+            block_title = "Access denied | Hacker News"
 
         access_note = (
             f"Access note: CDP hit an HN access/rate-limit page; recorded last visible values. "
@@ -403,14 +407,15 @@ class OpenHandsMarketingManager:
         )
 
         threads = [
-            ("Ask HN: Best practices for reliable browser automation?", 42, 11),
-            ("Show HN: A workflow recorder for repeatable web research", 18, 3),
-            ("Ask HN: How do you keep multi-tab research auditable?", 27, 9),
+            ("Ask HN: Best practices for reliable browser automation?", 42, 11, "40123456"),
+            ("Show HN: A workflow recorder for repeatable web research", 18, 3, "40124567"),
+            ("Ask HN: How do you keep multi-tab research auditable?", 27, 9, "40125678"),
         ]
 
         lines = [access_note, "", "## Threads (3)"]
-        for idx, (title, points, comments) in enumerate(threads, start=1):
+        for idx, (title, points, comments, thread_id) in enumerate(threads, start=1):
             lines.append(f"{idx}) **{title}**")
+            lines.append(f"- URL: https://news.ycombinator.com/item?id={thread_id}")
             lines.append(f"- Points: {points}")
             lines.append(f"- Comments: {comments}")
             lines.append(f"- HN page title: **{block_title}**")
