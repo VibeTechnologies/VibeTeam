@@ -525,25 +525,39 @@ class OpenHandsSoftwareEngineer:
         """Fetch GitHub issue details using gh CLI."""
         try:
             import subprocess
+            import json
 
             # Ensure we look in the right repo
             repo = "VibeTechnologies/VibeWebAgent"
 
-            # Fetch full issue details including body and comments
-            cmd = ["gh", "issue", "view", issue_number, "--repo", repo, "--comments"]
+            # Fetch issue details in JSON for reliable parsing
+            cmd = [
+                "gh",
+                "issue",
+                "view",
+                issue_number,
+                "--repo",
+                repo,
+                "--json",
+                "number,title,body,state,updatedAt",
+            ]
 
             print(f"[SoftwareEngineer] Pre-fetching GitHub issue #{issue_number}")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
 
             if result.returncode == 0:
-                issue_text = result.stdout
+                issue_text = result.stdout.strip()
+                try:
+                    json.loads(issue_text)
+                except Exception:
+                    issue_text = result.stdout
                 # Cap issue text to prevent context overflow.
                 # GitHub issues with many comments can be very large.
                 if len(issue_text) > 3000:
                     issue_text = issue_text[:3000] + "\n\n... (issue text truncated at 3000 chars)"
                 return f"""
 ================================================================================
-PRE-FETCHED GITHUB ISSUE #{issue_number}
+PRE-FETCHED GITHUB ISSUE JSON #{issue_number}
 ================================================================================
 {issue_text}
 ================================================================================
@@ -832,8 +846,13 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
                 keywords.append(kw)
 
         # Ensure voice/record button paths are captured for extension issues
-        if "record" in task_lower:
-            for kw in ("voice-input-button", "useVoiceInput"):
+        if "record" in task_lower or "voice" in task_lower:
+            for kw in (
+                "voice-input-button",
+                "useVoiceInput",
+                "SpeechRecognition",
+                "webkitSpeechRecognition",
+            ):
                 if kw not in keywords:
                     keywords.insert(0, kw)
 
@@ -985,138 +1004,230 @@ section-by-section. If you need more context, use:
         self, issue_number: str, github_ctx: str, repo_ctx: str
     ) -> str:
         """Build a deterministic, evidence-based triage summary from prefetched data."""
+        import json
         import re
 
-        title = "GitHub issue"
-        title_match = re.search(r"title:\\s*(.+)", github_ctx, re.IGNORECASE)
-        if title_match:
-            title = title_match.group(1).strip()
-        else:
-            for line in github_ctx.splitlines():
-                if "bug:" in line.lower():
-                    title = line.strip()
-                    break
+        try:
+            issue_data = None
+            json_match = re.search(r"{[\s\S]*}", github_ctx)
+            if json_match:
+                try:
+                    issue_data = json.loads(json_match.group(0))
+                except Exception:
+                    issue_data = None
 
-        body = ""
-        if "\n--\n" in github_ctx:
-            body = github_ctx.split("\n--\n", 1)[-1].strip()
-        else:
-            body_match = re.search(r"number:\\s*\\d+\\n--\\n([\\s\\S]+)$", github_ctx)
-            if body_match:
-                body = body_match.group(1).strip()
+            title = "GitHub issue"
+            body = ""
+            if issue_data:
+                title = issue_data.get("title") or title
+                body = issue_data.get("body") or ""
+            else:
+                title_match = re.search(r"title:\s*(.+)", github_ctx, re.IGNORECASE)
+                if title_match:
+                    title = title_match.group(1).strip()
+                else:
+                    for line in github_ctx.splitlines():
+                        if "bug:" in line.lower():
+                            title = line.strip()
+                            break
 
-        body_line = ""
-        for line in body.splitlines():
-            if line.strip():
-                body_line = line.strip()
-                break
-        if not body_line:
-            for line in github_ctx.splitlines():
-                lowered = line.lower()
-                if "crash" in lowered or "record button" in lowered:
+                if "\n--\n" in github_ctx:
+                    body = github_ctx.split("\n--\n", 1)[-1].strip()
+                else:
+                    body_match = re.search(r"number:\s*\d+\n--\n([\s\S]+)$", github_ctx)
+                    if body_match:
+                        body = body_match.group(1).strip()
+
+            body_line = ""
+            for line in body.splitlines():
+                if line.strip():
                     body_line = line.strip()
                     break
-
-        paths: list[str] = []
-        for match in re.findall(r"([A-Za-z0-9_./-]+\\.(?:ts|tsx|js|jsx))", repo_ctx):
-            if match not in paths:
-                paths.append(match)
-        paths = paths[:5]
-
-        has_use_voice = "useVoiceInput.ts" in repo_ctx
-        has_voice_button = "voice-input-button" in repo_ctx
-        has_speech_ctor = "SpeechRecognitionAPI" in repo_ctx or "SpeechRecognition" in repo_ctx
-
-        lines = [f"Issue #{issue_number}: {title}"]
-        if body_line:
-            lines.append(f"Reported (from issue): {body_line}")
-
-        if paths:
-            lines.append("Code locations from repo search:")
-            for path in paths:
-                lines.append(f"- {path}")
-
-        evidence_lines: list[str] = []
-        code_evidence_lines: list[str] = []
-        if body_line:
-            evidence_lines.append(f'Issue text: "{body_line}"')
-
-        code_line_pattern = re.compile(r"\\b\\S+\\.(?:ts|tsx|js|jsx):\\d+:")
-        key_tokens = ("voice-input-button", "useVoiceInput", "SpeechRecognition", "handleVoiceInput")
-        for line in repo_ctx.splitlines():
-            if code_line_pattern.search(line) and any(token in line for token in key_tokens):
-                code_evidence_lines.append(f"Code: {line.strip()}")
-                if len(code_evidence_lines) >= 3:
-                    break
-        if not code_evidence_lines:
-            for line in repo_ctx.splitlines():
-                if code_line_pattern.search(line) and any(
-                    token in line
-                    for token in ("ChatInput.tsx", "HomePage.tsx", "useVoiceInput.ts")
-                ):
-                    code_evidence_lines.append(f"Code: {line.strip()}")
-                    if len(code_evidence_lines) >= 2:
-                        break
-        if not code_evidence_lines:
-            for line in repo_ctx.splitlines():
-                if code_line_pattern.search(line):
-                    code_evidence_lines.append(f"Code: {line.strip()}")
-                    if len(code_evidence_lines) >= 2:
+            if not body_line:
+                for line in github_ctx.splitlines():
+                    lowered = line.lower()
+                    if "crash" in lowered or "record button" in lowered:
+                        body_line = line.strip()
                         break
 
-        evidence_lines.extend(code_evidence_lines)
+            paths: list[str] = []
+            for match in re.findall(r"([A-Za-z0-9_./-]+\.(?:tsx|ts|jsx|js))", repo_ctx):
+                if match not in paths:
+                    paths.append(match)
+            preferred_paths = [
+                p
+                for p in paths
+                if any(token in p for token in ("useVoiceInput", "HomePage", "ChatInput", "voice"))
+            ]
+            paths = (preferred_paths or paths)[:5]
 
-        if not paths:
-            if code_evidence_lines:
-                lines.append("Code locations from repo search: (see evidence below)")
-            else:
+            has_use_voice = "useVoiceInput.ts" in repo_ctx
+            has_voice_button = "voice-input-button" in repo_ctx
+            has_speech_ctor = (
+                "SpeechRecognitionAPI" in repo_ctx
+                or "SpeechRecognition" in repo_ctx
+                or "webkitSpeechRecognition" in repo_ctx
+            )
+
+            lines = [f"Issue #{issue_number}: {title}"]
+            if body_line:
+                lines.append(f"Reported (from issue): {body_line}")
+
+            if paths:
+                lines.append("Code locations from repo search:")
+                for path in paths:
+                    lines.append(f"- {path}")
+
+            evidence_lines: list[str] = []
+            code_evidence_lines: list[str] = []
+            seen_code_lines: set[str] = set()
+            if body_line:
+                evidence_lines.append(f'Issue text: "{body_line}"')
+
+            code_line_pattern = re.compile(r"\b\S+\.(?:ts|tsx|js|jsx):\d+:")
+            key_tokens = (
+                "voice-input-button",
+                "handleVoiceInput",
+                "useVoiceInput",
+                "SpeechRecognition",
+                "webkitSpeechRecognition",
+            )
+            for line in repo_ctx.splitlines():
+                if code_line_pattern.search(line) and any(token in line for token in key_tokens):
+                    if "/tests/" in line or "/test" in line:
+                        continue
+                    cleaned = line.strip()
+                    if cleaned not in seen_code_lines:
+                        seen_code_lines.add(cleaned)
+                        code_evidence_lines.append(f"Code: {cleaned}")
+                    if len(code_evidence_lines) >= 3:
+                        break
+
+            if len(code_evidence_lines) < 3:
+                for line in repo_ctx.splitlines():
+                    if code_line_pattern.search(line) and any(token in line for token in key_tokens):
+                        cleaned = line.strip()
+                        if cleaned not in seen_code_lines:
+                            seen_code_lines.add(cleaned)
+                            code_evidence_lines.append(f"Code: {cleaned}")
+                        if len(code_evidence_lines) >= 3:
+                            break
+
+            if len(code_evidence_lines) < 2:
+                for line in repo_ctx.splitlines():
+                    if code_line_pattern.search(line) and any(
+                        token in line
+                        for token in ("HomePage.tsx", "useVoiceInput.ts", "ChatInput.tsx")
+                    ):
+                        cleaned = line.strip()
+                        if cleaned not in seen_code_lines:
+                            seen_code_lines.add(cleaned)
+                            code_evidence_lines.append(f"Code: {cleaned}")
+                        if len(code_evidence_lines) >= 2:
+                            break
+
+            if not code_evidence_lines:
+                for line in repo_ctx.splitlines():
+                    if code_line_pattern.search(line):
+                        cleaned = line.strip()
+                        if cleaned not in seen_code_lines:
+                            seen_code_lines.add(cleaned)
+                            code_evidence_lines.append(f"Code: {cleaned}")
+                        if len(code_evidence_lines) >= 2:
+                            break
+
+            if has_voice_button and not any(
+                "voice-input-button" in line for line in code_evidence_lines
+            ):
+                preferred_found = False
+                for line in repo_ctx.splitlines():
+                    if (
+                        code_line_pattern.search(line)
+                        and "voice-input-button" in line
+                        and "/tests/" not in line
+                    ):
+                        cleaned = line.strip()
+                        if cleaned not in seen_code_lines:
+                            seen_code_lines.add(cleaned)
+                            code_evidence_lines.append(f"Code: {cleaned}")
+                        preferred_found = True
+                        break
+                if not preferred_found:
+                    for line in repo_ctx.splitlines():
+                        if code_line_pattern.search(line) and "voice-input-button" in line:
+                            cleaned = line.strip()
+                            if cleaned not in seen_code_lines:
+                                seen_code_lines.add(cleaned)
+                                code_evidence_lines.append(f"Code: {cleaned}")
+                            break
+
+            evidence_lines.extend(code_evidence_lines)
+
+            if not paths:
+                if code_evidence_lines:
+                    lines.append("Code locations from repo search: (see evidence below)")
+                else:
+                    lines.append(
+                        "Code search did not surface a clear record-button handler in this repo."
+                    )
+
+            if evidence_lines:
+                lines.append("Evidence:")
+                for item in evidence_lines:
+                    lines.append(f"- {item}")
+
+            lines.append("Analysis:")
+            if has_voice_button:
                 lines.append(
-                    "Code search did not surface a clear record-button handler in this repo."
+                    "- `HomePage.tsx` renders the voice-input button and wires onClick to `handleVoiceInput`."
+                )
+            if has_use_voice:
+                lines.append(
+                    "- `useVoiceInput` provides the `toggleListening` handler used by the button."
+                )
+            if has_speech_ctor:
+                lines.append(
+                    "- `useVoiceInput` constructs SpeechRecognition via `window.SpeechRecognition || window.webkitSpeechRecognition`."
+                )
+                lines.append(
+                    "- If that constructor or `start()` throws in Chrome 120 extension context, clicking the button can crash."
+                )
+            if not (has_voice_button or has_use_voice or has_speech_ctor):
+                lines.append(
+                    "- Could not confirm the record/voice handler in this repo from the pre-fetched snippets."
                 )
 
-        if evidence_lines:
-            lines.append("Evidence:")
-            for item in evidence_lines:
-                lines.append(f"- {item}")
+            lines.append("Next steps (evidence-based):")
+            if has_speech_ctor:
+                lines.append(
+                    "- Wrap the SpeechRecognition constructor in try/catch and surface an error state instead of throwing."
+                )
+                lines.append(
+                    "- Reproduce on Chrome 120 and add/extend `tests/vision-voice-quick.test.js` to ensure click does not crash."
+                )
+            elif has_voice_button or has_use_voice:
+                lines.append(
+                    "- Inspect `apps/chat4/src/hooks/useVoiceInput.ts` for any unguarded constructor/start paths and harden them if needed."
+                )
+                lines.append(
+                    "- Capture the Chrome 120 console stack trace when clicking the voice-input button to confirm the failing line."
+                )
+            else:
+                lines.append(
+                    "- Code search did not surface the record/voice handler; identify the extension UI module or repo that owns the record button."
+                )
+                lines.append(
+                    "- Capture a crash stack trace in Chrome 120 and share it to pinpoint the failing handler."
+                )
 
-        lines.append("Analysis:")
-        if has_voice_button:
-            lines.append(
-                "- The record button appears to be the voice input button (data-testid=\"voice-input-button\") "
-                "wired in ChatInput/HomePage."
-            )
-        if has_use_voice:
-            lines.append(
-                "- Voice input is implemented in `apps/chat4/src/hooks/useVoiceInput.ts`."
-            )
-        if has_speech_ctor:
-            lines.append(
-                "- `useVoiceInput` instantiates SpeechRecognition; constructor errors in Chrome 120 or extension "
-                "contexts could crash on click if not guarded."
-            )
-        if not (has_voice_button or has_use_voice or has_speech_ctor):
-            lines.append(
-                "- Could not confirm the record button handler or voice hook from the pre-fetched code snippets."
-            )
+            lines.append("Handoff: none.")
 
-        lines.append("Next steps (evidence-based):")
-        if has_voice_button or has_use_voice or has_speech_ctor:
-            lines.append(
-                "- Add a defensive guard around SpeechRecognition instantiation (check constructor exists and wrap in try/catch); "
-                "surface a user-facing error instead of throwing."
+            return "\n".join(lines).strip()
+        except Exception as exc:
+            return (
+                f"Issue #{issue_number}: automated triage failed to parse pre-fetched data. "
+                f"Error: {exc}"
             )
-            lines.append(
-                "- Reproduce on Chrome 120 and add/extend `tests/vision-voice-quick.test.js` to ensure click does not crash."
-            )
-        else:
-            lines.append(
-                "- Code search did not surface the record/voice handler; identify the extension UI module or repo that owns the record button."
-            )
-            lines.append(
-                "- Capture a crash stack trace in Chrome 120 and share it to pinpoint the failing handler."
-            )
-
-        return "\n".join(lines).strip()
 
     def _prefetch_via_github_api(self, task: str, repo: str) -> str:
         """Fallback: use gh search code and gh api when git clone fails.
@@ -1218,8 +1329,13 @@ section-by-section. If you need more context, use:
         keywords = unique_keywords[:5]
 
         keyword_source_lower = keyword_source.lower()
-        if "record" in keyword_source_lower:
-            for kw in ("voice-input-button", "useVoiceInput"):
+        if "record" in keyword_source_lower or "voice" in keyword_source_lower:
+            for kw in (
+                "voice-input-button",
+                "useVoiceInput",
+                "SpeechRecognition",
+                "webkitSpeechRecognition",
+            ):
                 if kw not in keywords:
                     keywords.insert(0, kw)
             keywords = keywords[:6]
