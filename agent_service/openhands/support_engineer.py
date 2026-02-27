@@ -670,12 +670,17 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 
             response = extract_response_from_events(conversation.state.events)
 
-            # Avoid role-mention handoffs for inbox/sentry triage eval-style tasks.
+            # Avoid role-mention handoffs for eval-style triage tasks.
             task_lower = task.lower()
-            if (
-                "gmail" in task_lower
-                or "inbox" in task_lower
-                or "sentry issues" in task_lower
+            if any(
+                kw in task_lower
+                for kw in [
+                    "gmail",
+                    "inbox",
+                    "sentry issues",
+                    "stripe",
+                    "webhook",
+                ]
             ):
                 response = re.sub(
                     r"[@/](ProductManager|MarketingManager|SupportEngineer|ReleaseEngineer|SoftwareEngineer)\\b",
