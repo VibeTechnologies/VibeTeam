@@ -113,6 +113,25 @@ def create_progress_callback(
     return _progress_callback
 
 
+def create_heartbeat_callback(
+    on_progress: Callable[[], None] | None = None,
+) -> Callable[[Any], None]:
+    """Create a lightweight callback that only updates the progress heartbeat.
+
+    This is used when we want idle-timeout detection without sending
+    progress updates to Slack.
+    """
+
+    def _heartbeat_callback(_event: Any) -> None:
+        if on_progress:
+            try:
+                on_progress()
+            except Exception:
+                pass
+
+    return _heartbeat_callback
+
+
 def _send_progress_sync(
     progress_url: str,
     job_id: str,

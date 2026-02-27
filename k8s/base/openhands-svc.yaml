@@ -77,6 +77,8 @@ spec:
                   key: SENTRY_AUTH_TOKEN
             - name: CHROME_DEVTOOLS_BROWSER_URL
               value: "http://browserless:3000"
+            - name: OPENHANDS_SYNC_IDLE_TIMEOUT_SECONDS
+              value: "300"
           resources:
             requests:
               memory: "3Gi"

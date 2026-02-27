@@ -422,6 +422,12 @@ class OpenHandsReleaseEngineer:
                     on_progress=kwargs.get("progress_heartbeat"),
                 )
                 callbacks.append(progress_cb)
+            elif kwargs.get("progress_heartbeat"):
+                from .progress import create_heartbeat_callback
+
+                callbacks.append(
+                    create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
+                )
 
             # Create local conversation with required workspace
             # max_iterations caps the number of agent iterations (tool calls)
