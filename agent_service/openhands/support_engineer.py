@@ -148,12 +148,16 @@ def build_notification_message(task: str) -> str:
     env_match = re.search(
         r"to\\s+(staging|production|prod|dev|qa)\\b", task, re.IGNORECASE
     )
-    pr_part = f"PR #{pr_match.group(1)}" if pr_match else "the deployment"
+    pr_part = f"PR #{pr_match.group(1)}" if pr_match else ""
     env = env_match.group(1).lower() if env_match else ""
     if env == "prod":
         env = "production"
     env_part = f" to {env}" if env else ""
-    return f"Deployment of {pr_part}{env_part} is complete and verified."
+    if pr_part:
+        body = f"Deployment of {pr_part}{env_part} is complete and verified."
+    else:
+        body = f"Deployment{env_part} is complete and verified."
+    return f"Notified the team: {body}"
 
 
 def fetch_langfuse_context_wrapper(hours: int = 6) -> str:
