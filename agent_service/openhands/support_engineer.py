@@ -86,21 +86,49 @@ def _parse_unread_emails(email_context: str) -> list[dict[str, str]]:
     return emails
 
 
+def _compact_email_date(raw_date: str) -> str:
+    if not raw_date:
+        return raw_date
+    try:
+        from email.utils import parsedate_to_datetime
+
+        dt = parsedate_to_datetime(raw_date)
+        return dt.date().isoformat()
+    except Exception:
+        return raw_date
+
+
+def _classify_email_action(subject: str, sender: str) -> str:
+    subject_lower = subject.lower()
+    sender_lower = sender.lower()
+    if "slack" in sender_lower or "notification@slack.com" in sender_lower:
+        return "Archive/mark read (notification)"
+    if "brevo" in sender_lower or "brevo" in subject_lower:
+        return "Archive/mark read (newsletter)"
+    if "no-reply" in sender_lower or "noreply" in sender_lower:
+        return "Archive/mark read (automated)"
+    if any(token in subject_lower for token in ["billing", "invoice", "error", "issue", "bug", "support"]):
+        return "Draft reply (needs review)"
+    return "Review then decide"
+
+
 def build_gmail_summary() -> str:
     """Build a concise, Gmail-only response for inbox triage tasks."""
     email_context = fetch_gmail_context()
-    logs_context = fetch_gmail_processor_context()
 
     lines: list[str] = ["Gmail Inbox Check"]
 
     if "Gmail not configured:" in email_context:
         detail = email_context.split("Gmail not configured:", 1)[-1].strip()
         lines.append(f"- Access: not configured ({detail})")
+        logs_context = fetch_gmail_processor_context()
     elif "Error loading emails:" in email_context:
         detail = email_context.split("Error loading emails:", 1)[-1].strip()
         lines.append(f"- Access: error ({detail})")
+        logs_context = fetch_gmail_processor_context()
     elif "No unread emails in inbox." in email_context:
-        lines.append("- Unread: none")
+        lines.append("- Unread: none (Gmail API)")
+        lines.append("- Items to address: no (inbox clear)")
     else:
         match = re.search(r"## Current Unread Emails \((\d+)\)", email_context)
         if match:
@@ -109,24 +137,36 @@ def build_gmail_summary() -> str:
             lines.append("- Unread: unknown (Gmail API)")
 
         emails = _parse_unread_emails(email_context)
+        actionable = 0
         for email in emails:
-            parts = [f"Subject: {email['subject']}"]
-            if email["from"]:
-                parts.append(f"From: {email['from']}")
-            if email["date"]:
-                parts.append(f"Date: {email['date']}")
-            if email["id"]:
-                parts.append(f"ID: {email['id']}")
-            lines.append("- Unread email: " + " | ".join(parts))
+            action = _classify_email_action(email.get("subject", ""), email.get("from", ""))
+            if "Draft reply" in action or "Review" in action:
+                actionable += 1
+            parts = [email.get("subject", "").strip()]
+            if email.get("from"):
+                parts.append(email["from"].strip())
+            if email.get("date"):
+                parts.append(_compact_email_date(email["date"]))
+            if email.get("id"):
+                parts.append(f"ID:{email['id']}")
+            lines.append(f"- {action}: " + " | ".join(parts))
 
-    unread_lines = [line.strip() for line in logs_context.splitlines() if "unread" in line.lower()]
-    if unread_lines:
-        lines.append(f"- Gmail processor: {unread_lines[-1]}")
-    elif "No unread-count lines" in logs_context:
-        lines.append("- Gmail processor: no unread-count lines in recent logs.")
-    elif "Error fetching logs" in logs_context:
-        detail = logs_context.split("Error fetching logs:", 1)[-1].strip()
-        lines.append(f"- Gmail processor: error fetching logs ({detail})")
+        if actionable:
+            lines.append(f"- Items to address: yes ({actionable} need review)")
+        else:
+            lines.append("- Items to address: no (notifications/newsletters only)")
+
+    if "not configured" in email_context.lower() or "error loading emails" in email_context.lower():
+        unread_lines = [
+            line.strip() for line in logs_context.splitlines() if "unread" in line.lower()
+        ]
+        if unread_lines:
+            lines.append(f"- Gmail processor: {unread_lines[-1]}")
+        elif "No unread-count lines" in logs_context:
+            lines.append("- Gmail processor: no unread-count lines in recent logs.")
+        elif "Error fetching logs" in logs_context:
+            detail = logs_context.split("Error fetching logs:", 1)[-1].strip()
+            lines.append(f"- Gmail processor: error fetching logs ({detail})")
 
     if "not configured" in email_context.lower():
         lines.append(
@@ -137,7 +177,7 @@ def build_gmail_summary() -> str:
     elif "No unread emails in inbox." in email_context:
         lines.append("- Action: no inbox items need action.")
     else:
-        lines.append("- Action: review unread emails and draft replies as needed.")
+        lines.append("- Action: archive/mark read for notifications/newsletters; draft replies for any items needing review.")
 
     return "\n".join(lines).strip()
 
