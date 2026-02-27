@@ -887,6 +887,9 @@ PRE-FETCHED GITHUB ISSUE #{issue_number}
 
         if grep_results:
             sections.append("## Grep Results\n" + "\n\n".join(grep_results))
+        else:
+            # If local grep found nothing, fall back to GitHub code search for evidence.
+            return self._prefetch_via_github_api(task, repo)
 
         # Step 5: Extract key code sections from top matched files
         # Read the most relevant functions around grep matches
@@ -985,7 +988,9 @@ section-by-section. If you need more context, use:
         import re
 
         title = "GitHub issue"
-        title_match = re.search(r"^title:\\s*(.+)$", github_ctx, re.MULTILINE | re.IGNORECASE)
+        title_match = re.search(
+            r"^\\s*title:\\s*(.+)$", github_ctx, re.MULTILINE | re.IGNORECASE
+        )
         if title_match:
             title = title_match.group(1).strip()
 
@@ -1013,11 +1018,9 @@ section-by-section. If you need more context, use:
         has_voice_button = "voice-input-button" in repo_ctx
         has_speech_ctor = "SpeechRecognitionAPI" in repo_ctx or "SpeechRecognition" in repo_ctx
 
-        lines = [
-            f"Issue #{issue_number}: {title}",
-        ]
+        lines = [f"Issue #{issue_number}: {title}"]
         if body_line:
-            lines.append(f"Reported: {body_line}")
+            lines.append(f"Reported (from issue): {body_line}")
 
         if paths:
             lines.append("Code locations from repo search:")
@@ -1027,6 +1030,27 @@ section-by-section. If you need more context, use:
             lines.append(
                 "Code search did not surface a clear record-button handler in this repo."
             )
+
+        evidence_lines: list[str] = []
+        if body_line:
+            evidence_lines.append(f'Issue text: "{body_line}"')
+
+        for line in repo_ctx.splitlines():
+            if "voice-input-button" in line or "useVoiceInput" in line:
+                evidence_lines.append(f"Code: {line.strip()}")
+                if len(evidence_lines) >= 3:
+                    break
+        if not evidence_lines:
+            for line in repo_ctx.splitlines():
+                if any(token in line for token in ("ChatInput.tsx", "HomePage.tsx", "useVoiceInput.ts")):
+                    evidence_lines.append(f"Code: {line.strip()}")
+                    if len(evidence_lines) >= 2:
+                        break
+
+        if evidence_lines:
+            lines.append("Evidence:")
+            for item in evidence_lines:
+                lines.append(f"- {item}")
 
         lines.append("Analysis:")
         if has_voice_button:
@@ -1048,14 +1072,22 @@ section-by-section. If you need more context, use:
                 "- Could not confirm the record button handler or voice hook from the pre-fetched code snippets."
             )
 
-        lines.append("Recommended fix / next steps:")
-        lines.append(
-            "- Add a defensive guard around SpeechRecognition instantiation (check constructor exists and wrap in try/catch); "
-            "surface a user-facing error instead of throwing."
-        )
-        lines.append(
-            "- Reproduce on Chrome 120 and add/extend `tests/vision-voice-quick.test.js` to ensure click does not crash."
-        )
+        lines.append("Next steps (evidence-based):")
+        if has_voice_button or has_use_voice or has_speech_ctor:
+            lines.append(
+                "- Add a defensive guard around SpeechRecognition instantiation (check constructor exists and wrap in try/catch); "
+                "surface a user-facing error instead of throwing."
+            )
+            lines.append(
+                "- Reproduce on Chrome 120 and add/extend `tests/vision-voice-quick.test.js` to ensure click does not crash."
+            )
+        else:
+            lines.append(
+                "- Code search did not surface the record/voice handler; identify the extension UI module or repo that owns the record button."
+            )
+            lines.append(
+                "- Capture a crash stack trace in Chrome 120 and share it to pinpoint the failing handler."
+            )
 
         return "\n".join(lines).strip()
 
