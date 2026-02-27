@@ -251,6 +251,31 @@ async def run_task(request: RunRequest):
     )
     logger.info(f"Task content: {request.task[:100]}...")
     start_time = time.time()
+    idle_timeout_raw = os.getenv("OPENHANDS_SYNC_IDLE_TIMEOUT_SECONDS", "")
+    idle_timeout: int | None = None
+    if idle_timeout_raw:
+        try:
+            idle_timeout = int(idle_timeout_raw)
+        except ValueError:
+            idle_timeout = None
+    if idle_timeout is not None and idle_timeout <= 0:
+        idle_timeout = None
+    last_progress: dict[str, float] = {"time": start_time}
+
+    def _progress_heartbeat() -> None:
+        last_progress["time"] = time.time()
+
+    async def _run_with_idle_timeout(run_fn):
+        task = asyncio.create_task(asyncio.to_thread(run_fn))
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=1.0)
+            if done:
+                return done.pop().result()
+            if idle_timeout is None:
+                continue
+            if time.time() - last_progress["time"] > idle_timeout:
+                task.cancel()
+                raise asyncio.TimeoutError()
 
     try:
         team = get_team()
@@ -267,15 +292,22 @@ async def run_task(request: RunRequest):
         if role:
             # Run with specific agent in a thread pool
             agent = team._get_agent(role)
-            result = await asyncio.to_thread(
-                agent.run,
-                task=request.task,
-                context_type=request.context_type,
-                context_id=context_id,
-                workspace=request.workspace,
-                use_tools=request.use_tools,
-                skip_context_injection=request.skip_context_injection,
-            )
+
+            def _run_agent():
+                return agent.run(
+                    task=request.task,
+                    context_type=request.context_type,
+                    context_id=context_id,
+                    workspace=request.workspace,
+                    use_tools=request.use_tools,
+                    skip_context_injection=request.skip_context_injection,
+                    progress_heartbeat=_progress_heartbeat,
+                )
+
+            if idle_timeout is None:
+                result = await asyncio.to_thread(_run_agent)
+            else:
+                result = await _run_with_idle_timeout(_run_agent)
         else:
             # Let team route based on @mentions or keywords
             result = await team.run_async(
@@ -332,6 +364,32 @@ async def run_task(request: RunRequest):
             },
         )
 
+    except asyncio.TimeoutError:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        agent_role = role or "team"
+        session_key = f"openhands:{agent_role}:{request.context_type}:{context_id}"
+        timeout_detail = ""
+        if idle_timeout is not None:
+            timeout_detail = f"No progress for {idle_timeout} seconds (idle timeout). "
+
+        return RunResponse(
+            response=(
+                "I was working on this task but had to stop due to inactivity. "
+                f"{timeout_detail}Please try again or break the task into smaller steps."
+            ),
+            session_id=context_id,
+            session_key=session_key,
+            framework="openhands",
+            agents_used=[agent_role],
+            metadata={
+                "latency_ms": elapsed_ms,
+                "message_count": 2,
+                "workspace": request.workspace,
+                "timed_out": True,
+                "timeout_seconds": idle_timeout,
+                "timeout_mode": "idle",
+            },
+        )
     except Exception as e:
         logger.exception("Task execution failed")
         raise HTTPException(status_code=500, detail=str(e)) from e
