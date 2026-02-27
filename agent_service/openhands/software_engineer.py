@@ -991,6 +991,11 @@ section-by-section. If you need more context, use:
         title_match = re.search(r"title:\\s*(.+)", github_ctx, re.IGNORECASE)
         if title_match:
             title = title_match.group(1).strip()
+        else:
+            for line in github_ctx.splitlines():
+                if "bug:" in line.lower():
+                    title = line.strip()
+                    break
 
         body = ""
         if "\n--\n" in github_ctx:
@@ -1005,6 +1010,12 @@ section-by-section. If you need more context, use:
             if line.strip():
                 body_line = line.strip()
                 break
+        if not body_line:
+            for line in github_ctx.splitlines():
+                lowered = line.lower()
+                if "crash" in lowered or "record button" in lowered:
+                    body_line = line.strip()
+                    break
 
         paths: list[str] = []
         for match in re.findall(r"([A-Za-z0-9_./-]+\\.(?:ts|tsx|js|jsx))", repo_ctx):
@@ -1030,14 +1041,25 @@ section-by-section. If you need more context, use:
         if body_line:
             evidence_lines.append(f'Issue text: "{body_line}"')
 
+        code_line_pattern = re.compile(r"\\b\\S+\\.(?:ts|tsx|js|jsx):\\d+:")
+        key_tokens = ("voice-input-button", "useVoiceInput", "SpeechRecognition", "handleVoiceInput")
         for line in repo_ctx.splitlines():
-            if "voice-input-button" in line or "useVoiceInput" in line:
+            if code_line_pattern.search(line) and any(token in line for token in key_tokens):
                 code_evidence_lines.append(f"Code: {line.strip()}")
-                if len(code_evidence_lines) >= 2:
+                if len(code_evidence_lines) >= 3:
                     break
         if not code_evidence_lines:
             for line in repo_ctx.splitlines():
-                if any(token in line for token in ("ChatInput.tsx", "HomePage.tsx", "useVoiceInput.ts")):
+                if code_line_pattern.search(line) and any(
+                    token in line
+                    for token in ("ChatInput.tsx", "HomePage.tsx", "useVoiceInput.ts")
+                ):
+                    code_evidence_lines.append(f"Code: {line.strip()}")
+                    if len(code_evidence_lines) >= 2:
+                        break
+        if not code_evidence_lines:
+            for line in repo_ctx.splitlines():
+                if code_line_pattern.search(line):
                     code_evidence_lines.append(f"Code: {line.strip()}")
                     if len(code_evidence_lines) >= 2:
                         break
