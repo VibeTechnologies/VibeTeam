@@ -27,7 +27,11 @@ from agents.shared.docs_tools import get_docs_context
 
 # Import shared tools for context injection
 from agents.shared.gmail_tools import get_email_context
-from agents.shared.kubectl_tools import get_deployment_logs, get_multi_namespace_context
+from agents.shared.kubectl_tools import (
+    DEFAULT_NAMESPACE,
+    get_deployment_logs,
+    get_multi_namespace_context,
+)
 from agents.shared.langfuse_tools import get_langfuse_context
 from agents.shared.sentry_tools import get_sentry_context
 
@@ -44,13 +48,14 @@ def fetch_kubectl_context() -> str:
 
 def fetch_gmail_processor_context(tail: int = 80) -> str:
     """Fetch recent gmail-processor logs and keep unread-count lines only."""
-    result = get_deployment_logs("gmail-processor", namespace="vibeteam", tail=tail)
+    result = get_deployment_logs("gmail-processor", namespace=DEFAULT_NAMESPACE, tail=tail)
     if not result.success:
         return f"## Gmail Processor Logs\n\nError fetching logs: {result.stderr or result.stdout}"
     lines = [line for line in result.stdout.splitlines() if "unread" in line.lower()]
     if not lines:
         return "## Gmail Processor Logs\n\nNo unread-count lines found in recent logs."
     return "## Gmail Processor Logs (unread counts)\n\n" + "\n".join(lines)
+
 
 def fetch_gmail_context(max_results: int = 5) -> str:
     """Fetch Gmail context using shared tools."""
@@ -185,9 +190,7 @@ def build_gmail_summary() -> str:
 def build_notification_message(task: str) -> str:
     """Build a concise notification message from a notify-only task."""
     pr_match = re.search(r"PR\\s*#?(\\d+)", task, re.IGNORECASE)
-    env_match = re.search(
-        r"to\\s+(staging|production|prod|dev|qa)\\b", task, re.IGNORECASE
-    )
+    env_match = re.search(r"to\\s+(staging|production|prod|dev|qa)\\b", task, re.IGNORECASE)
     pr_part = f"PR #{pr_match.group(1)}" if pr_match else ""
     env = env_match.group(1).lower() if env_match else ""
     if env == "prod":
@@ -749,7 +752,8 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 ]
             )
             is_explicit_investigation = any(
-                kw in task_lower for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
+                kw in task_lower
+                for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
             )
             if is_notification and not is_explicit_investigation:
                 response = build_notification_message(task)
