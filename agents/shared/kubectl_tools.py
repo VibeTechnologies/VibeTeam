@@ -11,6 +11,7 @@ Requirements:
 """
 
 import logging
+import os
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -19,10 +20,10 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # Default namespace for VibeTeam internal infrastructure
-DEFAULT_NAMESPACE = "vibeteam"
+DEFAULT_NAMESPACE = os.getenv("VIBETEAM_NAMESPACE", "vibeteam")
 
 # Production namespace for customer-facing services
-PRODUCTION_NAMESPACE = "vibe"
+PRODUCTION_NAMESPACE = os.getenv("VIBETEAM_PRODUCTION_NAMESPACE", "vibe")
 
 # Key deployments to monitor per namespace
 KEY_DEPLOYMENTS = [

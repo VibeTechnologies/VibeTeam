@@ -51,8 +51,8 @@ load_dotenv()
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.shared.role_resolver import ROLE_PATTERN
 from agents.shared.llm import resolve_azure_model
+from agents.shared.role_resolver import ROLE_PATTERN
 from vibeteam.connectors.slack import SlackConnector
 
 # Try to import DeepEval
@@ -1522,7 +1522,9 @@ async def run_evaluation(
             )
 
         # Step 2: Wait for bot response (with handoff chain support + auto-extend)
-        print(f"\n>>> Step 2: Waiting for agent response (timeout: {wait_timeout}s)")
+        print(
+            f"\n>>> Step 2: Waiting for agent response (idle timeout: {wait_timeout}s, no hard cap)"
+        )
         start_time = time.time()
         last_message_count = 1  # We posted 1 message
         # Stable time: how long to wait after the last change before concluding.
@@ -1531,10 +1533,9 @@ async def run_evaluation(
         # is detected, but require at least one substantive response before exiting.
         stable_time_no_handoff = 30
         stable_time_with_handoff = 300  # 5min wait for handoff agent
-        last_change_time = 0.0  # Tracks BOTH new messages AND content edits
+        last_change_time = start_time  # Tracks BOTH new messages AND content edits
         last_content_fingerprint = ""  # Hash of all message texts to detect chat.update edits
         pending_handoff = False
-        effective_timeout = wait_timeout
         has_substantive_response = False  # True once a real (non-placeholder) bot msg arrives
         # Track substantive responses per agent role for handoff completion.
         # When a handoff is detected, we need a substantive response from the
@@ -1561,7 +1562,7 @@ async def run_evaluation(
             m = re.match(r"_?\[([A-Za-z]+)\]", text.strip())
             return m.group(1) if m else ""
 
-        while time.time() - start_time < effective_timeout:
+        while True:
             await asyncio.sleep(poll_interval)
 
             replies = slack.get_thread_replies(channel=channel, thread_ts=thread_ts, limit=50)
@@ -1588,17 +1589,7 @@ async def run_evaluation(
                     latest_bot_msg = bot_messages[-1]
                     has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
                     if has_handoff and not scenario.get("skip_handoff", False):
-                        # Auto-extend timeout on handoff detection
-                        remaining = (start_time + effective_timeout) - time.time()
-                        if handoff_timeout_extension > remaining:
-                            effective_timeout = time.time() - start_time + handoff_timeout_extension
-                            print(
-                                f"    Handoff detected! Extended timeout to "
-                                f"{int(effective_timeout)}s "
-                                f"(+{handoff_timeout_extension}s from now)"
-                            )
-                        else:
-                            print("    Handoff detected in response! Waiting for next agent...")
+                        print("    Handoff detected in response! Waiting for next agent...")
                         pending_handoff = True
                         # Track which agent initiated the handoff so we can
                         # distinguish its messages from the handoff target's
@@ -1675,8 +1666,19 @@ async def run_evaluation(
                     else:
                         print("    Still waiting for handoff response...")
 
+            idle_timeout = handoff_timeout_extension if pending_handoff else wait_timeout
+            idle_for = int(time.time() - last_change_time)
             elapsed = int(time.time() - start_time)
-            print(f"    Waiting... ({elapsed}s / {int(effective_timeout)}s)")
+            print(f"    Waiting... (idle {idle_for}s / {idle_timeout}s, total {elapsed}s)")
+
+            if idle_for >= idle_timeout:
+                if not has_substantive_response:
+                    print(
+                        "    No substantive response before idle timeout. Stopping evaluation wait."
+                    )
+                else:
+                    print("    Idle timeout reached after last response. Stopping wait.")
+                break
 
         latency_ms = int((time.time() - start_time) * 1000)
 

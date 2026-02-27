@@ -41,6 +41,10 @@ spec:
               value: "http://scheduler-svc:8080"
             - name: DEFAULT_FRAMEWORK
               value: "openhands"
+            - name: VIBETEAM_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             # GitHub configuration
             - name: GITHUB_WEBHOOK_SECRET
               valueFrom:

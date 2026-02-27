@@ -33,28 +33,6 @@ spec:
       serviceAccountName: vibeteam-agent
       imagePullSecrets:
         - name: ghcr-pull-secret
-      initContainers:
-        - name: copy-gmail-token
-          image: ghcr.io/vibetechnologies/vibeteam:latest
-          command: ["sh", "-c"]
-          args:
-            - |
-              cp /gmail-secrets/gmail-token.json /gmail-writable/gmail-token.json 2>/dev/null || true
-              cp /gmail-secrets/gmail-credentials.json /gmail-writable/gmail-credentials.json 2>/dev/null || true
-              echo "Gmail credentials copied to writable volume"
-          volumeMounts:
-            - name: gmail-secrets
-              mountPath: /gmail-secrets
-              readOnly: true
-            - name: gmail-writable
-              mountPath: /gmail-writable
-      volumes:
-        - name: gmail-secrets
-          secret:
-            secretName: gmail-oauth-secret
-            optional: false
-        - name: gmail-writable
-          emptyDir: {}
       containers:
         - name: openhands
           image: ghcr.io/vibetechnologies/vibeteam-openhands:latest
@@ -101,10 +79,10 @@ spec:
               value: "http://browserless:3000"
             - name: OPENHANDS_SYNC_IDLE_TIMEOUT_SECONDS
               value: "300"
-            - name: GMAIL_CREDENTIALS_PATH
-              value: "/gmail/gmail-credentials.json"
-            - name: GMAIL_TOKEN_PATH
-              value: "/gmail/gmail-token.json"
+            - name: VIBETEAM_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             requests:
               memory: "3Gi"
@@ -112,9 +90,6 @@ spec:
             limits:
               memory: "6Gi"
               cpu: "1000m"
-          volumeMounts:
-            - name: gmail-writable
-              mountPath: /gmail
           livenessProbe:
             httpGet:
               path: /health

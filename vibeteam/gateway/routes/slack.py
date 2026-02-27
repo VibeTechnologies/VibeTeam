@@ -576,6 +576,7 @@ def _build_task_prompt(
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     thread_display = thread_ts or "new thread"
+    internal_ns = os.getenv("VIBETEAM_NAMESPACE", "vibeteam")
 
     if template == "deployment":
         return f"""## Slack Deployment Request
@@ -595,14 +596,14 @@ A user has requested a deployment via Slack.
 ### CRITICAL SAFETY RULE: DO NOT DESTROY YOUR OWN INFRASTRUCTURE
 ### =================================================================
 ###
-### You (ReleaseEngineer) run INSIDE vibeteam-gateway and openhands-svc.
+### You (ReleaseEngineer) run INSIDE {internal_ns} (vibeteam-gateway, openhands-svc).
 ### If you restart or replace these pods, YOUR REQUEST DIES and the
 ### response NEVER reaches Slack. The eval/user sees a timeout.
 ###
 ### FORBIDDEN (kills your in-flight request):
 ###   kubectl apply -k (ANY path) — modifies pod specs, kills your pod
-###   kubectl rollout restart deployment/vibeteam-gateway -n vibeteam
-###   kubectl rollout restart deployment/openhands-svc -n vibeteam
+###   kubectl rollout restart deployment/vibeteam-gateway -n {internal_ns}
+###   kubectl rollout restart deployment/openhands-svc -n {internal_ns}
 ###   kubectl delete pod/deployment for gateway or openhands
 ###
 ### CRITICAL: YOU HAVE NO LOCAL REPOSITORY FILES
@@ -631,14 +632,14 @@ A user has requested a deployment via Slack.
 ### |-------------|-------------|------------------|
 ### | `vibe`      | Production  | VibeBrowser: user-portal, stripe-service, litellm |
 ### | `vibe-dev`  | Staging     | VibeBrowser (staging mirrors prod) |
-### | `vibeteam`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc |
+### | `{internal_ns}`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc |
 ###
 ### Repository → Image Map:
 ### | Repository                        | Image                                              | Namespaces    |
 ### |-----------------------------------|------------------------------------------------------|---------------|
 ### | VibeTechnologies/VibeWebAgent     | ghcr.io/vibetechnologies/vibe-user-portal:<SHA>      | vibe, vibe-dev |
 ### | VibeTechnologies/VibeWebAgent     | ghcr.io/vibetechnologies/vibe-stripe-service:<SHA>   | vibe, vibe-dev |
-### | VibeTechnologies/VibeTeam         | ghcr.io/vibetechnologies/vibeteam:<SHA>              | vibeteam       |
+### | VibeTechnologies/VibeTeam         | ghcr.io/vibetechnologies/vibeteam:<SHA>              | {internal_ns}       |
 ###
 ### "staging" / "dev" → namespace: vibe-dev
 ### "production" / "prod" → namespace: vibe
@@ -652,7 +653,7 @@ You are the ReleaseEngineer. You MUST execute the deployment, not just describe 
 From the user's message, determine the target namespace:
 - "staging" / "dev" → namespace: `vibe-dev`
 - "production" / "prod" → namespace: `vibe`
-- "agents" / "vibeteam" → namespace: `vibeteam`
+- "agents" / "vibeteam" → namespace: `{internal_ns}`
 If the request mentions a PR on VibeTechnologies/VibeWebAgent, default to `vibe-dev`.
 
 **STEP 2 — Get Image Tag from PR (MANDATORY):**
@@ -682,7 +683,7 @@ kubectl set image deployment/user-portal user-portal=ghcr.io/vibetechnologies/vi
 kubectl set image deployment/stripe-service stripe-service=ghcr.io/vibetechnologies/vibe-stripe-service:<SHA> -n <NAMESPACE>
 ```
 Do NOT run `kubectl apply -k` — it modifies pod specs and kills your own pod.
-Do NOT deploy to the `vibeteam` namespace unless the request is explicitly about VibeTeam agents.
+Do NOT deploy to the `{internal_ns}` namespace unless the request is explicitly about VibeTeam agents.
 
 Then monitor rollout (safe, read-only):
 ```bash
@@ -711,7 +712,7 @@ Summarize deployment outcome clearly.
 
 **REQUIRED OUTPUT:**
 Your response MUST include:
-1. Target namespace identified (vibe-dev, vibe, or vibeteam) and why
+1. Target namespace identified (vibe-dev, vibe, or {internal_ns}) and why
 2. PR merge commit SHA (from `gh pr view`)
 3. Pre-deployment state (pod status before)
 4. Current image tags (what's running now)
@@ -791,11 +792,11 @@ A user has requested a quick health & production-readiness check.
 |-------------|-------------|------------------|
 | `vibe`      | Production  | VibeBrowser: user-portal, stripe-service, litellm |
 | `vibe-dev`  | Staging     | VibeBrowser (staging mirrors prod) |
-| `vibeteam`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc |
+| `{internal_ns}`  | Internal    | VibeTeam agents: vibeteam-gateway, openhands-svc |
 
 "production" / "prod" / "api" → namespace: `vibe`
 "staging" / "dev" → namespace: `vibe-dev`
-"agents" / "vibeteam" / "gateway" → namespace: `vibeteam`
+"agents" / "vibeteam" / "gateway" → namespace: `{internal_ns}`
 If unclear, default to the production namespace `vibe`.
 
 ### Safety Rule
@@ -817,7 +818,7 @@ kubectl get pods -n <NAMESPACE> -o wide && kubectl get deployments -n <NAMESPACE
 **Tool call 2** — Curl the health endpoint:
 - `vibe` → `curl -s -w "\nHTTP_STATUS:%{{{{http_code}}}}" https://api.vibebrowser.app/health/readiness`
 - `vibe-dev` → `curl -s -w "\nHTTP_STATUS:%{{{{http_code}}}}" https://api-dev.vibebrowser.app/health/readiness`
-- `vibeteam` → `curl -s -w "\nHTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
+- `{internal_ns}` → `curl -s -w "\nHTTP_STATUS:%{{{{http_code}}}}" https://webhook.team.vibebrowser.app/health`
 
 **Tool call 3** — Post your final summary to the conversation (finish action).
 
@@ -859,9 +860,9 @@ Sentry/monitoring data has been injected above. Use this as INITIAL context.
 **STEP 2 — RUN kubectl Commands (MANDATORY):**
 You MUST run kubectl commands to complete your investigation. Example:
 ```bash
-kubectl get pods -n vibeteam
-kubectl get events -n vibeteam --sort-by='.lastTimestamp' | tail -20
-kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
+kubectl get pods -n {internal_ns}
+kubectl get events -n {internal_ns} --sort-by='.lastTimestamp' | tail -20
+kubectl logs deployment/vibeteam-gateway -n {internal_ns} --tail=100
 ```
 If you skip kubectl, your investigation is INCOMPLETE.
 
