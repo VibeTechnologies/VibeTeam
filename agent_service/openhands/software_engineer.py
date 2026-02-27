@@ -1259,6 +1259,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
 
             # Inject context if keywords match
             injected_context = []
+            prefetched_issue = False
             if not skip_context_injection:
                 task_lower = task.lower()
 
@@ -1270,6 +1271,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     issue_number = issue_match.group(1)
                     github_ctx = self._fetch_github_issue(issue_number)
                     injected_context.append(github_ctx)
+                    prefetched_issue = True
 
                     # Pre-fetch repo code: clone + grep for keywords from the task.
                     # This gives the agent relevant code snippets in context so it
@@ -1327,18 +1329,26 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 ### END USER TASK
 """
 
-            # Use send_message + run for the full agentic loop with tools
-            # (ask_agent is just a stateless single LLM call without tools)
-            print(f"[SoftwareEngineer] Starting conversation run for context {context_id}")
-            conversation.send_message(full_task)
-            conversation.run()
-            print(f"[SoftwareEngineer] Conversation run completed for context {context_id}")
+            # If we've already pre-fetched the issue and relevant code, avoid tool churn.
+            # A single direct call is more reliable for eval-style triage tasks.
+            if prefetched_issue:
+                print(
+                    f"[SoftwareEngineer] Using single-pass ask_agent for issue {context_id}"
+                )
+                response = conversation.ask_agent(full_task)
+            else:
+                # Use send_message + run for the full agentic loop with tools
+                # (ask_agent is just a stateless single LLM call without tools)
+                print(f"[SoftwareEngineer] Starting conversation run for context {context_id}")
+                conversation.send_message(full_task)
+                conversation.run()
+                print(f"[SoftwareEngineer] Conversation run completed for context {context_id}")
 
-            # Extract the agent's final response from conversation events
-            # Uses shared extraction that handles both FinishAction and MessageEvent
-            from .utils import extract_response_from_events
+                # Extract the agent's final response from conversation events
+                # Uses shared extraction that handles both FinishAction and MessageEvent
+                from .utils import extract_response_from_events
 
-            response = extract_response_from_events(conversation.state.events)
+                response = extract_response_from_events(conversation.state.events)
 
             session.add_message("user", task)
             session.add_message("assistant", response)
