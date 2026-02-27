@@ -988,9 +988,7 @@ section-by-section. If you need more context, use:
         import re
 
         title = "GitHub issue"
-        title_match = re.search(
-            r"^\\s*title:\\s*(.+)$", github_ctx, re.MULTILINE | re.IGNORECASE
-        )
+        title_match = re.search(r"title:\\s*(.+)", github_ctx, re.IGNORECASE)
         if title_match:
             title = title_match.group(1).strip()
 
@@ -1026,26 +1024,33 @@ section-by-section. If you need more context, use:
             lines.append("Code locations from repo search:")
             for path in paths:
                 lines.append(f"- {path}")
-        else:
-            lines.append(
-                "Code search did not surface a clear record-button handler in this repo."
-            )
 
         evidence_lines: list[str] = []
+        code_evidence_lines: list[str] = []
         if body_line:
             evidence_lines.append(f'Issue text: "{body_line}"')
 
         for line in repo_ctx.splitlines():
             if "voice-input-button" in line or "useVoiceInput" in line:
-                evidence_lines.append(f"Code: {line.strip()}")
-                if len(evidence_lines) >= 3:
+                code_evidence_lines.append(f"Code: {line.strip()}")
+                if len(code_evidence_lines) >= 2:
                     break
-        if not evidence_lines:
+        if not code_evidence_lines:
             for line in repo_ctx.splitlines():
                 if any(token in line for token in ("ChatInput.tsx", "HomePage.tsx", "useVoiceInput.ts")):
-                    evidence_lines.append(f"Code: {line.strip()}")
-                    if len(evidence_lines) >= 2:
+                    code_evidence_lines.append(f"Code: {line.strip()}")
+                    if len(code_evidence_lines) >= 2:
                         break
+
+        evidence_lines.extend(code_evidence_lines)
+
+        if not paths:
+            if code_evidence_lines:
+                lines.append("Code locations from repo search: (see evidence below)")
+            else:
+                lines.append(
+                    "Code search did not surface a clear record-button handler in this repo."
+                )
 
         if evidence_lines:
             lines.append("Evidence:")
@@ -1189,6 +1194,13 @@ section-by-section. If you need more context, use:
                 seen.add(kw)
                 unique_keywords.append(kw)
         keywords = unique_keywords[:5]
+
+        keyword_source_lower = keyword_source.lower()
+        if "record" in keyword_source_lower:
+            for kw in ("voice-input-button", "useVoiceInput"):
+                if kw not in keywords:
+                    keywords.insert(0, kw)
+            keywords = keywords[:6]
 
         if not keywords:
             keywords = ["recorder", "recording", "button"]
