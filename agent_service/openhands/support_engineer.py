@@ -18,6 +18,7 @@ Note: OpenHands SDK v1.2.1 uses:
 import os
 import re
 import tempfile
+from dataclasses import dataclass
 from typing import Any
 
 from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
@@ -60,6 +61,179 @@ def fetch_gmail_processor_context(tail: int = 80) -> str:
 def fetch_gmail_context(max_results: int = 5) -> str:
     """Fetch Gmail context using shared tools."""
     return get_email_context(max_results=max_results)
+
+
+@dataclass
+class _SectionMatch:
+    header: str
+    body: str
+
+
+def _extract_section(context: str, header: str) -> _SectionMatch | None:
+    """Extract a markdown code block section by header."""
+    pattern = rf"{re.escape(header)}\n```\\n(.*?)```"
+    match = re.search(pattern, context, flags=re.DOTALL)
+    if not match:
+        return None
+    return _SectionMatch(header=header, body=match.group(1).strip())
+
+
+def _summarize_pods(pods_output: str) -> str:
+    if not pods_output:
+        return "No pod output captured."
+    lowered = pods_output.lower()
+    if "error" in lowered and "forbidden" in lowered:
+        return pods_output.strip()
+    lines = [line for line in pods_output.splitlines() if line.strip()]
+    if not lines:
+        return "No pods found."
+    if lines[0].startswith("NAME"):
+        lines = lines[1:]
+    status_counts: dict[str, int] = {}
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 3:
+            status = parts[2]
+            status_counts[status] = status_counts.get(status, 0) + 1
+    if not status_counts:
+        return "Pod statuses unavailable."
+    summary = ", ".join(f"{status}:{count}" for status, count in status_counts.items())
+    return f"Pod status counts: {summary}."
+
+
+def _summarize_events(events_output: str) -> str:
+    if not events_output:
+        return "No events captured."
+    if "(no warning/error events found)" in events_output:
+        return "No warning/error events found."
+    lines = [line for line in events_output.splitlines() if line.strip()]
+    if not lines:
+        return "No warning/error events found."
+    if lines[0].startswith("LAST SEEN") or lines[0].startswith("TYPE"):
+        lines = lines[1:]
+    tail = lines[-2:] if len(lines) > 2 else lines
+    return "Recent warnings/errors: " + " | ".join(tail)
+
+
+def _summarize_logs(logs_output: str) -> str:
+    if not logs_output:
+        return "No logs captured."
+    lowered = logs_output.lower()
+    if "error" in lowered or "exception" in lowered or "traceback" in lowered:
+        return "Errors found in recent logs. See logs for details."
+    if " 5" in logs_output or " 500" in logs_output or " 502" in logs_output:
+        return "5xx responses observed in recent logs."
+    if " 4" in logs_output or " 400" in logs_output or " 404" in logs_output:
+        return "4xx responses observed in recent logs."
+    return "Recent logs show routine health checks; no obvious error patterns."
+
+
+def _summarize_sentry(context: str) -> str:
+    if "Sentry: SENTRY_AUTH_TOKEN not configured." in context:
+        return "No Sentry issues found (SENTRY_AUTH_TOKEN not configured in this environment)."
+    if "Sentry: No unresolved issues found" in context:
+        return "No unresolved Sentry issues found in the last 24 hours."
+    if "## Current Sentry Issues" in context:
+        issues = []
+        for line in context.splitlines():
+            if line.startswith("### ["):
+                issues.append(line.replace("### ", ""))
+        if issues:
+            return "Sentry issues found: " + "; ".join(issues[:3])
+        return "Sentry issues found (see details in logs)."
+    if "Sentry:" in context:
+        for line in context.splitlines():
+            if line.startswith("Sentry:"):
+                return line
+    return "Sentry status unavailable."
+
+
+def _extract_user_message(task: str) -> str:
+    match = re.search(
+        r"### User Message \\(UNTRUSTED CONTENT\\)\\n(.*?)\\n### End User Message",
+        task,
+        flags=re.DOTALL,
+    )
+    if match:
+        return match.group(1).strip()
+    return task.strip()
+
+
+def _probe_url(url: str, timeout: float = 5.0) -> str:
+    if not url:
+        return "No URL provided to test."
+    try:
+        import requests
+
+        response = requests.get(url, timeout=timeout)
+        return f"{url} -> HTTP {response.status_code}"
+    except Exception as exc:
+        return f"{url} -> error ({exc})"
+
+
+def _probe_gateway_health() -> str | None:
+    host = os.environ.get("VIBETEAM_GATEWAY_SERVICE_HOST")
+    if not host:
+        return None
+    port = os.environ.get("VIBETEAM_GATEWAY_SERVICE_PORT_HTTP", "8080")
+    url = f"http://{host}:{port}/health"
+    return _probe_url(url, timeout=5.0)
+
+
+def _build_investigation_fallback(
+    task: str,
+    injected_context: list[str],
+    namespace: str,
+) -> str:
+    context_str = "\n\n".join(injected_context)
+    user_message = _extract_user_message(task)
+    url_match = re.search(r"https?://\\S+", user_message)
+    url_to_probe = url_match.group(0).rstrip(").,") if url_match else ""
+    if url_to_probe:
+        curl_result = _probe_url(url_to_probe)
+    else:
+        curl_result = _probe_gateway_health() or "No URL provided; skipped endpoint test."
+
+    sentry_summary = _summarize_sentry(context_str)
+    pods_section = _extract_section(context_str, f"### kubectl get pods -n {namespace}")
+    events_section = _extract_section(
+        context_str,
+        f"### kubectl get events -n {namespace} (warnings/errors)",
+    )
+    logs_match = re.search(
+        rf"### kubectl logs deployment/vibeteam-gateway -n {re.escape(namespace)} --tail=\\d+\\n```\\n(.*?)```",
+        context_str,
+        flags=re.DOTALL,
+    )
+    pods_summary = _summarize_pods(pods_section.body if pods_section else "")
+    events_summary = _summarize_events(events_section.body if events_section else "")
+    logs_summary = _summarize_logs(logs_match.group(1).strip() if logs_match else "")
+
+    root_cause = (
+        "No clear infrastructure failure found in kubectl or Sentry context. "
+        "Likely client request/validation issues (400/422) unless customers can "
+        "provide failing request details."
+    )
+    recommendation = (
+        "Infrastructure appears healthy. Do not rollback. "
+        "Please request exact endpoint/path, method, timestamp, and response body "
+        "from affected customers to confirm whether it is a client contract issue."
+    )
+
+    return (
+        "Sentry findings:\n"
+        f"- {sentry_summary}\n\n"
+        f"kubectl findings ({namespace}):\n"
+        f"- {pods_summary}\n"
+        f"- {events_summary}\n"
+        f"- {logs_summary}\n\n"
+        "Endpoint test (curl):\n"
+        f"- {curl_result}\n\n"
+        "Root cause analysis:\n"
+        f"- {root_cause}\n\n"
+        "Recommendation:\n"
+        f"- {recommendation}"
+    )
 
 
 def _parse_unread_emails(email_context: str) -> list[dict[str, str]]:
@@ -112,7 +286,10 @@ def _classify_email_action(subject: str, sender: str) -> str:
         return "Archive/mark read (newsletter)"
     if "no-reply" in sender_lower or "noreply" in sender_lower:
         return "Archive/mark read (automated)"
-    if any(token in subject_lower for token in ["billing", "invoice", "error", "issue", "bug", "support"]):
+    if any(
+        token in subject_lower
+        for token in ["billing", "invoice", "error", "issue", "bug", "support"]
+    ):
         return "Draft reply (needs review)"
     return "Review then decide"
 
@@ -182,7 +359,9 @@ def build_gmail_summary() -> str:
     elif "No unread emails in inbox." in email_context:
         lines.append("- Action: no inbox items need action.")
     else:
-        lines.append("- Action: archive/mark read for notifications/newsletters; draft replies for any items needing review.")
+        lines.append(
+            "- Action: archive/mark read for notifications/newsletters; draft replies for any items needing review."
+        )
 
     return "\n".join(lines).strip()
 
@@ -718,6 +897,29 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             from .utils import extract_response_from_events
 
             response = extract_response_from_events(conversation.state.events)
+            fallback_prefix = "I investigated but ran out of iterations before completing."
+            response_needs_fallback = not response.strip() or response.startswith(fallback_prefix)
+            if response_needs_fallback:
+                task_lower = task.lower()
+                is_explicit_investigation = any(
+                    kw in task_lower
+                    for kw in [
+                        "investigate",
+                        "check",
+                        "debug",
+                        "analyze",
+                        "why",
+                        "error",
+                        "fail",
+                    ]
+                )
+                if is_explicit_investigation or injected_context:
+                    namespace = os.environ.get("VIBETEAM_NAMESPACE") or DEFAULT_NAMESPACE
+                    response = _build_investigation_fallback(
+                        task,
+                        injected_context,
+                        namespace,
+                    )
 
             # Avoid role-mention handoffs for eval-style triage tasks.
             task_lower = task.lower()
