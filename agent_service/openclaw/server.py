@@ -7,6 +7,7 @@ FastAPI server exposing OpenClaw gateway execution via WebSocket RPC.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -260,14 +261,20 @@ async def run_openclaw_task(
     if OPENCLAW_WS_ORIGIN:
         extra_headers["Origin"] = OPENCLAW_WS_ORIGIN
 
-    async with websockets.connect(
-        OPENCLAW_WS_URL,
-        extra_headers=extra_headers or None,
-        open_timeout=OPENCLAW_CONNECT_TIMEOUT,
-        ping_interval=20,
-        ping_timeout=20,
-        max_size=10 * 1024 * 1024,
-    ) as ws:
+    connect_kwargs: dict[str, Any] = {
+        "open_timeout": OPENCLAW_CONNECT_TIMEOUT,
+        "ping_interval": 20,
+        "ping_timeout": 20,
+        "max_size": 10 * 1024 * 1024,
+    }
+    if extra_headers:
+        connect_params = inspect.signature(websockets.connect).parameters
+        if "additional_headers" in connect_params:
+            connect_kwargs["additional_headers"] = extra_headers
+        else:
+            connect_kwargs["extra_headers"] = extra_headers
+
+    async with websockets.connect(OPENCLAW_WS_URL, **connect_kwargs) as ws:
         await _openclaw_handshake(ws)
 
         run_id = str(uuid.uuid4())
