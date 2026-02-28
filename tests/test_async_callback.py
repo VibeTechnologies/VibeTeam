@@ -849,13 +849,16 @@ class TestSlackEventsPassMessageTs:
             patch(
                 "vibeteam.gateway.routes.slack.add_reaction",
                 new_callable=AsyncMock,
-            ),
+            ) as mock_add,
             patch(
                 "vibeteam.gateway.routes.slack.run_agent_for_slack",
                 new_callable=AsyncMock,
             ) as mock_run,
         ):
             asyncio.run(_process_slack_event(payload))
+
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "thinking_face")
 
             # Verify message_ts was passed
             mock_run.assert_called_once()
@@ -871,13 +874,16 @@ class TestSlackEventsPassMessageTs:
             patch(
                 "vibeteam.gateway.routes.slack.add_reaction",
                 new_callable=AsyncMock,
-            ),
+            ) as mock_add,
             patch(
                 "vibeteam.gateway.routes.slack.run_agent_for_slack",
                 new_callable=AsyncMock,
             ) as mock_run,
         ):
             asyncio.run(_process_slack_event(payload))
+
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "thinking_face")
 
             mock_run.assert_called_once()
             assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"
@@ -892,13 +898,16 @@ class TestSlackEventsPassMessageTs:
             patch(
                 "vibeteam.gateway.routes.slack.add_reaction",
                 new_callable=AsyncMock,
-            ),
+            ) as mock_add,
             patch(
                 "vibeteam.gateway.routes.slack.run_agent_for_slack",
                 new_callable=AsyncMock,
             ) as mock_run,
         ):
             asyncio.run(_process_slack_event(payload))
+
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "thinking_face")
 
             mock_run.assert_called_once()
             assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"

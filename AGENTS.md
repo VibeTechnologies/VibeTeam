@@ -61,6 +61,8 @@ uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel 
 uv run python scripts/eval_slack_e2e.py --list-scenarios
 ```
 
+**Note:** Slack evals run against the dev environment. Unless explicitly requested, it is acceptable to skip evals/E2E tests and report: “No. I did not run evals or E2E tests.” This should not be treated as an issue.
+
 # 2. Pause rollouts to prevent mid-eval restarts (git-sync can trigger rolling updates)
 ```shell
 kubectl rollout pause deployment/vibeteam-gateway -n vibeteam

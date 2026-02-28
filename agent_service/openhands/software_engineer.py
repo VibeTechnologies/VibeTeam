@@ -1136,6 +1136,78 @@ section-by-section. If you need more context, use:
                         if len(code_evidence_lines) >= 2:
                             break
 
+            # If no line-numbered evidence found, fall back to parsing grep blocks.
+            if not code_evidence_lines and "## Grep Results" in repo_ctx:
+                in_grep = False
+                in_code = False
+                for line in repo_ctx.splitlines():
+                    if line.startswith("## Grep Results"):
+                        in_grep = True
+                        continue
+                    if in_grep and line.startswith("## ") and not line.startswith("## Grep Results"):
+                        break
+                    if not in_grep:
+                        continue
+                    if line.strip().startswith("```"):
+                        in_code = not in_code
+                        continue
+                    if in_code and line.strip():
+                        cleaned = line.strip()
+                        if cleaned not in seen_code_lines:
+                            seen_code_lines.add(cleaned)
+                            code_evidence_lines.append(f"Code: {cleaned}")
+                        if len(code_evidence_lines) >= 3:
+                            break
+
+            # If still empty, parse relevant code sections with line numbers.
+            if not code_evidence_lines and "## Relevant Code Sections" in repo_ctx:
+                current_path = ""
+                for line in repo_ctx.splitlines():
+                    path_match = re.match(r"^### (.+?) \\(lines", line)
+                    if path_match:
+                        current_path = path_match.group(1).strip()
+                        continue
+                    if not current_path:
+                        continue
+                    code_match = re.match(r"^\\s*(\\d+) \\| (.+)$", line)
+                    if not code_match:
+                        continue
+                    lineno, code = code_match.group(1), code_match.group(2)
+                    if any(token in code for token in key_tokens):
+                        cleaned = f"{current_path}:{lineno}: {code.strip()}"
+                        if cleaned not in seen_code_lines:
+                            seen_code_lines.add(cleaned)
+                            code_evidence_lines.append(f"Code: {cleaned}")
+                    if len(code_evidence_lines) >= 3:
+                        break
+
+            # If still empty, parse GitHub API search JSON fragments (clone failed path).
+            if not code_evidence_lines and "## gh search code" in repo_ctx:
+                gh_blocks = re.findall(r"## gh search code '[^']*':\\n```json\\n([\\s\\S]*?)\\n```", repo_ctx)
+                for block in gh_blocks:
+                    try:
+                        data = json.loads(block)
+                    except Exception:
+                        continue
+                    if not isinstance(data, list):
+                        continue
+                    for item in data:
+                        path = item.get("path", "")
+                        for tm in item.get("textMatches", [])[:2]:
+                            fragment = tm.get("fragment", "").replace("\\n", " ").strip()
+                            if not fragment:
+                                continue
+                            cleaned = f"{path}: {fragment}"
+                            if cleaned not in seen_code_lines:
+                                seen_code_lines.add(cleaned)
+                                code_evidence_lines.append(f"Code: {cleaned}")
+                            if len(code_evidence_lines) >= 3:
+                                break
+                        if len(code_evidence_lines) >= 3:
+                            break
+                    if len(code_evidence_lines) >= 3:
+                        break
+
             if has_voice_button and not any(
                 "voice-input-button" in line for line in code_evidence_lines
             ):
@@ -1163,13 +1235,23 @@ section-by-section. If you need more context, use:
 
             evidence_lines.extend(code_evidence_lines)
 
+            has_code_evidence = bool(code_evidence_lines)
+            if not has_code_evidence:
+                has_voice_button = False
+                has_use_voice = False
+                has_speech_ctor = False
+
             if not paths:
-                if code_evidence_lines:
+                if has_code_evidence:
                     lines.append("Code locations from repo search: (see evidence below)")
                 else:
                     lines.append(
                         "Code search did not surface a clear record-button handler in this repo."
                     )
+            elif not has_code_evidence:
+                lines.append(
+                    "Repo contains related files, but no line-level code matches were found in prefetch."
+                )
 
             if evidence_lines:
                 lines.append("Evidence:")
@@ -1177,15 +1259,15 @@ section-by-section. If you need more context, use:
                     lines.append(f"- {item}")
 
             lines.append("Analysis:")
-            if has_voice_button:
+            if has_code_evidence and has_voice_button:
                 lines.append(
                     "- `HomePage.tsx` renders the voice-input button and wires onClick to `handleVoiceInput`."
                 )
-            if has_use_voice:
+            if has_code_evidence and has_use_voice:
                 lines.append(
                     "- `useVoiceInput` provides the `toggleListening` handler used by the button."
                 )
-            if has_speech_ctor:
+            if has_code_evidence and has_speech_ctor:
                 lines.append(
                     "- `useVoiceInput` constructs SpeechRecognition via `window.SpeechRecognition || window.webkitSpeechRecognition`."
                 )
@@ -1198,14 +1280,14 @@ section-by-section. If you need more context, use:
                 )
 
             lines.append("Next steps (evidence-based):")
-            if has_speech_ctor:
+            if has_code_evidence and has_speech_ctor:
                 lines.append(
                     "- Wrap the SpeechRecognition constructor in try/catch and surface an error state instead of throwing."
                 )
                 lines.append(
                     "- Reproduce on Chrome 120 and add/extend `tests/vision-voice-quick.test.js` to ensure click does not crash."
                 )
-            elif has_voice_button or has_use_voice:
+            elif has_code_evidence and (has_voice_button or has_use_voice):
                 lines.append(
                     "- Inspect `apps/chat4/src/hooks/useVoiceInput.ts` for any unguarded constructor/start paths and harden them if needed."
                 )
