@@ -362,6 +362,55 @@ async def add_read_reaction(channel: str, message_ts: str | None) -> bool:
     return await add_reaction(channel, message_ts, "eyes")
 
 
+async def set_thread_status(
+    channel: str,
+    thread_ts: str | None,
+    status: str | None,
+    *,
+    loading_messages: list[str] | None = None,
+) -> bool:
+    """Set Slack Assistant thread status (typing-style indicator)."""
+    if not config.SLACK_ASSISTANT_TOKEN:
+        logger.debug("SLACK_ASSISTANT_TOKEN not set, cannot set thread status")
+        return False
+    if not channel or not thread_ts or status is None:
+        return False
+
+    payload: dict[str, Any] = {
+        "channel_id": channel,
+        "thread_ts": thread_ts,
+        "status": status,
+    }
+    if loading_messages:
+        payload["loading_messages"] = loading_messages
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://slack.com/api/assistant.threads.setStatus",
+                headers={
+                    "Authorization": f"Bearer {config.SLACK_ASSISTANT_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            result = response.json()
+            if not result.get("ok"):
+                # Missing scope / method not found are common if Assistant API isn't enabled.
+                err = result.get("error")
+                logger.debug("Slack assistant.threads.setStatus error: %s", err)
+                return False
+            return True
+    except Exception as e:
+        logger.debug("Failed to set Slack assistant thread status: %s", e)
+        return False
+
+
+async def clear_thread_status(channel: str, thread_ts: str | None) -> bool:
+    """Clear Slack Assistant thread status by sending an empty status string."""
+    return await set_thread_status(channel, thread_ts, "")
+
+
 async def remove_reaction(
     channel: str,
     timestamp: str,
@@ -934,8 +983,8 @@ async def _submit_agent_async(
 ) -> None:
     """Submit an agent task asynchronously via /run/async.
 
-    Uses a :thinking_face: reaction as typing indicator (added by event handler),
-    submits the task, and returns immediately.
+    Uses a :thinking_face: reaction and (if available) Assistant thread status
+    as typing indicators, submits the task, and returns immediately.
     The agent service will POST results to /callback/agent when done.
     """
     task = _build_task_prompt(
@@ -964,6 +1013,14 @@ async def _submit_agent_async(
         "investigation": 30,
     }
     max_iterations = max_iterations_map.get(template, 30)
+
+    # Best-effort: show assistant "typing" status in the thread while the agent runs.
+    status_thread_ts = thread_ts or message_ts
+    await set_thread_status(
+        channel,
+        status_thread_ts,
+        config.SLACK_ASSISTANT_STATUS_TEXT,
+    )
 
     # Build callback URL
     callback_url = f"{config.GATEWAY_URL}/callback/agent"
@@ -1005,6 +1062,7 @@ async def _submit_agent_async(
     if "error" in result:
         # Remove thinking face, add X
         await remove_reaction(channel, message_ts, "thinking_face")
+        await clear_thread_status(channel, status_thread_ts)
         await add_reaction(channel, message_ts, "x")
         error_text = (
             f"[{display_name}] Sorry, I couldn't reach the agent service: {result['error']}"
@@ -1106,7 +1164,8 @@ async def _run_agent_and_respond(
     This is the sync path — used by /slack/trigger and as fallback when
     message_ts is unavailable for async reaction management.
 
-    Uses :thinking_face: reaction as typing indicator (added by event handler).
+    Uses :thinking_face: reaction and (if available) Assistant thread status
+    as typing indicators.
 
     Supports synchronous handoffs: if the agent mentions /RoleName in its response,
     that agent is immediately invoked (up to max_handoff_depth to prevent infinite loops).
@@ -1118,6 +1177,9 @@ async def _run_agent_and_respond(
         channel=channel,
         thread_ts=thread_ts,
     )
+
+    status_thread_ts = thread_ts or message_ts
+    await set_thread_status(channel, status_thread_ts, config.SLACK_ASSISTANT_STATUS_TEXT)
 
     agent_start_time = time.time()
     logger.info(f"[TIMING] Starting agent {role} (depth={current_depth})")
@@ -1221,6 +1283,8 @@ async def _run_agent_and_respond(
             await remove_reaction(channel, message_ts, "thinking_face")
             await add_reaction(channel, message_ts, "x")
         await send_slack_message(channel, error_text, thread_ts)
+    finally:
+        await clear_thread_status(channel, status_thread_ts)
 
 
 # ==============================================================================
@@ -1276,6 +1340,10 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     if not channel:
         logger.error(f"[CALLBACK] Missing channel in callback_metadata for job {job_id}")
         return {"status": "error", "detail": "missing channel in callback_metadata"}
+
+    # Clear assistant thread status when the job completes (success or failure).
+    status_thread_ts = thread_ts or message_ts
+    await clear_thread_status(channel, status_thread_ts)
 
     # Remove thinking_face reaction
     if message_ts:
