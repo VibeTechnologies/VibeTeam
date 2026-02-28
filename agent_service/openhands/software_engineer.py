@@ -1181,6 +1181,33 @@ section-by-section. If you need more context, use:
                     if len(code_evidence_lines) >= 3:
                         break
 
+            # If still empty, parse GitHub API search JSON fragments (clone failed path).
+            if not code_evidence_lines and "## gh search code" in repo_ctx:
+                gh_blocks = re.findall(r"## gh search code '[^']*':\\n```json\\n([\\s\\S]*?)\\n```", repo_ctx)
+                for block in gh_blocks:
+                    try:
+                        data = json.loads(block)
+                    except Exception:
+                        continue
+                    if not isinstance(data, list):
+                        continue
+                    for item in data:
+                        path = item.get("path", "")
+                        for tm in item.get("textMatches", [])[:2]:
+                            fragment = tm.get("fragment", "").replace("\\n", " ").strip()
+                            if not fragment:
+                                continue
+                            cleaned = f"{path}: {fragment}"
+                            if cleaned not in seen_code_lines:
+                                seen_code_lines.add(cleaned)
+                                code_evidence_lines.append(f"Code: {cleaned}")
+                            if len(code_evidence_lines) >= 3:
+                                break
+                        if len(code_evidence_lines) >= 3:
+                            break
+                    if len(code_evidence_lines) >= 3:
+                        break
+
             if has_voice_button and not any(
                 "voice-input-button" in line for line in code_evidence_lines
             ):
