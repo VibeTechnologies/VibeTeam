@@ -1235,13 +1235,23 @@ section-by-section. If you need more context, use:
 
             evidence_lines.extend(code_evidence_lines)
 
+            has_code_evidence = bool(code_evidence_lines)
+            if not has_code_evidence:
+                has_voice_button = False
+                has_use_voice = False
+                has_speech_ctor = False
+
             if not paths:
-                if code_evidence_lines:
+                if has_code_evidence:
                     lines.append("Code locations from repo search: (see evidence below)")
                 else:
                     lines.append(
                         "Code search did not surface a clear record-button handler in this repo."
                     )
+            elif not has_code_evidence:
+                lines.append(
+                    "Repo contains related files, but no line-level code matches were found in prefetch."
+                )
 
             if evidence_lines:
                 lines.append("Evidence:")
@@ -1249,15 +1259,15 @@ section-by-section. If you need more context, use:
                     lines.append(f"- {item}")
 
             lines.append("Analysis:")
-            if has_voice_button:
+            if has_code_evidence and has_voice_button:
                 lines.append(
                     "- `HomePage.tsx` renders the voice-input button and wires onClick to `handleVoiceInput`."
                 )
-            if has_use_voice:
+            if has_code_evidence and has_use_voice:
                 lines.append(
                     "- `useVoiceInput` provides the `toggleListening` handler used by the button."
                 )
-            if has_speech_ctor:
+            if has_code_evidence and has_speech_ctor:
                 lines.append(
                     "- `useVoiceInput` constructs SpeechRecognition via `window.SpeechRecognition || window.webkitSpeechRecognition`."
                 )
@@ -1270,14 +1280,14 @@ section-by-section. If you need more context, use:
                 )
 
             lines.append("Next steps (evidence-based):")
-            if has_speech_ctor:
+            if has_code_evidence and has_speech_ctor:
                 lines.append(
                     "- Wrap the SpeechRecognition constructor in try/catch and surface an error state instead of throwing."
                 )
                 lines.append(
                     "- Reproduce on Chrome 120 and add/extend `tests/vision-voice-quick.test.js` to ensure click does not crash."
                 )
-            elif has_voice_button or has_use_voice:
+            elif has_code_evidence and (has_voice_button or has_use_voice):
                 lines.append(
                     "- Inspect `apps/chat4/src/hooks/useVoiceInput.ts` for any unguarded constructor/start paths and harden them if needed."
                 )
