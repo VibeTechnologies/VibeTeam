@@ -13,6 +13,7 @@ This is a short overview of the evaluation loop. The canonical architecture and 
 
 - Role mentions are parsed via `agents/shared/role_resolver.py` and accept `@RoleName` or `/RoleName`.
 - The judge model is configured in `scripts/eval_slack_e2e.py` (default `gpt-5.2`).
+- Metrics and thresholds are scenario-specific and defined in `scripts/eval_slack_e2e.py` (`SCENARIOS`). Reports list the per-metric thresholds used for that run.
 - See [design.md](design.md) for system architecture.
 
 ## Run a Scenario
