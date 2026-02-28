@@ -1673,6 +1673,8 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             # max_iterations caps the number of agent iterations (tool calls)
             # to prevent runaway execution. Default is 30.
             max_iterations = kwargs.get("max_iterations", 30)
+            if context_type == "slack":
+                max_iterations = min(max_iterations, 12)
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
@@ -1691,6 +1693,15 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             extra_guidance_lines: list[str] = []
             if not skip_context_injection:
                 task_lower = task.lower()
+                user_msg_match = re.search(
+                    r"### User Message.*?\n(.*?)(?:### End User Message|$)",
+                    task,
+                    re.DOTALL,
+                )
+                user_message = (
+                    user_msg_match.group(1).strip() if user_msg_match else task
+                )
+                user_message_lower = user_message.lower()
 
                 # Check for GitHub Issue references (e.g., #449 or issue 449).
                 # Be strict to avoid matching Markdown headings like "### 1)".
@@ -1734,16 +1745,17 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     "deployment",
                     "cluster",
                     "infrastructure",
-                    "error",
-                    "fail",
                     "webhook",
                     "stripe",
                     "backend",
                     "gateway",
                     "api",
                     "log",
+                    "timeout",
+                    "service unavailable",
+                    "5xx",
                 ]
-                if any(kw in task_lower for kw in infra_keywords):
+                if any(kw in user_message_lower for kw in infra_keywords):
                     kubectl_ctx = fetch_kubectl_context()
                     injected_context.append(kubectl_ctx)
 
