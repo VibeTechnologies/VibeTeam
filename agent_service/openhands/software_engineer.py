@@ -1136,6 +1136,51 @@ section-by-section. If you need more context, use:
                         if len(code_evidence_lines) >= 2:
                             break
 
+            # If no line-numbered evidence found, fall back to parsing grep blocks.
+            if not code_evidence_lines and "## Grep Results" in repo_ctx:
+                in_grep = False
+                in_code = False
+                for line in repo_ctx.splitlines():
+                    if line.startswith("## Grep Results"):
+                        in_grep = True
+                        continue
+                    if in_grep and line.startswith("## ") and not line.startswith("## Grep Results"):
+                        break
+                    if not in_grep:
+                        continue
+                    if line.strip().startswith("```"):
+                        in_code = not in_code
+                        continue
+                    if in_code and line.strip():
+                        cleaned = line.strip()
+                        if cleaned not in seen_code_lines:
+                            seen_code_lines.add(cleaned)
+                            code_evidence_lines.append(f"Code: {cleaned}")
+                        if len(code_evidence_lines) >= 3:
+                            break
+
+            # If still empty, parse relevant code sections with line numbers.
+            if not code_evidence_lines and "## Relevant Code Sections" in repo_ctx:
+                current_path = ""
+                for line in repo_ctx.splitlines():
+                    path_match = re.match(r"^### (.+?) \\(lines", line)
+                    if path_match:
+                        current_path = path_match.group(1).strip()
+                        continue
+                    if not current_path:
+                        continue
+                    code_match = re.match(r"^\\s*(\\d+) \\| (.+)$", line)
+                    if not code_match:
+                        continue
+                    lineno, code = code_match.group(1), code_match.group(2)
+                    if any(token in code for token in key_tokens):
+                        cleaned = f"{current_path}:{lineno}: {code.strip()}"
+                        if cleaned not in seen_code_lines:
+                            seen_code_lines.add(cleaned)
+                            code_evidence_lines.append(f"Code: {cleaned}")
+                    if len(code_evidence_lines) >= 3:
+                        break
+
             if has_voice_button and not any(
                 "voice-input-button" in line for line in code_evidence_lines
             ):
