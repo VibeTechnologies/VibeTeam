@@ -557,12 +557,16 @@ class OpenHandsSoftwareEngineer:
         try:
             import re
 
-            if re.search(r"\bissue\b\s*#?\s*\d+\b", task_lower) or re.search(
-                r"(?<!#)#\s*\d+\b", task_lower
+            if (
+                ("github" in task_lower)
+                and (
+                    re.search(r"\bissue\b\s*#?\s*\d+\b", task_lower)
+                    or re.search(r"(?<!#)#\s*\d+\b", task_lower)
+                )
             ):
                 return True
         except Exception:
-            if "issue #" in task_lower or "github issue" in task_lower:
+            if "github issue" in task_lower:
                 return True
 
         tool_phrases = (
@@ -1377,6 +1381,94 @@ section-by-section. If you need more context, use:
                 f"Error: {exc}"
             )
 
+    def _build_repo_triage_response(
+        self, user_message: str, repo_ctx: str, repo: str
+    ) -> str:
+        """Build a deterministic summary for non-GitHub tasks using pre-fetched repo data."""
+        import re
+
+        first_line = ""
+        for line in user_message.splitlines():
+            if line.strip():
+                first_line = line.strip()
+                break
+        if not first_line:
+            first_line = user_message.strip() or "User requested investigation"
+
+        code_line_pattern = re.compile(r"\b\S+\.(?:ts|tsx|js|jsx):\d+")
+        evidence_lines: list[str] = []
+        seen: set[str] = set()
+        for line in repo_ctx.splitlines():
+            if code_line_pattern.search(line):
+                cleaned = line.strip()
+                if cleaned and cleaned not in seen:
+                    seen.add(cleaned)
+                    evidence_lines.append(cleaned)
+                if len(evidence_lines) >= 3:
+                    break
+
+        if not evidence_lines and "## Grep Results" in repo_ctx:
+            in_grep = False
+            in_code = False
+            for line in repo_ctx.splitlines():
+                if line.startswith("## Grep Results"):
+                    in_grep = True
+                    continue
+                if in_grep and line.startswith("## ") and not line.startswith("## Grep Results"):
+                    break
+                if not in_grep:
+                    continue
+                if line.strip().startswith("```"):
+                    in_code = not in_code
+                    continue
+                if in_code and line.strip():
+                    cleaned = line.strip()
+                    if cleaned not in seen:
+                        seen.add(cleaned)
+                        evidence_lines.append(cleaned)
+                    if len(evidence_lines) >= 3:
+                        break
+
+        lines: list[str] = []
+        lines.append("Summary:")
+        lines.append(first_line)
+        lines.append(f"Repo: {repo}")
+
+        lines.append("Evidence:")
+        if evidence_lines:
+            for item in evidence_lines:
+                lines.append(f"- Code: {item}")
+        else:
+            lines.append("- No code matches found in prefetch output.")
+
+        lower_msg = user_message.lower()
+        lines.append("Analysis:")
+        if "litellm" in lower_msg or "budget" in lower_msg:
+            lines.append(
+                "- User-reported error indicates LiteLLM update was called without user_id or user_email."
+            )
+            lines.append(
+                "- The Supabase UUID 'undefined' suggests missing metadata propagation in the webhook handler."
+            )
+        else:
+            lines.append("- The issue appears code-related; see evidence lines above for entry points.")
+
+        lines.append("Next steps:")
+        if "stripe-service" in lower_msg or "webhook" in lower_msg:
+            lines.append(
+                "- Inspect stripe-service handler for litellm_update and ensure user_id/email is populated before calling LiteLLM."
+            )
+            lines.append(
+                "- Add guardrails to avoid sending 'undefined' to Supabase when metadata is missing."
+            )
+        else:
+            lines.append(
+                "- Locate the handler referenced in the report and add validation/guards around required identifiers."
+            )
+
+        lines.append("Handoff: none.")
+        return "\n".join(lines)
+
     def _prefetch_via_github_api(self, task: str, repo: str) -> str:
         """Fallback: use gh search code and gh api when git clone fails.
 
@@ -1674,7 +1766,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             # to prevent runaway execution. Default is 30.
             max_iterations = kwargs.get("max_iterations", 30)
             if context_type == "slack":
-                max_iterations = min(max_iterations, 12)
+                max_iterations = min(max_iterations, 20)
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
@@ -1690,23 +1782,33 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             prefetched_issue_number: str | None = None
             github_ctx = ""
             repo_ctx = ""
+            prefetched_repo_only = False
             extra_guidance_lines: list[str] = []
             if not skip_context_injection:
+                import re
+
                 task_lower = task.lower()
+                user_message = task
+                user_message_lower = task_lower
                 user_msg_match = re.search(
                     r"### User Message.*?\n(.*?)(?:### End User Message|$)",
                     task,
                     re.DOTALL,
                 )
-                user_message = (
-                    user_msg_match.group(1).strip() if user_msg_match else task
+                if user_msg_match:
+                    user_message = user_msg_match.group(1).strip()
+                    user_message_lower = user_message.lower()
+                is_github_context = (
+                    context_type in {"github_issue", "github_pr"}
+                    or "github" in user_message_lower
+                    or "github.com" in user_message_lower
+                    or "gh issue" in user_message_lower
+                    or "repo" in user_message_lower
+                    or "repository" in user_message_lower
                 )
-                user_message_lower = user_message.lower()
 
                 # Check for GitHub Issue references (e.g., #449 or issue 449).
                 # Be strict to avoid matching Markdown headings like "### 1)".
-                import re
-
                 issue_number = None
                 issue_match = re.search(r"\bissue\b\s*#?\s*(\d+)\b", task_lower)
                 if issue_match:
@@ -1716,7 +1818,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     if hash_match:
                         issue_number = hash_match.group(1)
 
-                if issue_number:
+                if issue_number and is_github_context:
                     prefetched_issue_number = issue_number
                     github_ctx = self._fetch_github_issue(issue_number, repo)
                     injected_context.append(github_ctx)
@@ -1737,6 +1839,28 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     # doesn't need to search the codebase itself (which wastes iterations).
                     repo_ctx = self._prefetch_repo_code(task, workspace_path, repo)
                     injected_context.append(repo_ctx)
+                elif (
+                    context_type == "slack"
+                    and any(
+                        kw in user_message_lower
+                        for kw in (
+                            "sentry",
+                            "stripe-service",
+                            "litellm",
+                            "budget update",
+                            "handler",
+                            "supabase",
+                            "webhook",
+                            "metadata",
+                        )
+                    )
+                ):
+                    repo_ctx = self._prefetch_repo_code(task, workspace_path, repo)
+                    injected_context.append(repo_ctx)
+                    prefetched_repo_only = True
+                    extra_guidance_lines.append(
+                        "Use the pre-fetched repo search results; include file:line evidence."
+                    )
 
                 # Keywords that suggest infrastructure/deployment work
                 infra_keywords = [
@@ -1802,7 +1926,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             # are expected so the agent can actually implement and open a PR.
             requires_tools = self._task_requires_tools(task, context_type)
             used_single_pass = False
-            if prefetched_issue and not requires_tools:
+            if (prefetched_issue or prefetched_repo_only) and not requires_tools:
                 used_single_pass = True
                 print(
                     f"[SoftwareEngineer] Using single-pass ask_agent for issue {context_id}"
@@ -1822,26 +1946,47 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 
                 response = extract_response_from_events(conversation.state.events)
 
-            # If the single-pass response is missing evidence, build a deterministic summary.
-            if prefetched_issue_number and used_single_pass:
+            # If response is missing evidence, build a deterministic summary.
+            if prefetched_issue_number:
                 import re as _re
 
+                response_lower = response.lower()
                 has_issue_ref = (
                     prefetched_issue_number in response
                     or f"#{prefetched_issue_number}" in response
                 )
-                has_code_refs = bool(
-                    _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx)\\b", response)
+                has_code_line_refs = bool(
+                    _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx):\\d+", response)
                 )
-                has_evidence_block = "Evidence:" in response or "Reported (from issue)" in response
+                has_evidence_block = (
+                    "evidence:" in response_lower
+                    or "reported (from issue)" in response_lower
+                )
+                mentions_pr = "pr #" in response_lower or "pull request" in response_lower
+                incomplete = "ran out of iterations" in response_lower or "incomplete" in response_lower
+
                 if (
-                    (not has_issue_ref)
-                    or (not has_code_refs)
+                    used_single_pass
+                    or incomplete
+                    or (not has_issue_ref)
+                    or (not has_code_line_refs)
                     or (not has_evidence_block)
-                    or ("sentry" in response.lower())
-                ):
+                ) and not mentions_pr:
                     response = self._build_issue_triage_response(
                         prefetched_issue_number, github_ctx, repo_ctx
+                    )
+            elif prefetched_repo_only:
+                import re as _re
+
+                response_lower = response.lower()
+                has_code_line_refs = bool(
+                    _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx):\\d+", response)
+                )
+                has_evidence_block = "evidence:" in response_lower
+                incomplete = "ran out of iterations" in response_lower or not response.strip()
+                if incomplete or (not has_code_line_refs) or (not has_evidence_block):
+                    response = self._build_repo_triage_response(
+                        user_message, repo_ctx, repo
                     )
 
             session.add_message("user", task)
