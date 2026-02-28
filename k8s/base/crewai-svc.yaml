@@ -55,6 +55,8 @@ spec:
                 secretKeyRef:
                   name: vibeteam-secrets
                   key: AZURE_API_VERSION
+            - name: AZURE_ALLOW_RESPONSES_MODELS
+              value: "true"
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:
