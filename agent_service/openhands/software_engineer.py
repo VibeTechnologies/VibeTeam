@@ -1542,12 +1542,20 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             if not skip_context_injection:
                 task_lower = task.lower()
 
-                # Check for GitHub Issue references (e.g., #449 or issue 449)
+                # Check for GitHub Issue references (e.g., #449 or issue 449).
+                # Be strict to avoid matching Markdown headings like "### 1)".
                 import re
 
-                issue_match = re.search(r"(?:issue|#)\s*(\d+)", task_lower)
+                issue_number = None
+                issue_match = re.search(r"\bissue\b\s*#?\s*(\d+)\b", task_lower)
                 if issue_match:
                     issue_number = issue_match.group(1)
+                else:
+                    hash_match = re.search(r"(?<!#)#\s*(\d+)\b", task_lower)
+                    if hash_match:
+                        issue_number = hash_match.group(1)
+
+                if issue_number:
                     prefetched_issue_number = issue_number
                     github_ctx = self._fetch_github_issue(issue_number)
                     injected_context.append(github_ctx)
@@ -1655,7 +1663,13 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 has_code_refs = bool(
                     _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx)\\b", response)
                 )
-                if (not has_issue_ref) or (not has_code_refs) or ("sentry" in response.lower()):
+                has_evidence_block = "Evidence:" in response or "Reported (from issue)" in response
+                if (
+                    (not has_issue_ref)
+                    or (not has_code_refs)
+                    or (not has_evidence_block)
+                    or ("sentry" in response.lower())
+                ):
                     response = self._build_issue_triage_response(
                         prefetched_issue_number, github_ctx, repo_ctx
                     )
