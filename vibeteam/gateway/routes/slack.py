@@ -928,6 +928,7 @@ async def _submit_agent_async(
     thread_ts: str | None,
     message_ts: str,
     user_id: str,
+    framework: str | None = None,
     max_handoff_depth: int = 3,
     current_depth: int = 0,
 ) -> None:
@@ -972,6 +973,7 @@ async def _submit_agent_async(
     result = await call_agent_service_async(
         task=task,
         role=role,
+        framework=framework,
         context_type="slack",
         context_id=f"{channel}:{thread_ts or 'new'}",
         callback_url=callback_url,
@@ -993,6 +995,7 @@ async def _submit_agent_async(
             "user_message": user_message,
             "max_handoff_depth": max_handoff_depth,
             "current_depth": current_depth,
+            "framework": framework,
             # Include callback secret for authentication
             # Agent service echoes this back; gateway verifies on receipt
             "callback_secret": config.CALLBACK_SECRET,
@@ -1027,6 +1030,7 @@ async def run_agent_for_slack(
     user_id: str,
     message_ts: str | None = None,
     use_async: bool = True,
+    framework: str | None = None,
 ) -> None:
     """
     Run the appropriate agent based on Slack message and respond.
@@ -1041,6 +1045,7 @@ async def run_agent_for_slack(
         user_id: Slack user ID
         message_ts: Message timestamp (needed for async reaction management)
         use_async: If True and message_ts is available, use async callback flow
+        framework: Optional agent framework override (e.g., "openclaw")
     """
     logger.info(f"Processing Slack message from {user_id}: {user_message[:100]}")
 
@@ -1069,6 +1074,7 @@ async def run_agent_for_slack(
                 thread_ts=thread_ts,
                 message_ts=effective_message_ts,
                 user_id=user_id,
+                framework=framework,
             )
         else:
             await _run_agent_and_respond(
@@ -1079,6 +1085,7 @@ async def run_agent_for_slack(
                 thread_ts=thread_ts,
                 user_id=user_id,
                 message_ts=effective_message_ts or None,
+                framework=framework,
             )
 
 
@@ -1090,6 +1097,7 @@ async def _run_agent_and_respond(
     thread_ts: str | None,
     user_id: str,
     message_ts: str | None = None,
+    framework: str | None = None,
     max_handoff_depth: int = 3,
     current_depth: int = 0,
 ) -> None:
@@ -1118,6 +1126,7 @@ async def _run_agent_and_respond(
         result = await call_agent_service(
             task=task,
             role=role,
+            framework=framework,
             context_type="slack",
             context_id=f"{channel}:{thread_ts or 'new'}",
         )
@@ -1190,6 +1199,7 @@ async def _run_agent_and_respond(
                         channel=channel,
                         thread_ts=thread_ts,
                         user_id=user_id,
+                        framework=framework,
                         max_handoff_depth=max_handoff_depth,
                         current_depth=current_depth + 1,
                     )
@@ -1251,6 +1261,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     user_id = meta.get("user_id", "")
     max_handoff_depth = meta.get("max_handoff_depth", 3)
     current_depth = meta.get("current_depth", 0)
+    framework = meta.get("framework")
 
     logger.info(f"[CALLBACK] Received callback for job {job_id}: status={status}, role={role}")
 
@@ -1340,6 +1351,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
                 thread_ts=thread_ts,
                 message_ts=message_ts,
                 user_id=user_id,
+                framework=framework,
                 max_handoff_depth=max_handoff_depth,
                 current_depth=current_depth + 1,
             )
@@ -1685,6 +1697,7 @@ async def trigger_agent_for_slack(
         "thread_ts": "1234567890.123456",
         "text": "@SupportEngineer please investigate the issue",
         "user_id": "eval_script",
+        "framework": "openclaw",
         "use_async": false
     }
 
@@ -1693,6 +1706,7 @@ async def trigger_agent_for_slack(
     - text (required): Message text with @RoleName mention
     - thread_ts (optional): Thread timestamp to post in
     - user_id (optional): Identifier for the caller (default: "trigger_api")
+    - framework (optional): Agent framework override (e.g., "openclaw")
     - use_async (optional, default: false): If true, uses the async callback flow
       (POST /run/async → agent processes → POST /callback/agent) instead of the
       synchronous path. Useful for testing the full async lifecycle including
@@ -1731,6 +1745,7 @@ async def trigger_agent_for_slack(
     text = body.get("text", "")
     user_id = body.get("user_id", "trigger_api")
     use_async = body.get("use_async", False)
+    framework = body.get("framework")
 
     if not channel:
         raise HTTPException(status_code=400, detail="channel is required")
@@ -1753,7 +1768,16 @@ async def trigger_agent_for_slack(
     # Process in background
     # use_async=True exercises the full /run/async → /callback/agent flow
     # use_async=False (default) uses the synchronous path
-    asyncio.create_task(run_agent_for_slack(text, channel, thread_ts, user_id, use_async=use_async))
+    asyncio.create_task(
+        run_agent_for_slack(
+            text,
+            channel,
+            thread_ts,
+            user_id,
+            use_async=use_async,
+            framework=framework,
+        )
+    )
 
     return {
         "status": "accepted",

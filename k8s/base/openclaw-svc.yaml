@@ -23,6 +23,21 @@ spec:
       serviceAccountName: vibeteam-agent
       imagePullSecrets:
         - name: ghcr-pull-secret
+      initContainers:
+        - name: install-kubectl
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              set -euo pipefail
+              KUBECTL_VERSION="v1.31.4"
+              curl -fsSLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+              chmod 0755 kubectl
+              mv kubectl /kubectl/kubectl
+          volumeMounts:
+            - name: kubectl-bin
+              mountPath: /kubectl
       containers:
         - name: openclaw
           image: ghcr.io/vibetechnologies/vibeteam:latest
@@ -55,6 +70,20 @@ spec:
                   name: openclaw-secret
                   key: OPENCLAW_GATEWAY_TOKEN
                   optional: true
+            - name: SENTRY_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SENTRY_AUTH_TOKEN
+                  optional: true
+            - name: VIBETEAM_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - name: kubectl-bin
+              mountPath: /usr/local/bin/kubectl
+              subPath: kubectl
           resources:
             requests:
               memory: "512Mi"
@@ -74,6 +103,9 @@ spec:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
+      volumes:
+        - name: kubectl-bin
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

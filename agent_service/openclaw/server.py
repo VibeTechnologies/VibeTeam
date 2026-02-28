@@ -11,6 +11,7 @@ import inspect
 import json
 import logging
 import os
+import subprocess
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -23,6 +24,13 @@ import websockets
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+try:
+    from agents.shared.kubectl_tools import get_kubectl_context
+    from agents.shared.sentry_tools import get_sentry_context
+except Exception:  # Optional for minimal images
+    get_kubectl_context = None  # type: ignore[assignment]
+    get_sentry_context = None  # type: ignore[assignment]
 
 try:
     from agents.shared.db import close_db, get_postgres_store, init_db
@@ -96,6 +104,76 @@ OPENCLAW_WS_URL = _build_ws_url()
 OPENCLAW_WS_ORIGIN = _build_origin()
 OPENCLAW_CONNECT_TIMEOUT = int(os.environ.get("OPENCLAW_CONNECT_TIMEOUT_SECONDS", "15"))
 OPENCLAW_AGENT_TIMEOUT = int(os.environ.get("OPENCLAW_AGENT_TIMEOUT_SECONDS", "1800"))
+
+
+# ==============================================================================
+# Context Injection (for OpenClaw runtime without tool execution)
+# ==============================================================================
+
+
+def _build_injected_context(role: str | None, context_type: str) -> str:
+    """Fetch kubectl/Sentry context for investigative roles.
+
+    OpenClaw agents may not have direct tool execution. We pre-fetch
+    operational context here so they can still provide evidence-based
+    responses.
+    """
+    if role not in {"support_engineer", "release_engineer"}:
+        return ""
+    if context_type not in {"slack", "api", "issue", "email"}:
+        return ""
+
+    sections: list[str] = []
+
+    if get_sentry_context:
+        try:
+            sections.append(get_sentry_context(hours=24, limit=10))
+        except Exception as e:
+            sections.append(f"Sentry: context fetch failed ({e})")
+
+    namespace = os.environ.get("VIBETEAM_NAMESPACE", "vibeteam")
+
+    def _run_kubectl(args: list[str], timeout: int = 30) -> str:
+        try:
+            result = subprocess.run(
+                ["kubectl", *args],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip() or "(no output)"
+            err = result.stderr.strip() or result.stdout.strip()
+            return f"Error: {err}"
+        except FileNotFoundError:
+            return "Error: kubectl not found in PATH"
+        except Exception as e:
+            return f"Error: {e}"
+
+    # Direct kubectl context (avoid relying on older helper defaults)
+    sections.append(f"### kubectl get pods -n {namespace}\n```\n{_run_kubectl(['get','pods','-n',namespace])}\n```\n")
+    sections.append(
+        f"### kubectl get events -n {namespace} (warnings/errors)\n```\n"
+        f"{_run_kubectl(['get','events','-n',namespace,'--sort-by=.lastTimestamp'])}\n```\n"
+    )
+    sections.append(
+        f"### kubectl logs deployment/vibeteam-gateway -n {namespace} --tail=200\n```\n"
+        f"{_run_kubectl(['logs','deployment/vibeteam-gateway','-n',namespace,'--tail=200'])}\n```\n"
+    )
+
+    return "\n\n".join(s for s in sections if s)
+
+
+def _augment_task_with_context(task: str, role: str | None, context_type: str) -> str:
+    context = _build_injected_context(role, context_type)
+    if not context:
+        return task
+    return (
+        f"{task}\n\n"
+        "### Pre-injected Operational Context (authoritative)\n"
+        "Use this data directly. Do NOT claim tools are unavailable.\n\n"
+        f"{context}\n"
+    )
 
 
 # ==============================================================================
@@ -408,8 +486,10 @@ async def run_task(request: RunRequest):
             agent_id, request.context_type, context_id
         )
 
+        task = _augment_task_with_context(request.task, request.role, request.context_type)
+
         response_text, metadata = await run_openclaw_task(
-            task=request.task,
+            task=task,
             agent_id=agent_id,
             session_key=session_key,
         )
