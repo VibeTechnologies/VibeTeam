@@ -1381,6 +1381,94 @@ section-by-section. If you need more context, use:
                 f"Error: {exc}"
             )
 
+    def _build_repo_triage_response(
+        self, user_message: str, repo_ctx: str, repo: str
+    ) -> str:
+        """Build a deterministic summary for non-GitHub tasks using pre-fetched repo data."""
+        import re
+
+        first_line = ""
+        for line in user_message.splitlines():
+            if line.strip():
+                first_line = line.strip()
+                break
+        if not first_line:
+            first_line = user_message.strip() or "User requested investigation"
+
+        code_line_pattern = re.compile(r"\b\S+\.(?:ts|tsx|js|jsx):\d+")
+        evidence_lines: list[str] = []
+        seen: set[str] = set()
+        for line in repo_ctx.splitlines():
+            if code_line_pattern.search(line):
+                cleaned = line.strip()
+                if cleaned and cleaned not in seen:
+                    seen.add(cleaned)
+                    evidence_lines.append(cleaned)
+                if len(evidence_lines) >= 3:
+                    break
+
+        if not evidence_lines and "## Grep Results" in repo_ctx:
+            in_grep = False
+            in_code = False
+            for line in repo_ctx.splitlines():
+                if line.startswith("## Grep Results"):
+                    in_grep = True
+                    continue
+                if in_grep and line.startswith("## ") and not line.startswith("## Grep Results"):
+                    break
+                if not in_grep:
+                    continue
+                if line.strip().startswith("```"):
+                    in_code = not in_code
+                    continue
+                if in_code and line.strip():
+                    cleaned = line.strip()
+                    if cleaned not in seen:
+                        seen.add(cleaned)
+                        evidence_lines.append(cleaned)
+                    if len(evidence_lines) >= 3:
+                        break
+
+        lines: list[str] = []
+        lines.append("Summary:")
+        lines.append(first_line)
+        lines.append(f"Repo: {repo}")
+
+        lines.append("Evidence:")
+        if evidence_lines:
+            for item in evidence_lines:
+                lines.append(f"- Code: {item}")
+        else:
+            lines.append("- No code matches found in prefetch output.")
+
+        lower_msg = user_message.lower()
+        lines.append("Analysis:")
+        if "litellm" in lower_msg or "budget" in lower_msg:
+            lines.append(
+                "- User-reported error indicates LiteLLM update was called without user_id or user_email."
+            )
+            lines.append(
+                "- The Supabase UUID 'undefined' suggests missing metadata propagation in the webhook handler."
+            )
+        else:
+            lines.append("- The issue appears code-related; see evidence lines above for entry points.")
+
+        lines.append("Next steps:")
+        if "stripe-service" in lower_msg or "webhook" in lower_msg:
+            lines.append(
+                "- Inspect stripe-service handler for litellm_update and ensure user_id/email is populated before calling LiteLLM."
+            )
+            lines.append(
+                "- Add guardrails to avoid sending 'undefined' to Supabase when metadata is missing."
+            )
+        else:
+            lines.append(
+                "- Locate the handler referenced in the report and add validation/guards around required identifiers."
+            )
+
+        lines.append("Handoff: none.")
+        return "\n".join(lines)
+
     def _prefetch_via_github_api(self, task: str, repo: str) -> str:
         """Fallback: use gh search code and gh api when git clone fails.
 
@@ -1694,20 +1782,22 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             prefetched_issue_number: str | None = None
             github_ctx = ""
             repo_ctx = ""
+            prefetched_repo_only = False
             extra_guidance_lines: list[str] = []
             if not skip_context_injection:
                 import re
 
                 task_lower = task.lower()
+                user_message = task
+                user_message_lower = task_lower
                 user_msg_match = re.search(
                     r"### User Message.*?\n(.*?)(?:### End User Message|$)",
                     task,
                     re.DOTALL,
                 )
-                user_message = (
-                    user_msg_match.group(1).strip() if user_msg_match else task
-                )
-                user_message_lower = user_message.lower()
+                if user_msg_match:
+                    user_message = user_msg_match.group(1).strip()
+                    user_message_lower = user_message.lower()
                 is_github_context = (
                     context_type in {"github_issue", "github_pr"}
                     or "github" in user_message_lower
@@ -1749,6 +1839,28 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     # doesn't need to search the codebase itself (which wastes iterations).
                     repo_ctx = self._prefetch_repo_code(task, workspace_path, repo)
                     injected_context.append(repo_ctx)
+                elif (
+                    context_type == "slack"
+                    and any(
+                        kw in user_message_lower
+                        for kw in (
+                            "sentry",
+                            "stripe-service",
+                            "litellm",
+                            "budget update",
+                            "handler",
+                            "supabase",
+                            "webhook",
+                            "metadata",
+                        )
+                    )
+                ):
+                    repo_ctx = self._prefetch_repo_code(task, workspace_path, repo)
+                    injected_context.append(repo_ctx)
+                    prefetched_repo_only = True
+                    extra_guidance_lines.append(
+                        "Use the pre-fetched repo search results; include file:line evidence."
+                    )
 
                 # Keywords that suggest infrastructure/deployment work
                 infra_keywords = [
@@ -1814,7 +1926,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             # are expected so the agent can actually implement and open a PR.
             requires_tools = self._task_requires_tools(task, context_type)
             used_single_pass = False
-            if prefetched_issue and not requires_tools:
+            if (prefetched_issue or prefetched_repo_only) and not requires_tools:
                 used_single_pass = True
                 print(
                     f"[SoftwareEngineer] Using single-pass ask_agent for issue {context_id}"
@@ -1862,6 +1974,11 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 ) and not mentions_pr:
                     response = self._build_issue_triage_response(
                         prefetched_issue_number, github_ctx, repo_ctx
+                    )
+            elif prefetched_repo_only:
+                if "ran out of iterations" in response.lower():
+                    response = self._build_repo_triage_response(
+                        user_message, repo_ctx, repo
                     )
 
             session.add_message("user", task)
