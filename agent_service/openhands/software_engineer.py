@@ -1762,21 +1762,29 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             agent_callbacks: list[Any] = [_count_iterations]
             progress_url = kwargs.get("progress_url")
             if progress_url:
-                from .progress import create_progress_callback
-
-                progress_cb = create_progress_callback(
-                    progress_url=progress_url,
-                    job_id=kwargs.get("job_id", ""),
-                    callback_metadata=kwargs.get("callback_metadata", {}),
-                    on_progress=kwargs.get("progress_heartbeat"),
-                )
-                agent_callbacks.append(progress_cb)
+                try:
+                    from .progress import create_progress_callback
+                except Exception as exc:
+                    print(f"[SoftwareEngineer] Progress callback unavailable: {exc}")
+                else:
+                    progress_cb = create_progress_callback(
+                        progress_url=progress_url,
+                        job_id=kwargs.get("job_id", ""),
+                        callback_metadata=kwargs.get("callback_metadata", {}),
+                        on_progress=kwargs.get("progress_heartbeat"),
+                    )
+                    agent_callbacks.append(progress_cb)
             elif kwargs.get("progress_heartbeat"):
-                from .progress import create_heartbeat_callback
-
-                agent_callbacks.append(
-                    create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
-                )
+                try:
+                    from .progress import create_heartbeat_callback
+                except Exception as exc:
+                    print(f"[SoftwareEngineer] Progress heartbeat unavailable: {exc}")
+                else:
+                    agent_callbacks.append(
+                        create_heartbeat_callback(
+                            on_progress=kwargs.get("progress_heartbeat")
+                        )
+                    )
 
             # max_iterations caps the number of agent iterations (tool calls)
             # to prevent runaway execution. Default is 30.
