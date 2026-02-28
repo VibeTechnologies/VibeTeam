@@ -1822,24 +1822,32 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 
                 response = extract_response_from_events(conversation.state.events)
 
-            # If the single-pass response is missing evidence, build a deterministic summary.
-            if prefetched_issue_number and used_single_pass:
+            # If response is missing evidence, build a deterministic summary.
+            if prefetched_issue_number:
                 import re as _re
 
+                response_lower = response.lower()
                 has_issue_ref = (
                     prefetched_issue_number in response
                     or f"#{prefetched_issue_number}" in response
                 )
-                has_code_refs = bool(
-                    _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx)\\b", response)
+                has_code_line_refs = bool(
+                    _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx):\\d+", response)
                 )
-                has_evidence_block = "Evidence:" in response or "Reported (from issue)" in response
+                has_evidence_block = (
+                    "evidence:" in response_lower
+                    or "reported (from issue)" in response_lower
+                )
+                mentions_pr = "pr #" in response_lower or "pull request" in response_lower
+                incomplete = "ran out of iterations" in response_lower or "incomplete" in response_lower
+
                 if (
-                    (not has_issue_ref)
-                    or (not has_code_refs)
+                    used_single_pass
+                    or incomplete
+                    or (not has_issue_ref)
+                    or (not has_code_line_refs)
                     or (not has_evidence_block)
-                    or ("sentry" in response.lower())
-                ):
+                ) and not mentions_pr:
                     response = self._build_issue_triage_response(
                         prefetched_issue_number, github_ctx, repo_ctx
                     )
