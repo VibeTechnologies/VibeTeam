@@ -26,11 +26,33 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 try:
+    from agents.shared.integration_checks import validate_required_integrations
     from agents.shared.kubectl_tools import get_kubectl_context
     from agents.shared.sentry_tools import get_sentry_context
 except Exception:  # Optional for minimal images
+    validate_required_integrations = None  # type: ignore[assignment]
     get_kubectl_context = None  # type: ignore[assignment]
     get_sentry_context = None  # type: ignore[assignment]
+
+if validate_required_integrations is None:
+    def validate_required_integrations(service_name: str) -> None:  # type: ignore[no-redef]
+        missing: list[str] = []
+        if not os.environ.get("SENTRY_AUTH_TOKEN"):
+            missing.append("SENTRY_AUTH_TOKEN (Sentry API auth token)")
+        if not os.environ.get("GITHUB_TOKEN"):
+            missing.append("GITHUB_TOKEN")
+        creds_path = os.environ.get("GMAIL_CREDENTIALS_PATH", ".secrets/gmail-credentials.json")
+        token_path = os.environ.get("GMAIL_TOKEN_PATH", ".secrets/gmail-token.json")
+        if not os.path.exists(creds_path):
+            missing.append(f"GMAIL_CREDENTIALS_PATH missing: {creds_path}")
+        if not os.path.exists(token_path):
+            missing.append(f"GMAIL_TOKEN_PATH missing: {token_path}")
+        if missing:
+            details = "\n- ".join(missing)
+            raise RuntimeError(
+                f"[{service_name}] Required integrations not configured:\n- {details}\n"
+                "Service will not start until these are provided."
+            )
 
 try:
     from agents.shared.db import close_db, get_postgres_store, init_db
@@ -441,6 +463,12 @@ async def run_openclaw_task(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting OpenClaw service...")
+    if validate_required_integrations:
+        try:
+            validate_required_integrations("openclaw-svc")
+        except Exception as e:
+            logger.error(str(e))
+            raise
     if init_db:
         try:
             await init_db()
