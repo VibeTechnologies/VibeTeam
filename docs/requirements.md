@@ -9,8 +9,8 @@ VibeTeam is a multi-agent system that routes work via `@RoleName` or `/RoleName`
 | Role | Mention | Function | Tools |
 |------|---------|----------|-------|
 | **SoftwareEngineer** | `@SoftwareEngineer` | Code implementation, bug fixes, tests, PRs | Shell, Git, GitHub, Chrome DevTools MCP |
-| **ReleaseEngineer** | `@ReleaseEngineer` | Deployments, releases, k3s/k8s, CI/CD | kubectl, GitHub, Chrome DevTools MCP |
-| **SupportEngineer** | `@SupportEngineer` | Customer support, error analysis | Sentry, Gmail, Langfuse, Chrome DevTools MCP |
+| **ReleaseEngineer** | `@ReleaseEngineer` | Deployments, releases, k3s/k8s, CI/CD | kubectl, GitHub, Langfuse, Chrome DevTools MCP |
+| **SupportEngineer** | `@SupportEngineer` | Customer support, error analysis | Sentry, Gmail, GCalendar, Langfuse, GitHub, Chrome DevTools MCP |
 | **ProductManager** | `@ProductManager` | PRDs, backlog prioritization, user stories | GitHub, Chrome DevTools MCP |
 | **MarketingManager** | `@MarketingManager` | Social media, announcements, content | Chrome DevTools MCP |
 
@@ -23,11 +23,17 @@ All agents use **Azure OpenAI `gpt-5.2`** via LiteLLM. The deployment name is `g
 | Provider | Azure OpenAI |
 | Deployment | `gpt-5.2` |
 | Model version | `gpt-5.2-2025-12-11` |
-| API version | `2024-08-01-preview` |
+| API version | `2024-08-01-preview` (default; must be >= `2025-03-01-preview` to allow responses-only models) |
 | Default max tokens | 4096 |
 | LiteLLM model string | `azure/gpt-5.2` |
 
 The model is configured via the `AZURE_OPENAI_DEPLOYMENT` K8s secret. GPT-5+ models require `max_completion_tokens` instead of `max_tokens` — the codebase handles this automatically.
+
+Responses-only models (e.g., `gpt-5.2-codex`) are **blocked by default**. To allow them, set:
+- `AZURE_ALLOW_RESPONSES_MODELS=true`
+- `AZURE_API_VERSION` >= `2025-03-01-preview`
+
+If those conditions are not met, the codebase automatically falls back to `gpt-5.2`.
 
 ## Routing and Sessions
 
@@ -46,15 +52,22 @@ The model is configured via the `AZURE_OPENAI_DEPLOYMENT` K8s secret. GPT-5+ mod
 
 ## Browser Automation (Chrome DevTools MCP)
 
-All agent roles can use Chrome DevTools MCP when a CDP browser is available. In production, this connects to the shared Browserless service via the `CHROME_DEVTOOLS_BROWSER_URL` environment variable. Agent containers require Node.js (for `npx chrome-devtools-mcp@latest`).
+All agent roles can use Chrome DevTools MCP when a CDP browser is available. In production, this connects to the shared Browserless service via the `CHROME_DEVTOOLS_BROWSER_URL` environment variable. Agent containers require Node.js (for `npx chrome-devtools-mcp@0.18.1`).
 
 ## Environment Variables (Required)
 
 ```bash
 # LLM
 AZURE_API_KEY=
+AZURE_OPENAI_API_KEY=            # optional alias
 AZURE_API_BASE=
+AZURE_OPENAI_ENDPOINT=           # optional alias
 AZURE_API_VERSION=2024-08-01-preview
+AZURE_OPENAI_DEPLOYMENT=gpt-5.2
+AZURE_ALLOW_RESPONSES_MODELS=false
+VIBETEAM_MODEL=azure/gpt-5.2
+VIBETEAM_TEMPERATURE=0.3
+VIBETEAM_MAX_TOKENS=4096
 
 # GitHub
 GITHUB_TOKEN=
@@ -75,6 +88,11 @@ GMAIL_CLIENT_ID=
 GMAIL_CLIENT_SECRET=
 GMAIL_REFRESH_TOKEN=
 GMAIL_USER_EMAIL=support@vibebrowser.app
+
+# Langfuse
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_HOST=https://langfuse.vibebrowser.app
 
 # Gateway/Services
 OPENHANDS_SERVICE_URL=http://openhands-svc:8080
