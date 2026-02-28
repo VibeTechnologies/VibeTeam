@@ -20,6 +20,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agents.config import AgentConfig
+from agents.shared.integration_checks import validate_required_integrations
 from agents.shared.db import close_db, get_postgres_store, init_db
 
 from .team import OpenHandsTeam, create_team
@@ -196,6 +197,11 @@ def get_team() -> OpenHandsTeam:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info("Starting OpenHands service...")
+    try:
+        validate_required_integrations("openhands-svc")
+    except Exception as e:
+        logger.error(str(e))
+        raise
 
     # Raise OpenHands TextContent limit to avoid premature truncation.
     configure_text_truncation()

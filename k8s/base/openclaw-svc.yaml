@@ -70,12 +70,21 @@ spec:
                   name: openclaw-secret
                   key: OPENCLAW_GATEWAY_TOKEN
                   optional: true
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: GITHUB_TOKEN
             - name: SENTRY_AUTH_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: vibeteam-secrets
                   key: SENTRY_AUTH_TOKEN
                   optional: true
+            - name: GMAIL_CREDENTIALS_PATH
+              value: "/gmail/gmail-credentials.json"
+            - name: GMAIL_TOKEN_PATH
+              value: "/gmail/gmail-token.json"
             - name: VIBETEAM_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -84,6 +93,8 @@ spec:
             - name: kubectl-bin
               mountPath: /usr/local/bin/kubectl
               subPath: kubectl
+            - name: gmail-oauth
+              mountPath: /gmail
           resources:
             requests:
               memory: "512Mi"
@@ -106,6 +117,9 @@ spec:
       volumes:
         - name: kubectl-bin
           emptyDir: {}
+        - name: gmail-oauth
+          secret:
+            secretName: gmail-oauth-secret
 ---
 apiVersion: v1
 kind: Service

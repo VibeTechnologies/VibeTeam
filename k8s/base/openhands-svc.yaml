@@ -77,6 +77,10 @@ spec:
                 secretKeyRef:
                   name: vibeteam-secrets
                   key: SENTRY_AUTH_TOKEN
+            - name: GMAIL_CREDENTIALS_PATH
+              value: "/gmail/gmail-credentials.json"
+            - name: GMAIL_TOKEN_PATH
+              value: "/gmail/gmail-token.json"
             - name: CHROME_DEVTOOLS_BROWSER_URL
               value: "http://browserless:3000"
             - name: OPENHANDS_SYNC_IDLE_TIMEOUT_SECONDS
@@ -85,6 +89,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          volumeMounts:
+            - name: gmail-oauth
+              mountPath: /gmail
           resources:
             requests:
               memory: "3Gi"
@@ -108,6 +115,10 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+      volumes:
+        - name: gmail-oauth
+          secret:
+            secretName: gmail-oauth-secret
 ---
 apiVersion: v1
 kind: Service
