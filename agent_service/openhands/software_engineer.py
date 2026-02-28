@@ -1976,7 +1976,15 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                         prefetched_issue_number, github_ctx, repo_ctx
                     )
             elif prefetched_repo_only:
-                if "ran out of iterations" in response.lower():
+                import re as _re
+
+                response_lower = response.lower()
+                has_code_line_refs = bool(
+                    _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx):\\d+", response)
+                )
+                has_evidence_block = "evidence:" in response_lower
+                incomplete = "ran out of iterations" in response_lower or not response.strip()
+                if incomplete or (not has_code_line_refs) or (not has_evidence_block):
                     response = self._build_repo_triage_response(
                         user_message, repo_ctx, repo
                     )
