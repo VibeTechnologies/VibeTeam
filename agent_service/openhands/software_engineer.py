@@ -1692,6 +1692,8 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             repo_ctx = ""
             extra_guidance_lines: list[str] = []
             if not skip_context_injection:
+                import re
+
                 task_lower = task.lower()
                 user_msg_match = re.search(
                     r"### User Message.*?\n(.*?)(?:### End User Message|$)",
@@ -1705,8 +1707,6 @@ code matches. Use `gh search code` and `gh api` for further investigation:
 
                 # Check for GitHub Issue references (e.g., #449 or issue 449).
                 # Be strict to avoid matching Markdown headings like "### 1)".
-                import re
-
                 issue_number = None
                 issue_match = re.search(r"\bissue\b\s*#?\s*(\d+)\b", task_lower)
                 if issue_match:
