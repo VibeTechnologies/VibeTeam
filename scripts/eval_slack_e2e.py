@@ -52,7 +52,7 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.shared.llm import resolve_azure_model
-from agents.shared.role_resolver import ROLE_PATTERN
+from agents.shared.role_resolver import ROLE_PATTERN, parse_role_mentions
 from vibeteam.connectors.slack import SlackConnector
 
 # Try to import DeepEval
@@ -1359,6 +1359,7 @@ async def run_evaluation(
     wait_timeout: int = 600,
     poll_interval: int = 5,
     gateway_url: str | None = None,
+    framework: str | None = None,
     custom_message: str | None = None,
     skip_eval: bool = False,
     existing_thread_ts: str | None = None,
@@ -1379,6 +1380,7 @@ async def run_evaluation(
         wait_timeout: Timeout in seconds for agent response
         poll_interval: Polling interval in seconds
         gateway_url: Gateway URL for triggering agents (defaults to GATEWAY_URL env var)
+        framework: Optional agent framework override (e.g., "openclaw")
         custom_message: Custom message to send (overrides scenario message)
         skip_eval: Skip DeepEval evaluation (just post and collect responses)
         existing_thread_ts: If provided, re-score an existing Slack thread instead of
@@ -1497,6 +1499,8 @@ async def run_evaluation(
                     "text": user_message,
                     "user_id": "eval_script",
                 }
+                if framework:
+                    trigger_payload["framework"] = framework
                 if use_async:
                     trigger_payload["use_async"] = True
 
@@ -1562,6 +1566,27 @@ async def run_evaluation(
             m = re.match(r"_?\[([A-Za-z]+)\]", text.strip())
             return m.group(1) if m else ""
 
+        def _display_to_role(display: str) -> str:
+            """Convert display name like 'SupportEngineer' to role key 'support_engineer'."""
+            if not display:
+                return ""
+            lowered = display.strip().lower()
+            for role, disp in ROLE_DISPLAY.items():
+                if disp.lower() == lowered:
+                    return role
+            return ""
+
+        def _has_non_self_handoff(text: str) -> bool:
+            """True if text mentions a role other than the current agent."""
+            targets = parse_role_mentions(text)
+            if not targets:
+                return False
+            source_role = _display_to_role(_extract_agent_prefix(text))
+            # If we can't identify the source role, treat any mention as a handoff
+            if not source_role:
+                return True
+            return any(t != source_role for t in targets)
+
         while True:
             await asyncio.sleep(poll_interval)
 
@@ -1587,7 +1612,7 @@ async def run_evaluation(
                 bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
                 if bot_messages:
                     latest_bot_msg = bot_messages[-1]
-                    has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
+                    has_handoff = _has_non_self_handoff(latest_bot_msg.text)
                     if has_handoff and not scenario.get("skip_handoff", False):
                         print("    Handoff detected in response! Waiting for next agent...")
                         pending_handoff = True
@@ -1656,7 +1681,7 @@ async def run_evaluation(
                             continue
 
                     latest_bot_msg = bot_messages[-1]
-                    has_handoff = bool(ROLE_PATTERN.search(latest_bot_msg.text))
+                    has_handoff = _has_non_self_handoff(latest_bot_msg.text)
                     if not has_handoff or scenario.get("skip_handoff", False):
                         print(
                             f"    Conversation stable for {int(time_since_last)}s, "
@@ -1936,6 +1961,10 @@ Examples:
         help="Gateway URL for triggering agents (default: GATEWAY_URL env var or https://webhook.team.vibebrowser.app)",
     )
     parser.add_argument(
+        "--framework",
+        help='Agent framework override for /slack/trigger (e.g., "openclaw")',
+    )
+    parser.add_argument(
         "--skip-eval",
         action="store_true",
         help="Skip DeepEval evaluation (just post and collect responses)",
@@ -1997,6 +2026,7 @@ Examples:
                 wait_timeout=args.timeout,
                 poll_interval=args.poll_interval,
                 gateway_url=args.gateway_url,
+                framework=args.framework,
                 custom_message=custom_message,
                 skip_eval=args.skip_eval,
                 existing_thread_ts=args.thread_ts,

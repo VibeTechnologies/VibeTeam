@@ -35,6 +35,7 @@ class GatewayConfig:
     AUTOGEN_SERVICE_URL = os.environ.get("AUTOGEN_SERVICE_URL", "http://autogen-svc:8080")
     CREWAI_SERVICE_URL = os.environ.get("CREWAI_SERVICE_URL", "http://crewai-svc:8080")
     OPENHANDS_SERVICE_URL = os.environ.get("OPENHANDS_SERVICE_URL", "http://openhands-svc:8080")
+    OPENCLAW_SERVICE_URL = os.environ.get("OPENCLAW_SERVICE_URL", "http://openclaw-svc:8080")
     SCHEDULER_SERVICE_URL = os.environ.get("SCHEDULER_SERVICE_URL", "http://scheduler-svc:8080")
     # OpenHands selected as default based on benchmark results (100% success, 0.80 composite)
     # See docs/research.md Section 16 for detailed analysis
@@ -77,6 +78,8 @@ class GatewayConfig:
             return cls.CREWAI_SERVICE_URL
         elif fw == "openhands":
             return cls.OPENHANDS_SERVICE_URL
+        elif fw == "openclaw":
+            return cls.OPENCLAW_SERVICE_URL
         return cls.AUTOGEN_SERVICE_URL
 
 
@@ -96,7 +99,9 @@ class RunRequest(BaseModel):
         None,
         description="Agent role (support_engineer, release_engineer, software_engineer, etc.)",
     )
-    framework: str | None = Field(None, description="Agent framework (autogen, crewai, openhands)")
+    framework: str | None = Field(
+        None, description="Agent framework (autogen, crewai, openhands, openclaw)"
+    )
     context_type: str = Field("api", description="Context type")
     context_id: str | None = Field(None, description="Context ID")
     stream: bool = Field(False, description="Stream the response (SSE)")
