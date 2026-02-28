@@ -21,6 +21,7 @@ Under **OAuth & Permissions**, add these **Bot Token Scopes**:
 
 | Scope | Required For |
 |-------|-------------|
+| `assistant:write` | Showing assistant thread status (typing indicator) |
 | `app_mentions:read` | Receiving `@VibeTeam` mentions |
 | `channels:history` | Reading messages in public channels (needed for `message.channels` event + `conversations.replies` API for thread participation check) |
 | `channels:read` | Listing public channels |
@@ -76,6 +77,8 @@ The gateway requires these environment variables for Slack integration:
 | Variable | Description | Where to find |
 |----------|-------------|---------------|
 | `SLACK_BOT_TOKEN` | Bot user OAuth token (`xoxb-...`) | **OAuth & Permissions** page after installing the app |
+| `SLACK_ASSISTANT_TOKEN` | Optional token with `assistant:write` for thread status | Same as bot token, or a separate token if you split scopes |
+| `SLACK_ASSISTANT_STATUS_TEXT` | Optional status text (default: `is thinking...`) | Local configuration |
 | `SLACK_SIGNING_SECRET` | Used to verify incoming Slack requests | **Basic Information** > **App Credentials** |
 | `SLACK_TRIGGER_SECRET` | Bearer token for the `/slack/trigger` endpoint (used by eval tests and manual triggering) | Self-generated; set in both `.env` and K8s secrets |
 
@@ -101,23 +104,12 @@ The bot must be a member of a channel to receive `message.channels` events from 
 
 ## Typing Indicator
 
-When a message is routed to an agent, the gateway immediately posts a **"⏳ [RoleName] Thinking..."** message in the thread. Once the agent responds, this message is **updated in-place** (via `chat.update`) with the actual response — avoiding duplicate messages.
+When a message is routed to an agent, the gateway:
 
-```
-User posts message
-      │
-      ▼
-Gateway posts "⏳ SoftwareEngineer Thinking..." → returns thinking_ts
-      │
-      ▼
-Agent processes request (may take 30-60s)
-      │
-      ▼
-Agent responds → Gateway calls chat.update(ts=thinking_ts, text=response)
-      │
-      ▼
-User sees the thinking message replaced with the actual response
-```
+- Adds a `:thinking_face:` reaction immediately.
+- If the app has `assistant:write`, sets an assistant thread status (e.g. "is thinking...") and clears it when the response is posted.
+
+This avoids noisy "thinking..." messages while still giving real-time feedback.
 
 Implementation (`vibeteam/gateway/routes/slack.py`):
 - `send_thinking_message(channel, thread_ts, role)` — posts the indicator
