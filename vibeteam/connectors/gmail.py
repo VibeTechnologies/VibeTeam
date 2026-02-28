@@ -136,8 +136,11 @@ class GmailConnector:
                 flow = InstalledAppFlow.from_client_secrets_file(str(self.credentials_path), SCOPES)
                 self.creds = flow.run_local_server(port=0)
 
-            # Save token for future use
-            self._save_token()
+            # Save token for future use (best-effort; may be read-only in some environments)
+            try:
+                self._save_token()
+            except OSError:
+                pass
 
         # Build Gmail service
         self.service = build("gmail", "v1", credentials=self.creds)

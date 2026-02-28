@@ -144,7 +144,14 @@ class GmailClient:
             if self.creds and self.creds.expired and self.creds.refresh_token:
                 # Refresh expired token
                 self.creds.refresh(self.Request())
-                self._save_token()
+                try:
+                    self._save_token()
+                except OSError as e:
+                    logger.warning(
+                        "Failed to write Gmail token to %s: %s",
+                        self.token_path,
+                        e,
+                    )
             else:
                 if headless:
                     raise RuntimeError(
