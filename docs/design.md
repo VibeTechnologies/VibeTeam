@@ -474,11 +474,23 @@ python scripts/eval_slack_e2e.py --scenario support_400_errors
 
 ### Evaluation Metrics (DeepEval)
 
-| Metric | Threshold | Description |
-|--------|-----------|-------------|
-| TaskCompletion | 0.7 | Request fully addressed |
-| HandoffQuality | 0.7 | Context preservation |
-| ResponseTime | < 60s | Time to first response |
+Metrics and thresholds are scenario-specific and defined in `scripts/eval_slack_e2e.py` (`SCENARIOS` dict). The report lists each metric with its threshold; overall pass requires all metrics to meet their thresholds (typically `0.60`–`0.80`).
+
+Common metrics include:
+- InvestigationQuality
+- EvidenceBasedDecision
+- HandoffCompletion
+- ResponseEfficiency
+- NotificationOnly
+- SentryUsage
+- GmailUsage
+- IssueAnalysis
+- DeploymentExecution
+- CorrectNamespace
+- ChromeDevToolsUsage
+- HNFitAndGuidelines
+- CommunityFitAndRules
+- SoftPromoQuality
 
 
 # DeepEval test design

@@ -237,4 +237,24 @@ cat results/eval_reports/eval_support_400_errors_*.md | head -100
 | 0.6 - 0.8 | Good | Root cause identified with evidence |
 | 0.8 - 1.0 | Excellent | Full investigation, resolution implemented |
 
-**Threshold: 0.60** (must achieve to pass)
+## Metrics and Thresholds
+
+Metrics and thresholds are **scenario-specific** and defined in `scripts/eval_slack_e2e.py` (`SCENARIOS`). Typical thresholds range `0.60`–`0.80`. A scenario passes only if **all** of its metrics meet their thresholds, and the report lists each metric with its threshold.
+
+Common metrics include:
+- InvestigationQuality
+- EvidenceBasedDecision
+- HandoffCompletion
+- ResponseEfficiency
+- NotificationOnly
+- SentryUsage
+- GmailUsage
+- IssueAnalysis
+- DeploymentExecution
+- CorrectNamespace
+- ChromeDevToolsUsage
+- HNFitAndGuidelines
+- CommunityFitAndRules
+- SoftPromoQuality
+
+If DeepEval is unavailable, reports are written with status `NO EVALUATION (DeepEval not available)` and no metric scores.
