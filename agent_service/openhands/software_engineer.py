@@ -94,9 +94,10 @@ for your response. You MUST call finish() quickly:
   is infinitely better than running out of time with no response.
 
 ## PRIMARY REPOSITORY
-The main codebase is located at: https://github.com/VibeTechnologies/VibeWebAgent/
-- You have full access to this repository.
-- You should CLONE this repository to explore code, reproduce bugs, and implement fixes.
+The primary repo is specified in the task (e.g., `Repository: owner/repo`).
+- If no repo is specified, default to: https://github.com/VibeTechnologies/VibeWebAgent/
+- You have full access to the repo referenced in the task.
+- You should CLONE that repo to explore code, reproduce bugs, and implement fixes.
 - If the directory already exists, run `git pull` to ensure you have the latest code.
 
 ## ⚠️ INVESTIGATION PRIORITY: CODE FIRST, INFRA SECOND
@@ -521,14 +522,62 @@ class OpenHandsSoftwareEngineer:
             },
         )
 
-    def _fetch_github_issue(self, issue_number: str) -> str:
+    def _extract_repo_from_task(self, task: str, context_id: str | None = None) -> str:
+        """Extract repo owner/name from task text or context_id."""
+        import re
+
+        default_repo = "VibeTechnologies/VibeWebAgent"
+
+        if context_id:
+            candidate = context_id.split(":", 1)[0].split("#", 1)[0].strip()
+            if "/" in candidate and " " not in candidate:
+                return candidate
+
+        patterns = [
+            r"Repository:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+            r"\brepository\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+            r"\brepo\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+            r"github\\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, task, re.IGNORECASE)
+            if match:
+                repo = match.group(1).strip().rstrip(").,")
+                return repo
+
+        return default_repo
+
+    def _task_requires_tools(self, task: str, context_type: str) -> bool:
+        """Decide if the task needs full tool-enabled execution."""
+        if context_type in {"github_issue", "github_pr"}:
+            return True
+
+        task_lower = task.lower()
+        tool_phrases = (
+            "create a pull request",
+            "create a pr",
+            "open a pr",
+            "submit a pr",
+            "create unit tests",
+            "write tests",
+            "implement",
+            "apply a fix",
+            "fix the bug",
+            "commit",
+            "create a feature branch",
+            "push to",
+            "merge",
+        )
+        return any(phrase in task_lower for phrase in tool_phrases)
+
+    def _fetch_github_issue(self, issue_number: str, repo: str | None = None) -> str:
         """Fetch GitHub issue details using gh CLI."""
         try:
             import subprocess
             import json
 
             # Ensure we look in the right repo
-            repo = "VibeTechnologies/VibeWebAgent"
+            repo = repo or "VibeTechnologies/VibeWebAgent"
 
             # Fetch issue details in JSON for reliable parsing
             cmd = [
@@ -567,7 +616,9 @@ PRE-FETCHED GITHUB ISSUE JSON #{issue_number}
         except Exception as e:
             return f"[System] Error pre-fetching issue #{issue_number}: {str(e)}"
 
-    def _prefetch_repo_code(self, task: str, workspace_path: str) -> str:
+    def _prefetch_repo_code(
+        self, task: str, workspace_path: str, repo: str | None = None
+    ) -> str:
         """Pre-fetch repo code by cloning and grepping for keywords from the task.
 
         This eliminates the agent's need to search the codebase itself, which
@@ -578,8 +629,10 @@ PRE-FETCHED GITHUB ISSUE JSON #{issue_number}
         import re
         import subprocess
 
-        repo = "VibeTechnologies/VibeWebAgent"
-        repo_dir = os.path.join(workspace_path, "VibeWebAgent")
+        default_repo = "VibeTechnologies/VibeWebAgent"
+        repo = repo or default_repo
+        repo_name = repo.split("/")[-1] if "/" in repo else repo
+        repo_dir = os.path.join(workspace_path, repo_name)
         sections: list[str] = []
 
         # Step 1: Clone the repo
@@ -978,6 +1031,7 @@ PRE-FETCHED GITHUB ISSUE JSON #{issue_number}
             return "[System] Pre-fetched repo but found no matching code."
 
         context = "\n\n".join(sections)
+        repo_dir_rel = repo_dir.replace(workspace_path + "/", "")
 
         # Truncate if too large (keep under 8000 chars to leave room for other context)
         if len(context) > 8000:
@@ -987,16 +1041,16 @@ PRE-FETCHED GITHUB ISSUE JSON #{issue_number}
 ================================================================================
 PRE-FETCHED REPOSITORY CODE — USE THIS DATA, DO NOT RE-SEARCH
 ================================================================================
-Repository: {repo} (cloned to {repo_dir.replace(workspace_path + "/", "")})
+Repository: {repo} (cloned to {repo_dir_rel})
 
 {context}
 
 ================================================================================
-IMPORTANT: The repo is already cloned in your workspace at VibeWebAgent/.
+IMPORTANT: The repo is already cloned in your workspace at {repo_dir_rel}/.
 Use the grep results above to identify the relevant code. Do NOT read files
 section-by-section. If you need more context, use:
-  grep -n "keyword" VibeWebAgent/path/to/file.js
-  sed -n 'START,ENDp' VibeWebAgent/path/to/file.js
+  grep -n "keyword" {repo_dir_rel}/path/to/file.js
+  sed -n 'START,ENDp' {repo_dir_rel}/path/to/file.js
 ================================================================================
 """
 
@@ -1614,6 +1668,8 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                 max_iteration_per_run=max_iterations,
             )
 
+            repo = self._extract_repo_from_task(task, context_id)
+
             # Inject context if keywords match
             injected_context = []
             prefetched_issue = False
@@ -1639,7 +1695,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
 
                 if issue_number:
                     prefetched_issue_number = issue_number
-                    github_ctx = self._fetch_github_issue(issue_number)
+                    github_ctx = self._fetch_github_issue(issue_number, repo)
                     injected_context.append(github_ctx)
                     prefetched_issue = True
                     extra_guidance_lines.append(
@@ -1652,7 +1708,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     # Pre-fetch repo code: clone + grep for keywords from the task.
                     # This gives the agent relevant code snippets in context so it
                     # doesn't need to search the codebase itself (which wastes iterations).
-                    repo_ctx = self._prefetch_repo_code(task, workspace_path)
+                    repo_ctx = self._prefetch_repo_code(task, workspace_path, repo)
                     injected_context.append(repo_ctx)
 
                 # Keywords that suggest infrastructure/deployment work
@@ -1713,9 +1769,13 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
 ### END USER TASK
 """
 
-            # If we've already pre-fetched the issue and relevant code, avoid tool churn.
-            # A single direct call is more reliable for eval-style triage tasks.
-            if prefetched_issue:
+            # If we've already pre-fetched the issue and relevant code, avoid tool churn
+            # for triage-only tasks. Use the full tool loop when code changes or PRs
+            # are expected so the agent can actually implement and open a PR.
+            requires_tools = self._task_requires_tools(task, context_type)
+            used_single_pass = False
+            if prefetched_issue and not requires_tools:
+                used_single_pass = True
                 print(
                     f"[SoftwareEngineer] Using single-pass ask_agent for issue {context_id}"
                 )
@@ -1735,7 +1795,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 response = extract_response_from_events(conversation.state.events)
 
             # If the single-pass response is missing evidence, build a deterministic summary.
-            if prefetched_issue_number:
+            if prefetched_issue_number and used_single_pass:
                 import re as _re
 
                 has_issue_ref = (
