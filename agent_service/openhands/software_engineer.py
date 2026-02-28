@@ -1674,7 +1674,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             # to prevent runaway execution. Default is 30.
             max_iterations = kwargs.get("max_iterations", 30)
             if context_type == "slack":
-                max_iterations = min(max_iterations, 12)
+                max_iterations = min(max_iterations, 20)
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
