@@ -1429,6 +1429,9 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         event = payload.get("event", {})
         event_type = event.get("type")
+        event_subtype = event.get("subtype")
+        event_channel = event.get("channel", "")
+        event_ts = event.get("ts", "")
 
         logger.info(
             f"Received Slack event: {event_type}, "
@@ -1436,6 +1439,27 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             f"thread_ts={bool(event.get('thread_ts'))}, "
             f"channel_type={event.get('channel_type')}"
         )
+
+        # Add read reaction for any message/app_mention we receive, even if we end up ignoring it.
+        # This ensures all messages read by the gateway are marked with 👀.
+        should_add_read_reaction = (
+            bool(event_ts)
+            and bool(event_channel)
+            and (
+                event_type == "app_mention"
+                or (
+                    event_type == "message"
+                    and event_subtype
+                    not in {
+                        "message_changed",
+                        "message_deleted",
+                        "message_replied",
+                    }
+                )
+            )
+        )
+        if should_add_read_reaction:
+            await add_read_reaction(event_channel, event_ts)
 
         # Handle bot messages: process if they contain role mentions (handoffs/eval)
         # Per requirements: "Bot Messages: Router processes bot's own messages to detect handoffs"
@@ -1463,7 +1487,6 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
 
             # React with thinking face to show we're working on it
             if message_ts:
-                await add_read_reaction(channel, message_ts)
                 await add_reaction(channel, message_ts, "thinking_face")
 
             await run_agent_for_slack(
@@ -1482,7 +1505,6 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
 
             # React with thinking face to show we're working on it
             if message_ts:
-                await add_read_reaction(channel, message_ts)
                 await add_reaction(channel, message_ts, "thinking_face")
 
             await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
@@ -1546,7 +1568,6 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                     )
 
                 if message_ts:
-                    await add_read_reaction(channel, message_ts)
                     await add_reaction(channel, message_ts, "thinking_face")
 
                 await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
@@ -1592,7 +1613,6 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
 
             # React with thinking face to show we're processing the message
             if message_ts:
-                await add_read_reaction(channel, message_ts)
                 await add_reaction(channel, message_ts, "thinking_face")
 
             await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
