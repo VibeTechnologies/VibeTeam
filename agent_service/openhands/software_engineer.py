@@ -553,6 +553,18 @@ class OpenHandsSoftwareEngineer:
             return True
 
         task_lower = task.lower()
+        # If a GitHub issue is referenced, require tools so we can inspect code.
+        try:
+            import re
+
+            if re.search(r"\bissue\b\s*#?\s*\d+\b", task_lower) or re.search(
+                r"(?<!#)#\s*\d+\b", task_lower
+            ):
+                return True
+        except Exception:
+            if "issue #" in task_lower or "github issue" in task_lower:
+                return True
+
         tool_phrases = (
             "create a pull request",
             "create a pr",
@@ -1703,6 +1715,10 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     )
                     extra_guidance_lines.append(
                         "Cite specific file paths from the pre-fetched code search in your analysis."
+                    )
+                    extra_guidance_lines.append(
+                        "Run at least one targeted grep/sed in the cloned repo to get line-level evidence. "
+                        "Do NOT respond with only filenames."
                     )
 
                     # Pre-fetch repo code: clone + grep for keywords from the task.
