@@ -1,5 +1,6 @@
 # CrewAI Framework Deployment
 # Runs CrewAI-based agents in isolated environment
+# NOTE: Disabled for now (known broken). Replicas set to 0.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -10,7 +11,7 @@ metadata:
     framework: crewai
     team: vibeteam
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: crewai-agents
