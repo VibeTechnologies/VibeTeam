@@ -1387,13 +1387,20 @@ section-by-section. If you need more context, use:
         """Build a deterministic summary for non-GitHub tasks using pre-fetched repo data."""
         import re
 
+        cleaned_message = re.sub(
+            r"^\\s*(?:@VibeTeam\\s+)?[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager)\\b[:,-]?\\s*",
+            "",
+            user_message.strip(),
+            flags=re.IGNORECASE,
+        )
+
         first_line = ""
-        for line in user_message.splitlines():
+        for line in cleaned_message.splitlines():
             if line.strip():
                 first_line = line.strip()
                 break
         if not first_line:
-            first_line = user_message.strip() or "User requested investigation"
+            first_line = cleaned_message.strip() or "User requested investigation"
 
         code_line_pattern = re.compile(r"\b\S+\.(?:ts|tsx|js|jsx):\d+")
         evidence_lines: list[str] = []
@@ -1455,11 +1462,20 @@ section-by-section. If you need more context, use:
 
         lines.append("Next steps:")
         if "stripe-service" in lower_msg or "webhook" in lower_msg:
-            lines.append(
-                "- Inspect stripe-service handler for litellm_update and ensure user_id/email is populated before calling LiteLLM."
+            stripe_evidence = next(
+                (e for e in evidence_lines if "stripe-service" in e),
+                "",
             )
+            if stripe_evidence:
+                lines.append(
+                    f"- In stripe-service handler (see {stripe_evidence}), guard the LiteLLM update: if user_id/email is missing, log and return without calling updateLiteLLMBudget."
+                )
+            else:
+                lines.append(
+                    "- In stripe-service webhook handler, guard the LiteLLM update: if user_id/email is missing, log and return without calling updateLiteLLMBudget."
+                )
             lines.append(
-                "- Add guardrails to avoid sending 'undefined' to Supabase when metadata is missing."
+                "- If user_id is missing, look it up via Stripe session metadata or customer email before calling updateLiteLLMBudget."
             )
         else:
             lines.append(
