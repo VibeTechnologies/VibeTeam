@@ -355,6 +355,13 @@ async def add_reaction(
         return False
 
 
+async def add_read_reaction(channel: str, message_ts: str | None) -> bool:
+    """Add the :eyes: reaction to indicate the gateway read the message."""
+    if not message_ts:
+        return False
+    return await add_reaction(channel, message_ts, "eyes")
+
+
 async def remove_reaction(
     channel: str,
     timestamp: str,
@@ -1444,6 +1451,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
 
             # React with thinking face to show we're working on it
             if message_ts:
+                await add_read_reaction(channel, message_ts)
                 await add_reaction(channel, message_ts, "thinking_face")
 
             await run_agent_for_slack(
@@ -1462,6 +1470,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
 
             # React with thinking face to show we're working on it
             if message_ts:
+                await add_read_reaction(channel, message_ts)
                 await add_reaction(channel, message_ts, "thinking_face")
 
             await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
@@ -1525,6 +1534,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                     )
 
                 if message_ts:
+                    await add_read_reaction(channel, message_ts)
                     await add_reaction(channel, message_ts, "thinking_face")
 
                 await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
@@ -1570,6 +1580,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
 
             # React with thinking face to show we're processing the message
             if message_ts:
+                await add_read_reaction(channel, message_ts)
                 await add_reaction(channel, message_ts, "thinking_face")
 
             await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
