@@ -1,5 +1,6 @@
 # AutoGen Agent Service Deployment
 # Long-running FastAPI server for AutoGen agents
+# NOTE: Disabled for now (known broken). Replicas set to 0.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -10,7 +11,7 @@ metadata:
     team: vibeteam
     component: agent-service
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: autogen-svc
