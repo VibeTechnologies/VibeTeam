@@ -36,6 +36,7 @@ class AgentSessionManager:
     def _create_vibeteam_agent(self, role: AgentRole):
         """Create a vibeteam agent."""
         from vibeteam.agents import (
+            MarketerAgent,
             ProductManagerAgent,
             ReleaseEngineerAgent,
             SoftwareEngineerAgent,
@@ -47,7 +48,7 @@ class AgentSessionManager:
             "release_engineer": ReleaseEngineerAgent,
             "support_engineer": SupportEngineerAgent,
             "product_manager": ProductManagerAgent,
-            "marketing_manager": ProductManagerAgent,
+            "marketing_manager": MarketerAgent,
         }
         agent_class = agents.get(role)
         if agent_class:

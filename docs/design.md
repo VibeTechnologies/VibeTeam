@@ -280,12 +280,20 @@ else:
     kwargs["max_tokens"] = self.max_tokens
 ```
 
+Responses-only models (e.g., `gpt-5.2-codex`) are **blocked by default**. The resolver in `agents/shared/llm.py` only allows them when:
+- `AZURE_ALLOW_RESPONSES_MODELS=true`
+- `AZURE_API_VERSION` >= `2025-03-01-preview`
+
+If those conditions are not met, the model automatically falls back to `gpt-5.2`.
+
 ### Environment Variables
 
 | Variable | Value | Source |
 |----------|-------|--------|
 | `AZURE_API_BASE` | `https://vibebrowser-dev.openai.azure.com/` | K8s secret |
+| `AZURE_OPENAI_ENDPOINT` | (alias for `AZURE_API_BASE`) | K8s secret |
 | `AZURE_API_KEY` | (secret) | K8s secret |
+| `AZURE_OPENAI_API_KEY` | (alias for `AZURE_API_KEY`) | K8s secret |
 | `AZURE_API_VERSION` | `2024-08-01-preview` | K8s secret |
 | `AZURE_OPENAI_DEPLOYMENT` | `gpt-5.2` | K8s secret |
 
@@ -466,11 +474,23 @@ python scripts/eval_slack_e2e.py --scenario support_400_errors
 
 ### Evaluation Metrics (DeepEval)
 
-| Metric | Threshold | Description |
-|--------|-----------|-------------|
-| TaskCompletion | 0.7 | Request fully addressed |
-| HandoffQuality | 0.7 | Context preservation |
-| ResponseTime | < 60s | Time to first response |
+Metrics and thresholds are scenario-specific and defined in `scripts/eval_slack_e2e.py` (`SCENARIOS` dict). The report lists each metric with its threshold; overall pass requires all metrics to meet their thresholds (typically `0.60`–`0.80`).
+
+Common metrics include:
+- InvestigationQuality
+- EvidenceBasedDecision
+- HandoffCompletion
+- ResponseEfficiency
+- NotificationOnly
+- SentryUsage
+- GmailUsage
+- IssueAnalysis
+- DeploymentExecution
+- CorrectNamespace
+- ChromeDevToolsUsage
+- HNFitAndGuidelines
+- CommunityFitAndRules
+- SoftPromoQuality
 
 
 # DeepEval test design
