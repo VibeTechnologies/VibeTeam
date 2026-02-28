@@ -557,12 +557,16 @@ class OpenHandsSoftwareEngineer:
         try:
             import re
 
-            if re.search(r"\bissue\b\s*#?\s*\d+\b", task_lower) or re.search(
-                r"(?<!#)#\s*\d+\b", task_lower
+            if (
+                ("github" in task_lower)
+                and (
+                    re.search(r"\bissue\b\s*#?\s*\d+\b", task_lower)
+                    or re.search(r"(?<!#)#\s*\d+\b", task_lower)
+                )
             ):
                 return True
         except Exception:
-            if "issue #" in task_lower or "github issue" in task_lower:
+            if "github issue" in task_lower:
                 return True
 
         tool_phrases = (
@@ -1704,6 +1708,14 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     user_msg_match.group(1).strip() if user_msg_match else task
                 )
                 user_message_lower = user_message.lower()
+                is_github_context = (
+                    context_type in {"github_issue", "github_pr"}
+                    or "github" in user_message_lower
+                    or "github.com" in user_message_lower
+                    or "gh issue" in user_message_lower
+                    or "repo" in user_message_lower
+                    or "repository" in user_message_lower
+                )
 
                 # Check for GitHub Issue references (e.g., #449 or issue 449).
                 # Be strict to avoid matching Markdown headings like "### 1)".
@@ -1716,7 +1728,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     if hash_match:
                         issue_number = hash_match.group(1)
 
-                if issue_number:
+                if issue_number and is_github_context:
                     prefetched_issue_number = issue_number
                     github_ctx = self._fetch_github_issue(issue_number, repo)
                     injected_context.append(github_ctx)
