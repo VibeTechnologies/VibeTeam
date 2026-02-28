@@ -12,7 +12,8 @@ data:
         "mode": "local",
         "controlUi": {
           "allowInsecureAuth": true,
-          "dangerouslyAllowHostHeaderOriginFallback": true
+          "dangerouslyAllowHostHeaderOriginFallback": true,
+          "dangerouslyDisableDeviceAuth": true
         }
       },
       "agents": {

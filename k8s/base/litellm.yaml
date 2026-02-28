@@ -7,13 +7,15 @@ metadata:
     team: vibeteam
 data:
   config.yaml: |
+    litellm_settings:
+      drop_params: true
     model_list:
       - model_name: gpt-5.2
         litellm_params:
           model: azure/gpt-5.2
-          api_base: ${AZURE_API_BASE}
-          api_key: ${AZURE_API_KEY}
-          api_version: ${AZURE_API_VERSION}
+          api_base: os.environ/AZURE_API_BASE
+          api_key: os.environ/AZURE_API_KEY
+          api_version: os.environ/AZURE_API_VERSION
 ---
 apiVersion: apps/v1
 kind: Deployment
