@@ -67,10 +67,17 @@ def _build_ws_url() -> str:
     if explicit:
         return explicit
     base = os.environ.get("OPENCLAW_GATEWAY_URL", "http://openclaw-gateway:18789").strip()
-    parsed = urlparse(base)
-    scheme = "wss" if parsed.scheme == "https" else "ws"
-    host = parsed.netloc or parsed.path
-    return f"{scheme}://{host}/__openclaw__/ws"
+    if base.startswith(("ws://", "wss://")):
+        return base
+    if base.startswith(("http://", "https://")):
+        parsed = urlparse(base)
+        scheme = "wss" if parsed.scheme == "https" else "ws"
+        host = parsed.netloc
+        path = parsed.path if parsed.path not in ("", "/") else ""
+        return f"{scheme}://{host}{path}"
+    host, sep, path = base.partition("/")
+    path = f"/{path}" if sep and path else ""
+    return f"ws://{host}{path}"
 
 
 def _build_origin() -> str | None:
@@ -207,6 +214,20 @@ def _extract_assistant_text(payload: dict[str, Any]) -> str:
 
 
 async def _openclaw_handshake(ws: websockets.WebSocketClientProtocol) -> None:
+    # OpenClaw gateways emit a connect.challenge event on new connections.
+    # Respond by sending a connect request as the first request frame.
+    challenge_deadline = time.time() + OPENCLAW_CONNECT_TIMEOUT
+    nonce: str | None = None
+    while time.time() < challenge_deadline:
+        raw = await asyncio.wait_for(ws.recv(), timeout=OPENCLAW_CONNECT_TIMEOUT)
+        frame = json.loads(raw)
+        if frame.get("type") == "event" and frame.get("event") == "connect.challenge":
+            payload = frame.get("payload") or {}
+            nonce = payload.get("nonce")
+            break
+    if not nonce:
+        raise RuntimeError("OpenClaw connect challenge missing nonce")
+
     connect_id = str(uuid.uuid4())
     connect_params: dict[str, Any] = {
         "minProtocol": 3,
@@ -220,7 +241,7 @@ async def _openclaw_handshake(ws: websockets.WebSocketClientProtocol) -> None:
             "instanceId": connect_id,
         },
         "role": "operator",
-        "scopes": ["operator.read", "operator.write"],
+        "scopes": ["operator.admin", "operator.read", "operator.write"],
     }
     if OPENCLAW_GATEWAY_TOKEN:
         connect_params["auth"] = {"token": OPENCLAW_GATEWAY_TOKEN}
