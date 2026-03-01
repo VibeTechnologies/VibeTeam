@@ -25,7 +25,8 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from vibeteam.router import Router
 from vibeteam.agents_config import get_slack_handle
-from vibeteam.router.models import ROLE_DISPLAY_NAMES, AgentRole, route_by_keywords
+from agents.shared.role_resolver import ROLE_DISPLAY_NAMES
+from vibeteam.router.models import AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
 
