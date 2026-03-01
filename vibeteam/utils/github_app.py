@@ -20,6 +20,15 @@ import jwt
 import requests
 
 
+def _normalize_private_key(private_key: str) -> str:
+    if not private_key:
+        return private_key
+    return (
+        private_key.replace("BEGIN_RSA_PRIVATE_KEY", "BEGIN RSA PRIVATE KEY")
+        .replace("END_RSA_PRIVATE_KEY", "END RSA PRIVATE KEY")
+    )
+
+
 def generate_jwt(app_id: str, private_key: str) -> str:
     """Generate a JWT for GitHub App authentication.
 
@@ -36,7 +45,8 @@ def generate_jwt(app_id: str, private_key: str) -> str:
         "exp": now + 600,  # expires in 10 minutes (max allowed by GitHub)
         "iss": app_id,
     }
-    return jwt.encode(payload, private_key, algorithm="RS256")
+    normalized_key = _normalize_private_key(private_key)
+    return jwt.encode(payload, normalized_key, algorithm="RS256")
 
 
 def _normalize_role(role: str) -> str:
