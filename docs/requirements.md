@@ -2,7 +2,7 @@
 
 ## Overview
 
-VibeTeam routes work via `@RoleName` or `/RoleName` mentions across Slack, GitHub, and Sentry. The gateway resolves which agent framework to use from `agents.yaml`. The canonical architecture lives in [design.md](design.md).
+VibeTeam routes work via `@RoleName` or `/RoleName` mentions across Slack, GitHub, and Sentry. The gateway resolves which agent framework to use from `agents.yaml`. The canonical architecture lives in [design.md](design.md). For OpenClaw-specific context, see [openclaw-introduction.md](openclaw-introduction.md).
 
 ## Agents and Frameworks
 
