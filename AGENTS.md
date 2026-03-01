@@ -1,10 +1,13 @@
 You are working on AI agentic team. Agent are implemented on OpenHands that runs as a service that host all the agents sessions. Gateways is used for integration with Slack. DeepEval is used to evaluate agent sessions. Use
 
+## Testing Expectations
 
-Always run an evaluation test to check that functionality is broken after a new feature is implemented. Task is not considered completed if you didn't run all the tests. 
+Run unit tests and at least one Slack eval when changes affect agent behavior, routing, tools, or evaluation criteria.
+If you skip evals, explicitly report: “No. I did not run evals or E2E tests.” This is acceptable for changes that do not affect runtime behavior.
 
-1/ Run unit tests. 
-2/ Deploy a test tenant and run evalaution test on it
+Recommended order:
+1. Run unit tests.
+2. Run a Slack eval in dev.
 
 
 ```shell
@@ -20,7 +23,7 @@ for example
 export $( < .env ) && .venv/bin/python -m pytest tests/test_openhands_service_integration.py -v --run-integration -s
 ```
 
-Each agent has specific service ownership and handoff responsibilities. Evry agent have their own skill sets, defined in aagents/<agent_name>/skills/<sill_name>/SKILL.md.
+Each agent has specific service ownership and handoff responsibilities. Every agent has their own skill sets, defined in agents/<agent_name>/skills/<skill_name>/SKILL.md.
 
 Do not ask for tokens, evrything inside .env, just export it `export $( < .env )`
 
@@ -65,10 +68,17 @@ Report action taken
 
 ```bash
 uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0AATPSADB8 --timeout 600
 uv run python scripts/eval_slack_e2e.py --list-scenarios
 ```
 
 **Note:** Slack evals run against the dev environment. Unless explicitly requested, it is acceptable to skip evals/E2E tests and report: “No. I did not run evals or E2E tests.” This should not be treated as an issue.
+
+## GitHub App Attribution
+
+PRs must be created using the per-role GitHub App credentials so the author appears as the role bot.
+Agent services inject role-scoped GitHub App tokens for `gh` and GitHub connector calls. Secrets are provided via `github-app-role-secrets`.
+If PRs show a human author, verify the role app secrets and that pods are mounting `github-app-role-secrets`.
 
 # 2. Pause rollouts to prevent mid-eval restarts (git-sync can trigger rolling updates)
 ```shell
@@ -152,6 +162,15 @@ Before running VibeTeam agents or after infrastructure changes, verify system re
 
 - **[docs/requirements.md](docs/requirements.md)** - System requirements, agent roles, and responsibilities
 - **[docs/design.md](docs/design.md)** - Architecture, routing logic, and design decisions
+
+## Codebase Map
+
+- `vibeteam/`: gateway, routing, connectors, webhook handlers
+- `agent_service/`: FastAPI services for OpenHands/OpenClaw/AutoGen/CrewAI
+- `agents/`: role prompts, configs, shared prompt utilities
+- `scripts/`: eval runners, deployment helpers, maintenance utilities
+- `k8s/`: Kubernetes base + overlays, secrets templates
+- `tests/`: unit and integration tests
 
 ## Deployment
 

@@ -39,10 +39,11 @@ DEFAULT_FRAMEWORK=openhands
 
 When a message is routed to an agent:
 
-1. Gateway posts a **typing indicator** ("⏳ [RoleName] Thinking...") in the thread.
-2. Gateway classifies the message into a **task template** (`investigation`, `feature_request`, or `conversational`) — see [design.md](design.md#task-template-classification).
-3. Agent processes the request.
-4. Agent response **replaces** the typing indicator via `chat.update`.
+1. Gateway adds a `:eyes:` reaction to mark the message as read.
+2. Gateway adds a `:thinking_face:` reaction and (if available) sets an assistant thread status.
+3. Gateway classifies the message into a **task template** (`investigation`, `feature_request`, or `conversational`) — see [design.md](design.md#task-template-classification).
+4. Agent processes the request.
+5. Gateway clears the assistant status, removes `:thinking_face:`, and posts the response as new message(s).
 
 Thread follow-ups without investigation keywords get the lightweight `conversational` template so agents respond naturally instead of generating rigid investigation reports.
 

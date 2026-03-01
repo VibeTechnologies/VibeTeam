@@ -92,13 +92,14 @@ GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER="-----BEGIN RSA PRIVATE KEY-----\n...\n
 
 ### Production (Kubernetes)
 
-Store credentials in `vibeteam-secrets` and map to env vars in the gateway and
-agent deployments:
+Store the shared (non-role) GitHub App credentials in `github-app-secret` for
+the gateway/webhook services:
+
 ```bash
-kubectl create secret generic vibeteam-secrets -n vibeteam \
-  --from-literal=GITHUB_APP_ID_SOFTWARE_ENGINEER=123456 \
-  --from-literal=GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER=12345678 \
-  --from-literal=GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----" \
+kubectl create secret generic github-app-secret -n vibeteam \
+  --from-literal=app-id=123456 \
+  --from-literal=installation-id=12345678 \
+  --from-literal=private-key="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -125,6 +126,12 @@ GITHUB_APP_ID_MARKETING_MANAGER
 GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER
 GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER
 ```
+
+### Private Key Formatting
+
+For local `.env` usage with `export $( < .env )`, replace spaces with underscores:
+`BEGIN_RSA_PRIVATE_KEY` / `END_RSA_PRIVATE_KEY`. The runtime normalizes these
+back to standard PEM headers.
 
 ## Verify
 

@@ -63,6 +63,7 @@ Responses-only models (e.g., `gpt-5.2-codex`) require:
 
 ```bash
 AZURE_API_KEY=
+AZURE_OPENAI_ENDPOINT=
 AZURE_API_BASE=
 AZURE_API_VERSION=2024-08-01-preview
 AZURE_OPENAI_DEPLOYMENT=gpt-5.2
@@ -70,6 +71,7 @@ AZURE_ALLOW_RESPONSES_MODELS=false
 VIBETEAM_MODEL=azure/gpt-5.2
 VIBETEAM_TEMPERATURE=0.3
 VIBETEAM_MAX_TOKENS=4096
+OPENHANDS_DISABLE_PROMPT_CACHE_RETENTION=true
 
 # OpenClaw LiteLLM (in-namespace)
 LITELLM_BASE_URL=http://litellm:4000
@@ -80,16 +82,39 @@ LITELLM_MASTER_KEY=
 ### GitHub + Sentry
 
 ```bash
-GITHUB_TOKEN=
+GITHUB_TOKEN=  # fallback PAT
+GITHUB_APP_ID_SOFTWARE_ENGINEER=
+GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER=
+GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER=
+GITHUB_APP_ID_SUPPORT_ENGINEER=
+GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER=
+GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER=
+GITHUB_APP_ID_RELEASE_ENGINEER=
+GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER=
+GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER=
+GITHUB_APP_ID_PRODUCT_MANAGER=
+GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER=
+GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER=
+GITHUB_APP_ID_MARKETING_MANAGER=
+GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER=
+GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER=
 SENTRY_AUTH_TOKEN=
 ```
 
-**Required**: OpenHands/OpenClaw services fail fast if these are missing.
+Role-scoped GitHub App credentials are preferred and used to attribute PRs to the role bot.
+In Kubernetes, agent pods load these from the `github-app-role-secrets` secret via `envFrom`.
+**Required**: OpenHands/OpenClaw services fail fast if GitHub or Sentry credentials are missing.
+
+Private keys can be supplied as PEM strings with `\n` newlines. For local `.env` usage
+with `export $( < .env )`, replace spaces with underscores:
+`BEGIN_RSA_PRIVATE_KEY` / `END_RSA_PRIVATE_KEY`.
 
 ### Slack
 
 ```bash
 SLACK_BOT_TOKEN=
+SLACK_ASSISTANT_TOKEN=
+SLACK_ASSISTANT_STATUS_TEXT=
 SLACK_SIGNING_SECRET=
 SLACK_TRIGGER_SECRET=
 ```
