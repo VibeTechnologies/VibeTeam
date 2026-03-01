@@ -111,9 +111,9 @@ def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
     if not alias_pattern:
         return []
 
-    direct_re = re.compile(rf"(?i)^(?:[-*•]\\s*)?@?({alias_pattern})\\b")
+    direct_re = re.compile(rf"(?i)^(?:[-*•]\s*)?@?({alias_pattern})\b")
     keyword_re = re.compile(
-        r"(?i)\\b(handoff|hand\\s+off|handover|assign|route|ping|please|need|can\\s+you|could\\s+you)\\b"
+        r"(?i)\b(handoff|hand\s+off|handover|assign|route|ping|please|need|can\s+you|could\s+you)\b"
     )
 
     roles: list[str] = []
@@ -121,7 +121,7 @@ def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
         clean = line.strip()
         if not clean:
             continue
-        clean = re.sub(r"^\\[[^\\]]+\\]\\s*", "", clean)
+        clean = re.sub(r"^\[[^\]]+\]\s*", "", clean)
 
         direct = direct_re.match(clean)
         if direct:
@@ -131,7 +131,7 @@ def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
             continue
 
         if keyword_re.search(clean):
-            for match in re.finditer(rf"(?i)\\b({alias_pattern})\\b", clean):
+            for match in re.finditer(rf"(?i)\b({alias_pattern})\b", clean):
                 role = aliases.get(match.group(1).lower())
                 if role and role != source_role and role not in roles:
                     roles.append(role)
@@ -143,7 +143,7 @@ def _extract_handoff_snippet(response: str, role_display: str) -> str:
     lines = response.splitlines()
     spaced = re.sub(r"(?<!^)([A-Z])", r" \1", role_display)
     alias_pattern = "|".join({re.escape(role_display), re.escape(spaced)})
-    role_pattern = re.compile(rf"(?i)@?(?:{alias_pattern})\\b")
+    role_pattern = re.compile(rf"(?i)@?(?:{alias_pattern})\b")
     for idx, line in enumerate(lines):
         if role_pattern.search(line):
             snippet = [line.strip()]
@@ -162,7 +162,7 @@ def _extract_handoff_snippet(response: str, role_display: str) -> str:
 
 
 def _extract_sentry_urls(text: str) -> list[str]:
-    pattern = re.compile(r"https?://[^\\s>]*sentry\\.io/issues/\\d+/?", re.IGNORECASE)
+    pattern = re.compile(r"https?://[^\s>]*sentry\.io/issues/\d+/?", re.IGNORECASE)
     urls = pattern.findall(text)
     seen: set[str] = set()
     unique: list[str] = []
