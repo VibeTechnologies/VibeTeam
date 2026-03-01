@@ -812,8 +812,10 @@ class OpenHandsSupportEngineer:
                             "close the sentry",
                         ]
                     )
+                    sentry_limit = 1 if include_top_issue_details else 10
                     sentry_ctx = fetch_sentry_context(
-                        include_top_issue_details=include_top_issue_details
+                        limit=sentry_limit,
+                        include_top_issue_details=include_top_issue_details,
                     )
                     injected_context.append(sentry_ctx)
                     infra_keywords = [
@@ -849,7 +851,8 @@ class OpenHandsSupportEngineer:
                         "and a clear fix request. Use an exact @mention so the gateway triggers the handoff."
                     )
                     extra_guidance_lines.append(
-                        "Pick the highest-volume unresolved Sentry issue and hand it off immediately; do not ask for prioritization."
+                        "Pick the highest-volume unresolved Sentry issue and hand it off immediately; do not ask for prioritization. "
+                        "When PR is requested, only report that single issue (avoid listing every unresolved issue)."
                     )
                 if "close" in task_lower and "sentry" in task_lower:
                     extra_guidance_lines.append(
