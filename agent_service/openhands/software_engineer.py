@@ -627,14 +627,46 @@ class OpenHandsSoftwareEngineer:
                 unique.append(url)
         return unique
 
+    def _extract_sentry_issue_ids(self, text: str) -> list[str]:
+        import re
+
+        pattern = re.compile(r"https?://[^\s>]*sentry\.io/issues/(?P<id>\d+)/?", re.IGNORECASE)
+        ids: list[str] = []
+        seen: set[str] = set()
+        for match in pattern.finditer(text or ""):
+            issue_id = match.group("id")
+            if issue_id not in seen:
+                seen.add(issue_id)
+                ids.append(issue_id)
+        return ids
+
+    def _get_sentry_title_from_task(self, task: str) -> str:
+        issue_ids = self._extract_sentry_issue_ids(task)
+        if not issue_ids:
+            return ""
+        try:
+            from agents.shared.sentry_tools import SentryClient
+
+            client = SentryClient(timeout=10.0)
+            details = client.get_issue_details(issue_ids[0])
+            return str(details.get("title", "") or "")
+        except Exception:
+            return ""
+
     def _attempt_auto_pr_for_no_output(
         self, task: str, repo: str, workspace_path: str
     ) -> str | None:
         """Last-resort auto PR for AI_NoOutputGeneratedError in VibeWebAgent."""
         task_lower = task.lower()
+        title_lower = self._get_sentry_title_from_task(task).lower()
         if repo.lower() != "vibetechnologies/vibewebagent":
             return None
-        if "nooutputgeneratederror" not in task_lower and "no output generated" not in task_lower:
+        if (
+            "nooutputgeneratederror" not in task_lower
+            and "no output generated" not in task_lower
+            and "nooutputgeneratederror" not in title_lower
+            and "no output generated" not in title_lower
+        ):
             return None
 
         repo_name = repo.split("/")[-1]
@@ -737,9 +769,14 @@ class OpenHandsSoftwareEngineer:
     ) -> str | None:
         """Auto PR to treat quota-exceeded errors as retryable in VibeWebAgent."""
         task_lower = task.lower()
+        title_lower = self._get_sentry_title_from_task(task).lower()
         if repo.lower() != "vibetechnologies/vibewebagent":
             return None
-        if "quota" not in task_lower and "insufficient" not in task_lower:
+        if (
+            "quota" not in task_lower
+            and "insufficient" not in task_lower
+            and "quota" not in title_lower
+        ):
             return None
 
         repo_name = repo.split("/")[-1]
@@ -852,9 +889,15 @@ class OpenHandsSoftwareEngineer:
     ) -> str | None:
         """Auto PR to add retry around LiteLLM fetch failures in stripe-service."""
         task_lower = task.lower()
+        title_lower = self._get_sentry_title_from_task(task).lower()
         if repo.lower() != "vibetechnologies/vibewebagent":
             return None
-        if "fetch failed" not in task_lower and "litellm" not in task_lower:
+        if (
+            "fetch failed" not in task_lower
+            and "litellm" not in task_lower
+            and "fetch failed" not in title_lower
+            and "litellm" not in title_lower
+        ):
             return None
 
         repo_name = repo.split("/")[-1]
