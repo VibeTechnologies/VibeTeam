@@ -4,10 +4,12 @@ CrewAI Agent Microservice.
 FastAPI server exposing CrewAI team functionality via REST API.
 """
 
+import contextlib
 import logging
 import os
 import time
 import uuid
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -24,6 +26,57 @@ from .crew import CrewAITeam, create_team
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+_GITHUB_TOKEN_LOCK = threading.Lock()
+
+
+def _resolve_role_for_token(role: str | None, task: str) -> str | None:
+    if role:
+        return role
+    try:
+        from agents.shared.role_resolver import parse_first_role_mention, route_by_keywords
+
+        parsed = parse_first_role_mention(task)
+        if parsed:
+            return parsed
+        return route_by_keywords(task)
+    except Exception:
+        return None
+
+
+@contextlib.contextmanager
+def _github_token_context(role: str | None):
+    """Temporarily set role-specific GitHub token for gh/SDK usage."""
+    if not role:
+        yield
+        return
+
+    token = None
+    try:
+        from vibeteam.utils.github_app import get_installation_token_for_role
+
+        token = get_installation_token_for_role(role)
+    except Exception:
+        token = None
+
+    with _GITHUB_TOKEN_LOCK:
+        old_env = {
+            "VIBETEAM_AGENT_ROLE": os.environ.get("VIBETEAM_AGENT_ROLE"),
+            "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
+            "GH_TOKEN": os.environ.get("GH_TOKEN"),
+        }
+        os.environ["VIBETEAM_AGENT_ROLE"] = role
+        if token:
+            os.environ["GITHUB_TOKEN"] = token
+            os.environ["GH_TOKEN"] = token
+        try:
+            yield
+        finally:
+            for key, value in old_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 
 # Request/Response Models
@@ -145,21 +198,24 @@ async def run_task(request: RunRequest):
         # Generate context_id if not provided
         context_id = request.context_id or str(uuid.uuid4())[:8]
 
+        role_for_token = _resolve_role_for_token(request.role, request.task)
+
         # Run the task (CrewAI is sync, so run in thread)
-        if request.role and not request.multi_agent:
-            result = await team.run_async(
-                task=request.task,
-                context_type=request.context_type,
-                context_id=context_id,
-                multi_agent=False,
-            )
-        else:
-            result = await team.run_async(
-                task=request.task,
-                context_type=request.context_type,
-                context_id=context_id,
-                multi_agent=request.multi_agent,
-            )
+        with _github_token_context(role_for_token):
+            if request.role and not request.multi_agent:
+                result = await team.run_async(
+                    task=request.task,
+                    context_type=request.context_type,
+                    context_id=context_id,
+                    multi_agent=False,
+                )
+            else:
+                result = await team.run_async(
+                    task=request.task,
+                    context_type=request.context_type,
+                    context_id=context_id,
+                    multi_agent=request.multi_agent,
+                )
 
         latency_ms = int((time.time() - start_time) * 1000)
 
@@ -221,17 +277,19 @@ async def run_task_stream(request: RunRequest):
         try:
             team = get_team()
             context_id = request.context_id or str(uuid.uuid4())[:8]
+            role_for_token = _resolve_role_for_token(request.role, request.task)
 
             # Send start event
             yield f"data: {{'event': 'start', 'context_id': '{context_id}'}}\n\n"
 
             # Run the task
-            result = await team.run_async(
-                task=request.task,
-                context_type=request.context_type,
-                context_id=context_id,
-                multi_agent=request.multi_agent,
-            )
+            with _github_token_context(role_for_token):
+                result = await team.run_async(
+                    task=request.task,
+                    context_type=request.context_type,
+                    context_id=context_id,
+                    multi_agent=request.multi_agent,
+                )
 
             # Send result
             import json

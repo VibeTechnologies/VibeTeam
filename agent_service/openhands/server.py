@@ -73,6 +73,18 @@ def _github_token_context(role: str | None):
                 else:
                     os.environ[key] = value
 
+
+def _resolve_token_role(team: OpenHandsTeam, request: RunRequest) -> str | None:
+    if request.role:
+        return request.role
+    try:
+        role = team.parse_mention(request.task)
+        if role:
+            return role
+        return team.route_by_keywords(request.task)
+    except Exception:
+        return None
+
 # Concurrency control: limit the number of simultaneous agent executions
 # to prevent resource exhaustion when multiple jobs arrive concurrently.
 # Default: 3 concurrent jobs (configurable via MAX_CONCURRENT_JOBS env var).
@@ -330,6 +342,7 @@ async def run_task(request: RunRequest):
 
         # Determine role - let team route if not specified
         role = request.role
+        role_for_token = _resolve_token_role(team, request)
 
         # Run the task
         # Use asyncio.to_thread to run blocking agent code without blocking the event loop
@@ -339,7 +352,7 @@ async def run_task(request: RunRequest):
             agent = team._get_agent(role)
 
             def _run_agent():
-                with _github_token_context(role):
+                with _github_token_context(role_for_token):
                     return agent.run(
                         task=request.task,
                         context_type=request.context_type,
@@ -356,12 +369,13 @@ async def run_task(request: RunRequest):
                 result = await _run_with_idle_timeout(_run_agent)
         else:
             # Let team route based on @mentions or keywords
-            result = await team.run_async(
-                task=request.task,
-                context_type=request.context_type,
-                context_id=context_id,
-                workspace=request.workspace,
-            )
+            with _github_token_context(role_for_token):
+                result = await team.run_async(
+                    task=request.task,
+                    context_type=request.context_type,
+                    context_id=context_id,
+                    workspace=request.workspace,
+                )
 
         latency_ms = int((time.time() - start_time) * 1000)
         response_text = coerce_text(result.get("response", ""))
@@ -783,6 +797,7 @@ async def run_task_stream(request: RunRequest):
         try:
             team = get_team()
             context_id = request.context_id or str(uuid.uuid4())[:8]
+            role_for_token = _resolve_token_role(team, request)
 
             # Send start event
             yield f"data: {{'event': 'start', 'context_id': '{context_id}'}}\n\n"
@@ -790,19 +805,21 @@ async def run_task_stream(request: RunRequest):
             # Run the task
             if request.role:
                 agent = team._get_agent(request.role)
-                result = agent.run(
-                    task=request.task,
-                    context_type=request.context_type,
-                    context_id=context_id,
-                    workspace=request.workspace,
-                )
+                with _github_token_context(role_for_token):
+                    result = agent.run(
+                        task=request.task,
+                        context_type=request.context_type,
+                        context_id=context_id,
+                        workspace=request.workspace,
+                    )
             else:
-                result = await team.run_async(
-                    task=request.task,
-                    context_type=request.context_type,
-                    context_id=context_id,
-                    workspace=request.workspace,
-                )
+                with _github_token_context(role_for_token):
+                    result = await team.run_async(
+                        task=request.task,
+                        context_type=request.context_type,
+                        context_id=context_id,
+                        workspace=request.workspace,
+                    )
 
             # Send result
             import json
