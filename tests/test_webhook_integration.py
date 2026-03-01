@@ -846,8 +846,8 @@ class TestWebhookGitHubAppAuth:
         assert response.status_code == 200
         assert response.json()["status"] == "accepted"
 
-        # Verify post_acknowledgment was called with correct repo and issue number
-        mock_ack.assert_called_once_with("owner/repo", 50)
+        # Verify post_acknowledgment was called with correct repo, issue number, and role
+        mock_ack.assert_called_once_with("owner/repo", 50, role="software_engineer")
 
 
 class TestSentryClassification:
