@@ -592,6 +592,27 @@ class OpenHandsSoftwareEngineer:
         )
         return any(phrase in task_lower for phrase in tool_phrases)
 
+    def _task_requires_pr(self, task: str) -> bool:
+        task_lower = task.lower()
+        pr_phrases = (
+            "create a pr",
+            "create pr",
+            "open a pr",
+            "submit a pr",
+            "prepare a pr",
+            "pull request",
+        )
+        return any(phrase in task_lower for phrase in pr_phrases)
+
+    def _response_has_pr(self, text: str) -> bool:
+        import re
+
+        if re.search(r"https?://github\.com/\S+/pull/\d+", text, re.IGNORECASE):
+            return True
+        if re.search(r"\bpr\s*#?\d+\b", text, re.IGNORECASE):
+            return True
+        return False
+
     def _fetch_github_issue(self, issue_number: str, repo: str | None = None) -> str:
         """Fetch GitHub issue details using gh CLI."""
         try:
@@ -1975,6 +1996,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             # for triage-only tasks. Use the full tool loop when code changes or PRs
             # are expected so the agent can actually implement and open a PR.
             requires_tools = self._task_requires_tools(task, context_type)
+            pr_required = self._task_requires_pr(task)
             used_single_pass = False
             if (prefetched_issue or prefetched_repo_only) and not requires_tools:
                 used_single_pass = True
@@ -1995,6 +2017,15 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 from .utils import extract_response_from_events
 
                 response = extract_response_from_events(conversation.state.events)
+                if pr_required and not self._response_has_pr(response) and not used_single_pass:
+                    force_prompt = (
+                        "This task REQUIRES an actual PR. Create the PR now using gh CLI "
+                        "(non-interactive) and respond ONLY after you have a PR URL/number. "
+                        "Do not provide analysis-only responses."
+                    )
+                    conversation.send_message(force_prompt)
+                    conversation.run()
+                    response = extract_response_from_events(conversation.state.events)
 
             # If response is missing evidence, build a deterministic summary.
             if prefetched_issue_number:
@@ -2034,7 +2065,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 )
                 has_evidence_block = "evidence:" in response_lower
                 incomplete = "ran out of iterations" in response_lower or not response.strip()
-                if incomplete or (not has_code_line_refs) or (not has_evidence_block):
+                if (not pr_required) and (incomplete or (not has_code_line_refs) or (not has_evidence_block)):
                     response = self._build_repo_triage_response(
                         user_message, repo_ctx, repo
                     )
