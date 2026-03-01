@@ -15,6 +15,12 @@ This guide covers how to configure the Slack app for VibeTeam, including event s
 
 Alternatively, create the app manually following the sections below.
 
+If the app already exists, open the app directly:
+
+```
+https://api.slack.com/apps/A0AAZGWEAVA
+```
+
 ## 2. OAuth Scopes
 
 Under **OAuth & Permissions**, add these **Bot Token Scopes**:
@@ -34,6 +40,14 @@ Under **OAuth & Permissions**, add these **Bot Token Scopes**:
 | `users:read` | Resolving user IDs to display names |
 
 After adding scopes, install or reinstall the app to the workspace to generate the bot token.
+
+Quick path to the scopes page:
+
+```
+https://api.slack.com/apps/A0AAZGWEAVA/oauth
+```
+
+If `assistant:write` does not appear, enable **Agents & AI Apps** for the app and refresh the scopes list, then reinstall the app.
 
 ## 3. Event Subscriptions
 
@@ -110,13 +124,6 @@ When a message is routed to an agent, the gateway:
 - If the app has `assistant:write`, sets an assistant thread status (e.g. "is thinking...") and clears it when the response is posted.
 
 This avoids noisy "thinking..." messages while still giving real-time feedback.
-
-Implementation (`vibeteam/gateway/routes/slack.py`):
-- `send_thinking_message(channel, thread_ts, role)` — posts the indicator
-- `update_slack_message(channel, ts, text)` — updates via `chat.update` using blocks (avoids Slack's "(edited)" indicator)
-- `thinking_ts` is passed through callback metadata for async agent paths
-
-If the agent fails, the thinking message is updated with error details instead of leaving a stale "Thinking..." message.
 
 ## Task Template Classification
 
