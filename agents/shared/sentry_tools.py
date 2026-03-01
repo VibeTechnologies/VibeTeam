@@ -225,7 +225,42 @@ class SentryClient:
 # ============================================================================
 
 
-def get_sentry_context(hours: int = 24, limit: int = 10) -> str:
+def _format_issue_details(details: dict) -> str:
+    result = f"## Sentry Issue Details: {details.get('shortId', details.get('id', 'unknown'))}\n\n"
+    result += f"**{details.get('title', 'Unknown')}**\n\n"
+    result += f"- Status: {details.get('status', 'unknown')}\n"
+    result += f"- Level: {details.get('level', 'unknown')}\n"
+    result += f"- Count: {details.get('count', 0)}\n"
+    result += f"- Users Affected: {details.get('userCount', 0)}\n"
+    result += f"- First Seen: {details.get('firstSeen', 'unknown')}\n"
+    result += f"- Last Seen: {details.get('lastSeen', 'unknown')}\n"
+    result += f"- URL: {details.get('permalink', 'N/A')}\n"
+
+    latest_event = details.get("latestEvent")
+    if latest_event:
+        entries = latest_event.get("entries", [])
+        for entry in entries:
+            if entry.get("type") == "exception":
+                result += "\n### Stacktrace\n```\n"
+                values = entry.get("data", {}).get("values", [])
+                for exc in values:
+                    result += f"{exc.get('type', 'Exception')}: {exc.get('value', '')}\n"
+                    stacktrace = exc.get("stacktrace", {})
+                    frames = stacktrace.get("frames", [])[-5:]
+                    for frame in reversed(frames):
+                        filename = frame.get("filename", "?")
+                        lineno = frame.get("lineNo", "?")
+                        function = frame.get("function", "?")
+                        result += f"  at {function} ({filename}:{lineno})\n"
+                result += "```\n"
+                break
+
+    return result
+
+
+def get_sentry_context(
+    hours: int = 24, limit: int = 10, include_top_issue_details: bool = False
+) -> str:
     """
     Fetch Sentry issues and format as context for agents.
 
@@ -257,6 +292,13 @@ def get_sentry_context(hours: int = 24, limit: int = 10) -> str:
             result += f"- Level: {issue.level} | Count: {issue.count} | Users: {issue.user_count}\n"
             result += f"- First seen: {issue.first_seen[:10]} | Last seen: {issue.last_seen[:10]}\n"
             result += f"- URL: {issue.permalink}\n\n"
+
+        if include_top_issue_details and issues:
+            try:
+                details = client.get_issue_details(issues[0].id)
+                result += "\n" + _format_issue_details(details)
+            except Exception as e:
+                result += f"\nSentry: Failed to fetch top issue details ({e})\n"
 
         return result
 
@@ -297,37 +339,7 @@ async def get_sentry_issue_details(issue_id: str) -> str:
         client = SentryClient(auth_token=auth_token, timeout=10.0)
         details = client.get_issue_details(issue_id)
 
-        result = f"## Sentry Issue Details: {details.get('shortId', issue_id)}\n\n"
-        result += f"**{details.get('title', 'Unknown')}**\n\n"
-        result += f"- Status: {details.get('status', 'unknown')}\n"
-        result += f"- Level: {details.get('level', 'unknown')}\n"
-        result += f"- Count: {details.get('count', 0)}\n"
-        result += f"- Users Affected: {details.get('userCount', 0)}\n"
-        result += f"- First Seen: {details.get('firstSeen', 'unknown')}\n"
-        result += f"- Last Seen: {details.get('lastSeen', 'unknown')}\n"
-        result += f"- URL: {details.get('permalink', 'N/A')}\n"
-
-        # Include stacktrace if available
-        latest_event = details.get("latestEvent")
-        if latest_event:
-            entries = latest_event.get("entries", [])
-            for entry in entries:
-                if entry.get("type") == "exception":
-                    result += "\n### Stacktrace\n```\n"
-                    values = entry.get("data", {}).get("values", [])
-                    for exc in values:
-                        result += f"{exc.get('type', 'Exception')}: {exc.get('value', '')}\n"
-                        stacktrace = exc.get("stacktrace", {})
-                        frames = stacktrace.get("frames", [])[-5:]  # Last 5 frames
-                        for frame in reversed(frames):
-                            filename = frame.get("filename", "?")
-                            lineno = frame.get("lineNo", "?")
-                            function = frame.get("function", "?")
-                            result += f"  at {function} ({filename}:{lineno})\n"
-                    result += "```\n"
-                    break
-
-        return result
+        return _format_issue_details(details)
 
     except requests.Timeout:
         return "Sentry: Request timed out."

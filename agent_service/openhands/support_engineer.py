@@ -37,9 +37,15 @@ from agents.shared.langfuse_tools import get_langfuse_context
 from agents.shared.sentry_tools import get_sentry_context
 
 
-def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
+def fetch_sentry_context(
+    hours: int = 24, limit: int = 10, include_top_issue_details: bool = False
+) -> str:
     """Fetch Sentry issues and format as context for the agent."""
-    return get_sentry_context(hours=hours, limit=limit)
+    return get_sentry_context(
+        hours=hours,
+        limit=limit,
+        include_top_issue_details=include_top_issue_details,
+    )
 
 
 def fetch_kubectl_context() -> str:
@@ -782,7 +788,21 @@ class OpenHandsSupportEngineer:
                     "complaint",  # customer reports often relate to errors
                 ]
                 if not skip_infra_context and any(kw in task_lower for kw in sentry_keywords):
-                    sentry_ctx = fetch_sentry_context()
+                    include_top_issue_details = any(
+                        kw in task_lower
+                        for kw in [
+                            "pr",
+                            "pull request",
+                            "bug",
+                            "fix",
+                            "address",
+                            "close sentry",
+                            "close the sentry",
+                        ]
+                    )
+                    sentry_ctx = fetch_sentry_context(
+                        include_top_issue_details=include_top_issue_details
+                    )
                     injected_context.append(sentry_ctx)
                     # Also inject kubectl context for infrastructure issues
                     # This eliminates the need for agents to run kubectl manually

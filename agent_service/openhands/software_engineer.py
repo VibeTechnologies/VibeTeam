@@ -553,6 +553,12 @@ class OpenHandsSoftwareEngineer:
             return True
 
         task_lower = task.lower()
+        # Sentry handoffs should always use tools (code + PR creation).
+        if "sentry" in task_lower:
+            if "sentry.io" in task_lower or "sentry issue" in task_lower or "issue" in task_lower:
+                return True
+            if "repository:" in task_lower or "repo" in task_lower:
+                return True
         # If a GitHub issue is referenced, require tools so we can inspect code.
         try:
             import re
@@ -1884,6 +1890,26 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                     prefetched_repo_only = True
                     extra_guidance_lines.append(
                         "Use the pre-fetched repo search results; include file:line evidence."
+                    )
+
+                sentry_related = "sentry" in user_message_lower or "sentry.io" in user_message_lower
+                pr_requested = any(
+                    kw in user_message_lower
+                    for kw in (
+                        "create a pr",
+                        "create pr",
+                        "open a pr",
+                        "submit a pr",
+                        "pull request",
+                        "fix",
+                        "bug",
+                        "address",
+                    )
+                )
+                if sentry_related and pr_requested:
+                    extra_guidance_lines.append(
+                        "REQUIRED: create a PR with gh CLI and include the PR URL/number in your response. "
+                        "Echo the Sentry issue URL/ID and tag @SupportEngineer with an explicit request to close it now."
                     )
 
                 # Keywords that suggest infrastructure/deployment work
