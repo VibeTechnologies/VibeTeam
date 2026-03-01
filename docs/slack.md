@@ -2,6 +2,8 @@
 
 This guide covers how to configure the Slack app for VibeTeam, including event subscriptions, OAuth scopes, and the gateway routing logic.
 
+ https://api.slack.com/apps/A0AAZGWEAVA/oauth
+
 ## Prerequisites
 
 - A Slack workspace where you have admin permissions
