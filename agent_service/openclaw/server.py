@@ -7,6 +7,7 @@ FastAPI server exposing OpenClaw gateway execution via WebSocket RPC.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import json
 import logging
@@ -14,6 +15,7 @@ import os
 import subprocess
 import time
 import uuid
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -85,6 +87,57 @@ except Exception:  # Fallback for images missing vibeteam.agents_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+_GITHUB_TOKEN_LOCK = threading.Lock()
+
+
+def _resolve_role_for_token(role: str | None, task: str) -> str | None:
+    if role:
+        return role
+    try:
+        from agents.shared.role_resolver import parse_first_role_mention, route_by_keywords
+
+        parsed = parse_first_role_mention(task)
+        if parsed:
+            return parsed
+        return route_by_keywords(task)
+    except Exception:
+        return None
+
+
+@contextlib.contextmanager
+def _github_token_context(role: str | None):
+    """Temporarily set role-specific GitHub token for gh/SDK usage."""
+    if not role:
+        yield
+        return
+
+    token = None
+    try:
+        from vibeteam.utils.github_app import get_installation_token_for_role
+
+        token = get_installation_token_for_role(role)
+    except Exception:
+        token = None
+
+    with _GITHUB_TOKEN_LOCK:
+        old_env = {
+            "VIBETEAM_AGENT_ROLE": os.environ.get("VIBETEAM_AGENT_ROLE"),
+            "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
+            "GH_TOKEN": os.environ.get("GH_TOKEN"),
+        }
+        os.environ["VIBETEAM_AGENT_ROLE"] = role
+        if token:
+            os.environ["GITHUB_TOKEN"] = token
+            os.environ["GH_TOKEN"] = token
+        try:
+            yield
+        finally:
+            for key, value in old_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 
 # ==============================================================================
@@ -539,6 +592,7 @@ async def run_task(request: RunRequest):
     start_time = time.time()
     try:
         context_id = request.context_id or str(uuid.uuid4())[:8]
+        role_for_token = _resolve_role_for_token(request.role, request.task)
         entry = get_agent_entry(request.role) if request.role else None
         agent_id = (
             request.openclaw_agent_id
@@ -552,11 +606,12 @@ async def run_task(request: RunRequest):
 
         task = _augment_task_with_context(request.task, request.role, request.context_type)
 
-        response_text, metadata = await run_openclaw_task(
-            task=task,
-            agent_id=agent_id,
-            session_key=session_key,
-        )
+        with _github_token_context(role_for_token):
+            response_text, metadata = await run_openclaw_task(
+                task=task,
+                agent_id=agent_id,
+                session_key=session_key,
+            )
 
         latency_ms = int((time.time() - start_time) * 1000)
 
