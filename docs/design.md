@@ -77,6 +77,8 @@ agents:
 
 ## OpenClaw Flow
 
+See [openclaw-introduction.md](openclaw-introduction.md) for a focused OpenClaw overview.
+
 1. Gateway routes ProductManager (or other OpenClaw roles) to `openclaw-svc`.
 2. `openclaw-svc` connects to the OpenClaw gateway over WebSocket.
 3. OpenClaw gateway loads:
