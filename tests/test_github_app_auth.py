@@ -29,6 +29,12 @@ from vibeteam.utils import github_app
 class TestGitHubAppAuth:
     """Test GitHub App authentication utilities."""
 
+    def test_normalize_private_key(self):
+        raw = "-----BEGIN_RSA_PRIVATE_KEY-----\\nabc\\n-----END_RSA_PRIVATE_KEY-----"
+        normalized = github_app._normalize_private_key(raw)
+        assert "BEGIN RSA PRIVATE KEY" in normalized
+        assert "END RSA PRIVATE KEY" in normalized
+
     def test_generate_jwt(self):
         """Test JWT generation for GitHub App."""
         # Use a valid test RSA private key
