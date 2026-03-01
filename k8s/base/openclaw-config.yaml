@@ -16,6 +16,13 @@ data:
           "dangerouslyDisableDeviceAuth": true
         }
       },
+      "browser": {
+        "enabled": true,
+        "attachOnly": true,
+        "cdpUrl": "http://browserless:3000",
+        "remoteCdpTimeoutMs": 10000,
+        "remoteCdpHandshakeTimeoutMs": 10000
+      },
       "agents": {
         "defaults": {
           "model": {
