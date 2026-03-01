@@ -1358,15 +1358,22 @@ def _extract_sentry_issue_ids(text: str) -> list[int]:
     issue_ids: list[int] = []
     seen: set[int] = set()
 
-    url_pattern = re.compile(
-        r"https?://sentry\.io/(?:organizations/[^/]+/)?issues/(?P<number>\d+)",
-        re.IGNORECASE,
-    )
-    for match in url_pattern.finditer(text):
-        issue_id = int(match.group("number"))
-        if issue_id not in seen:
-            seen.add(issue_id)
-            issue_ids.append(issue_id)
+    url_patterns = [
+        re.compile(
+            r"https?://sentry\.io/(?:organizations/[^/]+/)?issues/(?P<number>\d+)",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"https?://[A-Za-z0-9-]+\.sentry\.io/issues/(?P<number>\d+)",
+            re.IGNORECASE,
+        ),
+    ]
+    for pattern in url_patterns:
+        for match in pattern.finditer(text):
+            issue_id = int(match.group("number"))
+            if issue_id not in seen:
+                seen.add(issue_id)
+                issue_ids.append(issue_id)
 
     if issue_ids:
         return issue_ids
@@ -1894,9 +1901,30 @@ async def run_evaluation(
                     return role
             return ""
 
+        def _parse_role_mentions_loose(text: str) -> list[str]:
+            """Parse role mentions, including bare role names in handoff phrasing."""
+            explicit = parse_role_mentions(text)
+            if explicit:
+                return explicit
+            # Remove leading agent prefix like "[SupportEngineer]"
+            clean = re.sub(r"_?\\[[A-Za-z]+\\]\\s*", "", text.strip())
+            names_pattern = "|".join(re.escape(v) for v in ROLE_DISPLAY.values())
+            if not names_pattern:
+                return []
+            pattern = re.compile(
+                rf"(?i)(?<![@/])\\b({names_pattern})\\b(?=\\s*(?:please|:|-|—))"
+            )
+            display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY.items()}
+            roles: list[str] = []
+            for match in pattern.findall(clean):
+                role = display_to_role.get(match.lower())
+                if role and role not in roles:
+                    roles.append(role)
+            return roles
+
         def _has_non_self_handoff(text: str) -> bool:
             """True if text mentions a role other than the current agent."""
-            targets = parse_role_mentions(text)
+            targets = _parse_role_mentions_loose(text)
             if not targets:
                 return False
             source_role = _display_to_role(_extract_agent_prefix(text))
