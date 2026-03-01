@@ -171,6 +171,10 @@ def _extract_sentry_urls(text: str) -> list[str]:
 
 
 def _extract_repo_reference(text: str) -> str | None:
+    sentry_project_patterns = [
+        (r"\bvibebrowserextension\b", "VibeTechnologies/VibeBrowserExtension"),
+        (r"\bvibe[-_ ]?api[-_ ]?gateway\b", "VibeTechnologies/vibe-api-gateway"),
+    ]
     alias_patterns = [
         (r"vibe[-_ ]?browser[-_ ]?extension", "VibeTechnologies/VibeBrowserExtension"),
         (r"vibe[-_ ]?api[-_ ]?gateway", "VibeTechnologies/vibe-api-gateway"),
@@ -189,6 +193,9 @@ def _extract_repo_reference(text: str) -> str | None:
             return match.group(1).strip().rstrip(").,")
 
     lowered = text.lower()
+    for pattern, repo in sentry_project_patterns:
+        if re.search(pattern, lowered):
+            return repo
     if "repo" in lowered or "repository" in lowered:
         for pattern, repo in alias_patterns:
             if re.search(pattern, lowered):
