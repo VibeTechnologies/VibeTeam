@@ -257,6 +257,104 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "support_sentry_to_pr": {
+        "name": "Support Engineer - Sentry Review to PR",
+        "message": (
+            "@VibeTeam @SupportEngineer review Sentry issues and address anything urgent. "
+            "If you see a bug, create a PR."
+        ),
+        "expected_agent": "support_engineer",
+        "timeout": 600,
+        "evaluation_criteria": {
+            "SentryUsage": (
+                "Did the SupportEngineer actually check Sentry and report findings? "
+                "REQUIRED: "
+                "(1) Explicit mention of Sentry check; "
+                "(2) Either list specific issues (IDs/messages/counts) OR clearly state no issues found. "
+                "CRITICAL: If the response says Sentry is not configured or errors out, score 0.3 or lower. "
+                "SCORING: "
+                "Score 0.0-0.3: No Sentry mention or generic response. "
+                "Score 0.3-0.6: Mentions Sentry but no concrete findings. "
+                "Score 0.6-0.8: Reports Sentry findings or confirms none. "
+                "Score 0.8-1.0: Clear, specific Sentry findings with context."
+            ),
+            "TaskCompletion": (
+                "Did the agent address issues and create a PR if a bug was found? "
+                "REQUIRED: "
+                "(1) Clear yes/no on issues to address; "
+                "(2) If issues exist, triage and take action; "
+                "(3) If a bug is identified, PR created OR explicit handoff to SoftwareEngineer with evidence; "
+                "(4) If no issues, explicitly state nothing to address and no PR needed. "
+                "SCORING: "
+                "Score 0.0-0.3: No action or no answer to the question. "
+                "Score 0.3-0.6: Sentry checked but no clear action or next steps. "
+                "Score 0.6-0.8: Clear answer tied to findings with actionable next steps. "
+                "Score 0.8-1.0: PR created (or well-scoped handoff) with evidence."
+            ),
+            "EvidenceBasedDecision": (
+                "Did the agent make evidence-based decisions (no speculative PRs)? "
+                "REQUIRED: "
+                "(1) If PR is created, cite the Sentry issue or code evidence; "
+                "(2) If no issues found, do NOT propose a PR; "
+                "(3) Recommendations should align with actual findings. "
+                "SCORING: "
+                "Score 0.0-0.3: PR suggested without evidence or no Sentry check. "
+                "Score 0.3-0.6: Some evidence but weak linkage. "
+                "Score 0.6-0.8: Actions aligned with findings. "
+                "Score 0.8-1.0: Strong, explicit evidence linkage to actions."
+            ),
+            "HandoffCompletion": (
+                "If the agent handed off to another agent, did that handoff actually complete? "
+                "CRITICAL: The agent should NOT hand off to themselves (e.g., SupportEngineer tagging @SupportEngineer). "
+                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
+                "(2) The target agent must have taken meaningful action (not just acknowledged); "
+                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "SCORING: "
+                "Score 0.0-0.2: Self-handoff or handoff with NO response. "
+                "Score 0.2-0.4: Handoff made but NO response from target agent. "
+                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
+                "Score 0.6-0.8: Handoff made, target responded with partial action. "
+                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
+                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused. "
+                "SCORING: "
+                "Score 0.0-0.3: Rambling or off-topic. "
+                "Score 0.3-0.5: Some redundancy. "
+                "Score 0.5-0.7: Reasonably concise. "
+                "Score 0.7-0.9: Focused and efficient. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "SentryUsage": [
+                "Check for explicit Sentry mention.",
+                "Check for issue IDs/messages/counts OR explicit 'no issues found'.",
+                "Score <= 0.3 if Sentry not mentioned or if it says Sentry is not configured.",
+            ],
+            "TaskCompletion": [
+                "Check that the response directly answers whether there is anything to address.",
+                "Verify the answer is tied to Sentry findings.",
+                "If a bug is identified, check for PR creation or explicit handoff with evidence.",
+            ],
+            "EvidenceBasedDecision": [
+                "Check that actions are supported by Sentry findings.",
+                "If no issues found, ensure no PR is proposed.",
+            ],
+            "HandoffCompletion": [
+                "Check if the agent completed the task without handoff (score 1.0) OR made a handoff that was picked up.",
+                "If handoff was made, check that the target agent responded and took meaningful action.",
+                "Check that the agent did NOT hand off to themselves (self-tagging).",
+            ],
+            "ResponseEfficiency": [
+                "Check that the response is concise and directly answers the request.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "support_gmail_inbox": {
         "name": "Support Engineer - Gmail Inbox Triage",
         "message": "@VibeTeam @SupportEngineer, check Gmail inbox, anything to address? If so, work on it.",
