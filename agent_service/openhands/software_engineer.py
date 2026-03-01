@@ -682,7 +682,7 @@ class OpenHandsSoftwareEngineer:
             )
             Path(target_path).write_text(content.replace(anchor, insert_block + anchor))
 
-            branch = f\"fix/ai-no-output-fallback-{int(time.time())}\"
+            branch = f"fix/ai-no-output-fallback-{int(time.time())}"
             subprocess.run(["git", "checkout", "-b", branch], cwd=repo_dir, check=True, timeout=30)
             subprocess.run(["git", "add", target_rel], cwd=repo_dir, check=True, timeout=30)
             subprocess.run(
