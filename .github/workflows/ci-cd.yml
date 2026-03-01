@@ -172,6 +172,41 @@ jobs:
             private-key: |
           $(cat github-app-private-key.pem | sed 's/^/      /')
           EOF
+
+      - name: Generate GitHub App role secrets YAML
+        working-directory: k8s/overlays/prod
+        run: |
+          cat > github-app-role-secrets.yaml << EOF
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: github-app-role-secrets
+            labels:
+              app: vibeteam
+              component: github-app
+          type: Opaque
+          stringData:
+            GITHUB_APP_ID_SOFTWARE_ENGINEER: "${{ secrets.GITHUB_APP_ID_SOFTWARE_ENGINEER }}"
+            GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER: "${{ secrets.GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER }}"
+            GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER: |
+          $(printf '%s' "${{ secrets.GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER }}" | sed 's/^/      /')
+            GITHUB_APP_ID_SUPPORT_ENGINEER: "${{ secrets.GITHUB_APP_ID_SUPPORT_ENGINEER }}"
+            GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER: "${{ secrets.GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER }}"
+            GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER: |
+          $(printf '%s' "${{ secrets.GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER }}" | sed 's/^/      /')
+            GITHUB_APP_ID_RELEASE_ENGINEER: "${{ secrets.GITHUB_APP_ID_RELEASE_ENGINEER }}"
+            GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER: "${{ secrets.GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER }}"
+            GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER: |
+          $(printf '%s' "${{ secrets.GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER }}" | sed 's/^/      /')
+            GITHUB_APP_ID_PRODUCT_MANAGER: "${{ secrets.GITHUB_APP_ID_PRODUCT_MANAGER }}"
+            GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER: "${{ secrets.GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER }}"
+            GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER: |
+          $(printf '%s' "${{ secrets.GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER }}" | sed 's/^/      /')
+            GITHUB_APP_ID_MARKETING_MANAGER: "${{ secrets.GITHUB_APP_ID_MARKETING_MANAGER }}"
+            GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER: "${{ secrets.GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER }}"
+            GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER: |
+          $(printf '%s' "${{ secrets.GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER }}" | sed 's/^/      /')
+          EOF
       
       - name: Deploy with kustomize
         env:
@@ -221,6 +256,7 @@ jobs:
         run: |
           rm -f k8s/overlays/prod/.env.secrets
           rm -f k8s/overlays/prod/github-app-secret.yaml
+          rm -f k8s/overlays/prod/github-app-role-secrets.yaml
           rm -f k8s/overlays/prod/github-app-private-key.pem
 
   # ============================================

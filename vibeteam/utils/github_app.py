@@ -23,8 +23,9 @@ import requests
 def _normalize_private_key(private_key: str) -> str:
     if not private_key:
         return private_key
+    normalized = private_key.replace("\\n", "\n")
     return (
-        private_key.replace("BEGIN_RSA_PRIVATE_KEY", "BEGIN RSA PRIVATE KEY")
+        normalized.replace("BEGIN_RSA_PRIVATE_KEY", "BEGIN RSA PRIVATE KEY")
         .replace("END_RSA_PRIVATE_KEY", "END RSA PRIVATE KEY")
     )
 

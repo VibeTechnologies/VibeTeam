@@ -9,6 +9,7 @@ resources:
   - ../../base
   # GitHub App secret (generated separately with private key file)
   - github-app-secret.yaml
+  - github-app-role-secrets.yaml
 
 # Secrets generated from environment files (populated by CI pipeline)
 # CI writes secrets from GitHub Secrets -> .env.secrets -> secretGenerator

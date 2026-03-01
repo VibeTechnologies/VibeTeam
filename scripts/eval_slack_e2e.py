@@ -360,6 +360,51 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "software_engineer_pr_attribution": {
+        "name": "Software Engineer - PR Attribution (GitHub App)",
+        "message": (
+            "@VibeTeam @SoftwareEngineer please create a small PR in VibeWebAgent "
+            "that fixes a trivial issue (docs or comment). Include the PR URL in your reply "
+            "so we can verify GitHub App attribution."
+        ),
+        "expected_agent": "software_engineer",
+        "timeout": 600,
+        "post_checks": {
+            "github_pr_created": True,
+            "github_pr_author_is_bot": True,
+        },
+        "evaluation_criteria": {
+            "TaskCompletion": (
+                "Did the SoftwareEngineer create a PR and provide the PR URL? "
+                "REQUIRED: "
+                "(1) PR exists and is accessible; "
+                "(2) PR URL included in response; "
+                "(3) Response confirms the change made. "
+                "SCORING: "
+                "Score 0.0-0.3: No PR or no URL. "
+                "Score 0.3-0.6: PR mentioned but missing URL or unclear change. "
+                "Score 0.6-0.8: PR created with URL and summary. "
+                "Score 0.8-1.0: PR created with URL, clear summary, and verification notes."
+            ),
+            "EvidenceBasedDecision": (
+                "Did the response include concrete evidence (PR URL, summary) rather than speculation? "
+                "SCORING: "
+                "Score 0.0-0.3: Vague claims, no evidence. "
+                "Score 0.3-0.6: Some evidence but incomplete. "
+                "Score 0.6-0.8: Clear evidence with PR URL. "
+                "Score 0.8-1.0: Strong evidence with PR URL and concise summary."
+            ),
+            "ResponseEfficiency": (
+                "Is the response concise and focused? "
+                "SCORING: "
+                "Score 0.0-0.3: Rambling or off-topic. "
+                "Score 0.3-0.6: Some unnecessary detail. "
+                "Score 0.6-0.8: Mostly concise. "
+                "Score 0.8-1.0: Direct and minimal."
+            ),
+        },
+        "threshold": 0.70,
+    },
     "support_gmail_inbox": {
         "name": "Support Engineer - Gmail Inbox Triage",
         "message": "@VibeTeam @SupportEngineer, check Gmail inbox, anything to address? If so, work on it.",
@@ -1517,6 +1562,66 @@ def _check_github_pr_created(transcript: str) -> dict[str, str | bool]:
     }
 
 
+def _check_github_pr_author_is_bot(transcript: str) -> dict[str, str | bool]:
+    refs = _extract_github_pr_refs(transcript)
+    if not refs:
+        return {
+            "name": "GitHub PR author is bot",
+            "passed": False,
+            "required": True,
+            "details": "No PR reference found in conversation.",
+        }
+
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        return {
+            "name": "GitHub PR author is bot",
+            "passed": False,
+            "required": True,
+            "details": "GITHUB_TOKEN/GH_TOKEN not set; cannot verify PR author.",
+        }
+
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github+json"}
+    errors: list[str] = []
+
+    for ref in refs:
+        owner = str(ref["owner"])
+        repo = str(ref["repo"])
+        number = int(ref["number"])
+        url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{number}"
+        try:
+            response = httpx.get(url, headers=headers, timeout=20.0)
+        except httpx.HTTPError as exc:
+            errors.append(f"{owner}/{repo}#{number}: request failed ({exc})")
+            continue
+
+        if response.status_code != 200:
+            errors.append(f"{owner}/{repo}#{number}: {response.status_code}")
+            continue
+
+        data = response.json()
+        author = data.get("user") or {}
+        login = author.get("login") or "unknown"
+        user_type = author.get("type") or "unknown"
+        is_bot = user_type == "Bot" or (isinstance(login, str) and login.endswith("[bot]"))
+        if is_bot:
+            html_url = data.get("html_url", f"https://github.com/{owner}/{repo}/pull/{number}")
+            return {
+                "name": "GitHub PR author is bot",
+                "passed": True,
+                "required": True,
+                "details": f"PR {html_url} authored by {login} ({user_type}).",
+            }
+        errors.append(f"{owner}/{repo}#{number}: author {login} ({user_type})")
+
+    return {
+        "name": "GitHub PR author is bot",
+        "passed": False,
+        "required": True,
+        "details": f"PR author not bot ({'; '.join(errors)}).",
+    }
+
+
 def _check_sentry_issue_closed(transcript: str) -> dict[str, str | bool]:
     issue_ids = _extract_sentry_issue_ids(transcript)
     if not issue_ids:
@@ -2179,6 +2284,12 @@ async def run_evaluation(
 
         if post_checks_config.get("github_pr_created"):
             result = _check_github_pr_created(transcript)
+            post_checks_results.append(result)
+            status = "✅" if result.get("passed") else "❌"
+            print(f"    {status} {result.get('name')}: {result.get('details')}")
+
+        if post_checks_config.get("github_pr_author_is_bot"):
+            result = _check_github_pr_author_is_bot(transcript)
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
