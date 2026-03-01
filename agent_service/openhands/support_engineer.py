@@ -198,6 +198,18 @@ def _extract_sentry_issue_ids(text: str) -> list[str]:
     return ids
 
 
+def _extract_pr_urls(text: str) -> list[str]:
+    pattern = re.compile(r"https?://github\.com/\S+/pull/\d+", re.IGNORECASE)
+    urls = pattern.findall(text or "")
+    seen: set[str] = set()
+    unique: list[str] = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            unique.append(url)
+    return unique
+
+
 def _build_investigation_fallback(
     task: str,
     injected_context: list[str],
@@ -1030,14 +1042,19 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             # Auto-close Sentry issue when a PR link is present in the task.
             if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
                 issue_ids = _extract_sentry_issue_ids(task)
+                pr_urls = _extract_pr_urls(task)
+                pr_url = pr_urls[0] if pr_urls else "PR link not found"
                 if issue_ids:
                     try:
                         client = SentryClient(timeout=10.0)
                         closed_id = issue_ids[0]
                         client.resolve_issue(closed_id)
-                        response += f"\n\nSentry: closed issue {closed_id}."
+                        response = (
+                            f"Closed Sentry issue {closed_id}. "
+                            f"PR: {pr_url}."
+                        )
                     except Exception as exc:
-                        response += f"\n\nSentry: failed to close issue ({exc})."
+                        response = f"Sentry: failed to close issue ({exc}). PR: {pr_url}."
 
             session.add_message("user", task)
             session.add_message("assistant", response)
