@@ -804,10 +804,27 @@ class OpenHandsSupportEngineer:
                         include_top_issue_details=include_top_issue_details
                     )
                     injected_context.append(sentry_ctx)
-                    # Also inject kubectl context for infrastructure issues
-                    # This eliminates the need for agents to run kubectl manually
-                    kubectl_ctx = fetch_kubectl_context()
-                    injected_context.append(kubectl_ctx)
+                    infra_keywords = [
+                        "kubectl",
+                        "pod",
+                        "pods",
+                        "deployment",
+                        "rollout",
+                        "crashloop",
+                        "crashloopbackoff",
+                        "outage",
+                        "down",
+                        "restart",
+                        "service unavailable",
+                        "timeout",
+                        "5xx",
+                        "500",
+                        "503",
+                    ]
+                    if any(kw in task_lower for kw in infra_keywords):
+                        # Only inject kubectl context when infra signals are explicit.
+                        kubectl_ctx = fetch_kubectl_context()
+                        injected_context.append(kubectl_ctx)
                     extra_guidance_lines.append(
                         "When reporting Sentry, list issue short IDs, titles, counts, AND include the full issue URL. "
                         'If none, state "No unresolved issues found" and answer whether anything needs action.'
@@ -818,6 +835,9 @@ class OpenHandsSupportEngineer:
                     extra_guidance_lines.append(
                         "If a code fix is needed, you MUST hand off to @SoftwareEngineer with a specific Sentry issue URL "
                         "and a clear fix request. Use an exact @mention so the gateway triggers the handoff."
+                    )
+                    extra_guidance_lines.append(
+                        "Pick the highest-volume unresolved Sentry issue and hand it off immediately; do not ask for prioritization."
                     )
                 if "close" in task_lower and "sentry" in task_lower:
                     extra_guidance_lines.append(
