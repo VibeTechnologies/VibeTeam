@@ -23,9 +23,9 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
+from agents.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
 from vibeteam.router import Router
 from vibeteam.agents_config import get_slack_handle
-from agents.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
 from vibeteam.router.models import AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,6 @@ def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
     keyword_re = re.compile(
         r"(?i)\b(handoff|hand\s+off|handover|assign|route|ping|please|need|can\s+you|could\s+you)\b"
     )
-
     roles: list[str] = []
     for line in response.splitlines():
         clean = line.strip()

@@ -5,11 +5,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gmail-processor
+  namespace: vibeteam
   labels:
     app: gmail-processor
     team: vibeteam
 spec:
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
       app: gmail-processor
@@ -72,6 +73,8 @@ spec:
                   name: vibeteam-secrets
                   key: AZURE_OPENAI_DEPLOYMENT
                   optional: true
+            - name: ESCALATION_DIR
+              value: "/gmail/escalations"
           volumeMounts:
             - name: gmail-writable
               mountPath: /gmail

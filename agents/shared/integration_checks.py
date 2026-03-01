@@ -58,11 +58,6 @@ def validate_required_integrations(service_name: str) -> None:
             "GITHUB_TOKEN or (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY + GITHUB_APP_INSTALLATION_ID)"
         )
 
-    require_gmail = os.environ.get("REQUIRE_GMAIL_SECRETS", "").lower() in {
-        "1",
-        "true",
-        "yes",
-    }
     creds_path, token_path = _gmail_paths()
     gmail_missing = []
     if not creds_path.exists():
@@ -70,14 +65,7 @@ def validate_required_integrations(service_name: str) -> None:
     if not token_path.exists():
         gmail_missing.append(f"GMAIL_TOKEN_PATH missing: {token_path}")
     if gmail_missing:
-        if require_gmail:
-            missing.extend(gmail_missing)
-        else:
-            logger.warning(
-                "[%s] Gmail credentials not configured (%s). Continuing without Gmail tools.",
-                service_name,
-                "; ".join(gmail_missing),
-            )
+        missing.extend(gmail_missing)
 
     if missing:
         details = "\n- ".join(missing)

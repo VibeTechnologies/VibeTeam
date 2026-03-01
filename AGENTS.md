@@ -1,5 +1,12 @@
 You are working on AI agentic team. Agent are implemented on OpenHands that runs as a service that host all the agents sessions. Gateways is used for integration with Slack. DeepEval is used to evaluate agent sessions. Use
 
+
+Always run an evaluation test to check that functionality is broken after a new feature is implemented. Task is not considered completed if you didn't run all the tests. 
+
+1/ Run unit tests. 
+2/ Deploy a test tenant and run evalaution test on it
+
+
 ```shell
 export $( < .env); uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
 ```

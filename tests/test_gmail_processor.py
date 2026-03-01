@@ -266,7 +266,7 @@ class TestEmailProcessorUnit:
         assert processor.stats["processed"] == 0
 
     def test_no_emails_returns_empty_stats(self, processor):
-        stats = asyncio.get_event_loop().run_until_complete(processor.process_emails())
+        stats = asyncio.run(processor.process_emails())
         assert stats["processed"] == 0
         assert stats["skipped"] == 0
 
@@ -288,7 +288,7 @@ class TestEmailProcessorUnit:
         )
         mock_gmail.fetch_unread_emails.return_value = [mock_email]
 
-        stats = asyncio.get_event_loop().run_until_complete(processor.process_emails())
+        stats = asyncio.run(processor.process_emails())
         assert stats["skipped"] == 1
         assert stats["processed"] == 0
 
@@ -310,7 +310,7 @@ class TestEmailProcessorUnit:
         )
         mock_gmail.fetch_unread_emails.return_value = [mock_email]
 
-        stats = asyncio.get_event_loop().run_until_complete(processor.process_emails())
+        stats = asyncio.run(processor.process_emails())
         assert stats["processed"] == 1
         assert stats["skipped"] == 0
 
@@ -332,7 +332,7 @@ class TestEmailProcessorUnit:
         )
         mock_gmail.fetch_unread_emails.return_value = [mock_email]
 
-        stats = asyncio.get_event_loop().run_until_complete(processor.process_emails())
+        stats = asyncio.run(processor.process_emails())
         assert stats["escalated"] == 1
         assert stats["responded"] == 0
 
@@ -354,7 +354,7 @@ class TestEmailProcessorUnit:
         )
         mock_gmail.fetch_unread_emails.return_value = [mock_email]
 
-        stats = asyncio.get_event_loop().run_until_complete(processor.process_emails())
+        stats = asyncio.run(processor.process_emails())
         assert stats["responded"] == 1
         assert stats["escalated"] == 0
 
@@ -376,7 +376,7 @@ class TestEmailProcessorUnit:
         )
         mock_gmail.fetch_unread_emails.return_value = [mock_email]
 
-        asyncio.get_event_loop().run_until_complete(processor.process_emails())
+        asyncio.run(processor.process_emails())
         mock_gmail.mark_as_read.assert_not_called()
 
     def test_response_validation_catches_internal_urls(self, processor):

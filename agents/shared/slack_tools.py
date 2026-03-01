@@ -664,14 +664,17 @@ def _get_agent_display_name(agent_key: str) -> str:
     from agents.shared.role_resolver import ROLE_MENTION_MAP
     from vibeteam.agents_config import get_slack_handle
 
-    # Try direct lookup (agent_key might be a snake_case role)
-    handle = get_slack_handle(agent_key)
-    if handle:
-        return handle
     # Try as a mention alias (e.g. "swe", "marketer", "supervisor")
     role = ROLE_MENTION_MAP.get(agent_key.lower())
     if role:
-        return get_slack_handle(role) or agent_key
+        handle = get_slack_handle(role)
+        if handle:
+            return handle
+    # Try direct lookup only if agent_key is a known role
+    if agent_key in set(ROLE_MENTION_MAP.values()):
+        handle = get_slack_handle(agent_key)
+        if handle:
+            return handle
     return agent_key
 
 

@@ -1827,6 +1827,13 @@ async def run_evaluation(
 
     slack = SlackConnector(token=slack_token)
 
+    async def _slack_call(fn: Any, *args: Any, timeout: float = 30.0, **kwargs: Any) -> Any:
+        """Run a Slack API call in a thread with a timeout to avoid hangs."""
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(fn, *args, **kwargs), timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError("Slack API call timed out") from exc
+
     # Determine channel
     if not channel:
         channel = os.environ.get("SLACK_DEFAULT_CHANNEL")
@@ -1863,7 +1870,7 @@ async def run_evaluation(
         if not posted_message:
             posted_message = "Evaluation run (role mention omitted to avoid duplicate routing)."
 
-        initial_msg = slack.post_message(channel=channel, text=posted_message)
+        initial_msg = await _slack_call(slack.post_message, channel=channel, text=posted_message)
         thread_ts = initial_msg.ts
         print(f"    Thread TS: {thread_ts}")
         print("    Posted successfully!")
@@ -2007,7 +2014,9 @@ async def run_evaluation(
         while True:
             await asyncio.sleep(poll_interval)
 
-            replies = slack.get_thread_replies(channel=channel, thread_ts=thread_ts, limit=50)
+            replies = await _slack_call(
+                slack.get_thread_replies, channel=channel, thread_ts=thread_ts, limit=50
+            )
             current_count = len(replies)
             current_fingerprint = _content_fingerprint(replies)
 
@@ -2130,7 +2139,9 @@ async def run_evaluation(
 
     # Step 3: Collect conversation
     print("\n>>> Step 3: Collecting conversation")
-    replies = slack.get_thread_replies(channel=channel, thread_ts=thread_ts, limit=50)
+    replies = await _slack_call(
+        slack.get_thread_replies, channel=channel, thread_ts=thread_ts, limit=50
+    )
 
     for reply in replies:
         if reply.ts == thread_ts:
@@ -2189,6 +2200,10 @@ async def run_evaluation(
         # Get Azure credentials
         api_key = os.environ.get("AZURE_OPENAI_API_KEY", os.environ.get("AZURE_API_KEY"))
         api_base = os.environ.get("AZURE_OPENAI_ENDPOINT", os.environ.get("AZURE_API_BASE"))
+        if not api_key:
+            api_key = os.environ.get("LITELLM_AZURE_OPENAI_API_KEY")
+        if not api_base:
+            api_base = os.environ.get("LITELLM_AZURE_OPENAI_BASE_URL")
         api_version = os.environ.get(
             "AZURE_EVAL_API_VERSION",
             os.environ.get("AZURE_API_VERSION", "2024-08-01-preview"),
