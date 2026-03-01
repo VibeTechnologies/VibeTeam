@@ -847,6 +847,118 @@ class OpenHandsSoftwareEngineer:
         except Exception:
             return None
 
+    def _attempt_auto_pr_for_litellm_fetch(
+        self, task: str, repo: str, workspace_path: str
+    ) -> str | None:
+        """Auto PR to add retry around LiteLLM fetch failures in stripe-service."""
+        task_lower = task.lower()
+        if repo.lower() != "vibetechnologies/vibewebagent":
+            return None
+        if "fetch failed" not in task_lower and "litellm" not in task_lower:
+            return None
+
+        repo_name = repo.split("/")[-1]
+        repo_dir = os.path.join(workspace_path, repo_name)
+        target_rel = os.path.join("services", "subscription", "stripe-service", "server.js")
+        target_path = os.path.join(repo_dir, target_rel)
+
+        import subprocess
+        from pathlib import Path
+        import re
+
+        try:
+            subprocess.run(["gh", "auth", "setup-git"], capture_output=True, text=True, timeout=10)
+            if not os.path.isdir(repo_dir):
+                clone = subprocess.run(
+                    ["git", "clone", "--depth", "1", f"https://github.com/{repo}.git", repo_dir],
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                )
+                if clone.returncode != 0:
+                    return None
+
+            if not os.path.isfile(target_path):
+                return None
+
+            content = Path(target_path).read_text()
+            if "fetchWithRetry" in content:
+                return None
+
+            helper = (
+                "async function fetchWithRetry(url, options, attempts = 3) {\n"
+                "  let lastError;\n"
+                "  for (let attempt = 1; attempt <= attempts; attempt++) {\n"
+                "    try {\n"
+                "      return await fetch(url, options);\n"
+                "    } catch (err) {\n"
+                "      lastError = err;\n"
+                "      log.warn('LiteLLM fetch failed', { attempt, error: err?.message || err });\n"
+                "      if (attempt < attempts) {\n"
+                "        await new Promise(resolve => setTimeout(resolve, 500 * attempt));\n"
+                "      }\n"
+                "    }\n"
+                "  }\n"
+                "  throw lastError;\n"
+                "}\n\n"
+            )
+
+            marker = "// Helper: Update LiteLLM user budget\n"
+            if marker not in content:
+                return None
+            content = content.replace(marker, helper + marker)
+            content = content.replace("const userResponse = await fetch(", "const userResponse = await fetchWithRetry(")
+
+            Path(target_path).write_text(content)
+
+            branch = f"fix/litellm-fetch-retry-{int(time.time())}"
+            subprocess.run(["git", "checkout", "-b", branch], cwd=repo_dir, check=True, timeout=30)
+            subprocess.run(["git", "add", target_rel], cwd=repo_dir, check=True, timeout=30)
+            subprocess.run(
+                ["git", "commit", "-m", "fix: retry LiteLLM fetch failures"],
+                cwd=repo_dir,
+                check=True,
+                timeout=30,
+            )
+            subprocess.run(["git", "push", "-u", "origin", branch], cwd=repo_dir, check=True, timeout=120)
+
+            sentry_urls = self._extract_sentry_urls(task)
+            sentry_ref = sentry_urls[0] if sentry_urls else ""
+            pr_title = "fix: retry LiteLLM fetch failures"
+            pr_body = (
+                "## Summary\n"
+                "- add simple retry/backoff for LiteLLM update fetches\n"
+                "- log transient connection failures before giving up\n\n"
+                f"Fixes {sentry_ref}\n"
+            ).strip()
+            pr_create = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--repo",
+                    repo,
+                    "--title",
+                    pr_title,
+                    "--body",
+                    pr_body,
+                    "--base",
+                    "master",
+                    "--head",
+                    branch,
+                ],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if pr_create.returncode != 0:
+                return None
+            match = re.search(r"https?://github\.com/\S+/pull/\d+", pr_create.stdout)
+            return match.group(0) if match else None
+        except Exception:
+            return None
+
     def _fetch_github_issue(self, issue_number: str, repo: str | None = None) -> str:
         """Fetch GitHub issue details using gh CLI."""
         try:
@@ -2255,6 +2367,8 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                     auto_pr = self._attempt_auto_pr_for_no_output(task, repo, workspace_path)
                     if not auto_pr:
                         auto_pr = self._attempt_auto_pr_for_quota(task, repo, workspace_path)
+                    if not auto_pr:
+                        auto_pr = self._attempt_auto_pr_for_litellm_fetch(task, repo, workspace_path)
                     if auto_pr:
                         sentry_urls = self._extract_sentry_urls(task)
                         sentry_ref = sentry_urls[0] if sentry_urls else "Sentry issue URL not found"

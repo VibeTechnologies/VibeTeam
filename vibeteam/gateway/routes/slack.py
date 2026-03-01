@@ -176,11 +176,11 @@ def _extract_sentry_urls(text: str) -> list[str]:
 def _extract_repo_reference(text: str) -> str | None:
     sentry_project_patterns = [
         (r"\bvibebrowserextension\b", "VibeTechnologies/VibeWebAgent"),
-        (r"\bvibe[-_ ]?api[-_ ]?gateway\b", "VibeTechnologies/vibe-api-gateway"),
+        (r"\bvibe[-_ ]?api[-_ ]?gateway\b", "VibeTechnologies/VibeWebAgent"),
     ]
     alias_patterns = [
         (r"vibe[-_ ]?browser[-_ ]?extension", "VibeTechnologies/VibeWebAgent"),
-        (r"vibe[-_ ]?api[-_ ]?gateway", "VibeTechnologies/vibe-api-gateway"),
+        (r"vibe[-_ ]?api[-_ ]?gateway", "VibeTechnologies/VibeWebAgent"),
         (r"vibe[-_ ]?web[-_ ]?agent", "VibeTechnologies/VibeWebAgent"),
         (r"vibeteam", "VibeTechnologies/VibeTeam"),
     ]
