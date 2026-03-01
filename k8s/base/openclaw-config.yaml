@@ -27,6 +27,11 @@ data:
             "id": "product-manager",
             "name": "Product Manager",
             "agentDir": "/home/node/.openclaw/agents/product-manager/agent"
+          },
+          {
+            "id": "marketing-manager",
+            "name": "Marketing Manager",
+            "agentDir": "/home/node/.openclaw/agents/marketing-manager/agent"
           }
         ]
       },

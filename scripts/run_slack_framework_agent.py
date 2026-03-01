@@ -31,6 +31,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 
+from vibeteam.agents_config import get_slack_handle
+
 load_dotenv()
 
 
@@ -197,7 +199,7 @@ class SlackAgentRunner:
         set_slack_context(
             connector=self.connector,
             channel=self.channel,
-            from_agent=self.agent_name.replace("_", " ").title(),
+            from_agent=get_slack_handle(self.agent_name) or self.agent_name.replace("_", " ").title(),
         )
 
         print(f"[{self.framework}] {self.agent_name} listening on {self.channel}")
@@ -222,7 +224,7 @@ class SlackAgentRunner:
             connector=self.connector,
             channel=self.channel,
             thread_ts=thread_ts,
-            from_agent=self.agent_name.replace("_", " ").title(),
+            from_agent=get_slack_handle(self.agent_name) or self.agent_name.replace("_", " ").title(),
         )
 
         try:

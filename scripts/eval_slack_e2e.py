@@ -486,6 +486,74 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "openclaw_chrome_cdp_smoke": {
+        "name": "OpenClaw Product Manager - Chrome DevTools Skill Smoke Test",
+        "message": (
+            "@ProductManager use the Chrome DevTools skill to open https://example.com, "
+            "take a full-page screenshot, and report: (1) the page title, (2) the number "
+            "of console errors, and (3) the HTTP status code of the main document request. "
+            "Confirm in your response that the Chrome DevTools skill was used."
+        ),
+        "expected_agent": "product_manager",
+        "timeout": 600,
+        "evaluation_criteria": {
+            "ChromeDevToolsUsage": (
+                "Did the agent clearly use the Chrome DevTools skill to perform the task? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit mention of Chrome DevTools skill usage; "
+                "(2) Evidence of DevTools-derived artifacts such as console errors count, "
+                "network status code, or screenshot capture; "
+                "(3) No reliance on generic HTTP-only checks without DevTools context. "
+                "SCORING: "
+                "Score 0.0-0.3: No indication of DevTools skill usage. "
+                "Score 0.3-0.6: Vague mention of tooling but no DevTools-specific artifacts. "
+                "Score 0.6-0.8: Clear DevTools usage with at least one artifact reported. "
+                "Score 0.8-1.0: Clear DevTools usage with multiple artifacts (console + network + screenshot)."
+            ),
+            "TaskCompletion": (
+                "Did the agent complete all requested outputs? "
+                "REQUIRED: "
+                "(1) Report the page title; "
+                "(2) Report the number of console errors; "
+                "(3) Report the HTTP status code of the main document request; "
+                "(4) Confirm a screenshot was captured. "
+                "SCORING: "
+                "Score 0.0-0.3: Missing most outputs. "
+                "Score 0.3-0.5: Partial outputs (1-2 items). "
+                "Score 0.5-0.7: Most outputs but one missing. "
+                "Score 0.7-0.9: All outputs provided with minor gaps. "
+                "Score 0.9-1.0: Complete and concise, all outputs present."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused, without unnecessary "
+                "tool repetition or irrelevant commentary. "
+                "SCORING: "
+                "Score 0.0-0.3: Excessive verbosity or repeated steps. "
+                "Score 0.3-0.5: Some redundancy but completed. "
+                "Score 0.5-0.7: Reasonably concise with minor fluff. "
+                "Score 0.7-0.9: Focused response with clear outputs. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "ChromeDevToolsUsage": [
+                "Check that the agent explicitly mentions using the Chrome DevTools skill.",
+                "Check for DevTools-derived artifacts (console errors count, network status, screenshot mention).",
+                "Score <= 0.3 if no DevTools evidence; 0.6+ if DevTools artifacts are present.",
+            ],
+            "TaskCompletion": [
+                "Check that the page title is reported.",
+                "Check that console errors count is reported.",
+                "Check that the main document HTTP status code is reported and a screenshot is confirmed.",
+            ],
+            "ResponseEfficiency": [
+                "Check for redundant tool usage or repeated steps in the response.",
+                "Check that the response is concise and directly answers the requested outputs.",
+                "Score 0.7+ if the response is focused and complete.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "marketing_reddit_engagement": {
         "name": "Marketing Manager - Reddit Community Engagement (Soft Promo)",
         "message": (
@@ -1206,15 +1274,19 @@ SCENARIOS = {
     },
 }
 
-# Role display names
-ROLE_DISPLAY = {
-    "user": "User",
-    "support_engineer": "SupportEngineer",
-    "software_engineer": "SoftwareEngineer",
-    "release_engineer": "ReleaseEngineer",
-    "product_manager": "ProductManager",
-    "marketing_manager": "MarketingManager",
-}
+# Role display names (from agents.yaml)
+from vibeteam.agents_config import list_agents
+
+
+def _build_role_display() -> dict[str, str]:
+    role_display: dict[str, str] = {"user": "User"}
+    for entry in list_agents():
+        handle = entry.slack_handle or entry.display_name or entry.role
+        role_display[entry.role] = handle
+    return role_display
+
+
+ROLE_DISPLAY = _build_role_display()
 
 
 # ==============================================================================
@@ -1628,6 +1700,7 @@ async def run_evaluation(
             f"\n>>> Step 2: Waiting for agent response (idle timeout: {wait_timeout}s, no hard cap)"
         )
         start_time = time.time()
+        effective_timeout = wait_timeout
         last_message_count = 1  # We posted 1 message
         # Stable time: how long to wait after the last change before concluding.
         # Agent async processing can take 90-120s, and progress/placeholder messages
@@ -1714,6 +1787,7 @@ async def run_evaluation(
                     if has_handoff and not scenario.get("skip_handoff", False):
                         print("    Handoff detected in response! Waiting for next agent...")
                         pending_handoff = True
+                        effective_timeout = time.time() - start_time + handoff_timeout_extension
                         # Track which agent initiated the handoff so we can
                         # distinguish its messages from the handoff target's
                         handoff_source_agent = _extract_agent_prefix(latest_bot_msg.text)

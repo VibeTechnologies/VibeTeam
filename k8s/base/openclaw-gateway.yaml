@@ -29,6 +29,7 @@ spec:
             - -c
             - |
               mkdir -p /home/node/.openclaw/agents/product-manager/agent
+              mkdir -p /home/node/.openclaw/agents/marketing-manager/agent
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -94,6 +95,9 @@ spec:
             - name: openclaw-agent-prompts
               mountPath: /home/node/.openclaw/agents/product-manager/agent/AGENTS.md
               subPath: AGENTS.md
+            - name: openclaw-agent-prompts
+              mountPath: /home/node/.openclaw/agents/marketing-manager/agent/AGENTS.md
+              subPath: MarketingManager.AGENTS.md
           resources:
             requests:
               memory: "1Gi"

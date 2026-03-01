@@ -50,7 +50,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from vibeteam.connectors.slack import SlackConnector, SlackMessage
 from vibeteam.router import Router, UnifiedMessage
-from vibeteam.router.models import AgentRole, ROLE_DISPLAY_NAMES
+from vibeteam.agents_config import get_slack_handle
+from vibeteam.router.models import AgentRole
 
 logging.basicConfig(
     level=logging.INFO,
@@ -256,7 +257,7 @@ class VibeTeamSlackBot:
         self, role: AgentRole, message: UnifiedMessage, original_msg: SlackMessage
     ) -> None:
         """Run an agent for a specific role and post response."""
-        display_name = ROLE_DISPLAY_NAMES.get(role, role)
+        display_name = get_slack_handle(role) or role
         logger.info(f"Running {display_name} agent for: {message.content[:50]}...")
 
         try:

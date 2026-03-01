@@ -27,9 +27,7 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from agents.shared.role_resolver import (
-    ROLE_DISPLAY_NAMES as ROLE_DISPLAY,
-)
+from vibeteam.agents_config import get_slack_handle
 from agents.shared.role_resolver import (
     ROLE_MENTION_MAP as ROLE_MAP,
 )
@@ -241,7 +239,7 @@ def build_transcript(messages: list[tuple[str, str]]) -> str:
     """Build transcript from (role, text) pairs."""
     lines = []
     for role, text in messages:
-        display = ROLE_DISPLAY.get(role, role)
+        display = get_slack_handle(role) or role
         lines.append(f"[{display}] {text[:500]}")
     return "\n\n".join(lines)
 
@@ -356,7 +354,7 @@ def generate_eval_report(
     )
 
     for i, (role, text) in enumerate(conversation, 1):
-        display_role = ROLE_DISPLAY.get(role, role.title())
+        display_role = get_slack_handle(role) or role.title()
         role_emoji = "👤" if role == "user" else "🤖"
         lines.extend(
             [
@@ -505,7 +503,7 @@ class TestSlackHandoffE2E:
 
             handoff_count += 1
             already_ran.add(next_role)
-            display_name = ROLE_DISPLAY.get(next_role, next_role)
+            display_name = get_slack_handle(next_role) or next_role
 
             print(f"    Handoff #{handoff_count}: {display_name}")
 

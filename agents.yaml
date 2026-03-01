@@ -1,0 +1,22 @@
+agents:
+  product_manager:
+    framework: openclaw
+    openclaw_agent_id: product-manager
+    slack_handle: ProductManager
+    prompt_path: agents/ProductManager/AGENTS.md
+  support_engineer:
+    framework: openhands
+    slack_handle: SupportEngineer
+    prompt_path: agents/SupportEngineer/AGENTS.md
+  release_engineer:
+    framework: openhands
+    slack_handle: ReleaseEngineer
+    prompt_path: agents/ReleaseEngineer/AGENTS.md
+  software_engineer:
+    framework: openhands
+    slack_handle: SoftwareEngineer
+    prompt_path: agents/SoftwareEngineer/AGENTS.md
+  marketing_manager:
+    framework: openhands
+    slack_handle: MarketingManager
+    prompt_path: agents/MarketingManager/AGENTS.md

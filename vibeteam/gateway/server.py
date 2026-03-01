@@ -15,6 +15,7 @@ import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from vibeteam.agents_config import resolve_framework
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -189,9 +190,9 @@ async def call_agent_service(
     import time
 
     start_time = time.time()
-    service_url = config.get_agent_service_url(framework)
+    fw = resolve_framework(role, framework, config.DEFAULT_FRAMEWORK)
+    service_url = config.get_agent_service_url(fw)
     endpoint = "/run/stream" if stream else "/run"
-    fw = framework or config.DEFAULT_FRAMEWORK
 
     logger.info(
         f"[TIMING] Agent call started: role={role}, framework={fw}, context={context_type}:{context_id}"
@@ -326,8 +327,8 @@ async def call_agent_service_async(
     import time
 
     start_time = time.time()
-    service_url = config.get_agent_service_url(framework)
-    fw = framework or config.DEFAULT_FRAMEWORK
+    fw = resolve_framework(role, framework, config.DEFAULT_FRAMEWORK)
+    service_url = config.get_agent_service_url(fw)
 
     logger.info(
         f"[ASYNC] Submitting task: role={role}, framework={fw}, "

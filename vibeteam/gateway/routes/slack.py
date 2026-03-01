@@ -24,7 +24,8 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from vibeteam.router import Router
-from vibeteam.router.models import ROLE_DISPLAY_NAMES, AgentRole, route_by_keywords
+from vibeteam.agents_config import get_slack_handle
+from vibeteam.router.models import AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -1121,7 +1122,7 @@ async def run_agent_for_slack(
     effective_message_ts = message_ts or thread_ts or ""
 
     for role in role_mentions:
-        display_name = ROLE_DISPLAY_NAMES.get(cast(AgentRole, role), role)
+        display_name = get_slack_handle(role) or role
 
         if use_async and effective_message_ts:
             await _submit_agent_async(
@@ -1245,9 +1246,7 @@ async def _run_agent_and_respond(
                         continue
                     handoff_start = time.time()
                     logger.info(f"[TIMING] Executing handoff to {handoff_role}...")
-                    handoff_display = ROLE_DISPLAY_NAMES.get(
-                        cast(AgentRole, handoff_role), handoff_role
-                    )
+                    handoff_display = get_slack_handle(handoff_role) or handoff_role
                     # Pass the original message + full context about handoff
                     handoff_message = (
                         f"[Handoff from {display_name}]\n\n"
@@ -1405,7 +1404,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
                 logger.info(f"[CALLBACK] Skipping self-handoff to {role}")
                 continue
 
-            handoff_display = ROLE_DISPLAY_NAMES.get(cast(AgentRole, handoff_role), handoff_role)
+            handoff_display = get_slack_handle(handoff_role) or handoff_role
             handoff_message = (
                 f"[Handoff from {display_name}]\n\n"
                 f"Original request: {user_message}\n\n"

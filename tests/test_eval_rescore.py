@@ -514,14 +514,9 @@ class TestScenarios:
 
     def test_role_display_covers_all_agents(self):
         """ROLE_DISPLAY should cover all expected agent roles."""
-        expected_roles = {
-            "user",
-            "support_engineer",
-            "software_engineer",
-            "release_engineer",
-            "product_manager",
-            "marketing_manager",
-        }
+        from vibeteam.agents_config import list_agents
+
+        expected_roles = {"user", *{entry.role for entry in list_agents()}}
         assert set(ROLE_DISPLAY.keys()) == expected_roles
 
 
@@ -544,8 +539,14 @@ class TestPerScenarioTimeout:
 
     def test_other_scenarios_use_default_timeout(self):
         """Scenarios without explicit timeout should not have the key."""
+        allowed_overrides = {
+            "release_deploy",
+            "marketing_reddit_engagement",
+            "marketing_hn_engagement",
+            "marketing_google_finance_news",
+        }
         for name, config in SCENARIOS.items():
-            if name != "release_deploy":
+            if name not in allowed_overrides:
                 # Other scenarios should either not have a timeout key
                 # or their timeout should be <= 600 (the default)
                 if "timeout" in config:

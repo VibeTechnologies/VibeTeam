@@ -22,7 +22,8 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibeteam.gateway.server import call_agent_service, config
 from vibeteam.router import Router
-from vibeteam.router.models import ROLE_DISPLAY_NAMES, AgentRole
+from vibeteam.agents_config import get_slack_handle
+from vibeteam.router.models import AgentRole
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,7 @@ async def run_agent_for_github(
     context: str,
 ) -> None:
     """Run a specific agent for a GitHub issue."""
-    display_name = ROLE_DISPLAY_NAMES.get(role) or role.replace("_", " ").title()
+    display_name = get_slack_handle(role) or role.replace("_", " ").title()
     logger.info(f"Running {display_name} agent for {repo}#{issue_number}")
 
     task = f"""## GitHub Issue Context

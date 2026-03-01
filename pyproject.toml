@@ -56,6 +56,7 @@ dependencies = [
     # Discord integration
     "discord.py>=2.0.0",
     "deepeval>=3.8.3",
+    "PyYAML>=6.0.1",
 ]
 
 [project.optional-dependencies]

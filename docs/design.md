@@ -6,560 +6,113 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              External Platforms                              │
 │                                                                              │
-│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
-│   │    Slack    │    │   GitHub    │    │   Sentry    │    │  REST API   │  │
-│   │  Workspace  │    │   Webhooks  │    │  Webhooks   │    │  /api/*     │  │
-│   └──────┬──────┘    └──────┬──────┘    └──────┬──────┘    └──────┬──────┘  │
-└──────────┼──────────────────┼──────────────────┼──────────────────┼──────────┘
-           │                  │                  │                  │
-           ▼                  ▼                  ▼                  ▼
+│   Slack Events    GitHub Webhooks    Sentry Webhooks    Gmail   REST /api/*   │
+└──────────┬────────────────┬──────────────────┬───────────┬───────────┬──────┘
+           │                │                  │           │           │
+           ▼                ▼                  ▼           ▼           ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            GATEWAY (FastAPI)                                 │
+│                                GATEWAY (FastAPI)                              │
 │                                                                              │
-│   POST /slack/events      POST /webhook         POST /webhook/sentry        │
-│   POST /api/run           POST /api/schedule    GET /health                 │
+│   POST /slack/events      POST /webhook        POST /webhook/sentry          │
+│   POST /slack/trigger     POST /api/run        POST /callback/agent          │
 │                                                                              │
-│   ┌───────────────────────────────────────────────────────────────────────┐ │
-│   │                         Message Router                                 │ │
-│   │                                                                        │ │
-│   │  1. Normalize event → UnifiedMessage                                   │ │
-│   │  2. Check for @VibeTeam mention → track thread                        │ │
-│   │  3. Parse @RoleName or /RoleName → subscribe agents                   │ │
-│   │  4. React with :eyes: emoji                                           │ │
-│   │  5. Forward to subscribed agents                                      │ │
-│   └───────────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────┬──────────────────────────────────────────────┘
-                               │
-                               ▼
+│   - Normalizes events → UnifiedMessage                                       │
+│   - Routes by @RoleName or keyword fallback                                  │
+│   - Handoff detection from bot replies                                       │
+│   - Framework selection via agents.yaml                                      │
+│   - Sync or async callbacks                                                  │
+└──────────┬───────────────────────────────────────────────────────────────────┘
+           │
+           ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          AGENT SERVICE (FastAPI)                             │
+│                           AGENT SERVICES (FastAPI)                            │
 │                                                                              │
-│   POST /run              - Run agent with message context                    │
-│   GET  /sessions/{id}    - Get session details                              │
-│   GET  /health           - Health check                                      │
+│   openhands-svc   openclaw-svc   autogen-svc   crewai-svc   scheduler-svc     │
 │                                                                              │
-│   ┌───────────────────────────────────────────────────────────────────────┐ │
-│   │                      Session Manager                                   │ │
-│   │                                                                        │ │
-│   │  - Get/create session by (source, thread_id, role)                    │ │
-│   │  - Manage persistent workspaces (7-day TTL)                           │ │
-│   │  - Inject pre-configured send_message tool                            │ │
-│   └───────────────────────────────────────────────────────────────────────┘ │
+│   - openhands-svc: tool-enabled sessions, MCP, kubectl, Sentry, Gmail        │
+│   - openclaw-svc: proxy to OpenClaw gateway (WebSocket)                      │
+│   - autogen/crewai: optional frameworks                                      │
+│   - scheduler-svc: background/cron tasks                                     │
 │                                                                              │
-│   ┌───────────────────────────────────────────────────────────────────────┐ │
-│   │                      Agent Pool (OpenHands)                            │ │
-│   │                                                                        │ │
-│   │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                   │ │
-│   │   │  Software   │  │  Release    │  │  Support    │                   │ │
-│   │   │  Engineer   │  │  Engineer   │  │  Engineer   │                   │ │
-│   │   └─────────────┘  └─────────────┘  └─────────────┘                   │ │
-│   │                                                                        │ │
-│   │   ┌─────────────┐  ┌─────────────┐                                    │ │
-│   │   │  Product    │  │  Marketing  │                                    │ │
-│   │   │  Manager    │  │  Manager    │                                    │ │
-│   │   └─────────────┘  └─────────────┘                                    │ │
-│   └───────────────────────────────────────────────────────────────────────┘ │
+└──────────┬───────────────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SUPPORTING SERVICES                                 │
+│                                                                              │
+│   OpenClaw Gateway (Node) → LiteLLM (in-namespace) → Azure OpenAI            │
+│   Postgres (session store)                                                   │
+│   Gmail Processor (polling daemon)                                           │
+│   Browserless (CDP endpoint for MCP agents)                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Browser Automation (Chrome DevTools MCP)
+## Routing and Framework Selection
 
-Agents use Chrome DevTools MCP to automate a real Chrome instance over CDP. In production, a shared Browserless service runs inside the cluster and exposes CDP on port 3000. Agent pods connect to it via `CHROME_DEVTOOLS_BROWSER_URL=http://browserless:3000`, and network policy restricts access to agent pods only.
+### Role Resolution
 
-## Message Router
+- Role mentions and keyword routing are centralized in `agents/shared/role_resolver.py`.
+- Slack, GitHub, and other sources parse `@RoleName` and `/RoleName` mentions.
+- If no role is mentioned, a keyword-based fallback selects a default role.
 
-### Thread Subscription Model
+### Framework Resolution
 
-The router maintains a table of which agents are subscribed to which threads:
+- The gateway resolves which framework to use per role using `agents.yaml`.
+- `agents.yaml` is the single source of truth for role → framework mapping, Slack handle,
+  and prompt file references.
+- Example:
 
-```python
-@dataclass
-class ThreadSubscription:
-    source: str          # slack, discord, github_issue, github_pr
-    thread_id: str       # unique identifier for the thread
-    agent_role: str      # software_engineer, release_engineer, etc.
-    session_id: str      # UUID linking to agent session
-    subscribed_at: datetime
+```yaml
+agents:
+  product_manager:
+    framework: openclaw
+    openclaw_agent_id: product-manager
+    slack_handle: ProductManager
+    prompt_path: agents/ProductManager/AGENTS.md
+  support_engineer:
+    framework: openhands
+    slack_handle: SupportEngineer
+    prompt_path: agents/SupportEngineer/AGENTS.md
 ```
 
-### Routing Logic
+## OpenClaw Flow
 
-```python
-class Router:
-    ROLE_PATTERN = re.compile(
-        r'[@/](SoftwareEngineer|ReleaseEngineer|SupportEngineer|ProductManager|MarketingManager)',
-        re.IGNORECASE
-    )
-    
-    async def route_message(self, message: UnifiedMessage) -> list[str]:
-        """Route message to appropriate agents."""
-        
-        # 1. Parse @RoleName or /RoleName mentions
-        role_mentions = self.ROLE_PATTERN.findall(message.content)
-        roles = [self._normalize_role(r) for r in role_mentions]
-        
-        # 2. Subscribe new agents to thread
-        for role in roles:
-            await self.subscribe_agent(
-                source=message.source,
-                thread_id=message.thread_id,
-                agent_role=role
-            )
-        
-        # 3. Get all subscribed agents
-        subscribed = await self.get_subscribed_agents(
-            source=message.source,
-            thread_id=message.thread_id
-        )
-        
-        # 4. Forward to each subscribed agent
-        for agent_role in subscribed:
-            await self.forward_to_agent(message, agent_role)
-        
-        return subscribed
-```
+1. Gateway routes ProductManager (or other OpenClaw roles) to `openclaw-svc`.
+2. `openclaw-svc` connects to the OpenClaw gateway over WebSocket.
+3. OpenClaw gateway loads:
+   - `openclaw.json` (ConfigMap `openclaw-config`)
+   - Agent prompts from `openclaw-agent-prompts` (ConfigMap)
+4. OpenClaw uses LiteLLM in-namespace (`litellm` service) to reach Azure OpenAI.
 
-### Bot Message Handling
+## Agent Services and Sessions
 
-The router processes the bot's own messages to detect handoffs:
+- OpenHands maintains per-thread sessions and persists them in Postgres.
+- Session keys include framework + role + source + thread ID for isolation.
+- Async mode uses `/run/async → /callback/agent` for long-running tasks.
 
-```python
-async def handle_slack_event(event: dict):
-    # Don't ignore bot messages - we need to detect handoffs
-    if event.get("bot_id") == OUR_BOT_ID:
-        text = event.get("text", "")
-        
-        # Check for @RoleName or /RoleName mentions (handoff)
-        role_mentions = ROLE_PATTERN.findall(text)
-        if role_mentions:
-            # This is a handoff - subscribe mentioned agents
-            for role in role_mentions:
-                await router.subscribe_agent(source, thread_id, role)
-                await forward_to_agent(message, role)
-        
-        return  # Don't process further
-    
-    # Process user messages normally
-    await router.route_message(message)
-```
+## Browser Automation
 
-## Agent Service
+- **OpenHands / CrewAI / AutoGen**: use Chrome DevTools MCP via Browserless.
+  - `CHROME_DEVTOOLS_BROWSER_URL=http://browserless:3000`
+- **OpenClaw**: uses the Chrome DevTools *skill* (not MCP).
+  - OpenClaw does not support MCP tools directly.
 
-### Session Management
+## Gmail Processing
 
-Each agent maintains a session per thread:
+- A `gmail-processor` deployment polls Gmail and writes to the database.
+- Agent services read the same Gmail OAuth files (mounted secrets).
 
-```python
-class SessionManager:
-    async def get_or_create_session(
-        self,
-        source: str,
-        thread_id: str,
-        role: str,
-    ) -> AgentSession:
-        """Get existing session or create new one."""
-        
-        session_key = f"openhands:{role}:{source}:{thread_id}"
-        
-        # Check for existing session
-        existing = await self.db.get_session(session_key)
-        if existing:
-            return existing
-        
-        # Create new session with persistent workspace
-        workspace = self._create_workspace(session_key)
-        session_id = str(uuid.uuid4())
-        
-        session = AgentSession(
-            session_id=session_id,
-            key=session_key,
-            framework="openhands",
-            role=role,
-            source=source,
-            thread_id=thread_id,
-            workspace=workspace,
-            messages=[],
-            created_at=datetime.now(timezone.utc),
-        )
-        
-        await self.db.save_session(session)
-        return session
-```
+## Key API Endpoints
 
-### Workspace Management
-
-Agent workspaces are persistent directories with automatic cleanup:
-
-```python
-class WorkspaceManager:
-    BASE_PATH = "/var/lib/vibeteam/workspaces"
-    TTL_DAYS = 7
-    
-    def create_workspace(self, session_key: str) -> str:
-        """Create persistent workspace directory."""
-        # Hash session key for safe directory name
-        dir_name = hashlib.sha256(session_key.encode()).hexdigest()[:16]
-        path = os.path.join(self.BASE_PATH, dir_name)
-        os.makedirs(path, exist_ok=True)
-        return path
-    
-    async def cleanup_expired(self):
-        """Remove workspaces older than TTL."""
-        cutoff = datetime.now() - timedelta(days=self.TTL_DAYS)
-        # Query sessions older than cutoff and remove their workspaces
-        ...
-```
-
-### send_message Tool
-
-The `send_message` tool is pre-configured with thread context:
-
-```python
-class SendMessageTool:
-    """Tool for agents to send messages to the thread."""
-    
-    def __init__(
-        self,
-        source: str,
-        thread_id: str,
-        channel_id: str,
-        bot_token: str,
-        role_prefix: str,
-    ):
-        self.source = source
-        self.thread_id = thread_id
-        self.channel_id = channel_id
-        self.bot_token = bot_token
-        self.role_prefix = role_prefix
-    
-    async def execute(self, content: str) -> dict:
-        """Send message to the thread."""
-        # Prefix with role name
-        prefixed = f"[{self.role_prefix}] {content}"
-        
-        if self.source == "slack":
-            await self._send_slack(prefixed)
-        elif self.source == "discord":
-            await self._send_discord(prefixed)
-        
-        return {"success": True, "message": prefixed}
-```
-
-## Discord Integration
-
-```
-Discord support currently runs via polling bots in scripts
-(see scripts/run_discord_bot.py and scripts/run_discord_agent.py).
-It is not routed through the gateway webhook endpoints.
-```
+- `POST /slack/events` — Slack webhook receiver
+- `POST /slack/trigger` — Programmatic trigger for evals and tests
+- `POST /callback/agent` — Async callback receiver
+- `POST /api/run` — Direct agent execution
+- `GET /health` — Gateway health
 
 ## LLM Configuration
 
-### Model
+- Default model: Azure OpenAI `gpt-5.2` via LiteLLM.
+- OpenClaw uses in-namespace LiteLLM; OpenHands uses shared LiteLLM config.
 
-All agents use **Azure OpenAI `gpt-5.2`** (deployment name `gpt-5.2`, model `gpt-5.2-2025-12-11`).
-
-The model is configured via the `AZURE_OPENAI_DEPLOYMENT` environment variable (K8s secret `vibeteam-secrets`). Code-level fallbacks use `gpt-5.2` if the env var is not set.
-
-```
-Gateway (vibeteam/agents/base.py):
-  model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2")
-  → litellm.acompletion(model="azure/gpt-5.2", ...)
-
-Agent Service (agents/config.py):
-  model = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5.2")
-  → OpenHands runtime uses this for agent LLM calls
-```
-
-GPT-5+ models require `max_completion_tokens` instead of `max_tokens`. The codebase handles this in `vibeteam/agents/base.py`:
-
-```python
-if "gpt-5" in self.model:
-    kwargs["max_completion_tokens"] = self.max_tokens
-else:
-    kwargs["max_tokens"] = self.max_tokens
-```
-
-Responses-only models (e.g., `gpt-5.2-codex`) are **blocked by default**. The resolver in `agents/shared/llm.py` only allows them when:
-- `AZURE_ALLOW_RESPONSES_MODELS=true`
-- `AZURE_API_VERSION` >= `2025-03-01-preview`
-
-If those conditions are not met, the model automatically falls back to `gpt-5.2`.
-
-### Environment Variables
-
-| Variable | Value | Source |
-|----------|-------|--------|
-| `AZURE_API_BASE` | `https://vibebrowser-dev.openai.azure.com/` | K8s secret |
-| `AZURE_OPENAI_ENDPOINT` | (alias for `AZURE_API_BASE`) | K8s secret |
-| `AZURE_API_KEY` | (secret) | K8s secret |
-| `AZURE_OPENAI_API_KEY` | (alias for `AZURE_API_KEY`) | K8s secret |
-| `AZURE_API_VERSION` | `2024-08-01-preview` | K8s secret |
-| `AZURE_OPENAI_DEPLOYMENT` | `gpt-5.2` | K8s secret |
-
-## Slack Integration
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Slack Workspace: VibeTeam                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  App: @VibeTeam                                                 │
-│    - Single app handles all agent roles                         │
-│    - Responds in threads with [RoleName] prefix                 │
-│    - Reacts with :eyes: when message received                   │
-│    - Shows "⏳ Thinking..." while agents process                │
-│                                                                  │
-│  Events subscribed:                                              │
-│    - app_mention (when @VibeTeam is mentioned)                  │
-│    - message.channels (for thread replies)                      │
-│                                                                  │
-│  Thread Example:                                                 │
-│    User: "@VibeTeam @SoftwareEngineer fix bug #345"             │
-│    :eyes: (reaction)                                            │
-│    Bot:  "⏳ SoftwareEngineer Thinking..."                      │
-│    Bot:  (message updated) "[SoftwareEngineer] Looking at..."   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Typing Indicator
-
-When a message is routed to an agent, the gateway immediately posts a "⏳ [RoleName] Thinking..." message in the thread. Once the agent responds, this message is **updated in-place** (via `chat.update`) with the actual response, avoiding duplicate messages.
-
-```
-User posts message
-      │
-      ▼
-Gateway posts "⏳ SoftwareEngineer Thinking..." → returns thinking_ts
-      │
-      ▼
-Agent processes request (may take 30-60s)
-      │
-      ▼
-Agent responds → Gateway calls chat.update(ts=thinking_ts, text=response)
-      │
-      ▼
-User sees the thinking message replaced with the actual response
-```
-
-Implementation details (`vibeteam/gateway/routes/slack.py`):
-- `send_thinking_message(channel, thread_ts, role)` — posts the indicator
-- `update_slack_message(channel, ts, text)` — updates via `chat.update` using blocks to avoid "(edited)" indicator
-- `thinking_ts` is passed through callback metadata for async agent paths
-
-Error handling: if the agent fails, the thinking message is updated with the error details instead of leaving a stale "Thinking..." message.
-
-### Task Template Classification
-
-The gateway classifies incoming messages to select the appropriate task template for agents. This determines how structured the agent's prompt is.
-
-```python
-def classify_task_template(message_text, is_thread_reply=False) -> str:
-    # Returns one of: "investigation", "feature_request", "conversational"
-```
-
-| Template | When Used | Description |
-|----------|-----------|-------------|
-| `investigation` | Initial messages with error/debug/issue keywords | Full structured template with required kubectl/Sentry steps |
-| `feature_request` | Messages with feature/implement/build keywords | Template for PRDs and implementation planning |
-| `conversational` | Thread follow-ups without investigation keywords | Lightweight prompt — agent responds naturally without rigid structure |
-
-The `conversational` template prevents the agent from responding with a rigid 5-section investigation report when the user simply asks a follow-up question like "what did you find?" in a thread.
-
-## GitHub Integration
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      GitHub → Agents                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  Issue Comment: "@VibeTeam @SoftwareEngineer please investigate" │
-│       │                                                          │
-│       ▼                                                          │
-│  Router:                                                         │
-│    source = "github_issue"                                       │
-│    thread_id = "VibeTechnologies/VibeWebAgent:345"              │
-│    role = "software_engineer"                                    │
-│       │                                                          │
-│       ▼                                                          │
-│  Agent responds via GitHub API comment                           │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Sentry Integration
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Sentry → Agents                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  1. Sentry detects error spike                                  │
-│     └─► Webhook to /webhook/sentry                              │
-│                                                                  │
-│  2. Router creates synthetic thread:                            │
-│     source = "sentry"                                            │
-│     thread_id = "sentry:{issue_id}"                             │
-│     Auto-routes to @SupportEngineer                             │
-│                                                                  │
-│  3. SupportEngineer investigates, may handoff:                  │
-│     "@SoftwareEngineer this is a bug in auth.py:45"             │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Database Schema
-
-The ORM in `agents/shared/db.py` is the single source of truth.
-The `Uuid` column type (SQLAlchemy 2.0+) maps to native `UUID` on
-PostgreSQL and `CHAR(32)` on SQLite, so all queries are dialect-agnostic.
-
-```sql
--- Agent sessions (managed by ORM – agents/shared/db.py)
-CREATE TABLE sessions (
-    id UUID PRIMARY KEY,              -- sqlalchemy.Uuid
-    key VARCHAR(255) UNIQUE NOT NULL,
-    framework VARCHAR(50) NOT NULL,
-    role VARCHAR(50) NOT NULL,
-    context_type VARCHAR(50) NOT NULL,
-    context_id VARCHAR(255) NOT NULL,
-    messages JSONB DEFAULT '[]',
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ
-);
-
--- Task results (managed by ORM – agents/shared/db.py)
-CREATE TABLE task_results (
-    id UUID PRIMARY KEY,              -- sqlalchemy.Uuid
-    session_id UUID,                  -- FK to sessions.id (logical, not enforced)
-    framework VARCHAR(50) NOT NULL,
-    role VARCHAR(50) NOT NULL,
-    task TEXT NOT NULL,
-    response TEXT,
-    status VARCHAR(20) DEFAULT 'pending',
-    error TEXT,
-    tokens_used VARCHAR(20),
-    latency_ms VARCHAR(20),
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ
-);
-
--- Thread subscriptions (managed by migrate_db.py)
-CREATE TABLE thread_subscriptions (
-    id SERIAL PRIMARY KEY,
-    source VARCHAR(50) NOT NULL,
-    thread_id VARCHAR(255) NOT NULL,
-    agent_role VARCHAR(50) NOT NULL,
-    session_id UUID REFERENCES sessions(id),
-    subscribed_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (source, thread_id, agent_role)
-);
-
--- Indexes
-CREATE INDEX idx_subscriptions_thread ON thread_subscriptions(source, thread_id);
-CREATE INDEX idx_sessions_key ON sessions(key);
-```
-
-## Testing
-
-### E2E Evaluation Tests
-
-```bash
-# Primary Slack E2E evaluation
-python scripts/eval_slack_e2e.py --scenario support_400_errors
-```
-
-### Evaluation Metrics (DeepEval)
-
-Metrics and thresholds are scenario-specific and defined in `scripts/eval_slack_e2e.py` (`SCENARIOS` dict). The report lists each metric with its threshold; overall pass requires all metrics to meet their thresholds (typically `0.60`–`0.80`).
-
-Common metrics include:
-- InvestigationQuality
-- EvidenceBasedDecision
-- HandoffCompletion
-- ResponseEfficiency
-- NotificationOnly
-- SentryUsage
-- GmailUsage
-- IssueAnalysis
-- DeploymentExecution
-- CorrectNamespace
-- ChromeDevToolsUsage
-- HNFitAndGuidelines
-- CommunityFitAndRules
-- SoftPromoQuality
-
-
-# DeepEval test design
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           E2E TEST FLOW                                     │
-└─────────────────────────────────────────────────────────────────────────────┘
-Step 1: Eval script posts initial message to Slack
-┌──────────┐         ┌─────────────────┐
-│ eval_    │ ──────► │  Slack API      │  POST @SupportEngineer, issue...
-│ slack_e2e│         │  #channel       │
-└──────────┘         │  thread_ts: X   │
-                     └────────┬────────┘
-                              │
-Step 2: Webhook picks up message
-                              ▼
-                     ┌─────────────────┐
-                     │ vibeteam-gateway│  (FastAPI)
-                     └────────┬────────┘
-                              │ routes @SupportEngineer
-                              ▼
-Step 3: Agent service processes
-                     ┌─────────────────┐
-                     │ OpenHands Agent │  (K8s service)
-                     │ Service         │
-                     │                 │  - Checks PostgreSQL for session
-                     │ @SupportEngineer│  - No session for thread_ts X
-                     │                 │  - Creates new session
-                     └────────┬────────┘
-                              │
-Step 4: Agent responds via send_message tool
-                              │ Tool pre-initialized with:
-                              │   - thread_ts: X
-                              │   - slack_token
-                              ▼
-                     ┌─────────────────┐
-                     │  Slack API      │  "Handing off to @ReleaseEngineer..."
-                     │  thread_ts: X   │
-                     └────────┬────────┘
-                              │
-Step 5: Webhook picks up handoff
-                              ▼
-                     ┌─────────────────┐
-                     │ vibeteam-gateway│  routes @ReleaseEngineer
-                     └────────┬────────┘
-                              │
-Step 6: Release Engineer processes
-                              ▼
-                     ┌─────────────────┐
-                     │ OpenHands Agent │
-                     │ @ReleaseEngineer│  - Same thread, new/existing session
-                     └────────┬────────┘
-                              │
-                              ▼
-                     ┌─────────────────┐
-                     │  Slack API      │  "Investigated, found X..."
-                     │  thread_ts: X   │
-                     └────────┬────────┘
-                              │
-Step 7: Test reads thread, evaluates
-                              ▼
-┌──────────┐         ┌─────────────────┐
-│ eval_    │ ◄────── │  Slack API      │  GET thread messages
-│ slack_e2e│         │                 │
-│          │         │  thread_ts: X   │
-│ DeepEval │         └─────────────────┘
-│ evaluate │
-│          │
-│ ASSERT   │  - Thread has N messages
-│          │  - HandoffQuality score
-│          │  - TaskCompletion score
-└──────────┘
+For environment variables and secrets, see [requirements.md](requirements.md).

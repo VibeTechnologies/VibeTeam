@@ -9,17 +9,11 @@ from datetime import datetime, timezone
 from typing import Literal
 
 # Re-export from the single source of truth
-from agents.shared.role_resolver import (
-    ROLE_DISPLAY_NAMES,
-    ROLE_MENTION_MAP,
-    AgentRole,
-    route_by_keywords,
-)
+from agents.shared.role_resolver import ROLE_MENTION_MAP, AgentRole, route_by_keywords
 
 __all__ = [
     "AgentRole",
     "ROLE_MENTION_MAP",
-    "ROLE_DISPLAY_NAMES",
     "MessageSource",
     "UnifiedMessage",
     "ThreadSubscription",
@@ -90,5 +84,5 @@ class ThreadSubscription:
         return f"{self.source}:{self.thread_id}:{self.agent_role}"
 
 
-# ROLE_MENTION_MAP and ROLE_DISPLAY_NAMES are imported from agents.shared.role_resolver
-# and re-exported above for backward compatibility.
+# ROLE_MENTION_MAP is imported from agents.shared.role_resolver and re-exported above
+# for backward compatibility.

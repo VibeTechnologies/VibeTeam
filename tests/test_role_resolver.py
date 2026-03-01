@@ -6,11 +6,12 @@ Tests that all mention patterns from all previous systems are recognized.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from agents.shared.role_resolver import (
     KEYWORD_ROUTING,
-    ROLE_DISPLAY_NAMES,
     ROLE_MENTION_MAP,
     ROLE_PATTERN,
     get_display_name,
@@ -18,17 +19,23 @@ from agents.shared.role_resolver import (
     parse_role_mentions,
     route_by_keywords,
 )
+from vibeteam.agents_config import get_slack_handle
+
+
+def _handle_key(role: str) -> str:
+    handle = get_slack_handle(role) or role
+    return re.sub(r"\\W+", "", handle).lower()
 
 
 class TestRoleMentionMap:
     """Verify ROLE_MENTION_MAP contains all expected aliases."""
 
     def test_full_names(self):
-        assert ROLE_MENTION_MAP["softwareengineer"] == "software_engineer"
-        assert ROLE_MENTION_MAP["releaseengineer"] == "release_engineer"
-        assert ROLE_MENTION_MAP["supportengineer"] == "support_engineer"
-        assert ROLE_MENTION_MAP["productmanager"] == "product_manager"
-        assert ROLE_MENTION_MAP["marketingmanager"] == "marketing_manager"
+        assert ROLE_MENTION_MAP[_handle_key("software_engineer")] == "software_engineer"
+        assert ROLE_MENTION_MAP[_handle_key("release_engineer")] == "release_engineer"
+        assert ROLE_MENTION_MAP[_handle_key("support_engineer")] == "support_engineer"
+        assert ROLE_MENTION_MAP[_handle_key("product_manager")] == "product_manager"
+        assert ROLE_MENTION_MAP[_handle_key("marketing_manager")] == "marketing_manager"
 
     def test_short_forms(self):
         assert ROLE_MENTION_MAP["swe"] == "software_engineer"
@@ -57,11 +64,11 @@ class TestParseRoleMentions:
     @pytest.mark.parametrize(
         "text,expected",
         [
-            ("@SoftwareEngineer please fix this", ["software_engineer"]),
-            ("@ReleaseEngineer deploy v2.1", ["release_engineer"]),
-            ("@SupportEngineer check Sentry", ["support_engineer"]),
-            ("@ProductManager prioritize this", ["product_manager"]),
-            ("@MarketingManager draft announcement", ["marketing_manager"]),
+            (f"@{get_slack_handle('software_engineer') or 'SoftwareEngineer'} please fix this", ["software_engineer"]),
+            (f"@{get_slack_handle('release_engineer') or 'ReleaseEngineer'} deploy v2.1", ["release_engineer"]),
+            (f"@{get_slack_handle('support_engineer') or 'SupportEngineer'} check Sentry", ["support_engineer"]),
+            (f"@{get_slack_handle('product_manager') or 'ProductManager'} prioritize this", ["product_manager"]),
+            (f"@{get_slack_handle('marketing_manager') or 'MarketingManager'} draft announcement", ["marketing_manager"]),
         ],
     )
     def test_at_prefix_full_names(self, text, expected):
@@ -85,7 +92,7 @@ class TestParseRoleMentions:
     @pytest.mark.parametrize(
         "text,expected",
         [
-            ("/SoftwareEngineer fix the bug", ["software_engineer"]),
+            (f"/{get_slack_handle('software_engineer') or 'SoftwareEngineer'} fix the bug", ["software_engineer"]),
             ("/SWE implement this", ["software_engineer"]),
             ("/PM check roadmap", ["product_manager"]),
         ],
@@ -121,9 +128,10 @@ class TestParseRoleMentions:
     # --- Case insensitivity ---
 
     def test_case_insensitive(self):
-        assert parse_role_mentions("@softwareengineer") == ["software_engineer"]
-        assert parse_role_mentions("@SOFTWAREENGINEER") == ["software_engineer"]
-        assert parse_role_mentions("@SoftwareEngineer") == ["software_engineer"]
+        handle = get_slack_handle("software_engineer") or "SoftwareEngineer"
+        assert parse_role_mentions(f"@{handle.lower()}") == ["software_engineer"]
+        assert parse_role_mentions(f"@{handle.upper()}") == ["software_engineer"]
+        assert parse_role_mentions(f"@{handle}") == ["software_engineer"]
 
     # --- Multiple mentions ---
 
@@ -176,41 +184,29 @@ class TestGetDisplayName:
     """Test get_display_name()."""
 
     def test_known_roles(self):
-        assert get_display_name("software_engineer") == "SoftwareEngineer"
-        assert get_display_name("release_engineer") == "ReleaseEngineer"
-        assert get_display_name("support_engineer") == "SupportEngineer"
-        assert get_display_name("product_manager") == "ProductManager"
-        assert get_display_name("marketing_manager") == "MarketingManager"
+        assert get_display_name("software_engineer") == (get_slack_handle("software_engineer") or "Software Engineer")
+        assert get_display_name("release_engineer") == (get_slack_handle("release_engineer") or "Release Engineer")
+        assert get_display_name("support_engineer") == (get_slack_handle("support_engineer") or "Support Engineer")
+        assert get_display_name("product_manager") == (get_slack_handle("product_manager") or "Product Manager")
+        assert get_display_name("marketing_manager") == (get_slack_handle("marketing_manager") or "Marketing Manager")
 
     def test_fallback_for_unknown(self):
         # Should title-case with underscores replaced
         assert get_display_name("unknown_role") == "Unknown Role"
 
 
-class TestDisplayNames:
-    """Verify ROLE_DISPLAY_NAMES covers all 5 roles."""
-
-    def test_all_roles_have_display_names(self):
-        expected_roles = {
-            "software_engineer",
-            "release_engineer",
-            "support_engineer",
-            "product_manager",
-            "marketing_manager",
-        }
-        assert set(ROLE_DISPLAY_NAMES.keys()) == expected_roles
-
-
 class TestRolePattern:
     """Verify the compiled regex matches expected patterns."""
 
     def test_pattern_matches_at_prefix(self):
-        assert ROLE_PATTERN.search("@SoftwareEngineer")
+        handle = get_slack_handle("software_engineer") or "SoftwareEngineer"
+        assert ROLE_PATTERN.search(f"@{handle}")
         assert ROLE_PATTERN.search("@swe")
         assert ROLE_PATTERN.search("@einstein")
 
     def test_pattern_matches_slash_prefix(self):
-        assert ROLE_PATTERN.search("/SoftwareEngineer")
+        handle = get_slack_handle("software_engineer") or "SoftwareEngineer"
+        assert ROLE_PATTERN.search(f"/{handle}")
         assert ROLE_PATTERN.search("/pm")
 
     def test_pattern_rejects_bare_text(self):

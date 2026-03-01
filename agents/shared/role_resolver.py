@@ -8,7 +8,7 @@ Single source of truth for:
 - Keyword-based routing (fallback when no @mention)
 
 Previously this logic was duplicated across multiple locations:
-- vibeteam/router/models.py (ROLE_MENTION_MAP, ROLE_DISPLAY_NAMES)
+- vibeteam/router/models.py (ROLE_MENTION_MAP)
 - vibeteam/router/router.py (ROLE_PATTERN regex + parse_role_mentions)
 - vibeteam/gateway/routes/slack.py (keyword routing fallback)
 - agents/openhands/team.py (parse_mention + route_by_keywords)
@@ -19,8 +19,13 @@ All consumers should now import from this module.
 
 from __future__ import annotations
 
+import os
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Literal
+
+import yaml
 
 # ---------------------------------------------------------------------------
 # Core type
@@ -38,13 +43,7 @@ AgentRole = Literal[
 # Mention-text -> role mapping (superset of all previous systems)
 # ---------------------------------------------------------------------------
 
-ROLE_MENTION_MAP: dict[str, AgentRole] = {
-    # Full names (gateway + team.py + tests)
-    "softwareengineer": "software_engineer",
-    "releaseengineer": "release_engineer",
-    "supportengineer": "support_engineer",
-    "productmanager": "product_manager",
-    "marketingmanager": "marketing_manager",
+BASE_ROLE_MENTION_MAP: dict[str, AgentRole] = {
     # Short forms (gateway)
     "swe": "software_engineer",
     "release": "release_engineer",
@@ -63,19 +62,42 @@ ROLE_MENTION_MAP: dict[str, AgentRole] = {
     "supervisor": "product_manager",
 }
 
-# ---------------------------------------------------------------------------
-# Role -> display name
-# ---------------------------------------------------------------------------
 
-ROLE_DISPLAY_NAMES: dict[AgentRole, str] = {
-    "software_engineer": "SoftwareEngineer",
-    "release_engineer": "ReleaseEngineer",
-    "support_engineer": "SupportEngineer",
-    "product_manager": "ProductManager",
-    "marketing_manager": "MarketingManager",
+@lru_cache(maxsize=1)
+def _load_agents_yaml() -> dict:
+    path = Path(os.environ.get("AGENTS_CONFIG_PATH", "agents.yaml"))
+    if not path.exists():
+        return {}
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _load_handle_map() -> dict[str, AgentRole]:
+    config = _load_agents_yaml()
+    agents = config.get("agents", {}) if isinstance(config, dict) else {}
+    handle_map: dict[str, AgentRole] = {}
+    if not isinstance(agents, dict):
+        return handle_map
+    for role, cfg in agents.items():
+        if not isinstance(cfg, dict):
+            continue
+        handle = cfg.get("slack_handle")
+        if not handle:
+            continue
+        key = re.sub(r"\\W+", "", str(handle)).lower()
+        if key:
+            handle_map[key] = role  # type: ignore[assignment]
+    return handle_map
+
+
+ROLE_MENTION_MAP: dict[str, AgentRole] = {
+    **_load_handle_map(),
+    **BASE_ROLE_MENTION_MAP,
 }
 
-# ---------------------------------------------------------------------------
 # Compiled regex (matches all keys from ROLE_MENTION_MAP after @ or /)
 # ---------------------------------------------------------------------------
 
@@ -124,8 +146,16 @@ def parse_first_role_mention(text: str) -> AgentRole | None:
 
 
 def get_display_name(role: AgentRole) -> str:
-    """Get the PascalCase display name for a role."""
-    return ROLE_DISPLAY_NAMES.get(role, role.replace("_", " ").title())
+    """Get the Slack handle/display name for a role from agents.yaml."""
+    config = _load_agents_yaml()
+    agents = config.get("agents", {}) if isinstance(config, dict) else {}
+    if isinstance(agents, dict):
+        cfg = agents.get(role, {})
+        if isinstance(cfg, dict):
+            handle = cfg.get("slack_handle")
+            if handle:
+                return str(handle)
+    return role.replace("_", " ").title()
 
 
 # ---------------------------------------------------------------------------

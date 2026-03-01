@@ -634,22 +634,26 @@ def get_slack_handoff_instructions() -> str:
     Returns:
         Instructions string to include in agent prompts
     """
-    return """
-## TEAM COLLABORATION
+    from vibeteam.agents_config import list_agents
 
-When you need help from another team member, @mention them naturally in your response:
-- @SoftwareEngineer - for code implementation, bug fixes, PRs
-- @ReleaseEngineer - for deployments and releases
-- @SupportEngineer - for customer communication, error investigation with Sentry
-- @MarketingManager - for announcements and content
-- @ProductManager - for requirements and prioritization
+    handles = []
+    for entry in list_agents():
+        handle = entry.slack_handle or entry.display_name
+        if handle:
+            handles.append(handle)
 
-Example: "I've analyzed the request. @SoftwareEngineer please implement the login validation fix."
+    handles_text = "\n".join(f"- @{handle}" for handle in handles) if handles else "- @RoleName"
+    example_handle = handles[0] if handles else "RoleName"
 
-The mentioned agent will automatically pick up the conversation.
-Always provide clear context when handing off so the receiving agent
-can understand and work on the task effectively.
-"""
+    return (
+        "## TEAM COLLABORATION\n\n"
+        "When you need help from another team member, @mention them naturally in your response:\n"
+        f"{handles_text}\n\n"
+        f"Example: \"I've analyzed the request. @{example_handle} please implement the login validation fix.\"\n\n"
+        "The mentioned agent will automatically pick up the conversation.\n"
+        "Always provide clear context when handing off so the receiving agent\n"
+        "can understand and work on the task effectively.\n"
+    )
 
 
 def _get_agent_display_name(agent_key: str) -> str:
@@ -657,15 +661,17 @@ def _get_agent_display_name(agent_key: str) -> str:
 
     Delegates to role_resolver for known roles, falls back to the key itself.
     """
-    from agents.shared.role_resolver import ROLE_DISPLAY_NAMES, ROLE_MENTION_MAP
+    from agents.shared.role_resolver import ROLE_MENTION_MAP
+    from vibeteam.agents_config import get_slack_handle
 
     # Try direct lookup (agent_key might be a snake_case role)
-    if agent_key in ROLE_DISPLAY_NAMES:
-        return ROLE_DISPLAY_NAMES[agent_key]
+    handle = get_slack_handle(agent_key)
+    if handle:
+        return handle
     # Try as a mention alias (e.g. "swe", "marketer", "supervisor")
     role = ROLE_MENTION_MAP.get(agent_key.lower())
     if role:
-        return ROLE_DISPLAY_NAMES.get(role, agent_key)
+        return get_slack_handle(role) or agent_key
     return agent_key
 
 

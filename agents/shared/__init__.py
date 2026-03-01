@@ -62,7 +62,6 @@ from agents.shared.langfuse_tools import (
     get_langfuse_traces,
 )
 from agents.shared.role_resolver import (
-    ROLE_DISPLAY_NAMES,
     ROLE_MENTION_MAP,
     ROLE_PATTERN,
     AgentRole,
@@ -148,7 +147,6 @@ __all__ = [
     # Role resolution
     "AgentRole",
     "ROLE_MENTION_MAP",
-    "ROLE_DISPLAY_NAMES",
     "ROLE_PATTERN",
     "parse_role_mentions",
     "parse_first_role_mention",
