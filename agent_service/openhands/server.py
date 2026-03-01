@@ -74,6 +74,54 @@ def _github_token_context(role: str | None):
                     os.environ[key] = value
 
 
+def _disable_prompt_cache_retention() -> None:
+    flag = os.environ.get("OPENHANDS_DISABLE_PROMPT_CACHE_RETENTION")
+    if flag is not None:
+        enabled = flag.lower() in {"1", "true", "yes"}
+    else:
+        enabled = bool(
+            os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("AZURE_API_BASE")
+        )
+    if not enabled:
+        return
+
+    try:
+        from openhands.sdk.llm.options import chat_options, responses_options
+    except Exception as exc:
+        logger.warning("Failed to patch prompt_cache_retention: %s", exc)
+        return
+
+    def _strip_prompt_cache_retention(payload: dict) -> dict:
+        payload.pop("prompt_cache_retention", None)
+        return payload
+
+    original_responses = responses_options.select_responses_options
+    if not getattr(original_responses, "_vibeteam_patched", False):
+
+        def _patched_responses(*args, **kwargs):  # type: ignore[no-untyped-def]
+            out = original_responses(*args, **kwargs)
+            if isinstance(out, dict):
+                return _strip_prompt_cache_retention(out)
+            return out
+
+        _patched_responses._vibeteam_patched = True  # type: ignore[attr-defined]
+        responses_options.select_responses_options = _patched_responses
+
+    original_chat = chat_options.select_chat_options
+    if not getattr(original_chat, "_vibeteam_patched", False):
+
+        def _patched_chat(*args, **kwargs):  # type: ignore[no-untyped-def]
+            out = original_chat(*args, **kwargs)
+            if isinstance(out, dict):
+                return _strip_prompt_cache_retention(out)
+            return out
+
+        _patched_chat._vibeteam_patched = True  # type: ignore[attr-defined]
+        chat_options.select_chat_options = _patched_chat
+
+    logger.info("Prompt cache retention disabled for Azure OpenHands runs.")
+
+
 def _resolve_token_role(team: OpenHandsTeam, request: RunRequest) -> str | None:
     if request.role:
         return request.role
@@ -248,6 +296,7 @@ def get_team() -> OpenHandsTeam:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info("Starting OpenHands service...")
+    _disable_prompt_cache_retention()
     try:
         validate_required_integrations("openhands-svc")
     except Exception as e:
