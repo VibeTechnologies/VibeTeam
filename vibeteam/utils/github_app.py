@@ -12,6 +12,8 @@ Usage:
     # Use token for GitHub API calls
 """
 
+import os
+import re
 import time
 
 import jwt
@@ -35,6 +37,39 @@ def generate_jwt(app_id: str, private_key: str) -> str:
         "iss": app_id,
     }
     return jwt.encode(payload, private_key, algorithm="RS256")
+
+
+def _normalize_role(role: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", "_", role or "").strip("_")
+    return cleaned.upper()
+
+
+def get_role_app_credentials(role: str) -> tuple[str | None, str | None, str | None]:
+    """Return GitHub App credentials for a specific agent role from env vars."""
+    suffix = _normalize_role(role)
+    if not suffix:
+        return None, None, None
+    return (
+        os.environ.get(f"GITHUB_APP_ID_{suffix}"),
+        os.environ.get(f"GITHUB_APP_PRIVATE_KEY_{suffix}"),
+        os.environ.get(f"GITHUB_APP_INSTALLATION_ID_{suffix}"),
+    )
+
+
+def get_installation_token_for_role(role: str) -> str | None:
+    """Return an installation token for a specific role, falling back to defaults."""
+    app_id, private_key, installation_id = get_role_app_credentials(role)
+    if app_id and private_key and installation_id:
+        return get_installation_token(app_id, private_key, installation_id)
+
+    default_app_id = os.environ.get("GITHUB_APP_ID")
+    default_private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY")
+    default_installation_id = os.environ.get("GITHUB_APP_INSTALLATION_ID")
+    if default_app_id and default_private_key and default_installation_id:
+        return get_installation_token(
+            default_app_id, default_private_key, default_installation_id
+        )
+    return None
 
 
 def get_installation_token(

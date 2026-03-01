@@ -163,7 +163,7 @@ class SupportEngineerAgent(BaseVibeAgent):
         # GitHub tool for tracking
         if os.environ.get("GITHUB_TOKEN"):
             try:
-                tools.append(GitHubTool())
+                tools.append(GitHubTool(agent_role="support_engineer"))
             except Exception:
                 pass
 

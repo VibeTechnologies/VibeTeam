@@ -34,12 +34,18 @@ from agents.shared.kubectl_tools import (
     get_multi_namespace_context,
 )
 from agents.shared.langfuse_tools import get_langfuse_context
-from agents.shared.sentry_tools import get_sentry_context
+from agents.shared.sentry_tools import SentryClient, get_sentry_context
 
 
-def fetch_sentry_context(hours: int = 24, limit: int = 10) -> str:
+def fetch_sentry_context(
+    hours: int = 24, limit: int = 10, include_top_issue_details: bool = False
+) -> str:
     """Fetch Sentry issues and format as context for the agent."""
-    return get_sentry_context(hours=hours, limit=limit)
+    return get_sentry_context(
+        hours=hours,
+        limit=limit,
+        include_top_issue_details=include_top_issue_details,
+    )
 
 
 def fetch_kubectl_context() -> str:
@@ -148,6 +154,92 @@ def _summarize_sentry(context: str) -> str:
     return "Sentry status unavailable."
 
 
+def _task_mentions_pr(task_lower: str) -> bool:
+    return bool(re.search(r"\bpr\b", task_lower)) or "pull request" in task_lower
+
+
+def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
+    lines = [line.rstrip() for line in context.splitlines()]
+    for idx, line in enumerate(lines):
+        if line.startswith("### ["):
+            match = re.match(r"### \[(?P<project>[^\]]+)\] (?P<short_id>\S+)", line)
+            if not match:
+                continue
+            project = match.group("project")
+            short_id = match.group("short_id")
+            title = ""
+            url = ""
+            count = ""
+            for j in range(idx + 1, min(idx + 6, len(lines))):
+                if lines[j].startswith("**") and lines[j].endswith("**"):
+                    title = lines[j].strip("*")
+                    break
+            for j in range(idx + 1, min(idx + 12, len(lines))):
+                if lines[j].startswith("- URL:"):
+                    url = lines[j].split(":", 1)[1].strip()
+                    break
+            for j in range(idx + 1, min(idx + 10, len(lines))):
+                if "Count:" in lines[j]:
+                    count = lines[j].split("Count:", 1)[1].split("|", 1)[0].strip()
+                    break
+            return {
+                "project": project,
+                "short_id": short_id,
+                "title": title,
+                "url": url,
+                "count": count,
+            }
+
+    # Fallback to details block if present.
+    for idx, line in enumerate(lines):
+        if line.startswith("## Sentry Issue Details:"):
+            short_id = line.split(":", 1)[1].strip()
+            title = ""
+            url = ""
+            count = ""
+            for j in range(idx + 1, min(idx + 6, len(lines))):
+                if lines[j].startswith("**") and lines[j].endswith("**"):
+                    title = lines[j].strip("*")
+                    break
+            for j in range(idx + 1, min(idx + 12, len(lines))):
+                if lines[j].startswith("- URL:"):
+                    url = lines[j].split(":", 1)[1].strip()
+                    break
+            for j in range(idx + 1, min(idx + 12, len(lines))):
+                if lines[j].startswith("- Count:"):
+                    count = lines[j].split(":", 1)[1].strip()
+                    break
+            return {
+                "project": "",
+                "short_id": short_id,
+                "title": title,
+                "url": url,
+                "count": count,
+            }
+    return None
+
+
+def _build_pr_handoff_response(task: str, injected_context: list[str]) -> str:
+    context_str = "\n\n".join(injected_context)
+    issue = _extract_top_sentry_issue(context_str)
+    if issue:
+        project = f"[{issue['project']}] " if issue.get("project") else ""
+        title = issue.get("title") or "(title unavailable)"
+        url = issue.get("url") or "(URL missing)"
+        count = issue.get("count") or "unknown"
+        issue_line = (
+            f"Sentry issue: {project}{issue['short_id']} — {title} "
+            f"(count {count}). URL: {url}."
+        )
+    else:
+        issue_line = "No unresolved Sentry issues found in the injected data."
+
+    return (
+        f"{issue_line}\n"
+        "SoftwareEngineer please investigate and open a PR to fix the issue."
+    )
+
+
 def _extract_user_message(task: str) -> str:
     match = re.search(
         r"### User Message \\(UNTRUSTED CONTENT\\)\\n(.*?)\\n### End User Message",
@@ -178,6 +270,30 @@ def _probe_gateway_health() -> str | None:
     port = os.environ.get("VIBETEAM_GATEWAY_SERVICE_PORT_HTTP", "8080")
     url = f"http://{host}:{port}/health"
     return _probe_url(url, timeout=5.0)
+
+
+def _extract_sentry_issue_ids(text: str) -> list[str]:
+    pattern = re.compile(r"https?://[^\s>]*sentry\.io/issues/(?P<id>\d+)/?", re.IGNORECASE)
+    ids: list[str] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(text or ""):
+        issue_id = match.group("id")
+        if issue_id not in seen:
+            seen.add(issue_id)
+            ids.append(issue_id)
+    return ids
+
+
+def _extract_pr_urls(text: str) -> list[str]:
+    pattern = re.compile(r"https?://github\.com/\S+/pull/\d+", re.IGNORECASE)
+    urls = pattern.findall(text or "")
+    seen: set[str] = set()
+    unique: list[str] = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            unique.append(url)
+    return unique
 
 
 def _build_investigation_fallback(
@@ -782,12 +898,45 @@ class OpenHandsSupportEngineer:
                     "complaint",  # customer reports often relate to errors
                 ]
                 if not skip_infra_context and any(kw in task_lower for kw in sentry_keywords):
-                    sentry_ctx = fetch_sentry_context()
+                    include_top_issue_details = any(
+                        kw in task_lower
+                        for kw in [
+                            "pr",
+                            "pull request",
+                            "bug",
+                            "fix",
+                            "address",
+                            "close sentry",
+                            "close the sentry",
+                        ]
+                    )
+                    sentry_limit = 1 if include_top_issue_details else 10
+                    sentry_ctx = fetch_sentry_context(
+                        limit=sentry_limit,
+                        include_top_issue_details=include_top_issue_details,
+                    )
                     injected_context.append(sentry_ctx)
-                    # Also inject kubectl context for infrastructure issues
-                    # This eliminates the need for agents to run kubectl manually
-                    kubectl_ctx = fetch_kubectl_context()
-                    injected_context.append(kubectl_ctx)
+                    infra_keywords = [
+                        "kubectl",
+                        "pod",
+                        "pods",
+                        "deployment",
+                        "rollout",
+                        "crashloop",
+                        "crashloopbackoff",
+                        "outage",
+                        "down",
+                        "restart",
+                        "service unavailable",
+                        "timeout",
+                        "5xx",
+                        "500",
+                        "503",
+                    ]
+                    if any(kw in task_lower for kw in infra_keywords):
+                        # Only inject kubectl context when infra signals are explicit.
+                        kubectl_ctx = fetch_kubectl_context()
+                        injected_context.append(kubectl_ctx)
                     extra_guidance_lines.append(
                         "When reporting Sentry, list issue short IDs, titles, counts, AND include the full issue URL. "
                         'If none, state "No unresolved issues found" and answer whether anything needs action.'
@@ -798,6 +947,10 @@ class OpenHandsSupportEngineer:
                     extra_guidance_lines.append(
                         "If a code fix is needed, you MUST hand off to @SoftwareEngineer with a specific Sentry issue URL "
                         "and a clear fix request. Use an exact @mention so the gateway triggers the handoff."
+                    )
+                    extra_guidance_lines.append(
+                        "Pick the highest-volume unresolved Sentry issue and hand it off immediately; do not ask for prioritization. "
+                        "When PR is requested, only report that single issue (avoid listing every unresolved issue)."
                     )
                 if "close" in task_lower and "sentry" in task_lower:
                     extra_guidance_lines.append(
@@ -955,6 +1108,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             if "gmail" in task_lower or "inbox" in task_lower:
                 response = build_gmail_summary()
 
+            pr_requested = _task_mentions_pr(task_lower)
             is_notification = any(
                 kw in task_lower
                 for kw in [
@@ -971,6 +1125,29 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             )
             if is_notification and not is_explicit_investigation:
                 response = build_notification_message(task)
+
+            if pr_requested and not re.search(
+                r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE
+            ):
+                # Keep PR request responses short and focused on a single issue + handoff.
+                response = _build_pr_handoff_response(task, injected_context)
+
+            # Auto-close Sentry issue when a PR link is present in the task.
+            if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
+                issue_ids = _extract_sentry_issue_ids(task)
+                pr_urls = _extract_pr_urls(task)
+                pr_url = pr_urls[0] if pr_urls else "PR link not found"
+                if issue_ids:
+                    try:
+                        client = SentryClient(timeout=10.0)
+                        closed_id = issue_ids[0]
+                        client.resolve_issue(closed_id)
+                        response = (
+                            f"Closed Sentry issue {closed_id}. "
+                            f"PR: {pr_url}."
+                        )
+                    except Exception as exc:
+                        response = f"Sentry: failed to close issue ({exc}). PR: {pr_url}."
 
             session.add_message("user", task)
             session.add_message("assistant", response)

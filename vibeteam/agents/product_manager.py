@@ -130,7 +130,7 @@ Respond in this exact JSON format:
         tools: list[BaseTool] = []
         if os.environ.get("GITHUB_TOKEN"):
             try:
-                tools.append(GitHubTool())
+                tools.append(GitHubTool(agent_role="product_manager"))
             except Exception:
                 pass
 

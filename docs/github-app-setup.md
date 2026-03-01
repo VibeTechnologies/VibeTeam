@@ -19,7 +19,7 @@ This guide covers GitHub App setup plus the auth flow used by VibeTeam agents. I
 
 1. GitHub Settings -> Developer settings -> GitHub Apps -> New GitHub App
 2. Basic info:
-   - Name: `VibeTeam Bot`
+   - Name: `VibeTeam Bot` (or per-agent: `VibeTeam SoftwareEngineer`, etc.)
    - Homepage: `https://github.com/VibeTechnologies/VibeTeam`
 3. Permissions (repository):
    - Contents: Read & Write
@@ -54,6 +54,35 @@ GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVA
 # Optional PAT fallback
 GITHUB_TOKEN=ghp_your_pat_token
 ```
+
+### Per-Agent GitHub Apps (Recommended)
+
+If you want PRs and comments to show which agent acted, create one GitHub App per
+agent role and configure role-scoped env vars:
+
+```bash
+# Software Engineer
+GITHUB_APP_ID_SOFTWARE_ENGINEER=123456
+GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER=12345678
+GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+
+# Support Engineer
+GITHUB_APP_ID_SUPPORT_ENGINEER=123457
+GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER=12345679
+GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+
+# Release Engineer
+GITHUB_APP_ID_RELEASE_ENGINEER=123458
+GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER=12345680
+GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+
+# Product Manager
+GITHUB_APP_ID_PRODUCT_MANAGER=123459
+GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER=12345681
+GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+```
+
+Role-scoped credentials take precedence over the shared `GITHUB_APP_*` variables.
 
 ### Production (Kubernetes)
 

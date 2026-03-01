@@ -12,10 +12,28 @@ logger = logging.getLogger(__name__)
 def _github_configured() -> bool:
     if os.environ.get("GITHUB_TOKEN"):
         return True
-    return all(
+    if all(
         os.environ.get(k)
         for k in ("GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID")
-    )
+    ):
+        return True
+    # Role-scoped GitHub App credentials
+    app_ids = {
+        key.split("GITHUB_APP_ID_", 1)[1]
+        for key in os.environ
+        if key.startswith("GITHUB_APP_ID_")
+    }
+    for suffix in app_ids:
+        if all(
+            os.environ.get(k)
+            for k in (
+                f"GITHUB_APP_ID_{suffix}",
+                f"GITHUB_APP_PRIVATE_KEY_{suffix}",
+                f"GITHUB_APP_INSTALLATION_ID_{suffix}",
+            )
+        ):
+            return True
+    return False
 
 
 def _gmail_paths() -> tuple[Path, Path]:

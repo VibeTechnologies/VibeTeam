@@ -73,21 +73,22 @@ def is_assigned_to_bot(assignee: dict[str, Any] | None) -> bool:
     return False
 
 
-async def get_installation_token() -> str | None:
-    """Get GitHub App installation token."""
+async def get_installation_token(role: str | None = None) -> str | None:
+    """Get GitHub App installation token (optionally role-specific)."""
     try:
-        from vibeteam.utils.github_app import get_installation_token
+        from vibeteam.utils.github_app import get_installation_token_for_role
+
+        if role:
+            token = get_installation_token_for_role(role)
+            if token:
+                return token
 
         if (
             config.GITHUB_APP_ID
             and config.GITHUB_APP_PRIVATE_KEY
             and config.GITHUB_APP_INSTALLATION_ID
         ):
-            return get_installation_token(
-                config.GITHUB_APP_ID,
-                config.GITHUB_APP_PRIVATE_KEY,
-                config.GITHUB_APP_INSTALLATION_ID,
-            )
+            return get_installation_token_for_role("__default__")
     except ImportError:
         logger.warning("github_app utility not available")
     except Exception as e:
@@ -96,9 +97,9 @@ async def get_installation_token() -> str | None:
     return None
 
 
-async def post_acknowledgment(repo: str, issue_number: int) -> None:
+async def post_acknowledgment(repo: str, issue_number: int, role: str = "software_engineer") -> None:
     """Post a comment acknowledging the assignment."""
-    token = await get_installation_token()
+    token = await get_installation_token(role)
     if not token:
         token = os.environ.get("GITHUB_TOKEN")
 
@@ -181,11 +182,12 @@ Issue: #{issue_number}
                 repo,
                 issue_number,
                 f"I encountered an error while working on this issue: {result['error']}",
+                role="software_engineer",
             )
         else:
             response = result.get("response", "I've completed my analysis.")
             # Post response as comment
-            await post_github_comment(repo, issue_number, response)
+            await post_github_comment(repo, issue_number, response, role="software_engineer")
 
             # Check for handoffs
             message_router = get_message_router()
@@ -244,15 +246,20 @@ Issue: #{issue_number}
             response = result.get("response", "")
             if response:
                 formatted = f"[{display_name}] {response}"
-                await post_github_comment(repo, issue_number, formatted)
+                await post_github_comment(repo, issue_number, formatted, role=role)
 
     except Exception as e:
         logger.exception(f"Failed to run {display_name} agent: {e}")
 
 
-async def post_github_comment(repo: str, issue_number: int, body: str) -> None:
+async def post_github_comment(
+    repo: str,
+    issue_number: int,
+    body: str,
+    role: str | None = None,
+) -> None:
     """Post a comment on a GitHub issue."""
-    token = await get_installation_token()
+    token = await get_installation_token(role)
     if not token:
         token = os.environ.get("GITHUB_TOKEN")
 
@@ -312,7 +319,9 @@ async def handle_github_webhook(
             logger.info(f"Issue #{issue_number} assigned to bot, triggering SWE agent")
 
             # Post acknowledgment and run agent in background
-            asyncio.create_task(post_acknowledgment(repo_full_name, issue_number))
+            asyncio.create_task(
+                post_acknowledgment(repo_full_name, issue_number, role="software_engineer")
+            )
             asyncio.create_task(
                 run_swe_agent(repo_full_name, issue_number, issue_title, issue_body)
             )

@@ -7,10 +7,12 @@ FastAPI server exposing OpenHands team functionality via REST API.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import time
 import uuid
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -33,6 +35,43 @@ from .utils import (
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+_GITHUB_TOKEN_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def _github_token_context(role: str | None):
+    """Temporarily set role-specific GitHub token for gh/SDK usage."""
+    if not role:
+        yield
+        return
+
+    token = None
+    try:
+        from vibeteam.utils.github_app import get_installation_token_for_role
+
+        token = get_installation_token_for_role(role)
+    except Exception:
+        token = None
+
+    with _GITHUB_TOKEN_LOCK:
+        old_env = {
+            "VIBETEAM_AGENT_ROLE": os.environ.get("VIBETEAM_AGENT_ROLE"),
+            "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
+            "GH_TOKEN": os.environ.get("GH_TOKEN"),
+        }
+        os.environ["VIBETEAM_AGENT_ROLE"] = role
+        if token:
+            os.environ["GITHUB_TOKEN"] = token
+            os.environ["GH_TOKEN"] = token
+        try:
+            yield
+        finally:
+            for key, value in old_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 # Concurrency control: limit the number of simultaneous agent executions
 # to prevent resource exhaustion when multiple jobs arrive concurrently.
@@ -300,15 +339,16 @@ async def run_task(request: RunRequest):
             agent = team._get_agent(role)
 
             def _run_agent():
-                return agent.run(
-                    task=request.task,
-                    context_type=request.context_type,
-                    context_id=context_id,
-                    workspace=request.workspace,
-                    use_tools=request.use_tools,
-                    skip_context_injection=request.skip_context_injection,
-                    progress_heartbeat=_progress_heartbeat,
-                )
+                with _github_token_context(role):
+                    return agent.run(
+                        task=request.task,
+                        context_type=request.context_type,
+                        context_id=context_id,
+                        workspace=request.workspace,
+                        use_tools=request.use_tools,
+                        skip_context_injection=request.skip_context_injection,
+                        progress_heartbeat=_progress_heartbeat,
+                    )
 
             if idle_timeout is None:
                 result = await asyncio.to_thread(_run_agent)

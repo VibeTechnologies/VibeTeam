@@ -122,6 +122,7 @@ class GitHubConnector:
         app_id: str | None = None,
         private_key: str | None = None,
         installation_id: str | None = None,
+        agent_role: str | None = None,
     ):
         """
         Initialize GitHub connector.
@@ -144,9 +145,29 @@ class GitHubConnector:
         self.repo = repo
 
         # GitHub App credentials (preferred)
-        self.app_id = app_id or os.environ.get("GITHUB_APP_ID")
-        self.private_key = private_key or os.environ.get("GITHUB_APP_PRIVATE_KEY")
-        self.installation_id = installation_id or os.environ.get("GITHUB_APP_INSTALLATION_ID")
+        role = agent_role or os.environ.get("VIBETEAM_AGENT_ROLE")
+        role_app_id = None
+        role_private_key = None
+        role_installation_id = None
+        if role:
+            try:
+                from vibeteam.utils.github_app import get_role_app_credentials
+
+                role_app_id, role_private_key, role_installation_id = get_role_app_credentials(role)
+            except Exception:
+                role_app_id = role_private_key = role_installation_id = None
+
+        self.app_id = app_id or role_app_id or os.environ.get("GITHUB_APP_ID")
+        self.private_key = (
+            private_key
+            or role_private_key
+            or os.environ.get("GITHUB_APP_PRIVATE_KEY")
+        )
+        self.installation_id = (
+            installation_id
+            or role_installation_id
+            or os.environ.get("GITHUB_APP_INSTALLATION_ID")
+        )
 
         # Token management
         self.token = token or os.environ.get("GITHUB_TOKEN")
