@@ -25,7 +25,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from vibeteam.router import Router
 from vibeteam.agents_config import get_slack_handle
-from agents.shared.role_resolver import ROLE_DISPLAY_NAMES
+from agents.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
 from vibeteam.router.models import AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,9 @@ def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
         return explicit
 
     aliases: dict[str, str] = {}
-    for role, display in ROLE_DISPLAY_NAMES.items():
+    roles = sorted(set(ROLE_MENTION_MAP.values()))
+    for role in roles:
+        display = get_display_name(role)
         slack_handle = get_slack_handle(role)
         spaced = re.sub(r"(?<!^)([A-Z])", r" \1", display)
         for alias in {display, spaced, slack_handle}:
@@ -1245,7 +1247,7 @@ async def run_agent_for_slack(
     effective_message_ts = message_ts or thread_ts or ""
 
     for role in role_mentions:
-        display_name = get_slack_handle(role) or ROLE_DISPLAY_NAMES.get(cast(AgentRole, role), role)
+        display_name = get_slack_handle(role) or get_display_name(cast(AgentRole, role))
 
         if use_async and effective_message_ts:
             await _submit_agent_async(
@@ -1368,12 +1370,10 @@ async def _run_agent_and_respond(
                         continue
                     handoff_start = time.time()
                     logger.info(f"[TIMING] Executing handoff to {handoff_role}...")
-                    handoff_display = get_slack_handle(handoff_role) or ROLE_DISPLAY_NAMES.get(
-                        cast(AgentRole, handoff_role), handoff_role
+                    handoff_display = get_slack_handle(handoff_role) or get_display_name(
+                        cast(AgentRole, handoff_role)
                     )
-                    handoff_search = ROLE_DISPLAY_NAMES.get(
-                        cast(AgentRole, handoff_role), handoff_display
-                    )
+                    handoff_search = get_display_name(cast(AgentRole, handoff_role))
                     handoff_snippet = _extract_handoff_snippet(response, handoff_search)
                     repo_ref = _extract_repo_reference(handoff_snippet) or _extract_repo_reference(
                         response
@@ -1542,12 +1542,10 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
                 logger.info(f"[CALLBACK] Skipping self-handoff to {role}")
                 continue
 
-            handoff_display = get_slack_handle(handoff_role) or ROLE_DISPLAY_NAMES.get(
-                cast(AgentRole, handoff_role), handoff_role
+            handoff_display = get_slack_handle(handoff_role) or get_display_name(
+                cast(AgentRole, handoff_role)
             )
-            handoff_search = ROLE_DISPLAY_NAMES.get(
-                cast(AgentRole, handoff_role), handoff_display
-            )
+            handoff_search = get_display_name(cast(AgentRole, handoff_role))
             handoff_snippet = _extract_handoff_snippet(response, handoff_search)
             repo_ref = _extract_repo_reference(handoff_snippet) or _extract_repo_reference(response)
             sentry_urls = _extract_sentry_urls(response)
