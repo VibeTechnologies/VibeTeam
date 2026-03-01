@@ -170,6 +170,20 @@ def _extract_sentry_urls(text: str) -> list[str]:
     return unique
 
 
+def _extract_repo_reference(text: str) -> str | None:
+    patterns = [
+        r"Repository:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+        r"\brepository\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+        r"\brepo[:\s]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+        r"github\\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip().rstrip(").,")
+    return None
+
+
 def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
     """
     Split a long message into chunks, trying to break at newlines or spaces.
@@ -1341,7 +1355,9 @@ async def _run_agent_and_respond(
                         cast(AgentRole, handoff_role), handoff_display
                     )
                     handoff_snippet = _extract_handoff_snippet(response, handoff_search)
+                    repo_ref = _extract_repo_reference(response)
                     sentry_urls = _extract_sentry_urls(response)
+                    repo_block = f"Repository: {repo_ref}\n\n" if repo_ref else ""
                     sentry_block = ""
                     if sentry_urls:
                         sentry_block = f"Sentry issue(s): {' '.join(sentry_urls)}\n\n"
@@ -1349,6 +1365,7 @@ async def _run_agent_and_respond(
                     handoff_message = (
                         f"[Handoff from {display_name}]\n\n"
                         f"Original request: {user_message}\n\n"
+                        f"{repo_block}"
                         f"{sentry_block}"
                         f"Handoff request: {handoff_snippet}"
                     )
@@ -1510,13 +1527,16 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
                 cast(AgentRole, handoff_role), handoff_display
             )
             handoff_snippet = _extract_handoff_snippet(response, handoff_search)
+            repo_ref = _extract_repo_reference(response)
             sentry_urls = _extract_sentry_urls(response)
+            repo_block = f"Repository: {repo_ref}\n\n" if repo_ref else ""
             sentry_block = ""
             if sentry_urls:
                 sentry_block = f"Sentry issue(s): {' '.join(sentry_urls)}\n\n"
             handoff_message = (
                 f"[Handoff from {display_name}]\n\n"
                 f"Original request: {user_message}\n\n"
+                f"{repo_block}"
                 f"{sentry_block}"
                 f"Handoff request: {handoff_snippet}"
             )
