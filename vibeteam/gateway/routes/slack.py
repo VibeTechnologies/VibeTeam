@@ -173,6 +173,18 @@ def _extract_sentry_urls(text: str) -> list[str]:
     return unique
 
 
+def _extract_pr_urls(text: str) -> list[str]:
+    pattern = re.compile(r"https?://github\.com/\S+/pull/\d+", re.IGNORECASE)
+    urls = pattern.findall(text or "")
+    seen: set[str] = set()
+    unique: list[str] = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            unique.append(url)
+    return unique
+
+
 def _extract_repo_reference(text: str) -> str | None:
     sentry_project_patterns = [
         (r"\bvibebrowserextension\b", "VibeTechnologies/VibeWebAgent"),
@@ -1379,16 +1391,21 @@ async def _run_agent_and_respond(
                         response
                     )
                     sentry_urls = _extract_sentry_urls(response)
+                    pr_urls = _extract_pr_urls(response)
                     repo_block = f"Repository: {repo_ref}\n\n" if repo_ref else ""
                     sentry_block = ""
                     if sentry_urls:
                         sentry_block = f"Sentry issue(s): {' '.join(sentry_urls)}\n\n"
+                    pr_block = ""
+                    if pr_urls:
+                        pr_block = f"PR(s): {' '.join(pr_urls)}\n\n"
                     # Pass minimal context to avoid overwhelming the next agent.
                     handoff_message = (
                         f"[Handoff from {display_name}]\n\n"
                         f"Original request: {user_message}\n\n"
                         f"{repo_block}"
                         f"{sentry_block}"
+                        f"{pr_block}"
                         f"Handoff request: {handoff_snippet}"
                     )
                     await _run_agent_and_respond(
@@ -1549,15 +1566,20 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
             handoff_snippet = _extract_handoff_snippet(response, handoff_search)
             repo_ref = _extract_repo_reference(handoff_snippet) or _extract_repo_reference(response)
             sentry_urls = _extract_sentry_urls(response)
+            pr_urls = _extract_pr_urls(response)
             repo_block = f"Repository: {repo_ref}\n\n" if repo_ref else ""
             sentry_block = ""
             if sentry_urls:
                 sentry_block = f"Sentry issue(s): {' '.join(sentry_urls)}\n\n"
+            pr_block = ""
+            if pr_urls:
+                pr_block = f"PR(s): {' '.join(pr_urls)}\n\n"
             handoff_message = (
                 f"[Handoff from {display_name}]\n\n"
                 f"Original request: {user_message}\n\n"
                 f"{repo_block}"
                 f"{sentry_block}"
+                f"{pr_block}"
                 f"Handoff request: {handoff_snippet}"
             )
             await _submit_agent_async(

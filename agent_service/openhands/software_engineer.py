@@ -2387,6 +2387,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             requires_tools = self._task_requires_tools(task, context_type)
             pr_required = self._task_requires_pr(task)
             used_single_pass = False
+            auto_pr_created = False
             if (prefetched_issue or prefetched_repo_only) and not requires_tools:
                 used_single_pass = True
                 print(
@@ -2420,9 +2421,10 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                             f"Sentry issue: {sentry_ref}\n"
                             "@SupportEngineer please close the Sentry issue now."
                         )
+                        auto_pr_created = True
 
             # If response is missing evidence, build a deterministic summary.
-            if prefetched_issue_number:
+            if prefetched_issue_number and not auto_pr_created:
                 import re as _re
 
                 response_lower = response.lower()
@@ -2450,7 +2452,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                     response = self._build_issue_triage_response(
                         prefetched_issue_number, github_ctx, repo_ctx
                     )
-            elif prefetched_repo_only:
+            elif prefetched_repo_only and not auto_pr_created:
                 import re as _re
 
                 response_lower = response.lower()

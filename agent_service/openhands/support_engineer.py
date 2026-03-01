@@ -154,6 +154,92 @@ def _summarize_sentry(context: str) -> str:
     return "Sentry status unavailable."
 
 
+def _task_mentions_pr(task_lower: str) -> bool:
+    return bool(re.search(r"\bpr\b", task_lower)) or "pull request" in task_lower
+
+
+def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
+    lines = [line.rstrip() for line in context.splitlines()]
+    for idx, line in enumerate(lines):
+        if line.startswith("### ["):
+            match = re.match(r"### \[(?P<project>[^\]]+)\] (?P<short_id>\S+)", line)
+            if not match:
+                continue
+            project = match.group("project")
+            short_id = match.group("short_id")
+            title = ""
+            url = ""
+            count = ""
+            for j in range(idx + 1, min(idx + 6, len(lines))):
+                if lines[j].startswith("**") and lines[j].endswith("**"):
+                    title = lines[j].strip("*")
+                    break
+            for j in range(idx + 1, min(idx + 12, len(lines))):
+                if lines[j].startswith("- URL:"):
+                    url = lines[j].split(":", 1)[1].strip()
+                    break
+            for j in range(idx + 1, min(idx + 10, len(lines))):
+                if "Count:" in lines[j]:
+                    count = lines[j].split("Count:", 1)[1].split("|", 1)[0].strip()
+                    break
+            return {
+                "project": project,
+                "short_id": short_id,
+                "title": title,
+                "url": url,
+                "count": count,
+            }
+
+    # Fallback to details block if present.
+    for idx, line in enumerate(lines):
+        if line.startswith("## Sentry Issue Details:"):
+            short_id = line.split(":", 1)[1].strip()
+            title = ""
+            url = ""
+            count = ""
+            for j in range(idx + 1, min(idx + 6, len(lines))):
+                if lines[j].startswith("**") and lines[j].endswith("**"):
+                    title = lines[j].strip("*")
+                    break
+            for j in range(idx + 1, min(idx + 12, len(lines))):
+                if lines[j].startswith("- URL:"):
+                    url = lines[j].split(":", 1)[1].strip()
+                    break
+            for j in range(idx + 1, min(idx + 12, len(lines))):
+                if lines[j].startswith("- Count:"):
+                    count = lines[j].split(":", 1)[1].strip()
+                    break
+            return {
+                "project": "",
+                "short_id": short_id,
+                "title": title,
+                "url": url,
+                "count": count,
+            }
+    return None
+
+
+def _build_pr_handoff_response(task: str, injected_context: list[str]) -> str:
+    context_str = "\n\n".join(injected_context)
+    issue = _extract_top_sentry_issue(context_str)
+    if issue:
+        project = f"[{issue['project']}] " if issue.get("project") else ""
+        title = issue.get("title") or "(title unavailable)"
+        url = issue.get("url") or "(URL missing)"
+        count = issue.get("count") or "unknown"
+        issue_line = (
+            f"Sentry issue: {project}{issue['short_id']} — {title} "
+            f"(count {count}). URL: {url}."
+        )
+    else:
+        issue_line = "No unresolved Sentry issues found in the injected data."
+
+    return (
+        f"{issue_line}\n"
+        "SoftwareEngineer please investigate and open a PR to fix the issue."
+    )
+
+
 def _extract_user_message(task: str) -> str:
     match = re.search(
         r"### User Message \\(UNTRUSTED CONTENT\\)\\n(.*?)\\n### End User Message",
@@ -1022,6 +1108,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             if "gmail" in task_lower or "inbox" in task_lower:
                 response = build_gmail_summary()
 
+            pr_requested = _task_mentions_pr(task_lower)
             is_notification = any(
                 kw in task_lower
                 for kw in [
@@ -1038,6 +1125,12 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             )
             if is_notification and not is_explicit_investigation:
                 response = build_notification_message(task)
+
+            if pr_requested and not re.search(
+                r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE
+            ):
+                # Keep PR request responses short and focused on a single issue + handoff.
+                response = _build_pr_handoff_response(task, injected_context)
 
             # Auto-close Sentry issue when a PR link is present in the task.
             if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
