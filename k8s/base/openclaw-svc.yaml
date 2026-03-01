@@ -56,6 +56,9 @@ spec:
           ports:
             - containerPort: 8080
               name: http
+          envFrom:
+            - secretRef:
+                name: github-app-role-secrets
           env:
             - name: DATABASE_URL
               valueFrom:

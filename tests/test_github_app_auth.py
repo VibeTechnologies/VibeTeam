@@ -34,6 +34,7 @@ class TestGitHubAppAuth:
         normalized = github_app._normalize_private_key(raw)
         assert "BEGIN RSA PRIVATE KEY" in normalized
         assert "END RSA PRIVATE KEY" in normalized
+        assert "\\n" not in normalized
 
     def test_generate_jwt(self):
         """Test JWT generation for GitHub App."""

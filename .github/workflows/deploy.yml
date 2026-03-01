@@ -134,6 +134,24 @@ jobs:
             --from-literal=SENTRY_CLIENT_SECRET="${{ secrets.SENTRY_CLIENT_SECRET }}" \
             --from-literal=CALLBACK_SECRET="${{ secrets.CALLBACK_SECRET }}"
 
+          kubectl -n $NAMESPACE delete secret github-app-role-secrets --ignore-not-found
+          kubectl -n $NAMESPACE create secret generic github-app-role-secrets \
+            --from-literal=GITHUB_APP_ID_SOFTWARE_ENGINEER="${{ secrets.GITHUB_APP_ID_SOFTWARE_ENGINEER }}" \
+            --from-literal=GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER="${{ secrets.GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER }}" \
+            --from-literal=GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER="${{ secrets.GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER }}" \
+            --from-literal=GITHUB_APP_ID_SUPPORT_ENGINEER="${{ secrets.GITHUB_APP_ID_SUPPORT_ENGINEER }}" \
+            --from-literal=GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER="${{ secrets.GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER }}" \
+            --from-literal=GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER="${{ secrets.GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER }}" \
+            --from-literal=GITHUB_APP_ID_RELEASE_ENGINEER="${{ secrets.GITHUB_APP_ID_RELEASE_ENGINEER }}" \
+            --from-literal=GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER="${{ secrets.GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER }}" \
+            --from-literal=GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER="${{ secrets.GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER }}" \
+            --from-literal=GITHUB_APP_ID_PRODUCT_MANAGER="${{ secrets.GITHUB_APP_ID_PRODUCT_MANAGER }}" \
+            --from-literal=GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER="${{ secrets.GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER }}" \
+            --from-literal=GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER="${{ secrets.GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER }}" \
+            --from-literal=GITHUB_APP_ID_MARKETING_MANAGER="${{ secrets.GITHUB_APP_ID_MARKETING_MANAGER }}" \
+            --from-literal=GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER="${{ secrets.GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER }}" \
+            --from-literal=GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER="${{ secrets.GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER }}"
+
           if [ -n "${{ secrets.GMAIL_CREDENTIALS_JSON }}" ]; then
             kubectl -n $NAMESPACE delete secret gmail-oauth-secrets --ignore-not-found
             echo '${{ secrets.GMAIL_CREDENTIALS_JSON }}' > /tmp/gmail-credentials.json
