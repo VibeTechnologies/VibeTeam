@@ -27,8 +27,18 @@ class GitHubTool(BaseTool):
         token: str | None = None,
         owner: str = "VibeTechnologies",
         repo: str = "VibeWebAgent",
+        agent_role: str | None = None,
     ):
-        self.connector = GitHubConnector(token=token, owner=owner, repo=repo)
+        if agent_role is None:
+            import os
+
+            agent_role = os.environ.get("VIBETEAM_AGENT_ROLE")
+        self.connector = GitHubConnector(
+            token=token,
+            owner=owner,
+            repo=repo,
+            agent_role=agent_role,
+        )
 
     def get_schema(self) -> dict:
         """Return OpenAI function schema."""

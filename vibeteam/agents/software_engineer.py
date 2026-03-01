@@ -105,7 +105,7 @@ class SoftwareEngineerAgent(BaseVibeAgent):
         tools: list[BaseTool] = []
         if os.environ.get("GITHUB_TOKEN"):
             try:
-                tools.append(GitHubTool())
+                tools.append(GitHubTool(agent_role="software_engineer"))
             except Exception:
                 pass
 
