@@ -34,7 +34,7 @@ from agents.shared.kubectl_tools import (
     get_multi_namespace_context,
 )
 from agents.shared.langfuse_tools import get_langfuse_context
-from agents.shared.sentry_tools import get_sentry_context
+from agents.shared.sentry_tools import SentryClient, get_sentry_context
 
 
 def fetch_sentry_context(
@@ -184,6 +184,18 @@ def _probe_gateway_health() -> str | None:
     port = os.environ.get("VIBETEAM_GATEWAY_SERVICE_PORT_HTTP", "8080")
     url = f"http://{host}:{port}/health"
     return _probe_url(url, timeout=5.0)
+
+
+def _extract_sentry_issue_ids(text: str) -> list[str]:
+    pattern = re.compile(r"https?://[^\s>]*sentry\.io/issues/(?P<id>\d+)/?", re.IGNORECASE)
+    ids: list[str] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(text or ""):
+        issue_id = match.group("id")
+        if issue_id not in seen:
+            seen.add(issue_id)
+            ids.append(issue_id)
+    return ids
 
 
 def _build_investigation_fallback(
@@ -1011,6 +1023,18 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             )
             if is_notification and not is_explicit_investigation:
                 response = build_notification_message(task)
+
+            # Auto-close Sentry issue when a PR link is present in the task.
+            if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
+                issue_ids = _extract_sentry_issue_ids(task)
+                if issue_ids:
+                    try:
+                        client = SentryClient(timeout=10.0)
+                        closed_id = issue_ids[0]
+                        client.resolve_issue(closed_id)
+                        response += f"\n\nSentry: closed issue {closed_id}."
+                    except Exception as exc:
+                        response += f"\n\nSentry: failed to close issue ({exc})."
 
             session.add_message("user", task)
             session.add_message("assistant", response)
