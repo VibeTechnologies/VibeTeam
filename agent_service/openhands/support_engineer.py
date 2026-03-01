@@ -789,8 +789,20 @@ class OpenHandsSupportEngineer:
                     kubectl_ctx = fetch_kubectl_context()
                     injected_context.append(kubectl_ctx)
                     extra_guidance_lines.append(
-                        "When reporting Sentry, list issue short IDs, titles, and counts. "
+                        "When reporting Sentry, list issue short IDs, titles, counts, AND include the full issue URL. "
                         'If none, state "No unresolved issues found" and answer whether anything needs action.'
+                    )
+
+                # Explicit guidance when asked to create PRs or close Sentry issues.
+                if "pr" in task_lower or "pull request" in task_lower:
+                    extra_guidance_lines.append(
+                        "If a code fix is needed, you MUST hand off to @SoftwareEngineer with a specific Sentry issue URL "
+                        "and a clear fix request. Use an exact @mention so the gateway triggers the handoff."
+                    )
+                if "close" in task_lower and "sentry" in task_lower:
+                    extra_guidance_lines.append(
+                        "If asked to close a Sentry issue, close it after the PR is created (or immediately if urgent) "
+                        "via the Sentry API, and confirm with the issue URL in your response."
                     )
 
                 # Gmail context for email-related tasks

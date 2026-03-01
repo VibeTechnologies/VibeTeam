@@ -81,6 +81,32 @@ _trigger_rate_limiter = TokenBucketRateLimiter(
 )
 
 
+def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
+    """Parse handoff roles, allowing bare role names in handoff phrasing.
+
+    Falls back to detecting lines like "SoftwareEngineer please ..." when @mentions
+    are missing, while avoiding self-handoffs.
+    """
+    message_router = get_message_router()
+    explicit = message_router.parse_role_mentions(response)
+    if explicit:
+        return explicit
+
+    # Remove leading agent prefix like "[SupportEngineer]" if present.
+    clean = re.sub(r"_?\[[A-Za-z]+\]\s*", "", response.strip())
+    names_pattern = "|".join(re.escape(name) for name in ROLE_DISPLAY_NAMES.values())
+    if not names_pattern:
+        return []
+    pattern = re.compile(rf"(?i)(?<![@/])\b({names_pattern})\b")
+    display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY_NAMES.items()}
+    roles: list[str] = []
+    for match in pattern.findall(clean):
+        role = display_to_role.get(match.lower())
+        if role and role != source_role and role not in roles:
+            roles.append(role)
+    return roles
+
+
 def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
     """
     Split a long message into chunks, trying to break at newlines or spaces.
@@ -1231,8 +1257,7 @@ async def _run_agent_and_respond(
                 await send_slack_message(channel, formatted_chunk, thread_ts)
 
             # Check for handoffs in the response and execute them synchronously
-            message_router = get_message_router()
-            handoff_roles = message_router.parse_role_mentions(response)
+            handoff_roles = _parse_handoff_roles(response, role)
             logger.info(f"Checking for handoffs in response from {role}: found {handoff_roles}")
             if handoff_roles and current_depth < max_handoff_depth:
                 logger.info(

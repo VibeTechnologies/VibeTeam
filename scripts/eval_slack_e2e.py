@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -261,10 +262,14 @@ SCENARIOS = {
         "name": "Support Engineer - Sentry Review to PR",
         "message": (
             "@VibeTeam @SupportEngineer review Sentry issues and address anything urgent. "
-            "If you see a bug, create a PR."
+            "If you see a bug, create a PR and close the Sentry issue."
         ),
         "expected_agent": "support_engineer",
         "timeout": 600,
+        "post_checks": {
+            "github_pr_created": True,
+            "sentry_issue_closed": True,
+        },
         "evaluation_criteria": {
             "SentryUsage": (
                 "Did the SupportEngineer actually check Sentry and report findings? "
@@ -279,17 +284,17 @@ SCENARIOS = {
                 "Score 0.8-1.0: Clear, specific Sentry findings with context."
             ),
             "TaskCompletion": (
-                "Did the agent address issues and create a PR if a bug was found? "
+                "Did the agent address issues, create a PR, and close the Sentry issue? "
                 "REQUIRED: "
                 "(1) Clear yes/no on issues to address; "
                 "(2) If issues exist, triage and take action; "
-                "(3) If a bug is identified, PR created OR explicit handoff to SoftwareEngineer with evidence; "
+                "(3) If a bug is identified, PR created and Sentry issue closed, OR explicit handoff with evidence; "
                 "(4) If no issues, explicitly state nothing to address and no PR needed. "
                 "SCORING: "
                 "Score 0.0-0.3: No action or no answer to the question. "
                 "Score 0.3-0.6: Sentry checked but no clear action or next steps. "
                 "Score 0.6-0.8: Clear answer tied to findings with actionable next steps. "
-                "Score 0.8-1.0: PR created (or well-scoped handoff) with evidence."
+                "Score 0.8-1.0: PR created and Sentry issue closed (or well-scoped handoff) with evidence."
             ),
             "EvidenceBasedDecision": (
                 "Did the agent make evidence-based decisions (no speculative PRs)? "
@@ -338,7 +343,7 @@ SCENARIOS = {
             "TaskCompletion": [
                 "Check that the response directly answers whether there is anything to address.",
                 "Verify the answer is tied to Sentry findings.",
-                "If a bug is identified, check for PR creation or explicit handoff with evidence.",
+                "If a bug is identified, check for PR creation and Sentry issue closure or explicit handoff with evidence.",
             ],
             "EvidenceBasedDecision": [
                 "Check that actions are supported by Sentry findings.",
@@ -1374,6 +1379,197 @@ def _is_placeholder(text: str) -> bool:
     return False
 
 
+def _default_github_repo() -> tuple[str, str]:
+    repo_url = os.environ.get("GITHUB_REPO_URL", "")
+    if repo_url:
+        match = re.search(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/]+?)(?:\.git)?$", repo_url)
+        if match:
+            return match.group("owner"), match.group("repo")
+    owner = os.environ.get("EVAL_GITHUB_OWNER") or os.environ.get("GITHUB_OWNER") or "VibeTechnologies"
+    repo = os.environ.get("EVAL_GITHUB_REPO") or os.environ.get("GITHUB_REPO") or "VibeTeam"
+    return owner, repo
+
+
+def _extract_github_pr_refs(text: str) -> list[dict[str, str | int]]:
+    refs: list[dict[str, str | int]] = []
+    seen: set[tuple[str, str, int]] = set()
+
+    url_pattern = re.compile(
+        r"https?://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/pull/(?P<number>\d+)",
+        re.IGNORECASE,
+    )
+    for match in url_pattern.finditer(text):
+        owner = match.group("owner")
+        repo = match.group("repo")
+        number = int(match.group("number"))
+        key = (owner, repo, number)
+        if key not in seen:
+            seen.add(key)
+            refs.append({"owner": owner, "repo": repo, "number": number, "source": match.group(0)})
+
+    pr_pattern = re.compile(r"\b(?:PR|pull request)\s*#?\s*(\d+)\b", re.IGNORECASE)
+    default_owner, default_repo = _default_github_repo()
+    for match in pr_pattern.finditer(text):
+        number = int(match.group(1))
+        key = (default_owner, default_repo, number)
+        if key not in seen:
+            seen.add(key)
+            refs.append(
+                {
+                    "owner": default_owner,
+                    "repo": default_repo,
+                    "number": number,
+                    "source": f"PR #{number}",
+                }
+            )
+
+    return refs
+
+
+def _extract_sentry_issue_ids(text: str) -> list[int]:
+    issue_ids: list[int] = []
+    seen: set[int] = set()
+
+    url_patterns = [
+        re.compile(
+            r"https?://sentry\.io/(?:organizations/[^/]+/)?issues/(?P<number>\d+)",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"https?://[A-Za-z0-9-]+\.sentry\.io/issues/(?P<number>\d+)",
+            re.IGNORECASE,
+        ),
+    ]
+    for pattern in url_patterns:
+        for match in pattern.finditer(text):
+            issue_id = int(match.group("number"))
+            if issue_id not in seen:
+                seen.add(issue_id)
+                issue_ids.append(issue_id)
+
+    if issue_ids:
+        return issue_ids
+
+    for line in text.splitlines():
+        if "sentry" not in line.lower():
+            continue
+        match = re.search(r"\bissue\s*#?\s*(\d{4,})\b", line, re.IGNORECASE)
+        if match:
+            issue_id = int(match.group(1))
+            if issue_id not in seen:
+                seen.add(issue_id)
+                issue_ids.append(issue_id)
+
+    return issue_ids
+
+
+def _check_github_pr_created(transcript: str) -> dict[str, str | bool]:
+    refs = _extract_github_pr_refs(transcript)
+    if not refs:
+        return {
+            "name": "GitHub PR created",
+            "passed": False,
+            "required": True,
+            "details": "No PR reference found in conversation.",
+        }
+
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        return {
+            "name": "GitHub PR created",
+            "passed": False,
+            "required": True,
+            "details": "GITHUB_TOKEN not set; cannot verify PR existence.",
+        }
+
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github+json"}
+    errors: list[str] = []
+
+    for ref in refs:
+        owner = str(ref["owner"])
+        repo = str(ref["repo"])
+        number = int(ref["number"])
+        url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{number}"
+        try:
+            response = httpx.get(url, headers=headers, timeout=20.0)
+        except httpx.HTTPError as exc:
+            errors.append(f"{owner}/{repo}#{number}: request failed ({exc})")
+            continue
+
+        if response.status_code == 200:
+            data = response.json()
+            state = data.get("state", "unknown")
+            html_url = data.get("html_url", f"https://github.com/{owner}/{repo}/pull/{number}")
+            return {
+                "name": "GitHub PR created",
+                "passed": True,
+                "required": True,
+                "details": f"Found PR {html_url} (state: {state}).",
+            }
+
+        errors.append(f"{owner}/{repo}#{number}: {response.status_code}")
+
+    return {
+        "name": "GitHub PR created",
+        "passed": False,
+        "required": True,
+        "details": f"PR references not found or inaccessible ({'; '.join(errors)}).",
+    }
+
+
+def _check_sentry_issue_closed(transcript: str) -> dict[str, str | bool]:
+    issue_ids = _extract_sentry_issue_ids(transcript)
+    if not issue_ids:
+        return {
+            "name": "Sentry issue closed",
+            "passed": False,
+            "required": True,
+            "details": "No Sentry issue ID/URL found in conversation.",
+        }
+
+    token = os.environ.get("SENTRY_AUTH_TOKEN")
+    if not token:
+        return {
+            "name": "Sentry issue closed",
+            "passed": False,
+            "required": True,
+            "details": "SENTRY_AUTH_TOKEN not set; cannot verify issue status.",
+        }
+
+    headers = {"Authorization": f"Bearer {token}"}
+    statuses: list[str] = []
+    all_closed = True
+
+    for issue_id in issue_ids:
+        url = f"https://sentry.io/api/0/issues/{issue_id}/"
+        try:
+            response = httpx.get(url, headers=headers, timeout=20.0)
+        except httpx.HTTPError as exc:
+            statuses.append(f"{issue_id}: request failed ({exc})")
+            all_closed = False
+            continue
+
+        if response.status_code != 200:
+            statuses.append(f"{issue_id}: {response.status_code}")
+            all_closed = False
+            continue
+
+        data = response.json()
+        status = data.get("status", "unknown")
+        is_closed = status in {"resolved", "ignored"}
+        statuses.append(f"{issue_id}: {status}")
+        if not is_closed:
+            all_closed = False
+
+    details = ", ".join(statuses) if statuses else "No issue status available."
+    return {
+        "name": "Sentry issue closed",
+        "passed": all_closed,
+        "required": True,
+        "details": details,
+    }
+
+
 def build_transcript(messages: list[tuple[str, str]]) -> str:
     """Build transcript from (role, text) pairs."""
     lines = []
@@ -1390,6 +1586,7 @@ def generate_eval_report(
     thread_ts: str,
     conversation: list[tuple[str, str]],
     metrics_results: list[dict],
+    post_checks_results: list[dict] | None,
     latency_ms: int,
     output_dir: str | Path = "results/eval_reports",
 ) -> Path:
@@ -1402,14 +1599,27 @@ def generate_eval_report(
     filename = f"eval_{scenario_name}_{timestamp_str}.md"
     filepath = output_path / filename
 
-    # Calculate overall pass/fail
-    if metrics_results:
-        all_passed = all(m["score"] >= m["threshold"] for m in metrics_results)
-        status_emoji = "✅" if all_passed else "❌"
-        status_text = "PASSED" if all_passed else "FAILED"
-    else:
+    post_checks_results = post_checks_results or []
+    required_checks = [c for c in post_checks_results if c.get("required", True)]
+    post_checks_passed = (
+        all(c.get("passed") for c in required_checks) if required_checks else None
+    )
+
+    metrics_passed = all(m["score"] >= m["threshold"] for m in metrics_results) if metrics_results else None
+
+    if metrics_passed is None and post_checks_passed is None:
         status_emoji = "⚠️"
         status_text = "NO EVALUATION (DeepEval not available)"
+    elif metrics_passed is None:
+        status_emoji = "✅" if post_checks_passed else "❌"
+        status_text = "PASSED (POST-CHECKS ONLY)" if post_checks_passed else "FAILED (POST-CHECKS)"
+    elif post_checks_passed is None:
+        status_emoji = "✅" if metrics_passed else "❌"
+        status_text = "PASSED" if metrics_passed else "FAILED"
+    else:
+        all_passed = metrics_passed and post_checks_passed
+        status_emoji = "✅" if all_passed else "❌"
+        status_text = "PASSED" if all_passed else "FAILED"
 
     # Extract agents from conversation
     agents_ran = list({role for role, _ in conversation if role != "user"})
@@ -1471,6 +1681,23 @@ def generate_eval_report(
                     "",
                 ]
             )
+
+    if post_checks_results:
+        lines.extend(
+            [
+                "---",
+                "",
+                "## Post Checks",
+                "",
+                "| Check | Required | Status | Details |",
+                "|-------|----------|--------|---------|",
+            ]
+        )
+        for check in post_checks_results:
+            required = "Yes" if check.get("required", True) else "No"
+            status = "✅ Pass" if check.get("passed") else "❌ Fail"
+            details = str(check.get("details", "")).replace("\n", " ")
+            lines.append(f"| {check.get('name','')} | {required} | {status} | {details} |")
 
     lines.extend(
         [
@@ -1747,9 +1974,28 @@ async def run_evaluation(
                     return role
             return ""
 
+        def _parse_role_mentions_loose(text: str) -> list[str]:
+            """Parse role mentions, including bare role names in handoff phrasing."""
+            explicit = parse_role_mentions(text)
+            if explicit:
+                return explicit
+            # Remove leading agent prefix like "[SupportEngineer]"
+            clean = re.sub(r"_?\[[A-Za-z]+\]\s*", "", text.strip())
+            names_pattern = "|".join(re.escape(v) for v in ROLE_DISPLAY.values())
+            if not names_pattern:
+                return []
+            pattern = re.compile(rf"(?i)(?<![@/])\b({names_pattern})\b")
+            display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY.items()}
+            roles: list[str] = []
+            for match in pattern.findall(clean):
+                role = display_to_role.get(match.lower())
+                if role and role not in roles:
+                    roles.append(role)
+            return roles
+
         def _has_non_self_handoff(text: str) -> bool:
             """True if text mentions a role other than the current agent."""
-            targets = parse_role_mentions(text)
+            targets = _parse_role_mentions_loose(text)
             if not targets:
                 return False
             source_role = _display_to_role(_extract_agent_prefix(text))
@@ -1914,6 +2160,24 @@ async def run_evaluation(
 
     print(f"    Total messages: {len(conversation)}")
 
+    post_checks_results: list[dict] = []
+    post_checks_config = scenario.get("post_checks", {})
+    if post_checks_config:
+        print("\n>>> Step 3b: Running post checks")
+        transcript = build_transcript(conversation)
+
+        if post_checks_config.get("github_pr_created"):
+            result = _check_github_pr_created(transcript)
+            post_checks_results.append(result)
+            status = "✅" if result.get("passed") else "❌"
+            print(f"    {status} {result.get('name')}: {result.get('details')}")
+
+        if post_checks_config.get("sentry_issue_closed"):
+            result = _check_sentry_issue_closed(transcript)
+            post_checks_results.append(result)
+            status = "✅" if result.get("passed") else "❌"
+            print(f"    {status} {result.get('name')}: {result.get('details')}")
+
     # Step 4: Evaluate with DeepEval
     metrics_results = []
 
@@ -2032,6 +2296,7 @@ async def run_evaluation(
         thread_ts=thread_ts,
         conversation=conversation,
         metrics_results=metrics_results,
+        post_checks_results=post_checks_results,
         latency_ms=latency_ms,
     )
 
@@ -2047,14 +2312,32 @@ async def run_evaluation(
     print(f"Messages: {len(conversation)}")
     print(f"Latency: {latency_ms}ms")
 
+    required_checks = [c for c in post_checks_results if c.get("required", True)]
+    post_checks_passed = (
+        all(c.get("passed") for c in required_checks) if required_checks else None
+    )
+    metrics_passed = all(m["score"] >= m["threshold"] for m in metrics_results) if metrics_results else None
+
+    if metrics_passed is None and post_checks_passed is None:
+        print("Overall: ⚠️ NOT EVALUATED")
+    elif metrics_passed is None:
+        print(f"Overall: {'✅ PASSED' if post_checks_passed else '❌ FAILED'} (post-checks only)")
+    elif post_checks_passed is None:
+        print(f"Overall: {'✅ PASSED' if metrics_passed else '❌ FAILED'}")
+    else:
+        overall_passed = metrics_passed and post_checks_passed
+        print(f"Overall: {'✅ PASSED' if overall_passed else '❌ FAILED'}")
+
     if metrics_results:
-        all_passed = all(m["score"] >= m["threshold"] for m in metrics_results)
-        print(f"Overall: {'✅ PASSED' if all_passed else '❌ FAILED'}")
         for m in metrics_results:
             status = "✅" if m["score"] >= m["threshold"] else "❌"
             print(f"  {status} {m['name']}: {m['score']:.2f}")
-    else:
-        print("Overall: ⚠️ NOT EVALUATED")
+
+    if post_checks_results:
+        print("Post-checks:")
+        for check in post_checks_results:
+            status = "✅" if check.get("passed") else "❌"
+            print(f"  {status} {check.get('name')}: {check.get('details')}")
 
     print(f"Report: {report_path}")
     print("=" * 70)
