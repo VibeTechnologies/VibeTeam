@@ -1911,7 +1911,7 @@ async def run_evaluation(
             names_pattern = "|".join(re.escape(v) for v in ROLE_DISPLAY.values())
             if not names_pattern:
                 return []
-            pattern = re.compile(rf"(?i)(?<![@/])\\b({names_pattern})\\b")
+            pattern = re.compile(rf"(?i)(?<![@/])\b({names_pattern})\b")
             display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY.items()}
             roles: list[str] = []
             for match in pattern.findall(clean):
