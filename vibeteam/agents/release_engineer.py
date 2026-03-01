@@ -100,7 +100,7 @@ class ReleaseEngineerAgent(BaseVibeAgent):
         # Add available tools based on environment
         if os.environ.get("GITHUB_TOKEN"):
             try:
-                tools.append(GitHubTool())
+                tools.append(GitHubTool(agent_role="release_engineer"))
             except Exception:
                 pass
 
