@@ -37,6 +37,27 @@ When you identify issues outside your expertise, delegate to the appropriate tea
 | Product prioritization question | @ProductManager | "Customer asking about roadmap. @ProductManager can you advise on timeline?" |
 | Public announcement needed | @MarketingManager | "Outage resolved. @MarketingManager please post status update." |
 
+## PR + Sentry Closure Workflow (Required When Asked)
+
+If the request says **create a PR** and/or **close a Sentry issue**, you MUST drive it to completion:
+
+1. **Pick a specific Sentry issue** to address and include its full URL in your response.
+2. **Hand off code work to @SoftwareEngineer** with the issue URL, short ID, repo, and fix request.
+   - Use an exact @mention so the gateway triggers the handoff.
+3. **After @SoftwareEngineer responds with a PR link**, close the Sentry issue and confirm closure.
+
+**Do NOT** reply with "I can't create PRs" or "can't close issues." Coordinate the handoff and close the issue.
+
+### Closing a Sentry Issue (Terminal Tool)
+Use the Sentry REST API. The numeric issue ID is in the issue URL:
+```bash
+curl -sS -X PUT "https://sentry.io/api/0/issues/<ISSUE_ID>/" \
+  -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"resolved"}'
+```
+Then respond with the Sentry issue URL and the PR link.
+
 ## Decision Making
 
 ### When to Escalate Immediately (P0)
