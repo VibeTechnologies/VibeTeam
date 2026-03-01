@@ -8,6 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 REGISTRY="ghcr.io/vibetechnologies"
+NAMESPACE="${VIBETEAM_NAMESPACE:-vibeteam}"
 
 TARGET="${1:-all}"
 
@@ -33,13 +34,56 @@ build_gateway() {
 
 restart_if_exists() {
     local name=$1
-    if kubectl get deployment "$name" -n vibeteam >/dev/null 2>&1; then
-        kubectl rollout restart "deployment/$name" -n vibeteam
-        kubectl rollout status "deployment/$name" -n vibeteam --timeout=120s
+    if kubectl get deployment "$name" -n "$NAMESPACE" >/dev/null 2>&1; then
+        kubectl rollout restart "deployment/$name" -n "$NAMESPACE"
+        kubectl rollout status "deployment/$name" -n "$NAMESPACE" --timeout=120s
     fi
 }
 
+require_secret_key() {
+    local secret=$1
+    local key=$2
+    local value
+
+    value="$(kubectl get secret "$secret" -n "$NAMESPACE" -o "jsonpath={.data.${key}}" 2>/dev/null || true)"
+    if [[ -z "$value" ]]; then
+        echo "ERROR: Missing $secret/$key in namespace $NAMESPACE." >&2
+        echo "Create or update the secret before deploying." >&2
+        exit 1
+    fi
+}
+
+require_secret() {
+    local secret=$1
+    if ! kubectl get secret "$secret" -n "$NAMESPACE" >/dev/null 2>&1; then
+        echo "ERROR: Secret $secret not found in namespace $NAMESPACE." >&2
+        exit 1
+    fi
+}
+
+check_required_secrets() {
+    echo "=== Checking required secrets in namespace $NAMESPACE ==="
+    require_secret "vibeteam-secrets"
+    require_secret_key "vibeteam-secrets" "AZURE_API_KEY"
+    require_secret_key "vibeteam-secrets" "AZURE_API_BASE"
+    require_secret_key "vibeteam-secrets" "AZURE_API_VERSION"
+    require_secret_key "vibeteam-secrets" "AZURE_OPENAI_DEPLOYMENT"
+    require_secret_key "vibeteam-secrets" "SLACK_BOT_TOKEN"
+    require_secret_key "vibeteam-secrets" "SLACK_TRIGGER_SECRET"
+    require_secret_key "vibeteam-secrets" "SLACK_DEFAULT_CHANNEL"
+    require_secret_key "vibeteam-secrets" "SENTRY_AUTH_TOKEN"
+    require_secret_key "vibeteam-secrets" "GITHUB_TOKEN"
+    require_secret_key "vibeteam-secrets" "LITELLM_BASE_URL"
+    require_secret_key "vibeteam-secrets" "LITELLM_API_KEY"
+    require_secret_key "vibeteam-secrets" "LITELLM_MASTER_KEY"
+
+    require_secret "gmail-oauth-secret"
+    require_secret_key "gmail-oauth-secret" "gmail-credentials.json"
+    require_secret_key "gmail-oauth-secret" "gmail-token.json"
+}
+
 deploy_dev() {
+    check_required_secrets
     echo "=== Deploying dev overlay ==="
     kubectl apply -k "$PROJECT_DIR/k8s/overlays/dev"
     
