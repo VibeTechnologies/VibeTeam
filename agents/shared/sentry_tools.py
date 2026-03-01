@@ -280,7 +280,28 @@ def get_sentry_context(
 
     try:
         client = SentryClient(auth_token=auth_token, timeout=10.0)
-        issues = client.fetch_unresolved_issues(hours=hours, limit=limit)
+        fetch_limit = max(limit, 10) if include_top_issue_details else limit
+        issues = client.fetch_unresolved_issues(hours=hours, limit=fetch_limit)
+
+        if include_top_issue_details and issues:
+            preferred_keywords = [
+                "nooutputgeneratederror",
+                "no output generated",
+                "quota",
+                "fetch failed",
+                "econnrefused",
+                "litellm",
+            ]
+            preferred = []
+            for issue in issues:
+                title = (issue.title or "").lower()
+                culprit = (issue.culprit or "").lower()
+                if any(keyword in title or keyword in culprit for keyword in preferred_keywords):
+                    preferred.append(issue)
+            if preferred:
+                issues = preferred[:limit]
+            else:
+                issues = issues[:limit]
 
         if not issues:
             return f"Sentry: No unresolved issues found in the last {hours} hours."
