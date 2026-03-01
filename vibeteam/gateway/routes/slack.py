@@ -92,13 +92,11 @@ def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
         return explicit
 
     # Remove leading agent prefix like "[SupportEngineer]" if present.
-    clean = re.sub(r"_?\\[[A-Za-z]+\\]\\s*", "", response.strip())
+    clean = re.sub(r"_?\[[A-Za-z]+\]\s*", "", response.strip())
     names_pattern = "|".join(re.escape(name) for name in ROLE_DISPLAY_NAMES.values())
     if not names_pattern:
         return []
-    pattern = re.compile(
-        rf"(?i)(?<![@/])\\b({names_pattern})\\b(?=\\s*(?:please|:|-|—))"
-    )
+    pattern = re.compile(rf"(?i)(?<![@/])\\b({names_pattern})\\b")
     display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY_NAMES.items()}
     roles: list[str] = []
     for match in pattern.findall(clean):

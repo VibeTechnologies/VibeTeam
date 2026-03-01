@@ -1907,13 +1907,11 @@ async def run_evaluation(
             if explicit:
                 return explicit
             # Remove leading agent prefix like "[SupportEngineer]"
-            clean = re.sub(r"_?\\[[A-Za-z]+\\]\\s*", "", text.strip())
+            clean = re.sub(r"_?\[[A-Za-z]+\]\s*", "", text.strip())
             names_pattern = "|".join(re.escape(v) for v in ROLE_DISPLAY.values())
             if not names_pattern:
                 return []
-            pattern = re.compile(
-                rf"(?i)(?<![@/])\\b({names_pattern})\\b(?=\\s*(?:please|:|-|—))"
-            )
+            pattern = re.compile(rf"(?i)(?<![@/])\\b({names_pattern})\\b")
             display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY.items()}
             roles: list[str] = []
             for match in pattern.findall(clean):
