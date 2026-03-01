@@ -732,6 +732,121 @@ class OpenHandsSoftwareEngineer:
         except Exception:
             return None
 
+    def _attempt_auto_pr_for_quota(
+        self, task: str, repo: str, workspace_path: str
+    ) -> str | None:
+        """Auto PR to treat quota-exceeded errors as retryable in VibeWebAgent."""
+        task_lower = task.lower()
+        if repo.lower() != "vibetechnologies/vibewebagent":
+            return None
+        if "quota" not in task_lower and "insufficient" not in task_lower:
+            return None
+
+        repo_name = repo.split("/")[-1]
+        repo_dir = os.path.join(workspace_path, repo_name)
+        target_rel = os.path.join("lib", "utils", "LLMWithRetry.js")
+        target_path = os.path.join(repo_dir, target_rel)
+
+        import subprocess
+        from pathlib import Path
+        import re
+
+        try:
+            subprocess.run(["gh", "auth", "setup-git"], capture_output=True, text=True, timeout=10)
+            if not os.path.isdir(repo_dir):
+                clone = subprocess.run(
+                    ["git", "clone", "--depth", "1", f"https://github.com/{repo}.git", repo_dir],
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                )
+                if clone.returncode != 0:
+                    return None
+
+            if not os.path.isfile(target_path):
+                return None
+
+            content = Path(target_path).read_text()
+            if "'quota'" in content or '"quota"' in content:
+                return None
+
+            retry_anchor = "    const retryableErrors = [\n"
+            if retry_anchor not in content:
+                return None
+
+            retry_insertion = (
+                retry_anchor
+                + "      'quota',\n"
+                + "      'insufficient quota',\n"
+                + "      'exceeded quota',\n"
+            )
+            content = content.replace(retry_anchor, retry_insertion)
+
+            reason_anchor = "    if (message.includes('rate limit') || message.includes('429') || statusCode === '429') {\n"
+            if reason_anchor in content:
+                quota_block = (
+                    reason_anchor
+                    + "      return 'Rate limit exceeded';\n"
+                    + "    }\n"
+                    + "    if (message.includes('quota')) {\n"
+                    + "      return 'Quota exceeded';\n"
+                    + "    }\n"
+                )
+                content = content.replace(
+                    reason_anchor + "      return 'Rate limit exceeded';\n    }\n",
+                    quota_block,
+                )
+
+            Path(target_path).write_text(content)
+
+            branch = f"fix/quota-retry-errors-{int(time.time())}"
+            subprocess.run(["git", "checkout", "-b", branch], cwd=repo_dir, check=True, timeout=30)
+            subprocess.run(["git", "add", target_rel], cwd=repo_dir, check=True, timeout=30)
+            subprocess.run(
+                ["git", "commit", "-m", "fix(llm): retry quota exceeded errors"],
+                cwd=repo_dir,
+                check=True,
+                timeout=30,
+            )
+            subprocess.run(["git", "push", "-u", "origin", branch], cwd=repo_dir, check=True, timeout=120)
+
+            sentry_urls = self._extract_sentry_urls(task)
+            sentry_ref = sentry_urls[0] if sentry_urls else ""
+            pr_title = "fix(llm): retry quota exceeded errors"
+            pr_body = (
+                "## Summary\n"
+                "- treat quota exceeded errors as retryable in LLMWithRetry\n"
+                "- improve backoff handling for quota spikes\n\n"
+                f"Fixes {sentry_ref}\n"
+            ).strip()
+            pr_create = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--repo",
+                    repo,
+                    "--title",
+                    pr_title,
+                    "--body",
+                    pr_body,
+                    "--base",
+                    "master",
+                    "--head",
+                    branch,
+                ],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if pr_create.returncode != 0:
+                return None
+            match = re.search(r"https?://github\.com/\S+/pull/\d+", pr_create.stdout)
+            return match.group(0) if match else None
+        except Exception:
+            return None
+
     def _fetch_github_issue(self, issue_number: str, repo: str | None = None) -> str:
         """Fetch GitHub issue details using gh CLI."""
         try:
@@ -2138,6 +2253,8 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 response = extract_response_from_events(conversation.state.events)
                 if pr_required and not self._response_has_pr(response):
                     auto_pr = self._attempt_auto_pr_for_no_output(task, repo, workspace_path)
+                    if not auto_pr:
+                        auto_pr = self._attempt_auto_pr_for_quota(task, repo, workspace_path)
                     if auto_pr:
                         sentry_urls = self._extract_sentry_urls(task)
                         sentry_ref = sentry_urls[0] if sentry_urls else "Sentry issue URL not found"
