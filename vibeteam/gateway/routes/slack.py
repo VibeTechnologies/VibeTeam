@@ -171,6 +171,12 @@ def _extract_sentry_urls(text: str) -> list[str]:
 
 
 def _extract_repo_reference(text: str) -> str | None:
+    alias_patterns = [
+        (r"vibe[-_ ]?browser[-_ ]?extension", "VibeTechnologies/VibeBrowserExtension"),
+        (r"vibe[-_ ]?api[-_ ]?gateway", "VibeTechnologies/vibe-api-gateway"),
+        (r"vibe[-_ ]?web[-_ ]?agent", "VibeTechnologies/VibeWebAgent"),
+        (r"vibeteam", "VibeTechnologies/VibeTeam"),
+    ]
     patterns = [
         r"Repository:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
         r"\brepository\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
@@ -181,6 +187,12 @@ def _extract_repo_reference(text: str) -> str | None:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(1).strip().rstrip(").,")
+
+    lowered = text.lower()
+    if "repo" in lowered or "repository" in lowered:
+        for pattern, repo in alias_patterns:
+            if re.search(pattern, lowered):
+                return repo
     return None
 
 
@@ -1355,7 +1367,9 @@ async def _run_agent_and_respond(
                         cast(AgentRole, handoff_role), handoff_display
                     )
                     handoff_snippet = _extract_handoff_snippet(response, handoff_search)
-                    repo_ref = _extract_repo_reference(response)
+                    repo_ref = _extract_repo_reference(handoff_snippet) or _extract_repo_reference(
+                        response
+                    )
                     sentry_urls = _extract_sentry_urls(response)
                     repo_block = f"Repository: {repo_ref}\n\n" if repo_ref else ""
                     sentry_block = ""
@@ -1527,7 +1541,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
                 cast(AgentRole, handoff_role), handoff_display
             )
             handoff_snippet = _extract_handoff_snippet(response, handoff_search)
-            repo_ref = _extract_repo_reference(response)
+            repo_ref = _extract_repo_reference(handoff_snippet) or _extract_repo_reference(response)
             sentry_urls = _extract_sentry_urls(response)
             repo_block = f"Repository: {repo_ref}\n\n" if repo_ref else ""
             sentry_block = ""
