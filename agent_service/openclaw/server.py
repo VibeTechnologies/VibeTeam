@@ -132,6 +132,35 @@ OPENCLAW_AGENT_TIMEOUT = int(os.environ.get("OPENCLAW_AGENT_TIMEOUT_SECONDS", "1
 # Context Injection (for OpenClaw runtime without tool execution)
 # ==============================================================================
 
+SUPPORT_INCIDENT_PROTOCOL = """
+### SupportEngineer Incident Protocol (Slack)
+- Use the pre-injected Sentry + kubectl + HTTP probe context as evidence.
+- If no customer endpoint is provided, say so **and still report internal probe results**.
+- Do NOT conclude "no action needed" when customer impact is reported; provide next steps.
+- If infra looks healthy but 4xx are suspected, hand off to @SoftwareEngineer with evidence.
+- Always request the exact failing URL/path, timestamps, and sample payload/headers.
+""".strip()
+
+
+def _build_http_probe_context() -> str:
+    base = os.environ.get("VIBETEAM_GATEWAY_URL_INTERNAL", "http://vibeteam-gateway:8080").rstrip("/")
+    probes: list[tuple[str, str, dict[str, Any] | None]] = [
+        ("GET", "/health", None),
+        ("GET", "/docs", None),
+        ("GET", "/", None),
+        ("POST", "/api/run", {}),
+    ]
+    lines: list[str] = []
+    for method, path, payload in probes:
+        url = f"{base}{path}"
+        try:
+            resp = httpx.request(method, url, json=payload, timeout=5.0)
+            status = resp.status_code
+        except Exception as e:
+            status = f"error: {e}"
+        lines.append(f"{method} {path} -> {status}")
+    return "### In-cluster HTTP probes (vibeteam-gateway)\n```\n" + "\n".join(lines) + "\n```\n"
+
 
 def _build_injected_context(role: str | None, context_type: str) -> str:
     """Fetch kubectl/Sentry context for investigative roles.
@@ -183,15 +212,22 @@ def _build_injected_context(role: str | None, context_type: str) -> str:
         f"{_run_kubectl(['logs','deployment/vibeteam-gateway','-n',namespace,'--tail=200'])}\n```\n"
     )
 
+    if context_type in {"slack", "api"}:
+        sections.append(_build_http_probe_context())
+
     return "\n\n".join(s for s in sections if s)
 
 
 def _augment_task_with_context(task: str, role: str | None, context_type: str) -> str:
     context = _build_injected_context(role, context_type)
-    if not context:
+    protocol = ""
+    if role == "support_engineer" and context_type == "slack":
+        protocol = SUPPORT_INCIDENT_PROTOCOL
+    if not context and not protocol:
         return task
     return (
         f"{task}\n\n"
+        f"{protocol}\n\n"
         "### Pre-injected Operational Context (authoritative)\n"
         "Use this data directly. Do NOT claim tools are unavailable.\n\n"
         f"{context}\n"
