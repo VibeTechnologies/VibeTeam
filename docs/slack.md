@@ -2,7 +2,11 @@
 
 This guide covers how to configure the Slack app for VibeTeam, including event subscriptions, OAuth scopes, and the gateway routing logic.
 
- https://api.slack.com/apps/A0AAZGWEAVA/oauth
+## Quick Links
+
+- App settings: `https://api.slack.com/apps/A0AAZGWEAVA`
+- OAuth & permissions: `https://api.slack.com/apps/A0AAZGWEAVA/oauth`
+- App manifest: `https://api.slack.com/apps/A0AAZGWEAVA/app-manifest`
 
 ## Prerequisites
 
@@ -118,10 +122,15 @@ After installing the app, invite the bot to channels where you want it to operat
 
 The bot must be a member of a channel to receive `message.channels` events from it.
 
+## Read Marker (👀)
+
+For every Slack message the gateway receives (`app_mention` or `message` events), it adds a `:eyes:` reaction to mark the message as read. This happens even if the message is later ignored for routing (for example, thread replies where the bot never participated).
+
 ## Typing Indicator
 
 When a message is routed to an agent, the gateway:
 
+- Adds a `:eyes:` reaction as a read marker (if it has not already been added).
 - Adds a `:thinking_face:` reaction immediately.
 - If the app has `assistant:write`, sets an assistant thread status (e.g. "is thinking...") and clears it when the response is posted.
 
@@ -153,9 +162,12 @@ User posts in Slack channel
   Slack delivers event to gateway (/slack/events)
         |
         v
+  Gateway adds :eyes: reaction to mark the message as read
+        |
+        v
   +----- Is it an app_mention? (@VibeTeam mentioned)
   |  YES: Strip bot mention, parse @RoleName, route to agent
-  |       Post "⏳ Thinking..." indicator, then submit to agent
+  |       Add :thinking_face: + assistant status, then submit to agent
   |
   +----- Is it a DM to the bot?
   |  YES: Route to agent (keyword-based role selection)
@@ -166,7 +178,7 @@ User posts in Slack channel
   |  |      - Slow path: conversations.replies API
   |  |
   |  +-- Bot participated? Classify template (conversational vs investigation)
-  |  |   Post "⏳ Thinking..." indicator, route to agent
+  |  |   Add :thinking_face: + assistant status, route to agent
   |  +-- Bot not in thread? Ignore
   |
   +----- Is it a bot message with @RoleName?

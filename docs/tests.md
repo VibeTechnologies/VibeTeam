@@ -2,7 +2,7 @@
 
 ## Overview
 
-The test suite contains **680+ tests** covering unit, integration, and E2E evaluation flows. All tests live in the `tests/` directory and run with `pytest`.
+The test suite contains **660+ tests** covering unit, integration, and E2E evaluation flows. All tests live in the `tests/` directory and run with `pytest`.
 
 ```bash
 export $( < .env) && .venv/bin/python -m pytest tests/ -v
@@ -15,7 +15,7 @@ export $( < .env) && .venv/bin/python -m pytest tests/ -v
 | File | What It Tests |
 |------|---------------|
 | `test_task_routing.py` | Task template classification (`investigation`, `feature_request`, `conversational`), including thread reply behavior. Contains `TestConversationalTemplate` with 10 tests for thread follow-up handling. |
-| `test_async_callback.py` | Async agent callback flow, typing indicator integration (`thinking_ts` in metadata), failure reactions. |
+| `test_async_callback.py` | Async agent callback flow, Slack reaction lifecycle (`thinking_face` → checkmark/X/hourglass), handoff chaining. |
 | `test_gateway_trigger.py` | `/slack/trigger` endpoint authentication and routing. |
 | `test_role_resolver.py` | `@RoleName` and `/RoleName` mention parsing and normalization. |
 | `test_message_splitting.py` | Splitting long agent responses to fit Slack's 4000-char limit. |
@@ -71,6 +71,7 @@ export $( < .env) && .venv/bin/python -m pytest tests/ -v
 
 # E2E evaluation (posts to real Slack)
 uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0AATPSADB8 --timeout 600
 ```
 
 ## Test Categories
