@@ -14,6 +14,8 @@ VibeTeam routes work via `@RoleName` or `/RoleName` mentions across Slack, GitHu
 | **ProductManager** | `@ProductManager` | OpenClaw | PRDs, roadmap, backlog | GitHub, Chrome DevTools skill |
 | **MarketingManager** | `@MarketingManager` | OpenHands | Announcements, content | Chrome DevTools MCP |
 
+**Note:** AutoGen and CrewAI are currently disabled (deployments run with `replicas: 0`).
+
 Framework mapping is configured in `agents.yaml` (override with `AGENTS_CONFIG_PATH`).
 
 Example:
@@ -41,7 +43,8 @@ agents:
 
 ## LLM Model
 
-All agents use Azure OpenAI `gpt-5.2` via LiteLLM.
+OpenHands calls Azure OpenAI directly. OpenClaw routes requests through the
+in-namespace LiteLLM service. Both default to `gpt-5.2`.
 
 | Setting | Value |
 |---------|-------|
@@ -56,7 +59,7 @@ Responses-only models (e.g., `gpt-5.2-codex`) require:
 
 ## Environment Variables and Secrets
 
-### Azure + LiteLLM
+### Azure (OpenHands) + LiteLLM (OpenClaw)
 
 ```bash
 AZURE_API_KEY=

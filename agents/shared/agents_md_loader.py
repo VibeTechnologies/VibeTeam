@@ -9,7 +9,10 @@ Implements hierarchical loading:
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +64,7 @@ def load_agent_instructions(agent_name: str) -> str:
     """
     agents_root = get_agents_root()
 
-    # Convert snake_case to PascalCase
-    # e.g., 'support_engineer' -> 'SupportEngineer'
-    agent_dir = "".join(word.capitalize() for word in agent_name.split("_"))
-    agent_path = agents_root / agent_dir / "AGENTS.md"
+    agent_path = _resolve_prompt_path(agent_name, agents_root)
 
     if not agent_path.exists():
         logger.warning(f"Agent AGENTS.md not found at {agent_path}")
@@ -76,6 +76,34 @@ def load_agent_instructions(agent_name: str) -> str:
     except Exception as e:
         logger.error(f"Error reading {agent_path}: {e}")
         return ""
+
+
+def _resolve_prompt_path(agent_name: str, agents_root: Path) -> Path:
+    """Resolve AGENTS.md path using agents.yaml when available."""
+    config_path = Path(os.environ.get("AGENTS_CONFIG_PATH", "agents.yaml"))
+    if not config_path.is_absolute():
+        config_path = agents_root.parent / config_path
+
+    if config_path.exists():
+        try:
+            data = yaml.safe_load(config_path.read_text()) or {}
+            agents = data.get("agents", {}) if isinstance(data, dict) else {}
+            if isinstance(agents, dict):
+                cfg = agents.get(agent_name, {})
+                if isinstance(cfg, dict):
+                    prompt_path = cfg.get("prompt_path")
+                    if prompt_path:
+                        prompt = Path(str(prompt_path))
+                        if not prompt.is_absolute():
+                            prompt = agents_root.parent / prompt
+                        return prompt
+        except Exception as e:
+            logger.warning("Failed to load agents.yaml from %s: %s", config_path, e)
+
+    # Convert snake_case to PascalCase
+    # e.g., 'support_engineer' -> 'SupportEngineer'
+    agent_dir = "".join(word.capitalize() for word in agent_name.split("_"))
+    return agents_root / agent_dir / "AGENTS.md"
 
 
 def compose_agent_context(agent_name: str, fallback_context: str | None = None) -> str:

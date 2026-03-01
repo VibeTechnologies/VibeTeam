@@ -31,7 +31,7 @@
 │                                                                              │
 │   - openhands-svc: tool-enabled sessions, MCP, kubectl, Sentry, Gmail        │
 │   - openclaw-svc: proxy to OpenClaw gateway (WebSocket)                      │
-│   - autogen/crewai: optional frameworks                                      │
+│   - autogen/crewai: optional frameworks (currently disabled)                │
 │   - scheduler-svc: background/cron tasks                                     │
 │                                                                              │
 └──────────┬───────────────────────────────────────────────────────────────────┘
@@ -89,6 +89,7 @@ agents:
 - OpenHands maintains per-thread sessions and persists them in Postgres.
 - Session keys include framework + role + source + thread ID for isolation.
 - Async mode uses `/run/async → /callback/agent` for long-running tasks.
+- AutoGen and CrewAI deployments are disabled for now (replicas set to 0).
 
 ## Browser Automation
 
@@ -112,7 +113,8 @@ agents:
 
 ## LLM Configuration
 
-- Default model: Azure OpenAI `gpt-5.2` via LiteLLM.
-- OpenClaw uses in-namespace LiteLLM; OpenHands uses shared LiteLLM config.
+- Default model: Azure OpenAI `gpt-5.2`.
+- OpenClaw uses the in-namespace LiteLLM service.
+- OpenHands calls Azure OpenAI directly (using `AZURE_*` settings).
 
 For environment variables and secrets, see [requirements.md](requirements.md).

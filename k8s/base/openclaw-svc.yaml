@@ -80,7 +80,6 @@ spec:
                 secretKeyRef:
                   name: vibeteam-secrets
                   key: SENTRY_AUTH_TOKEN
-                  optional: true
             - name: GMAIL_CREDENTIALS_PATH
               value: "/gmail/gmail-credentials.json"
             - name: GMAIL_TOKEN_PATH

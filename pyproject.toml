@@ -41,6 +41,9 @@ dependencies = [
     "cryptography>=41.0.0",
     # Observability
     "sentry-sdk>=1.0.0",
+    # Database (async sessions)
+    "sqlalchemy>=2.0.0",
+    "asyncpg>=0.29.0",
     # Core agent framework (AutoGen - Python 3.10+ compatible)
     "pyautogen>=0.4.0",
     # MCP support

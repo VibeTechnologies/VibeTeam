@@ -27,6 +27,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import re
 import sys
 import time
@@ -82,7 +83,8 @@ class EmailProcessor:
     ):
         self.gmail = gmail
         self.dry_run = dry_run
-        self.escalation_dir = escalation_dir or Path(".secrets/escalations")
+        default_escalation_dir = Path(os.environ.get("ESCALATION_DIR", ".secrets/escalations"))
+        self.escalation_dir = escalation_dir or default_escalation_dir
         self.escalation_dir.mkdir(parents=True, exist_ok=True)
 
         # Stats

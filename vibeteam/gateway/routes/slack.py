@@ -23,6 +23,7 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
+from agents.shared.role_resolver import ROLE_MENTION_MAP, get_display_name as get_role_display_name
 from vibeteam.router import Router
 from vibeteam.agents_config import get_slack_handle
 from vibeteam.router.models import AgentRole, route_by_keywords
@@ -94,11 +95,13 @@ def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
 
     # Remove leading agent prefix like "[SupportEngineer]" if present.
     clean = re.sub(r"_?\[[A-Za-z]+\]\s*", "", response.strip())
-    names_pattern = "|".join(re.escape(name) for name in ROLE_DISPLAY_NAMES.values())
-    if not names_pattern:
+    display_to_role = {
+        get_role_display_name(role).lower(): role for role in set(ROLE_MENTION_MAP.values())
+    }
+    if not display_to_role:
         return []
+    names_pattern = "|".join(re.escape(name) for name in display_to_role.keys())
     pattern = re.compile(rf"(?i)(?<![@/])\b({names_pattern})\b")
-    display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY_NAMES.items()}
     roles: list[str] = []
     for match in pattern.findall(clean):
         role = display_to_role.get(match.lower())
