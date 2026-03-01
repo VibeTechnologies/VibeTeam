@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from agents.shared.gmail_tools import DEFAULT_CREDENTIALS_PATH, DEFAULT_TOKEN_PATH
+
+logger = logging.getLogger(__name__)
 
 
 def _github_configured() -> bool:
@@ -37,11 +40,26 @@ def validate_required_integrations(service_name: str) -> None:
             "GITHUB_TOKEN or (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY + GITHUB_APP_INSTALLATION_ID)"
         )
 
+    require_gmail = os.environ.get("REQUIRE_GMAIL_SECRETS", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     creds_path, token_path = _gmail_paths()
+    gmail_missing = []
     if not creds_path.exists():
-        missing.append(f"GMAIL_CREDENTIALS_PATH missing: {creds_path}")
+        gmail_missing.append(f"GMAIL_CREDENTIALS_PATH missing: {creds_path}")
     if not token_path.exists():
-        missing.append(f"GMAIL_TOKEN_PATH missing: {token_path}")
+        gmail_missing.append(f"GMAIL_TOKEN_PATH missing: {token_path}")
+    if gmail_missing:
+        if require_gmail:
+            missing.extend(gmail_missing)
+        else:
+            logger.warning(
+                "[%s] Gmail credentials not configured (%s). Continuing without Gmail tools.",
+                service_name,
+                "; ".join(gmail_missing),
+            )
 
     if missing:
         details = "\n- ".join(missing)
