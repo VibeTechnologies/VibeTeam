@@ -86,6 +86,7 @@ def _disable_prompt_cache_retention() -> None:
         return
 
     try:
+        from openhands.sdk.llm import llm as llm_module
         from openhands.sdk.llm.options import chat_options, responses_options
     except Exception as exc:
         logger.warning("Failed to patch prompt_cache_retention: %s", exc)
@@ -106,6 +107,7 @@ def _disable_prompt_cache_retention() -> None:
 
         _patched_responses._vibeteam_patched = True  # type: ignore[attr-defined]
         responses_options.select_responses_options = _patched_responses
+        llm_module.select_responses_options = _patched_responses
 
     original_chat = chat_options.select_chat_options
     if not getattr(original_chat, "_vibeteam_patched", False):
@@ -118,6 +120,7 @@ def _disable_prompt_cache_retention() -> None:
 
         _patched_chat._vibeteam_patched = True  # type: ignore[attr-defined]
         chat_options.select_chat_options = _patched_chat
+        llm_module.select_chat_options = _patched_chat
 
     logger.info("Prompt cache retention disabled for Azure OpenHands runs.")
 
