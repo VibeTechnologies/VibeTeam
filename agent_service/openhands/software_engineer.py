@@ -1936,7 +1936,7 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             # to prevent runaway execution. Default is 30.
             max_iterations = kwargs.get("max_iterations", 30)
             if context_type == "slack":
-                max_iterations = min(max_iterations, 20)
+                max_iterations = min(max_iterations, 12)
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,
@@ -2136,25 +2136,16 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 from .utils import extract_response_from_events
 
                 response = extract_response_from_events(conversation.state.events)
-                if pr_required and not self._response_has_pr(response) and not used_single_pass:
-                    force_prompt = (
-                        "This task REQUIRES an actual PR. Create the PR now using gh CLI "
-                        "(non-interactive) and respond ONLY after you have a PR URL/number. "
-                        "Do not provide analysis-only responses."
-                    )
-                    conversation.send_message(force_prompt)
-                    conversation.run()
-                    response = extract_response_from_events(conversation.state.events)
-                    if pr_required and not self._response_has_pr(response):
-                        auto_pr = self._attempt_auto_pr_for_no_output(task, repo, workspace_path)
-                        if auto_pr:
-                            sentry_urls = self._extract_sentry_urls(task)
-                            sentry_ref = sentry_urls[0] if sentry_urls else "Sentry issue URL not found"
-                            response = (
-                                f"Created PR: {auto_pr}\n"
-                                f"Sentry issue: {sentry_ref}\n"
-                                "@SupportEngineer please close the Sentry issue now."
-                            )
+                if pr_required and not self._response_has_pr(response):
+                    auto_pr = self._attempt_auto_pr_for_no_output(task, repo, workspace_path)
+                    if auto_pr:
+                        sentry_urls = self._extract_sentry_urls(task)
+                        sentry_ref = sentry_urls[0] if sentry_urls else "Sentry issue URL not found"
+                        response = (
+                            f"Created PR: {auto_pr}\n"
+                            f"Sentry issue: {sentry_ref}\n"
+                            "@SupportEngineer please close the Sentry issue now."
+                        )
 
             # If response is missing evidence, build a deterministic summary.
             if prefetched_issue_number:
