@@ -25,7 +25,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from vibeteam.router import Router
 from vibeteam.agents_config import get_slack_handle
-from vibeteam.router.models import AgentRole, route_by_keywords
+from vibeteam.router.models import ROLE_DISPLAY_NAMES, AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -92,19 +92,82 @@ def _parse_handoff_roles(response: str, source_role: str) -> list[str]:
     if explicit:
         return explicit
 
-    # Remove leading agent prefix like "[SupportEngineer]" if present.
-    clean = re.sub(r"_?\[[A-Za-z]+\]\s*", "", response.strip())
-    names_pattern = "|".join(re.escape(name) for name in ROLE_DISPLAY_NAMES.values())
-    if not names_pattern:
+    aliases: dict[str, str] = {}
+    for role, display in ROLE_DISPLAY_NAMES.items():
+        slack_handle = get_slack_handle(role)
+        spaced = re.sub(r"(?<!^)([A-Z])", r" \1", display)
+        for alias in {display, spaced, slack_handle}:
+            if not alias:
+                continue
+            aliases[alias.lower()] = role
+
+    if not aliases:
         return []
-    pattern = re.compile(rf"(?i)(?<![@/])\b({names_pattern})\b")
-    display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY_NAMES.items()}
+
+    alias_pattern = "|".join(re.escape(alias) for alias in aliases.keys())
+    if not alias_pattern:
+        return []
+
+    direct_re = re.compile(rf"(?i)^(?:[-*•]\\s*)?@?({alias_pattern})\\b")
+    keyword_re = re.compile(
+        r"(?i)\\b(handoff|hand\\s+off|handover|assign|route|ping|please|need|can\\s+you|could\\s+you)\\b"
+    )
+
     roles: list[str] = []
-    for match in pattern.findall(clean):
-        role = display_to_role.get(match.lower())
-        if role and role != source_role and role not in roles:
-            roles.append(role)
+    for line in response.splitlines():
+        clean = line.strip()
+        if not clean:
+            continue
+        clean = re.sub(r"^\\[[^\\]]+\\]\\s*", "", clean)
+
+        direct = direct_re.match(clean)
+        if direct:
+            role = aliases.get(direct.group(1).lower())
+            if role and role != source_role and role not in roles:
+                roles.append(role)
+            continue
+
+        if keyword_re.search(clean):
+            for match in re.finditer(rf"(?i)\\b({alias_pattern})\\b", clean):
+                role = aliases.get(match.group(1).lower())
+                if role and role != source_role and role not in roles:
+                    roles.append(role)
     return roles
+
+
+def _extract_handoff_snippet(response: str, role_display: str) -> str:
+    """Extract a concise handoff request line for the target role."""
+    lines = response.splitlines()
+    spaced = re.sub(r"(?<!^)([A-Z])", r" \1", role_display)
+    alias_pattern = "|".join({re.escape(role_display), re.escape(spaced)})
+    role_pattern = re.compile(rf"(?i)@?(?:{alias_pattern})\\b")
+    for idx, line in enumerate(lines):
+        if role_pattern.search(line):
+            snippet = [line.strip()]
+            # Include immediate bullet/indented follow-ups if present.
+            for j in range(idx + 1, len(lines)):
+                next_line = lines[j]
+                if not next_line.strip():
+                    break
+                if next_line.lstrip().startswith(("-", "•", "*")) or next_line.startswith("  "):
+                    snippet.append(next_line.strip())
+                    continue
+                break
+            return "\n".join(snippet).strip()
+    # Fallback: first few lines to keep context minimal.
+    return "\n".join(l.strip() for l in lines[:6] if l.strip())
+
+
+def _extract_sentry_urls(text: str) -> list[str]:
+    pattern = re.compile(r"https?://[^\\s>]*sentry\\.io/issues/\\d+/?", re.IGNORECASE)
+    urls = pattern.findall(text)
+    seen: set[str] = set()
+    unique: list[str] = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            unique.append(url)
+    return unique
 
 
 def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
@@ -1148,7 +1211,7 @@ async def run_agent_for_slack(
     effective_message_ts = message_ts or thread_ts or ""
 
     for role in role_mentions:
-        display_name = get_slack_handle(role) or role
+        display_name = get_slack_handle(role) or ROLE_DISPLAY_NAMES.get(cast(AgentRole, role), role)
 
         if use_async and effective_message_ts:
             await _submit_agent_async(
@@ -1271,12 +1334,23 @@ async def _run_agent_and_respond(
                         continue
                     handoff_start = time.time()
                     logger.info(f"[TIMING] Executing handoff to {handoff_role}...")
-                    handoff_display = get_slack_handle(handoff_role) or handoff_role
-                    # Pass the original message + full context about handoff
+                    handoff_display = get_slack_handle(handoff_role) or ROLE_DISPLAY_NAMES.get(
+                        cast(AgentRole, handoff_role), handoff_role
+                    )
+                    handoff_search = ROLE_DISPLAY_NAMES.get(
+                        cast(AgentRole, handoff_role), handoff_display
+                    )
+                    handoff_snippet = _extract_handoff_snippet(response, handoff_search)
+                    sentry_urls = _extract_sentry_urls(response)
+                    sentry_block = ""
+                    if sentry_urls:
+                        sentry_block = f"Sentry issue(s): {' '.join(sentry_urls)}\n\n"
+                    # Pass minimal context to avoid overwhelming the next agent.
                     handoff_message = (
                         f"[Handoff from {display_name}]\n\n"
                         f"Original request: {user_message}\n\n"
-                        f"Previous response: {response}"
+                        f"{sentry_block}"
+                        f"Handoff request: {handoff_snippet}"
                     )
                     await _run_agent_and_respond(
                         role=handoff_role,
@@ -1421,7 +1495,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
 
     # Check for handoffs in the response
     message_router = get_message_router()
-    handoff_roles = message_router.parse_role_mentions(response)
+    handoff_roles = _parse_handoff_roles(response, role)
 
     if handoff_roles and current_depth < max_handoff_depth:
         for handoff_role in handoff_roles:
@@ -1429,11 +1503,22 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
                 logger.info(f"[CALLBACK] Skipping self-handoff to {role}")
                 continue
 
-            handoff_display = get_slack_handle(handoff_role) or handoff_role
+            handoff_display = get_slack_handle(handoff_role) or ROLE_DISPLAY_NAMES.get(
+                cast(AgentRole, handoff_role), handoff_role
+            )
+            handoff_search = ROLE_DISPLAY_NAMES.get(
+                cast(AgentRole, handoff_role), handoff_display
+            )
+            handoff_snippet = _extract_handoff_snippet(response, handoff_search)
+            sentry_urls = _extract_sentry_urls(response)
+            sentry_block = ""
+            if sentry_urls:
+                sentry_block = f"Sentry issue(s): {' '.join(sentry_urls)}\n\n"
             handoff_message = (
                 f"[Handoff from {display_name}]\n\n"
                 f"Original request: {user_message}\n\n"
-                f"Previous response: {response}"
+                f"{sentry_block}"
+                f"Handoff request: {handoff_snippet}"
             )
             await _submit_agent_async(
                 role=handoff_role,
