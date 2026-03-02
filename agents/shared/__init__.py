@@ -16,7 +16,7 @@ Usage:
     class EmailSearchTool(BaseTool):
         def _run(self, query): return fetch_unread_emails(query)
 
-    # OpenHands - use for context injection
+    # OpenHands - use directly in agent code
     from agents.shared.gmail_tools import get_email_context
     context = get_email_context()
 """

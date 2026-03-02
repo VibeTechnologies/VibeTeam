@@ -168,9 +168,6 @@ class RunRequest(BaseModel):
     use_tools: bool = Field(
         True, description="Enable TerminalTool and FileEditorTool for agentic exploration"
     )
-    skip_context_injection: bool = Field(
-        False, description="Skip automatic context injection from Sentry/Gmail/etc"
-    )
     max_iterations: int = Field(
         30,
         description="Maximum agent iterations (tool calls) before forced stop (default: 30)",
@@ -202,9 +199,6 @@ class AsyncRunRequest(BaseModel):
     workspace: str | None = Field(None, description="Working directory for OpenHands")
     use_tools: bool = Field(
         True, description="Enable TerminalTool and FileEditorTool for agentic exploration"
-    )
-    skip_context_injection: bool = Field(
-        False, description="Skip automatic context injection from Sentry/Gmail/etc"
     )
     callback_url: str = Field(..., description="URL to POST results to when agent completes")
     callback_metadata: dict[str, Any] = Field(
@@ -415,7 +409,6 @@ async def run_task(request: RunRequest):
                         context_id=context_id,
                         workspace=request.workspace,
                         use_tools=request.use_tools,
-                        skip_context_injection=request.skip_context_injection,
                         max_iterations=request.max_iterations,
                         progress_heartbeat=_progress_heartbeat,
                     )
@@ -615,7 +608,6 @@ async def _execute_and_callback(
                             context_id=context_id,
                             workspace=request.workspace,
                             use_tools=request.use_tools,
-                            skip_context_injection=request.skip_context_injection,
                             max_iterations=request.max_iterations,
                             # Progress callback params — agents use these to send
                             # real-time updates to the gateway while working

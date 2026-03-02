@@ -16,7 +16,7 @@ Usage:
     class BrowserTool(BaseTool):
         def _run(self, url): return fetch_webpage_sync(url)
 
-    # OpenHands - use for context injection
+    # OpenHands - use directly in agent code
     from agents.shared.browser_tools import get_webpage_context
 """
 
@@ -420,7 +420,7 @@ def extract_links_sync(url: str, filter_pattern: str = "") -> str:
 def get_browser_context(url: str) -> str:
     """Get webpage context for injection into agent prompts.
 
-    This is designed for OpenHands-style context injection.
+    Returns browser context for agent prompts.
 
     Args:
         url: URL to fetch context from

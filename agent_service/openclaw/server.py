@@ -12,7 +12,6 @@ import inspect
 import json
 import logging
 import os
-import subprocess
 import time
 import uuid
 import threading
@@ -29,12 +28,8 @@ from pydantic import BaseModel, Field
 
 try:
     from agents.shared.integration_checks import validate_required_integrations
-    from agents.shared.kubectl_tools import get_kubectl_context
-    from agents.shared.sentry_tools import get_sentry_context
 except Exception:  # Optional for minimal images
     validate_required_integrations = None  # type: ignore[assignment]
-    get_kubectl_context = None  # type: ignore[assignment]
-    get_sentry_context = None  # type: ignore[assignment]
 
 if validate_required_integrations is None:
     def validate_required_integrations(service_name: str) -> None:  # type: ignore[no-redef]
@@ -182,109 +177,8 @@ OPENCLAW_AGENT_TIMEOUT = int(os.environ.get("OPENCLAW_AGENT_TIMEOUT_SECONDS", "1
 
 
 # ==============================================================================
-# Context Injection (for OpenClaw runtime without tool execution)
+# No context injection: tasks are passed through unchanged.
 # ==============================================================================
-
-SUPPORT_INCIDENT_PROTOCOL = """
-### SupportEngineer Incident Protocol (Slack)
-- Use the pre-injected Sentry + kubectl + HTTP probe context as evidence.
-- If no customer endpoint is provided, say so **and still report internal probe results**.
-- Do NOT conclude "no action needed" when customer impact is reported; provide next steps.
-- If infra looks healthy but 4xx are suspected, hand off to @SoftwareEngineer with evidence.
-- Always request the exact failing URL/path, timestamps, and sample payload/headers.
-""".strip()
-
-
-def _build_http_probe_context() -> str:
-    base = os.environ.get("VIBETEAM_GATEWAY_URL_INTERNAL", "http://vibeteam-gateway:8080").rstrip("/")
-    probes: list[tuple[str, str, dict[str, Any] | None]] = [
-        ("GET", "/health", None),
-        ("GET", "/docs", None),
-        ("GET", "/", None),
-        ("POST", "/api/run", {}),
-    ]
-    lines: list[str] = []
-    for method, path, payload in probes:
-        url = f"{base}{path}"
-        try:
-            resp = httpx.request(method, url, json=payload, timeout=5.0)
-            status = resp.status_code
-        except Exception as e:
-            status = f"error: {e}"
-        lines.append(f"{method} {path} -> {status}")
-    return "### In-cluster HTTP probes (vibeteam-gateway)\n```\n" + "\n".join(lines) + "\n```\n"
-
-
-def _build_injected_context(role: str | None, context_type: str) -> str:
-    """Fetch kubectl/Sentry context for investigative roles.
-
-    OpenClaw agents may not have direct tool execution. We pre-fetch
-    operational context here so they can still provide evidence-based
-    responses.
-    """
-    if role not in {"support_engineer", "release_engineer"}:
-        return ""
-    if context_type not in {"slack", "api", "issue", "email"}:
-        return ""
-
-    sections: list[str] = []
-
-    if get_sentry_context:
-        try:
-            sections.append(get_sentry_context(hours=24, limit=10))
-        except Exception as e:
-            sections.append(f"Sentry: context fetch failed ({e})")
-
-    namespace = os.environ.get("VIBETEAM_NAMESPACE", "vibeteam")
-
-    def _run_kubectl(args: list[str], timeout: int = 30) -> str:
-        try:
-            result = subprocess.run(
-                ["kubectl", *args],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            if result.returncode == 0:
-                return result.stdout.strip() or "(no output)"
-            err = result.stderr.strip() or result.stdout.strip()
-            return f"Error: {err}"
-        except FileNotFoundError:
-            return "Error: kubectl not found in PATH"
-        except Exception as e:
-            return f"Error: {e}"
-
-    # Direct kubectl context (avoid relying on older helper defaults)
-    sections.append(f"### kubectl get pods -n {namespace}\n```\n{_run_kubectl(['get','pods','-n',namespace])}\n```\n")
-    sections.append(
-        f"### kubectl get events -n {namespace} (warnings/errors)\n```\n"
-        f"{_run_kubectl(['get','events','-n',namespace,'--sort-by=.lastTimestamp'])}\n```\n"
-    )
-    sections.append(
-        f"### kubectl logs deployment/vibeteam-gateway -n {namespace} --tail=200\n```\n"
-        f"{_run_kubectl(['logs','deployment/vibeteam-gateway','-n',namespace,'--tail=200'])}\n```\n"
-    )
-
-    if context_type in {"slack", "api"}:
-        sections.append(_build_http_probe_context())
-
-    return "\n\n".join(s for s in sections if s)
-
-
-def _augment_task_with_context(task: str, role: str | None, context_type: str) -> str:
-    context = _build_injected_context(role, context_type)
-    protocol = ""
-    if role == "support_engineer" and context_type == "slack":
-        protocol = SUPPORT_INCIDENT_PROTOCOL
-    if not context and not protocol:
-        return task
-    return (
-        f"{task}\n\n"
-        f"{protocol}\n\n"
-        "### Pre-injected Operational Context (authoritative)\n"
-        "Use this data directly. Do NOT claim tools are unavailable.\n\n"
-        f"{context}\n"
-    )
 
 
 # ==============================================================================
@@ -604,7 +498,7 @@ async def run_task(request: RunRequest):
             agent_id, request.context_type, context_id
         )
 
-        task = _augment_task_with_context(request.task, request.role, request.context_type)
+        task = request.task
 
         with _github_token_context(role_for_token):
             response_text, metadata = await run_openclaw_task(

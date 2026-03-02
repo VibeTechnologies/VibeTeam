@@ -171,7 +171,6 @@ async def call_agent_service(
     context_type: str = "api",
     context_id: str | None = None,
     stream: bool = False,
-    skip_context_injection: bool | None = None,
     max_iterations: int | None = None,
     execution_timeout: int | None = None,
 ) -> dict[str, Any]:
@@ -211,11 +210,6 @@ async def call_agent_service(
     # For openhands, add parameters
     if fw == "openhands":
         payload["use_tools"] = True
-        # Enable context injection unless explicitly disabled.
-        if skip_context_injection is None:
-            payload["skip_context_injection"] = False
-        else:
-            payload["skip_context_injection"] = skip_context_injection
         if max_iterations is not None:
             payload["max_iterations"] = max_iterations
         if execution_timeout is not None:
@@ -305,7 +299,6 @@ async def call_agent_service_async(
     callback_url: str = "",
     callback_metadata: dict[str, Any] | None = None,
     progress_url: str | None = None,
-    skip_context_injection: bool = False,
     max_iterations: int = 30,
     execution_timeout: int | None = None,
 ) -> dict[str, Any]:
@@ -325,9 +318,6 @@ async def call_agent_service_async(
         callback_url: URL where agent should POST results
         callback_metadata: Opaque data passed through to callback
         progress_url: URL where agent should POST progress updates (optional)
-        skip_context_injection: If True, skip pre-fetched kubectl/Sentry context
-            injection. Used for focused tasks like health checks where the task
-            prompt already contains all necessary instructions.
         max_iterations: Maximum agent iterations before forced stop (default: 30)
         execution_timeout: Optional execution/idle timeout passed to agent service
 
@@ -357,7 +347,6 @@ async def call_agent_service_async(
     # For openhands, add parameters
     if fw == "openhands":
         payload["use_tools"] = True
-        payload["skip_context_injection"] = skip_context_injection
         payload["max_iterations"] = max_iterations
         if execution_timeout is not None:
             payload["execution_timeout"] = execution_timeout

@@ -1189,48 +1189,49 @@ class TestSoftwareEngineerFileEditorTool:
             "_prefetch_repo_code must filter out common English words"
         )
 
-    def test_run_calls_prefetch_for_github_issues(self):
-        """run() must call _prefetch_repo_code when a GitHub issue is detected."""
+    def test_run_does_not_call_prefetch_for_github_issues(self):
+        """run() should not call _prefetch_repo_code (no automatic context injection)."""
         content = self._read_swe_source()
         method_start = content.find("def run(")
         assert method_start != -1
         next_def = content.find("\n    def ", method_start + 10)
         method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
 
-        assert "_prefetch_repo_code" in method_body, (
-            "run() must call _prefetch_repo_code when a GitHub issue is detected"
+        assert "_prefetch_repo_code" not in method_body, (
+            "run() should not call _prefetch_repo_code when context injection is disabled"
         )
 
-    def test_phase1_mentions_prefetched_data(self):
-        """Phase 1 workflow must reference PRE-FETCHED DATA."""
+    def test_phase1_mentions_orient_repo(self):
+        """Phase 1 workflow should orient the agent in the repo."""
         content = self._read_swe_source()
         ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
         ctx_end = content.find('"""', ctx_start + 30)
         ctx = content[ctx_start:ctx_end]
 
-        assert "PRE-FETCHED" in ctx, "Phase 1 workflow must mention PRE-FETCHED data"
-
-    def test_prompt_says_do_not_clone_again(self):
-        """Prompt must say DO NOT clone the repo again."""
-        content = self._read_swe_source()
-        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
-        ctx_end = content.find('"""', ctx_start + 30)
-        ctx = content[ctx_start:ctx_end]
-
-        assert "DO NOT clone the repo again" in ctx, (
-            "Prompt must tell agent not to clone again since pre-fetch already did it"
+        assert "PHASE 1: ORIENT IN REPO" in ctx, (
+            "Phase 1 workflow must instruct how to orient in the repo"
         )
 
-    def test_prompt_says_do_not_read_entire_files(self):
-        """Prompt must say DO NOT read entire files."""
+    def test_prompt_says_clone_if_missing(self):
+        """Prompt should allow cloning if the repo is missing."""
         content = self._read_swe_source()
         ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
         ctx_end = content.find('"""', ctx_start + 30)
         ctx = content[ctx_start:ctx_end]
 
-        assert "DO NOT read entire files" in ctx, (
-            "Prompt must tell agent not to read entire files since "
-            "relevant sections are already provided"
+        assert "If the repo is missing, clone it." in ctx, (
+            "Prompt must tell the agent to clone if the repo is missing"
+        )
+
+    def test_prompt_says_avoid_full_file_reads(self):
+        """Prompt should warn against full-file reads."""
+        content = self._read_swe_source()
+        ctx_start = content.find('SOFTWARE_ENGINEER_CONTEXT = """')
+        ctx_end = content.find('"""', ctx_start + 30)
+        ctx = content[ctx_start:ctx_end]
+
+        assert "Avoid full-file reads" in ctx, (
+            "Prompt must tell agent to avoid full-file reads"
         )
 
     def test_prefetch_limits_output_size(self):

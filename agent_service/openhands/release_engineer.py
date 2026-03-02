@@ -369,7 +369,6 @@ class OpenHandsReleaseEngineer:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
-        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -380,7 +379,6 @@ class OpenHandsReleaseEngineer:
             context_type: Type of context (issue, pr, slack, ephemeral)
             context_id: ID for the context (issue number, PR number, etc.)
             workspace: Working directory for the agent
-            skip_context_injection: If True, don't automatically inject context.
 
         Returns:
             dict with response, session_key, and metadata
@@ -440,35 +438,8 @@ class OpenHandsReleaseEngineer:
                 max_iteration_per_run=max_iterations,
             )
 
-            # Inject relevant context (ReleaseEngineer almost always needs kubectl)
-            injected_context = []
-            if not skip_context_injection:
-                # Always inject kubectl context for Release Engineer as they deal with infra
-                kubectl_ctx = fetch_kubectl_context()
-                injected_context.append(kubectl_ctx)
-
-            # Build full task with context
-            context_str = "\n\n".join(injected_context) if injected_context else ""
-            if context_str:
-                context_block = f"""
-================================================================================
-PRE-FETCHED KUBERNETES STATE (for reference - current as of this request)
-================================================================================
-
-{context_str}
-
-================================================================================
-END OF PRE-FETCHED STATE
-NOTE: This is READ-ONLY state data. You still MUST run kubectl commands for any
-WRITE operations (apply, rollout, restart, scale, undo). Do NOT skip actions
-just because you have the current state above.
-================================================================================
-"""
-                # NOTE: RELEASE_ENGINEER_CONTEXT is already in the system prompt
-                # via system_prompt_kwargs. Do NOT duplicate it in the user message.
-                full_task = f"{context_block}\nTask: {task}"
-            else:
-                full_task = f"Task: {task}"
+            # Build full task without pre-fetched context.
+            full_task = f"Task: {task}"
 
             # Use send_message + run for the full agentic loop with tools
             conversation.send_message(full_task)
@@ -510,7 +481,6 @@ just because you have the current state above.
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
-        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Async version of run."""
@@ -522,7 +492,6 @@ just because you have the current state above.
             context_type,
             context_id,
             workspace,
-            skip_context_injection,
             **kwargs,
         )
 

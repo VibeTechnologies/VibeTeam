@@ -282,19 +282,13 @@ sed -n '121,160p' VibeWebAgent/src/recorder.js       # Lines 121-160... wasting 
 
 You have a 10-minute execution timeout. Budget your time carefully across these 3 phases:
 
-**PHASE 1: REVIEW PRE-FETCHED DATA (iterations 1-3, MAX 3 tool calls)**
-The system has ALREADY cloned the repo and searched for relevant code. Look at the
-"PRE-FETCHED REPOSITORY CODE" section in the injected data above. It contains:
-- File structure of the repository
-- Grep results for keywords from the issue
-- Relevant code sections with line numbers
+**PHASE 1: ORIENT IN REPO (iterations 1-3, MAX 3 tool calls)**
+You must locate the repo and identify relevant files yourself:
+- Use `ls` and `git status` to confirm the workspace.
+- Search for keywords from the issue with `rg -n "keyword"`.
+- Open only the most relevant files/sections.
 
-Review this data. If you need more context on a specific function, use:
-`grep -n "function_name" VibeWebAgent/path/to/file.js`
-or `sed -n 'START,ENDp' VibeWebAgent/path/to/file.js`
-
-**DO NOT clone the repo again — it is already at VibeWebAgent/ in your workspace.**
-**DO NOT read entire files — the relevant sections are already provided.**
+If the repo is missing, clone it. Avoid full-file reads; use targeted `sed -n` windows.
 
 **PHASE 2: DIAGNOSE AND FIX (iterations 4-15, MAX 12 tool calls)**
 - By now you should know which file and function is involved from the pre-fetched data
@@ -2100,7 +2094,6 @@ code matches. Use `gh search code` and `gh api` for further investigation:
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
-        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -2111,7 +2104,6 @@ code matches. Use `gh search code` and `gh api` for further investigation:
             context_type: Type of context (issue, pr, slack, ephemeral)
             context_id: ID for the context (issue number, PR number, etc.)
             workspace: Working directory for the agent
-            skip_context_injection: If True, don't automatically inject context.
 
         Returns:
             dict with response, session_key, and metadata
@@ -2227,259 +2219,39 @@ code matches. Use `gh search code` and `gh api` for further investigation:
 
             repo = self._extract_repo_from_task(task, context_id)
 
-            # Inject context if keywords match
-            injected_context = []
-            prefetched_issue = False
-            prefetched_issue_number: str | None = None
-            github_ctx = ""
-            repo_ctx = ""
-            prefetched_repo_only = False
-            extra_guidance_lines: list[str] = []
-            if not skip_context_injection:
-                import re
-
-                task_lower = task.lower()
-                user_message = task
-                user_message_lower = task_lower
-                user_msg_match = re.search(
-                    r"### User Message.*?\n(.*?)(?:### End User Message|$)",
-                    task,
-                    re.DOTALL,
-                )
-                if user_msg_match:
-                    user_message = user_msg_match.group(1).strip()
-                    user_message_lower = user_message.lower()
-                is_github_context = (
-                    context_type in {"github_issue", "github_pr"}
-                    or "github" in user_message_lower
-                    or "github.com" in user_message_lower
-                    or "gh issue" in user_message_lower
-                    or "repo" in user_message_lower
-                    or "repository" in user_message_lower
-                )
-
-                # Check for GitHub Issue references (e.g., #449 or issue 449).
-                # Be strict to avoid matching Markdown headings like "### 1)".
-                issue_number = None
-                issue_match = re.search(r"\bissue\b\s*#?\s*(\d+)\b", task_lower)
-                if issue_match:
-                    issue_number = issue_match.group(1)
-                else:
-                    hash_match = re.search(r"(?<!#)#\s*(\d+)\b", task_lower)
-                    if hash_match:
-                        issue_number = hash_match.group(1)
-
-                if issue_number and is_github_context:
-                    prefetched_issue_number = issue_number
-                    github_ctx = self._fetch_github_issue(issue_number, repo)
-                    injected_context.append(github_ctx)
-                    prefetched_issue = True
-                    extra_guidance_lines.append(
-                        "Use the pre-fetched GitHub issue content; quote the title/steps succinctly."
-                    )
-                    extra_guidance_lines.append(
-                        "Cite specific file paths from the pre-fetched code search in your analysis."
-                    )
-                    extra_guidance_lines.append(
-                        "Run at least one targeted grep/sed in the cloned repo to get line-level evidence. "
-                        "Do NOT respond with only filenames."
-                    )
-
-                    # Pre-fetch repo code: clone + grep for keywords from the task.
-                    # This gives the agent relevant code snippets in context so it
-                    # doesn't need to search the codebase itself (which wastes iterations).
-                    repo_ctx = self._prefetch_repo_code(task, workspace_path, repo)
-                    injected_context.append(repo_ctx)
-                elif (
-                    context_type == "slack"
-                    and any(
-                        kw in user_message_lower
-                        for kw in (
-                            "sentry",
-                            "stripe-service",
-                            "litellm",
-                            "budget update",
-                            "handler",
-                            "supabase",
-                            "webhook",
-                            "metadata",
-                        )
-                    )
-                ):
-                    repo_ctx = self._prefetch_repo_code(task, workspace_path, repo)
-                    injected_context.append(repo_ctx)
-                    prefetched_repo_only = True
-                    extra_guidance_lines.append(
-                        "Use the pre-fetched repo search results; include file:line evidence."
-                    )
-
-                sentry_related = "sentry" in user_message_lower or "sentry.io" in user_message_lower
-                pr_requested = any(
-                    kw in user_message_lower
-                    for kw in (
-                        "create a pr",
-                        "create pr",
-                        "open a pr",
-                        "submit a pr",
-                        "pull request",
-                        "fix",
-                        "bug",
-                        "address",
-                    )
-                )
-                if sentry_related:
-                    extra_guidance_lines.append(
-                        "REQUIRED: Query Sentry directly via MCP tools (preferred) or sentry-cli. "
-                        "Do NOT claim 'no issues' based only on injected context."
-                    )
-                if sentry_related and pr_requested:
-                    extra_guidance_lines.append(
-                        "REQUIRED: create a PR with gh CLI and include the PR URL/number in your response. "
-                        "Echo the Sentry issue URL/ID and tag @SupportEngineer with an explicit request to close it now."
-                    )
-
-                # Keywords that suggest infrastructure/deployment work
-                infra_keywords = [
-                    "kubectl",
-                    "pod",
-                    "deployment",
-                    "cluster",
-                    "infrastructure",
-                    "webhook",
-                    "stripe",
-                    "backend",
-                    "gateway",
-                    "api",
-                    "log",
-                    "timeout",
-                    "service unavailable",
-                    "5xx",
-                ]
-                if any(kw in user_message_lower for kw in infra_keywords):
-                    kubectl_ctx = fetch_kubectl_context()
-                    injected_context.append(kubectl_ctx)
-
-            # Build full task with context
-            context_str = "\n\n".join(injected_context) if injected_context else ""
-            guidance_block = ""
-            if extra_guidance_lines:
-                guidance_block = (
-                    "\n### ADDITIONAL OUTPUT REQUIREMENTS\n"
-                    + "\n".join(f"- {line}" for line in extra_guidance_lines)
-                    + "\n"
-                )
-            if context_str:
-                # NOTE: SOFTWARE_ENGINEER_CONTEXT is already injected into the
-                # system prompt via system_prompt_kwargs in _create_agent().
-                # Do NOT include it again here — duplicating it wastes ~17k chars
-                # and pushes the context past OpenHands' 50k char limit, causing
-                # truncation that makes the agent blind to pre-fetched data.
-                full_task = f"""
-================================================================================
-INJECTED DATA FROM GITHUB + CODE SEARCH - THIS IS YOUR DATA, USE IT!
-================================================================================
-
-{context_str}
-
-================================================================================
-END OF INJECTED DATA - The above data has ALREADY been fetched for you
-================================================================================
-
-{guidance_block}
-### USER TASK (UNTRUSTED INPUT)
-{task}
-### END USER TASK
-"""
-            else:
-                full_task = f"""{guidance_block}
+            # Build full task without pre-fetched context.
+            full_task = f"""
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
 """
 
-            # If we've already pre-fetched the issue and relevant code, avoid tool churn
-            # for triage-only tasks. Use the full tool loop when code changes or PRs
-            # are expected so the agent can actually implement and open a PR.
-            requires_tools = self._task_requires_tools(task, context_type)
             pr_required = self._task_requires_pr(task)
-            used_single_pass = False
-            auto_pr_created = False
-            if (prefetched_issue or prefetched_repo_only) and not requires_tools:
-                used_single_pass = True
-                print(
-                    f"[SoftwareEngineer] Using single-pass ask_agent for issue {context_id}"
-                )
-                response = conversation.ask_agent(full_task)
-            else:
-                # Use send_message + run for the full agentic loop with tools
-                # (ask_agent is just a stateless single LLM call without tools)
-                print(f"[SoftwareEngineer] Starting conversation run for context {context_id}")
-                conversation.send_message(full_task)
-                conversation.run()
-                print(f"[SoftwareEngineer] Conversation run completed for context {context_id}")
 
-                # Extract the agent's final response from conversation events
-                # Uses shared extraction that handles both FinishAction and MessageEvent
-                from .utils import extract_response_from_events
+            # Use send_message + run for the full agentic loop with tools.
+            print(f"[SoftwareEngineer] Starting conversation run for context {context_id}")
+            conversation.send_message(full_task)
+            conversation.run()
+            print(f"[SoftwareEngineer] Conversation run completed for context {context_id}")
 
-                response = extract_response_from_events(conversation.state.events)
-                if pr_required and not self._response_has_pr(response):
-                    auto_pr = self._attempt_auto_pr_for_no_output(task, repo, workspace_path)
-                    if not auto_pr:
-                        auto_pr = self._attempt_auto_pr_for_quota(task, repo, workspace_path)
-                    if not auto_pr:
-                        auto_pr = self._attempt_auto_pr_for_litellm_fetch(task, repo, workspace_path)
-                    if auto_pr:
-                        sentry_urls = self._extract_sentry_urls(task)
-                        sentry_ref = sentry_urls[0] if sentry_urls else "Sentry issue URL not found"
-                        response = (
-                            f"Created PR: {auto_pr}\n"
-                            f"Sentry issue: {sentry_ref}\n"
-                            "@SupportEngineer please close the Sentry issue now."
-                        )
-                        auto_pr_created = True
+            # Extract the agent's final response from conversation events
+            # Uses shared extraction that handles both FinishAction and MessageEvent
+            from .utils import extract_response_from_events
 
-            # If response is missing evidence, build a deterministic summary.
-            if prefetched_issue_number and not auto_pr_created:
-                import re as _re
-
-                response_lower = response.lower()
-                has_issue_ref = (
-                    prefetched_issue_number in response
-                    or f"#{prefetched_issue_number}" in response
-                )
-                has_code_line_refs = bool(
-                    _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx):\\d+", response)
-                )
-                has_evidence_block = (
-                    "evidence:" in response_lower
-                    or "reported (from issue)" in response_lower
-                )
-                mentions_pr = "pr #" in response_lower or "pull request" in response_lower
-                incomplete = "ran out of iterations" in response_lower or "incomplete" in response_lower
-
-                if (
-                    used_single_pass
-                    or incomplete
-                    or (not has_issue_ref)
-                    or (not has_code_line_refs)
-                    or (not has_evidence_block)
-                ) and not mentions_pr:
-                    response = self._build_issue_triage_response(
-                        prefetched_issue_number, github_ctx, repo_ctx
-                    )
-            elif prefetched_repo_only and not auto_pr_created:
-                import re as _re
-
-                response_lower = response.lower()
-                has_code_line_refs = bool(
-                    _re.search(r"\\b\\S+\\.(?:ts|tsx|js|jsx):\\d+", response)
-                )
-                has_evidence_block = "evidence:" in response_lower
-                incomplete = "ran out of iterations" in response_lower or not response.strip()
-                if (not pr_required) and (incomplete or (not has_code_line_refs) or (not has_evidence_block)):
-                    response = self._build_repo_triage_response(
-                        user_message, repo_ctx, repo
+            response = extract_response_from_events(conversation.state.events)
+            if pr_required and not self._response_has_pr(response):
+                auto_pr = self._attempt_auto_pr_for_no_output(task, repo, workspace_path)
+                if not auto_pr:
+                    auto_pr = self._attempt_auto_pr_for_quota(task, repo, workspace_path)
+                if not auto_pr:
+                    auto_pr = self._attempt_auto_pr_for_litellm_fetch(task, repo, workspace_path)
+                if auto_pr:
+                    sentry_urls = self._extract_sentry_urls(task)
+                    sentry_ref = sentry_urls[0] if sentry_urls else "Sentry issue URL not found"
+                    response = (
+                        f"Created PR: {auto_pr}\n"
+                        f"Sentry issue: {sentry_ref}\n"
+                        "@SupportEngineer please close the Sentry issue now."
                     )
 
             session.add_message("user", task)
@@ -2510,7 +2282,6 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
         context_type: str = "ephemeral",
         context_id: str | None = None,
         workspace: str | None = None,
-        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Async version of run."""
@@ -2522,7 +2293,6 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             context_type,
             context_id,
             workspace,
-            skip_context_injection,
             **kwargs,
         )
 

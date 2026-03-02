@@ -444,10 +444,9 @@ async def detect_langfuse_anomalies(hours: int = 24) -> str:
 
 
 def get_langfuse_context(hours: int = 6) -> str:
-    """Get Langfuse context for injection into agent prompts.
+    """Get Langfuse context for agent prompts.
 
-    This is designed for OpenHands-style context injection where we
-    provide current state to the agent upfront.
+    Provides current observability state as a formatted summary.
 
     Args:
         hours: Time window in hours

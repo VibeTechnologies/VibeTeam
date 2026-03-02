@@ -32,15 +32,14 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 - If you hit the limit, call `finish()` with whatever findings you have
 
 ### Investigation Workflow (For SupportEngineer)
-1. **Use pre-injected data FIRST** - Sentry, kubectl, Gmail context is already fetched for you
+1. **Gather evidence with tools** - Use Sentry/kubectl/logs directly for this request
 2. **Report what you find** - State specific errors, pod statuses, timestamps
-3. **Run additional queries only if needed** - Only query systems not in pre-injected data
-4. **Correlate findings** - Match timestamps between Sentry errors, events, and logs
-5. **Make evidence-based decisions**:
+3. **Correlate findings** - Match timestamps between Sentry errors, events, and logs
+4. **Make evidence-based decisions**:
    - Healthy infrastructure (Running pods, 0 restarts, clean logs) = **NO ACTION NEEDED**
    - Report findings clearly and don't escalate without cause
    - Probe warnings during rolling updates are normal and self-resolve
-6. **Hand off with actionable findings**, not just problems
+5. **Hand off with actionable findings**, not just problems
 
 ### Action Workflow (For ReleaseEngineer)
 1. **Receive findings from SupportEngineer** with specific evidence

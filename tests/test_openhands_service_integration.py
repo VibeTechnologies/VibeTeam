@@ -134,8 +134,7 @@ ALL_ROLES = [
 async def test_openhands_agent_responds(openhands_service_url: str, role: str) -> None:
     """Verify a single agent role responds via the HTTP service."""
     # Payload mirrors what the Slack gateway sends (see vibeteam/gateway/server.py
-    # call_agent_service).  use_tools and skip_context_injection match production
-    # so the test exercises the exact same code-path.
+    # call_agent_service) so the test exercises the same code-path.
     async with httpx.AsyncClient(timeout=120.0) as client:
         payload = {
             "task": f"Reply with 'READY {role}' in one short sentence.",
@@ -143,7 +142,6 @@ async def test_openhands_agent_responds(openhands_service_url: str, role: str) -
             "context_type": "slack",
             "context_id": f"C0TEST:{role}",
             "use_tools": True,
-            "skip_context_injection": False,
         }
         response = await client.post(f"{openhands_service_url}/run", json=payload)
         if response.status_code != 200:

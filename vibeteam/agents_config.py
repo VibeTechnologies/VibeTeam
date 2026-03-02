@@ -27,7 +27,6 @@ class AgentEntry:
     slack_handle: str | None = None
     agent_dir: str | None = None
     prompt_path: str | None = None
-    skip_context_injection: bool | None = None
 
 
 AGENTS_CONFIG_PATH = os.environ.get("AGENTS_CONFIG_PATH", "agents.yaml")
@@ -62,12 +61,6 @@ def get_agent_entry(role: str | None) -> AgentEntry | None:
         raw = {}
     slack_handle = raw.get("slack_handle")
     agent_dir = raw.get("agent_dir")
-    skip_context_injection_raw = raw.get("skip_context_injection")
-    skip_context_injection = (
-        skip_context_injection_raw
-        if isinstance(skip_context_injection_raw, bool)
-        else None
-    )
     display = slack_handle or role.replace("_", " ").title()
     return AgentEntry(
         role=role,  # type: ignore[arg-type]
@@ -77,7 +70,6 @@ def get_agent_entry(role: str | None) -> AgentEntry | None:
         slack_handle=slack_handle,
         agent_dir=agent_dir,
         prompt_path=raw.get("prompt_path"),
-        skip_context_injection=skip_context_injection,
     )
 
 
@@ -132,13 +124,6 @@ def get_agent_dir(role: str | None) -> str | None:
     return None
 
 
-def get_skip_context_injection(role: str | None) -> bool | None:
-    entry = get_agent_entry(role)
-    if not entry:
-        return None
-    return entry.skip_context_injection
-
-
 def list_agents() -> list[AgentEntry]:
     agents = _get_agents_map()
     entries: list[AgentEntry] = []
@@ -157,6 +142,5 @@ __all__ = [
     "get_slack_handle",
     "get_agent_dir",
     "get_prompt_path",
-    "get_skip_context_injection",
     "list_agents",
 ]

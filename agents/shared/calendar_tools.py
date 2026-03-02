@@ -189,7 +189,7 @@ Link: {created_event.get("htmlLink")}
 
 
 def get_calendar_context(days: int = 3) -> str:
-    """Get calendar context for injection into agent prompts.
+    """Get calendar context for agent prompts.
 
     Args:
         days: Number of days to look ahead
@@ -203,7 +203,7 @@ def get_calendar_context(days: int = 3) -> str:
 
     import asyncio
 
-    # Run the async function synchronously for context injection
+    # Run the async function synchronously for convenience
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():

@@ -25,7 +25,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from agents.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
 from vibeteam.router import Router
-from vibeteam.agents_config import get_skip_context_injection, get_slack_handle
+from vibeteam.agents_config import get_slack_handle
 from vibeteam.router.models import AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
@@ -1047,8 +1047,8 @@ A user has requested help via Slack.
 
 ### CRITICAL INSTRUCTIONS — READ CAREFULLY
 
-**STEP 1 — Review Pre-Injected Data:**
-Sentry/monitoring data has been injected above. Use this as INITIAL context.
+**STEP 1 — Gather Evidence with Tools:**
+There is no pre-injected monitoring data. Use Sentry/kubectl/logs directly.
 
 **STEP 2 — RUN kubectl Commands (MANDATORY):**
 You MUST run kubectl commands to complete your investigation. Example:
@@ -1132,13 +1132,9 @@ async def _submit_agent_async(
         thread_ts=thread_ts,
     )
 
-    # Pick template to decide context injection + iteration limits.
+    # Pick template to decide iteration limits.
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
-    skip_context = template == "health_check"
-    skip_context_override = get_skip_context_injection(role)
-    if skip_context_override is not None:
-        skip_context = skip_context_override
     max_iterations_map = {
         "health_check": 15,
         "conversational": 30,
@@ -1169,7 +1165,6 @@ async def _submit_agent_async(
         context_id=f"{channel}:{thread_ts or 'new'}",
         callback_url=callback_url,
         progress_url=progress_url,
-        skip_context_injection=skip_context,
         max_iterations=max_iterations,
         execution_timeout=(
             config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS
@@ -1312,13 +1307,9 @@ async def _run_agent_and_respond(
         thread_ts=thread_ts,
     )
 
-    # Pick template to decide context injection + iteration limits (sync path).
+    # Pick template to decide iteration limits (sync path).
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
-    skip_context = template == "health_check"
-    skip_context_override = get_skip_context_injection(role)
-    if skip_context_override is not None:
-        skip_context = skip_context_override
     max_iterations_map = {
         "health_check": 15,
         "conversational": 30,
@@ -1341,7 +1332,6 @@ async def _run_agent_and_respond(
             framework=framework,
             context_type="slack",
             context_id=f"{channel}:{thread_ts or 'new'}",
-            skip_context_injection=skip_context,
             max_iterations=max_iterations,
             execution_timeout=(
                 config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS

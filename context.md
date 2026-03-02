@@ -206,7 +206,7 @@ Failed to connect to http://openhands-svc:8080 after 3 attempts: [ReadTimeout]
    kubectl exec -n vibeteam deployment/openhands-svc -- python -c "
    from agents.openhands.support_engineer import OpenHandsSupportEngineer
    agent = OpenHandsSupportEngineer()
-   result = agent.run(task='Say hello', use_tools=True, skip_context_injection=True)
+   result = agent.run(task='Say hello', use_tools=True)
    print(result['response'])  # Output: Hello — Grace here from VibeTeam Support.
    "
    # Completes in ~28s
@@ -420,7 +420,7 @@ kubectl get pods -n vibeteam -l app=openhands-svc -o jsonpath='{.items[0].spec.c
 kubectl exec -n vibeteam deployment/openhands-svc -- python -c "
 from agents.openhands.support_engineer import OpenHandsSupportEngineer
 agent = OpenHandsSupportEngineer()
-result = agent.run(task='Say hello', use_tools=False, skip_context_injection=True)
+result = agent.run(task='Say hello', use_tools=False)
 print(result['response'])
 "
 ```
