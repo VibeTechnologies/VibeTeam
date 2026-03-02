@@ -149,6 +149,93 @@ class TestGitHubWebhookRouting:
         assert data["status"] == "accepted"
         assert "release_engineer" in data["message"].lower()
 
+    def test_discussion_created_with_role_mention(self, test_client, github_webhook_secret, monkeypatch):
+        """Test that discussion body with /RoleName triggers appropriate agent."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "discussion": {
+                "number": 55,
+                "title": "Test Discussion",
+                "body": "Need deployment advice\n/ReleaseEngineer",
+                "user": {"login": "testuser", "type": "User"},
+            },
+            "repository": {
+                "full_name": "owner/repo",
+            },
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        with patch(
+            "vibeteam.gateway.routes.github.call_agent_service",
+            new_callable=AsyncMock,
+            return_value={"response": "Deployment advice provided"},
+        ) as mock_agent:
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "discussion",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "release_engineer" in data["message"].lower()
+        mock_agent.assert_called_once()
+
+    def test_discussion_comment_with_role_mention(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """Test that discussion comment with /RoleName triggers appropriate agent."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "discussion": {
+                "number": 56,
+                "title": "Discussion Comment",
+                "body": "Original discussion body",
+            },
+            "comment": {
+                "body": "Please advise on rollout\n/ReleaseEngineer",
+                "user": {"login": "testuser", "type": "User"},
+            },
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        with patch(
+            "vibeteam.gateway.routes.github.call_agent_service",
+            new_callable=AsyncMock,
+            return_value={"response": "Deployment guidance provided"},
+        ) as mock_agent:
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "discussion_comment",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "release_engineer" in data["message"].lower()
+        mock_agent.assert_called_once()
+
     def test_invalid_signature_rejected(self, test_client, monkeypatch):
         """Test that webhooks with invalid signatures are rejected."""
         # Patch the config directly since FastAPI loads it at import time
@@ -1674,6 +1761,22 @@ class TestGitHubHelperFunctions:
             await post_github_comment("owner/repo", 1, "test body")
 
     @pytest.mark.asyncio
+    async def test_post_github_discussion_comment_no_token(self):
+        """post_github_discussion_comment silently returns when no token is available."""
+        from vibeteam.gateway.routes.github import post_github_discussion_comment
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.get_installation_token",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.dict(os.environ, {}, clear=False),
+        ):
+            os.environ.pop("GITHUB_TOKEN", None)
+            await post_github_discussion_comment("owner/repo", 1, "test body")
+
+    @pytest.mark.asyncio
     async def test_post_acknowledgment_no_token(self):
         """post_acknowledgment silently returns when no token is available."""
         from vibeteam.gateway.routes.github import post_acknowledgment
@@ -1717,6 +1820,33 @@ class TestGitHubHelperFunctions:
 
             # Should not raise — exception is caught
             await post_github_comment("owner/repo", 1, "test body")
+
+    @pytest.mark.asyncio
+    async def test_post_github_discussion_comment_api_error(self):
+        """post_github_discussion_comment catches httpx errors without crashing."""
+        from vibeteam.gateway.routes.github import post_github_discussion_comment
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.get_installation_token",
+                new_callable=AsyncMock,
+                return_value="fake-token",
+            ),
+            patch("vibeteam.gateway.routes.github.httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post.side_effect = httpx.HTTPStatusError(
+                "403 Forbidden",
+                request=httpx.Request(
+                    "POST",
+                    "https://api.github.com/repos/owner/repo/discussions/1/comments",
+                ),
+                response=httpx.Response(403),
+            )
+
+            await post_github_discussion_comment("owner/repo", 1, "test body")
 
     @pytest.mark.asyncio
     async def test_post_acknowledgment_api_error(self):

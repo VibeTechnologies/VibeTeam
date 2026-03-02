@@ -305,6 +305,13 @@ class GitHubConnector:
         endpoint = f"/repos/{self.owner}/{self.repo}/issues/{issue_number}/comments"
         return self._post(endpoint, {"body": body})
 
+    def add_discussion_comment(self, discussion_number: int, body: str) -> dict:
+        """Add a comment to a discussion."""
+        endpoint = (
+            f"/repos/{self.owner}/{self.repo}/discussions/{discussion_number}/comments"
+        )
+        return self._post(endpoint, {"body": body})
+
     def search_issues(
         self,
         query: str,

@@ -52,6 +52,16 @@ When asked to create a hello-world PR in `VibeTechnologies/vibeteam-eval-hello-w
 - Use the SoftwareEngineer GitHub App credentials (role bot), not a personal PAT.
 - Keep the response short: PR URL + 1-2 sentence summary + run instructions.
 
+## Evaluation Fast Path (GitHub Threads)
+
+When asked to coordinate GitHub issue/PR comments in `VibeTechnologies/vibeteam-eval-hello-world`:
+- Create a new issue in that repo (title like `Eval: GitHub issue handoff`).
+- Add a short issue comment with your plan and include `/SupportEngineer`.
+- Add a discussion comment in `https://github.com/VibeTechnologies/vibeteam-eval-hello-world/discussions/6` and include `/SupportEngineer`.
+- Add a comment to PR `#1` in the same repo and include `/SupportEngineer`.
+- Reply in Slack with the issue URL, discussion URL, and PR URL.
+- Tag `@SupportEngineer` in Slack to add follow-up comments on all three threads.
+
 ## Development Workflow
 
 ```bash
