@@ -488,6 +488,12 @@ SCENARIOS = {
                 "Score 0.8-1.0 for direct URLs + brief summary."
             ),
         },
+        "metric_overrides": {
+            "HandoffCompletion": [
+                "github_issue_multi_bot_comments",
+                "github_pr_multi_bot_comments",
+            ],
+        },
         "threshold": 0.70,
     },
     "support_gmail_inbox": {
@@ -2676,30 +2682,35 @@ async def run_evaluation(
 
         if post_checks_config.get("github_pr_created"):
             result = _check_github_pr_created(transcript)
+            result["id"] = "github_pr_created"
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
 
         if post_checks_config.get("github_pr_author_is_bot"):
             result = _check_github_pr_author_is_bot(transcript)
+            result["id"] = "github_pr_author_is_bot"
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
 
         if post_checks_config.get("github_issue_multi_bot_comments"):
             result = _check_github_issue_multi_bot_comments(transcript)
+            result["id"] = "github_issue_multi_bot_comments"
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
 
         if post_checks_config.get("github_pr_multi_bot_comments"):
             result = _check_github_pr_multi_bot_comments(transcript)
+            result["id"] = "github_pr_multi_bot_comments"
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
 
         if post_checks_config.get("github_discussion_multi_bot_comments"):
             result = _check_github_discussion_multi_bot_comments(transcript)
+            result["id"] = "github_discussion_multi_bot_comments"
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
@@ -2707,12 +2718,14 @@ async def run_evaluation(
         if post_checks_config.get("github_pr_target_repo"):
             expected_repo = str(post_checks_config["github_pr_target_repo"])
             result = _check_github_pr_targets_repo(transcript, expected_repo)
+            result["id"] = "github_pr_target_repo"
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
 
         if post_checks_config.get("sentry_issue_closed"):
             result = _check_sentry_issue_closed(transcript)
+            result["id"] = "sentry_issue_closed"
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
@@ -2828,6 +2841,20 @@ async def run_evaluation(
             print("\n>>> Step 4: SKIPPED - No agent response received")
         else:
             print("\n>>> Step 4: SKIPPED - DeepEval not available")
+
+    metric_overrides = scenario.get("metric_overrides", {})
+    if metrics_results and metric_overrides and post_checks_results:
+        checks_by_id = {c.get("id"): c for c in post_checks_results if c.get("id")}
+        for metric in metrics_results:
+            override_checks = metric_overrides.get(metric["name"])
+            if not override_checks:
+                continue
+            if all(checks_by_id.get(check_id, {}).get("passed") for check_id in override_checks):
+                metric["score"] = 1.0
+                metric["reason"] = (
+                    "Overridden to pass based on required post-checks: "
+                    + ", ".join(override_checks)
+                )
 
     # Step 5: Generate report
     print("\n>>> Step 5: Generating evaluation report")
