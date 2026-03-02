@@ -1,5 +1,7 @@
 # VibeTeam
 
+![VibeTeam System Diagram](docs/system-diagram.png)
+
 LiteLLM-based autonomous AI team for VibeBrowser SaaS operations.
 
 ## Overview

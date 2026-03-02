@@ -405,6 +405,56 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "software_engineer_github_app_hello_world": {
+        "name": "Software Engineer - GitHub App Hello World Repo",
+        "message": (
+            "@VibeTeam @SoftwareEngineer please create (or reuse if it already exists) "
+            "the repo VibeTechnologies/vibeteam-eval-hello-world. Add a simple Python "
+            "hello world app (e.g., main.py prints 'Hello, world!'), open a PR with the "
+            "changes, and include the PR URL in your reply. Use the SoftwareEngineer "
+            "GitHub App credentials (role bot), not a personal PAT."
+        ),
+        "expected_agent": "software_engineer",
+        "post_checks": {
+            "github_pr_created": True,
+            "github_pr_author_is_bot": True,
+            "github_pr_target_repo": "VibeTechnologies/vibeteam-eval-hello-world",
+        },
+        "evaluation_criteria": {
+            "TaskCompletion": (
+                "Did the SoftwareEngineer create a PR in the expected repo and provide the PR URL? "
+                "REQUIRED: "
+                "(1) PR URL included in response; "
+                "(2) PR targets VibeTechnologies/vibeteam-eval-hello-world; "
+                "(3) Response confirms the hello world implementation. "
+                "SCORING: "
+                "Score 0.0-0.3: No PR or no URL. "
+                "Score 0.3-0.6: PR mentioned but wrong repo or unclear change. "
+                "Score 0.6-0.8: PR created with URL and summary. "
+                "Score 0.8-1.0: PR created with URL, clear summary, and run instructions."
+            ),
+            "GitHubAppUsage": (
+                "Did the response align with GitHub App attribution (role bot) rather than a personal PAT? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) No mention of using a personal PAT; "
+                "(2) Mentions role bot/GitHub App usage OR evidence consistent with bot attribution. "
+                "SCORING: "
+                "Score 0.0-0.3: Mentions PAT or personal account usage. "
+                "Score 0.3-0.6: No mention of auth method. "
+                "Score 0.6-0.8: Mentions GitHub App or bot identity. "
+                "Score 0.8-1.0: Mentions GitHub App/bot and ties it to the PR link."
+            ),
+            "ResponseEfficiency": (
+                "Is the response concise and focused? "
+                "SCORING: "
+                "Score 0.0-0.3: Rambling or off-topic. "
+                "Score 0.3-0.6: Some unnecessary detail. "
+                "Score 0.6-0.8: Mostly concise. "
+                "Score 0.8-1.0: Direct and minimal."
+            ),
+        },
+        "threshold": 0.70,
+    },
     "support_gmail_inbox": {
         "name": "Support Engineer - Gmail Inbox Triage",
         "message": "@VibeTeam @SupportEngineer, check Gmail inbox, anything to address? If so, work on it.",
@@ -1622,6 +1672,55 @@ def _check_github_pr_author_is_bot(transcript: str) -> dict[str, str | bool]:
     }
 
 
+def _check_github_pr_targets_repo(transcript: str, expected_repo: str) -> dict[str, str | bool]:
+    refs = _extract_github_pr_refs(transcript)
+    if not refs:
+        return {
+            "name": "GitHub PR targets expected repo",
+            "passed": False,
+            "required": True,
+            "details": "No PR reference found in conversation.",
+        }
+
+    expected_repo = expected_repo.strip()
+    if "/" not in expected_repo:
+        return {
+            "name": "GitHub PR targets expected repo",
+            "passed": False,
+            "required": True,
+            "details": f"Expected repo '{expected_repo}' must be in owner/repo format.",
+        }
+
+    expected_owner, expected_name = expected_repo.split("/", 1)
+    expected_owner = expected_owner.strip().lower()
+    expected_name = expected_name.strip().lower()
+
+    matches: list[str] = []
+    found: list[str] = []
+    for ref in refs:
+        owner = str(ref["owner"])
+        repo = str(ref["repo"])
+        number = int(ref["number"])
+        found.append(f"{owner}/{repo}#{number}")
+        if owner.lower() == expected_owner and repo.lower() == expected_name:
+            matches.append(f"{owner}/{repo}#{number}")
+
+    if matches:
+        return {
+            "name": "GitHub PR targets expected repo",
+            "passed": True,
+            "required": True,
+            "details": f"Found PR(s) in {expected_repo}: {', '.join(matches)}.",
+        }
+
+    return {
+        "name": "GitHub PR targets expected repo",
+        "passed": False,
+        "required": True,
+        "details": f"No PR found in {expected_repo}. Found: {', '.join(found)}.",
+    }
+
+
 def _check_sentry_issue_closed(transcript: str) -> dict[str, str | bool]:
     issue_ids = _extract_sentry_issue_ids(transcript)
     if not issue_ids:
@@ -2290,6 +2389,13 @@ async def run_evaluation(
 
         if post_checks_config.get("github_pr_author_is_bot"):
             result = _check_github_pr_author_is_bot(transcript)
+            post_checks_results.append(result)
+            status = "✅" if result.get("passed") else "❌"
+            print(f"    {status} {result.get('name')}: {result.get('details')}")
+
+        if post_checks_config.get("github_pr_target_repo"):
+            expected_repo = str(post_checks_config["github_pr_target_repo"])
+            result = _check_github_pr_targets_repo(transcript, expected_repo)
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
