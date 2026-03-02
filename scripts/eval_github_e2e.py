@@ -187,10 +187,7 @@ def _fetch_issue_comments(owner: str, repo: str, number: int, token: str) -> lis
 def _create_discussion(owner: str, repo: str, token: str) -> tuple[int, str, datetime]:
     repo_id, category_id = _get_repo_and_category_id(owner, repo, token)
     title = f"Eval GitHub discussion handoff {uuid.uuid4().hex[:8]}"
-    body = (
-        "Eval discussion to test agent handoff via GitHub discussion comments.\n"
-        "/SoftwareEngineer /SupportEngineer please respond in this discussion."
-    )
+    body = "Eval discussion to test agent handoff via GitHub discussion comments."
     mutation = """
     mutation($repoId: ID!, $catId: ID!, $title: String!, $body: String!) {
       createDiscussion(input: {repositoryId: $repoId, categoryId: $catId, title: $title, body: $body}) {
@@ -273,12 +270,16 @@ def _run_issue_handoff_existing(
 
 def _run_discussion_handoff(owner: str, repo: str, token: str, timeout: int) -> dict:
     _ensure_discussions_enabled(owner, repo, token)
-    discussion_number, discussion_url, created_ts = _create_discussion(owner, repo, token)
+    discussion_number, discussion_url, _ = _create_discussion(owner, repo, token)
+    trigger_body = "Triggering handoff via discussion comment.\n/SoftwareEngineer /SupportEngineer"
+    trigger_ts = _create_discussion_comment(
+        owner, repo, token, discussion_number, trigger_body
+    )
 
     def fetch() -> list[dict]:
         return _fetch_discussion_comments(owner, repo, discussion_number, token)
 
-    bot_logins = _wait_for_bot_authors(fetch, created_ts, 2, timeout)
+    bot_logins = _wait_for_bot_authors(fetch, trigger_ts, 2, timeout)
     return {
         "thread": discussion_url,
         "bot_logins": sorted(bot_logins),
