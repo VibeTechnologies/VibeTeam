@@ -75,7 +75,7 @@ uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribut
 uv run python scripts/eval_slack_e2e.py --scenario software_engineer_github_app_hello_world --channel C0AATPSADB8 --timeout 600
 uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600
 
-`github_issue_pr_handoff_slack` validates cross-agent handoff comments across issue, discussion, and PR threads in the eval repo.
+`github_issue_pr_handoff_slack` validates cross-agent handoff comments across issue and PR threads in the eval repo.
 
 # GitHub webhook evaluation (issues/discussions/PR comments)
 uv run python scripts/eval_github_e2e.py --scenario github_threads_all --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --timeout 600

@@ -456,36 +456,32 @@ SCENARIOS = {
         "threshold": 0.70,
     },
     "github_issue_pr_handoff_slack": {
-        "name": "GitHub Handoff - Issue + Discussion + PR Comments (Slack Trigger)",
+        "name": "GitHub Handoff - Issue + PR Comments (Slack Trigger)",
         "message": (
             "@VibeTeam @SoftwareEngineer please do GitHub coordination ONLY in "
             "VibeTechnologies/vibeteam-eval-hello-world (do NOT use VibeTeam or any other repo). "
             "Use these threads: "
             "Issue: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/3 "
-            "Discussion: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/discussions/6 "
             "PR: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/pull/1 "
             "1) Add an issue comment summarizing the plan. "
             "Include /SupportEngineer in the issue comment to request a follow-up. "
-            "2) Add a discussion comment summarizing the plan and include /SupportEngineer there too. "
-            "If you use the github tool, use action add_discussion_comment with discussion_number=6. "
-            "3) Add a PR comment summarizing the plan and include /SupportEngineer there too. "
-            "Reply in Slack confirming all three comments were posted."
+            "2) Add a PR comment summarizing the plan and include /SupportEngineer there too. "
+            "Reply in Slack confirming both comments were posted."
         ),
         "expected_agent": "software_engineer",
         "timeout": 600,
         "post_checks": {
             "github_issue_multi_bot_comments": True,
-            "github_discussion_multi_bot_comments": True,
             "github_pr_multi_bot_comments": True,
         },
         "evaluation_criteria": {
             "TaskCompletion": (
-                "Did the SoftwareEngineer create the GitHub issue, discussion, and PR comments and share URLs? "
-                "REQUIRED: issue URL, discussion URL, and PR URL present in the response, and comments exist in all three threads."
+                "Did the SoftwareEngineer create the GitHub issue + PR comments and share URLs? "
+                "REQUIRED: issue URL and PR URL present in the response, and comments exist in both threads."
             ),
             "HandoffCompletion": (
-                "Did SupportEngineer post follow-up comments in the issue, discussion, and PR threads? "
-                "REQUIRED: at least two bot authors appear in all three threads."
+                "Did SupportEngineer post follow-up comments in the issue and PR threads? "
+                "REQUIRED: at least two bot authors appear in both threads."
             ),
             "ResponseEfficiency": (
                 "Is the response concise and focused? "
