@@ -167,8 +167,8 @@ The `software_engineer_github_app_hello_world` scenario targets
 `VibeTechnologies/vibeteam-eval-hello-world` and validates PR creation plus bot
 attribution, so the SoftwareEngineer GitHub App must be installed on that repo.
 Post-checks also require `GITHUB_TOKEN` (or `GH_TOKEN`) to verify PR metadata.
-The `github_issue_pr_handoff_slack` scenario validates issue, discussion, and PR
-handoff comments in the same eval repo.
+The `github_issue_pr_handoff_slack` scenario validates issue + PR handoff comments in
+the same eval repo. Discussion handoffs are validated via `eval_github_e2e.py`.
 
 Use `scripts/eval_github_e2e.py` to validate GitHub webhook routing and multi-agent
 handoffs over issues, discussions, and PR comments. This requires:
