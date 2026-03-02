@@ -313,6 +313,37 @@ async def post_github_discussion_comment(
         logger.error(f"Failed to post discussion comment: {e}")
 
 
+async def fetch_github_discussion(
+    repo: str,
+    discussion_number: int,
+    role: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch discussion details from GitHub."""
+    token = await get_installation_token(role)
+    if not token:
+        token = os.environ.get("GITHUB_TOKEN")
+
+    if not token:
+        logger.warning("No GitHub token available, skipping discussion fetch")
+        return None
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://api.github.com/repos/{repo}/discussions/{discussion_number}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        logger.error(f"Failed to fetch discussion details: {e}")
+        return None
+
+
 async def run_agent_for_github_discussion(
     repo: str,
     discussion_number: int,
@@ -530,6 +561,14 @@ async def handle_github_webhook(
         if discussion_user_type == "Bot" or config.BOT_USERNAME.replace("[bot]", "") in discussion_user:
             return {"status": "ignored", "reason": "own_comment"}
 
+        if discussion_number and (not discussion_body or not discussion_title):
+            fetched = await fetch_github_discussion(
+                repo_full_name, discussion_number, role="software_engineer"
+            )
+            if fetched:
+                discussion_body = discussion_body or fetched.get("body", "")
+                discussion_title = discussion_title or fetched.get("title", "")
+
         message_router = get_message_router()
         role_mentions = message_router.parse_role_mentions(discussion_body)
 
@@ -581,6 +620,14 @@ async def handle_github_webhook(
         # Ignore bot's own comments
         if comment_user_type == "Bot" or config.BOT_USERNAME.replace("[bot]", "") in comment_user:
             return {"status": "ignored", "reason": "own_comment"}
+
+        if discussion_number and (not discussion_body or not discussion_title):
+            fetched = await fetch_github_discussion(
+                repo_full_name, discussion_number, role="software_engineer"
+            )
+            if fetched:
+                discussion_body = discussion_body or fetched.get("body", "")
+                discussion_title = discussion_title or fetched.get("title", "")
 
         message_router = get_message_router()
         role_mentions = message_router.parse_role_mentions(comment_body)
