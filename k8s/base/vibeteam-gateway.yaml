@@ -29,6 +29,10 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+          envFrom:
+            - secretRef:
+                name: github-app-role-secrets
+                optional: true
           env:
             # Agent service URLs (internal k8s DNS)
             - name: AUTOGEN_SERVICE_URL

@@ -3,8 +3,10 @@ GitHub Webhook Handlers.
 
 Handles GitHub webhook events and routes to agent microservices:
 - issues.assigned: Trigger SWE agent when issue assigned to bot
-- issue_comment.created: Respond to @mentions in comments
+- issue_comment.created: Respond to /RoleName mentions in comments
 - pull_request_review_comment.created: Respond to PR review comments
+- discussion.created: Respond to /RoleName mentions in discussion body
+- discussion_comment.created: Respond to /RoleName mentions in discussion comments
 
 Uses the Router for /RoleName mention-based routing.
 """
@@ -211,6 +213,9 @@ async def run_agent_for_github(
     issue_number: int,
     role: AgentRole,
     context: str,
+    handoff_depth: int = 0,
+    max_handoff_depth: int = 1,
+    visited_roles: set[AgentRole] | None = None,
 ) -> None:
     """Run a specific agent for a GitHub issue."""
     display_name = get_slack_handle(role) or role.replace("_", " ").title()
@@ -232,6 +237,9 @@ Repository: {repo}
 Issue: #{issue_number}
 """
 
+    visited = set(visited_roles or set())
+    visited.add(role)
+
     try:
         result = await call_agent_service(
             task=task,
@@ -248,8 +256,140 @@ Issue: #{issue_number}
                 formatted = f"[{display_name}] {response}"
                 await post_github_comment(repo, issue_number, formatted, role=role)
 
+                if handoff_depth < max_handoff_depth:
+                    message_router = get_message_router()
+                    handoff_roles = message_router.parse_role_mentions(response)
+                    if handoff_roles:
+                        logger.info(
+                            f"Detected GitHub handoff from {display_name} to: {handoff_roles}"
+                        )
+                        for next_role in handoff_roles:
+                            if next_role == role or next_role in visited:
+                                continue
+                            await run_agent_for_github(
+                                repo=repo,
+                                issue_number=issue_number,
+                                role=next_role,
+                                context=f"Handoff from {display_name}:\n\n{response}",
+                                handoff_depth=handoff_depth + 1,
+                                max_handoff_depth=max_handoff_depth,
+                                visited_roles=visited,
+                            )
+
     except Exception as e:
         logger.exception(f"Failed to run {display_name} agent: {e}")
+
+
+async def post_github_discussion_comment(
+    repo: str,
+    discussion_number: int,
+    body: str,
+    role: str | None = None,
+) -> None:
+    """Post a comment on a GitHub discussion."""
+    token = await get_installation_token(role)
+    if not token:
+        token = os.environ.get("GITHUB_TOKEN")
+
+    if not token:
+        logger.warning("No GitHub token available, skipping discussion comment")
+        return
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.github.com/repos/{repo}/discussions/{discussion_number}/comments",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                json={"body": body},
+            )
+            response.raise_for_status()
+            logger.info(f"Posted discussion comment to {repo}#{discussion_number}")
+
+    except Exception as e:
+        logger.error(f"Failed to post discussion comment: {e}")
+
+
+async def run_agent_for_github_discussion(
+    repo: str,
+    discussion_number: int,
+    discussion_title: str,
+    role: AgentRole,
+    context: str,
+    handoff_depth: int = 0,
+    max_handoff_depth: int = 1,
+    visited_roles: set[AgentRole] | None = None,
+) -> None:
+    """Run a specific agent for a GitHub discussion."""
+    display_name = get_slack_handle(role) or role.replace("_", " ").title()
+    logger.info(f"Running {display_name} agent for {repo} discussion #{discussion_number}")
+
+    task = f"""## GitHub Discussion Context
+
+You are helping with GitHub discussion #{discussion_number} in repository {repo}.
+
+### Discussion Title
+{discussion_title}
+
+### Context
+{context}
+
+### Instructions
+1. Respond in the discussion thread with helpful context or action
+2. Use available tools to investigate or take action
+3. If you need another team member, mention them with /RoleName
+
+Repository: {repo}
+Discussion: #{discussion_number}
+"""
+
+    visited = set(visited_roles or set())
+    visited.add(role)
+
+    try:
+        result = await call_agent_service(
+            task=task,
+            role=role,
+            context_type="github_discussion",
+            context_id=f"{repo}:discussion:{discussion_number}",
+        )
+
+        if "error" in result:
+            logger.error(f"{display_name} agent failed: {result['error']}")
+        else:
+            response = result.get("response", "")
+            if response:
+                formatted = f"[{display_name}] {response}"
+                await post_github_discussion_comment(
+                    repo, discussion_number, formatted, role=role
+                )
+
+                if handoff_depth < max_handoff_depth:
+                    message_router = get_message_router()
+                    handoff_roles = message_router.parse_role_mentions(response)
+                    if handoff_roles:
+                        logger.info(
+                            f"Detected GitHub discussion handoff from {display_name} to: {handoff_roles}"
+                        )
+                        for next_role in handoff_roles:
+                            if next_role == role or next_role in visited:
+                                continue
+                            await run_agent_for_github_discussion(
+                                repo=repo,
+                                discussion_number=discussion_number,
+                                discussion_title=discussion_title,
+                                role=next_role,
+                                context=f"Handoff from {display_name}:\n\n{response}",
+                                handoff_depth=handoff_depth + 1,
+                                max_handoff_depth=max_handoff_depth,
+                                visited_roles=visited,
+                            )
+
+    except Exception as e:
+        logger.exception(f"Failed to run {display_name} discussion agent: {e}")
 
 
 async def post_github_comment(
@@ -376,6 +516,118 @@ async def handle_github_webhook(
             )
 
             return {"status": "accepted", "message": f"Processing mention in #{issue_number}"}
+
+    # Handle /RoleName mentions in discussions
+    if x_github_event == "discussion" and action == "created":
+        discussion = payload.get("discussion", {})
+        discussion_body = discussion.get("body", "")
+        discussion_title = discussion.get("title", "")
+        discussion_number = discussion.get("number")
+        discussion_user = discussion.get("user", {}).get("login", "")
+        discussion_user_type = discussion.get("user", {}).get("type", "")
+
+        # Ignore bot discussions
+        if discussion_user_type == "Bot" or config.BOT_USERNAME.replace("[bot]", "") in discussion_user:
+            return {"status": "ignored", "reason": "own_comment"}
+
+        message_router = get_message_router()
+        role_mentions = message_router.parse_role_mentions(discussion_body)
+
+        if role_mentions:
+            logger.info(f"Role mentions in discussion #{discussion_number}: {role_mentions}")
+            for role in role_mentions:
+                asyncio.create_task(
+                    run_agent_for_github_discussion(
+                        repo=repo_full_name,
+                        discussion_number=discussion_number,
+                        discussion_title=discussion_title,
+                        role=role,
+                        context=f"Discussion body:\n\n{discussion_body}",
+                    )
+                )
+            return {
+                "status": "accepted",
+                "message": f"Processing roles {role_mentions} for discussion #{discussion_number}",
+            }
+
+        bot_mention = f"@{config.BOT_USERNAME.replace('[bot]', '')}"
+        if bot_mention in discussion_body or "@VibeTeam" in discussion_body:
+            logger.info(f"Bot mentioned in discussion #{discussion_number}")
+            asyncio.create_task(
+                run_agent_for_github_discussion(
+                    repo=repo_full_name,
+                    discussion_number=discussion_number,
+                    discussion_title=discussion_title,
+                    role="software_engineer",
+                    context=f"Discussion body:\n\n{discussion_body}",
+                )
+            )
+            return {
+                "status": "accepted",
+                "message": f"Processing mention in discussion #{discussion_number}",
+            }
+
+    # Handle /RoleName in discussion comments
+    if x_github_event == "discussion_comment" and action == "created":
+        comment = payload.get("comment", {})
+        comment_body = comment.get("body", "")
+        comment_user = comment.get("user", {}).get("login", "")
+        comment_user_type = comment.get("user", {}).get("type", "")
+        discussion = payload.get("discussion", {})
+        discussion_body = discussion.get("body", "")
+        discussion_title = discussion.get("title", "")
+        discussion_number = discussion.get("number")
+
+        # Ignore bot's own comments
+        if comment_user_type == "Bot" or config.BOT_USERNAME.replace("[bot]", "") in comment_user:
+            return {"status": "ignored", "reason": "own_comment"}
+
+        message_router = get_message_router()
+        role_mentions = message_router.parse_role_mentions(comment_body)
+
+        if role_mentions:
+            logger.info(
+                f"Role mentions in discussion comment on #{discussion_number}: {role_mentions}"
+            )
+            for role in role_mentions:
+                asyncio.create_task(
+                    run_agent_for_github_discussion(
+                        repo=repo_full_name,
+                        discussion_number=discussion_number,
+                        discussion_title=discussion_title,
+                        role=role,
+                        context=(
+                            "Discussion body:\n\n"
+                            f"{discussion_body}\n\n"
+                            f"New comment:\n{comment_body}"
+                        ),
+                    )
+                )
+            return {
+                "status": "accepted",
+                "message": f"Processing roles {role_mentions} for discussion #{discussion_number}",
+            }
+
+        bot_mention = f"@{config.BOT_USERNAME.replace('[bot]', '')}"
+        if bot_mention in comment_body or "@VibeTeam" in comment_body:
+            logger.info(f"Bot mentioned in discussion comment on #{discussion_number}")
+            asyncio.create_task(
+                run_agent_for_github_discussion(
+                    repo=repo_full_name,
+                    discussion_number=discussion_number,
+                    discussion_title=discussion_title,
+                    role="software_engineer",
+                    context=(
+                        "Discussion body:\n\n"
+                        f"{discussion_body}\n\n"
+                        f"New comment:\n{comment_body}"
+                    ),
+                )
+            )
+            return {
+                "status": "accepted",
+                "message": f"Processing mention in discussion #{discussion_number}",
+            }
 
     # Handle PR review comments
     if x_github_event == "pull_request_review_comment" and action == "created":

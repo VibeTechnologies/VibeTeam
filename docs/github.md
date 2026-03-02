@@ -148,3 +148,15 @@ print(f"Found {len(issues)} issues")
 - JWT expired: system clock drift
 - 404 when getting installation token: wrong Installation ID
 - 401 unauthorized: app missing permissions or not installed on repo
+
+## Webhook Events (Gateway)
+
+Ensure the GitHub webhook includes these events so agent handoffs work in GitHub threads:
+- `issues`
+- `issue_comment`
+- `pull_request_review_comment`
+- `discussion`
+- `discussion_comment`
+
+Discussions must be enabled on the eval repo (`vibeteam-eval-hello-world`) for discussion
+scenarios to work.

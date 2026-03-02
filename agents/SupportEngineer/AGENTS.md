@@ -58,6 +58,21 @@ curl -sS -X PUT "https://sentry.io/api/0/issues/<ISSUE_ID>/" \
 ```
 Then respond with the Sentry issue URL and the PR link.
 
+## GitHub Thread Coordination (Required When Asked)
+
+When a request asks you to comment on a GitHub issue, discussion, or PR:
+1. Post a concise comment in the specified thread using GitHub tools (`gh` or MCP).
+2. If a handoff is needed, mention the next role with `/RoleName` in the comment.
+3. Reply in Slack with the thread URL and a 1-2 sentence summary of your comment.
+
+### Evaluation Fast Path (GitHub Threads)
+
+If the SoftwareEngineer tags you to comment in `VibeTechnologies/vibeteam-eval-hello-world`:
+- Add a brief follow-up comment on the provided issue URL.
+- Add a brief follow-up comment on the discussion URL (currently `/discussions/6`).
+- Add a brief follow-up comment on PR `#1` (or the PR URL provided).
+- Reply in Slack with all URLs and a short confirmation.
+
 ## Decision Making
 
 ### When to Escalate Immediately (P0)

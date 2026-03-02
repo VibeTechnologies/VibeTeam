@@ -20,7 +20,7 @@ class GitHubTool(BaseTool):
     """
 
     name = "github"
-    description = "Manage GitHub issues and pull requests"
+    description = "Manage GitHub issues, discussions, and pull requests"
 
     def __init__(
         self,
@@ -56,6 +56,7 @@ class GitHubTool(BaseTool):
                                 "get_issue",
                                 "update_issue",
                                 "add_comment",
+                                "add_discussion_comment",
                                 "search_issues",
                                 "get_customer_requests",
                                 "add_customer_request",
@@ -68,6 +69,10 @@ class GitHubTool(BaseTool):
                         "issue_number": {
                             "type": "integer",
                             "description": "Issue or PR number",
+                        },
+                        "discussion_number": {
+                            "type": "integer",
+                            "description": "Discussion number",
                         },
                         "pr_number": {
                             "type": "integer",
@@ -161,6 +166,21 @@ class GitHubTool(BaseTool):
                     )
                 self.connector.add_issue_comment(issue_number, body)
                 return ToolResult(success=True, output=f"Comment added to issue #{issue_number}")
+
+            elif action == "add_discussion_comment":
+                discussion_number = kwargs.get("discussion_number")
+                body = kwargs.get("body")
+                if not discussion_number or not body:
+                    return ToolResult(
+                        success=False,
+                        output="",
+                        error="discussion_number and body required",
+                    )
+                self.connector.add_discussion_comment(discussion_number, body)
+                return ToolResult(
+                    success=True,
+                    output=f"Comment added to discussion #{discussion_number}",
+                )
 
             elif action == "search_issues":
                 query = kwargs.get("query", "")

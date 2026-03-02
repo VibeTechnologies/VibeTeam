@@ -113,6 +113,14 @@ See [openclaw-introduction.md](openclaw-introduction.md) for a focused OpenClaw 
 - `POST /api/run` — Direct agent execution
 - `GET /health` — Gateway health
 
+## GitHub Webhooks
+
+Gateway supports GitHub webhooks for:
+- `issues` (assignment)
+- `issue_comment` (role mentions)
+- `pull_request_review_comment`
+- `discussion` and `discussion_comment`
+
 ## LLM Configuration
 
 - Default model: Azure OpenAI `gpt-5.2`.

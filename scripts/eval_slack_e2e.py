@@ -455,6 +455,44 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "github_issue_pr_handoff_slack": {
+        "name": "GitHub Handoff - Issue + Discussion + PR Comments (Slack Trigger)",
+        "message": (
+            "@VibeTeam @SoftwareEngineer please do GitHub coordination ONLY in "
+            "VibeTechnologies/vibeteam-eval-hello-world (do NOT use VibeTeam or any other repo). "
+            "Use these threads: "
+            "Issue: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/3 "
+            "Discussion: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/discussions/6 "
+            "PR: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/pull/1 "
+            "1) Add an issue comment summarizing the plan. "
+            "Include /SupportEngineer in the issue comment to request a follow-up. "
+            "2) Add a discussion comment summarizing the plan and include /SupportEngineer there too. "
+            "3) Add a PR comment summarizing the plan and include /SupportEngineer there too. "
+            "Reply in Slack confirming all three comments were posted."
+        ),
+        "expected_agent": "software_engineer",
+        "timeout": 600,
+        "post_checks": {
+            "github_issue_multi_bot_comments": True,
+            "github_discussion_multi_bot_comments": True,
+            "github_pr_multi_bot_comments": True,
+        },
+        "evaluation_criteria": {
+            "TaskCompletion": (
+                "Did the SoftwareEngineer create the GitHub issue, discussion, and PR comments and share URLs? "
+                "REQUIRED: issue URL, discussion URL, and PR URL present in the response, and comments exist in all three threads."
+            ),
+            "HandoffCompletion": (
+                "Did SupportEngineer post follow-up comments in the issue, discussion, and PR threads? "
+                "REQUIRED: at least two bot authors appear in all three threads."
+            ),
+            "ResponseEfficiency": (
+                "Is the response concise and focused? "
+                "Score 0.8-1.0 for direct URLs + brief summary."
+            ),
+        },
+        "threshold": 0.70,
+    },
     "support_gmail_inbox": {
         "name": "Support Engineer - Gmail Inbox Triage",
         "message": "@VibeTeam @SupportEngineer, check Gmail inbox, anything to address? If so, work on it.",
@@ -1485,6 +1523,10 @@ def _default_github_repo() -> tuple[str, str]:
     return owner, repo
 
 
+def _get_github_token() -> str | None:
+    return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+
+
 def _extract_github_pr_refs(text: str) -> list[dict[str, str | int]]:
     refs: list[dict[str, str | int]] = []
     seen: set[tuple[str, str, int]] = set()
@@ -1519,6 +1561,74 @@ def _extract_github_pr_refs(text: str) -> list[dict[str, str | int]]:
             )
 
     return refs
+
+
+def _extract_github_issue_refs(text: str) -> list[dict[str, str | int]]:
+    refs: list[dict[str, str | int]] = []
+    seen: set[tuple[str, str, int]] = set()
+
+    url_pattern = re.compile(
+        r"https?://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/issues/(?P<number>\d+)",
+        re.IGNORECASE,
+    )
+    for match in url_pattern.finditer(text):
+        owner = match.group("owner")
+        repo = match.group("repo")
+        number = int(match.group("number"))
+        key = (owner, repo, number)
+        if key not in seen:
+            seen.add(key)
+            refs.append({"owner": owner, "repo": repo, "number": number, "source": match.group(0)})
+
+    issue_pattern = re.compile(r"\bissue\s*#?\s*(\d+)\b", re.IGNORECASE)
+    default_owner, default_repo = _default_github_repo()
+    for match in issue_pattern.finditer(text):
+        number = int(match.group(1))
+        key = (default_owner, default_repo, number)
+        if key not in seen:
+            seen.add(key)
+            refs.append(
+                {
+                    "owner": default_owner,
+                    "repo": default_repo,
+                    "number": number,
+                    "source": f"Issue #{number}",
+                }
+            )
+
+    return refs
+
+
+def _extract_github_discussion_refs(text: str) -> list[dict[str, str | int]]:
+    refs: list[dict[str, str | int]] = []
+    seen: set[tuple[str, str, int]] = set()
+
+    url_pattern = re.compile(
+        r"https?://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/discussions/(?P<number>\d+)",
+        re.IGNORECASE,
+    )
+    for match in url_pattern.finditer(text):
+        owner = match.group("owner")
+        repo = match.group("repo")
+        number = int(match.group("number"))
+        key = (owner, repo, number)
+        if key not in seen:
+            seen.add(key)
+            refs.append({"owner": owner, "repo": repo, "number": number, "source": match.group(0)})
+
+    return refs
+
+
+def _collect_bot_logins(comments: list[dict]) -> set[str]:
+    logins: set[str] = set()
+    for comment in comments:
+        user = comment.get("user") or {}
+        login = user.get("login") or ""
+        user_type = user.get("type") or ""
+        if user_type == "Bot" or login.endswith("[bot]"):
+            if login:
+                logins.add(login)
+    return logins
 
 
 def _extract_sentry_issue_ids(text: str) -> list[int]:
@@ -1669,6 +1779,192 @@ def _check_github_pr_author_is_bot(transcript: str) -> dict[str, str | bool]:
         "passed": False,
         "required": True,
         "details": f"PR author not bot ({'; '.join(errors)}).",
+    }
+
+
+def _check_github_issue_multi_bot_comments(
+    transcript: str, min_bots: int = 2
+) -> dict[str, str | bool]:
+    refs = _extract_github_issue_refs(transcript)
+    if not refs:
+        return {
+            "name": "GitHub issue has multi-bot comments",
+            "passed": False,
+            "required": True,
+            "details": "No GitHub issue reference found in conversation.",
+        }
+
+    token = _get_github_token()
+    if not token:
+        return {
+            "name": "GitHub issue has multi-bot comments",
+            "passed": False,
+            "required": True,
+            "details": "GITHUB_TOKEN/GH_TOKEN not set; cannot verify issue comments.",
+        }
+
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    errors: list[str] = []
+    for ref in refs:
+        owner = str(ref["owner"])
+        repo = str(ref["repo"])
+        number = int(ref["number"])
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments"
+        try:
+            response = httpx.get(url, headers=headers, timeout=20.0, params={"per_page": 100})
+        except httpx.HTTPError as exc:
+            errors.append(f"{owner}/{repo}#{number}: request failed ({exc})")
+            continue
+
+        if response.status_code != 200:
+            errors.append(f"{owner}/{repo}#{number}: {response.status_code}")
+            continue
+
+        comments = response.json()
+        bot_logins = _collect_bot_logins(comments)
+        if len(bot_logins) >= min_bots:
+            return {
+                "name": "GitHub issue has multi-bot comments",
+                "passed": True,
+                "required": True,
+                "details": f"Found {len(bot_logins)} bot authors in {owner}/{repo}#{number}: {', '.join(sorted(bot_logins))}.",
+            }
+        errors.append(f"{owner}/{repo}#{number}: found {len(bot_logins)} bot authors")
+
+    return {
+        "name": "GitHub issue has multi-bot comments",
+        "passed": False,
+        "required": True,
+        "details": f"Insufficient bot authors ({'; '.join(errors)}).",
+    }
+
+
+def _check_github_pr_multi_bot_comments(
+    transcript: str, min_bots: int = 2
+) -> dict[str, str | bool]:
+    refs = _extract_github_pr_refs(transcript)
+    if not refs:
+        return {
+            "name": "GitHub PR has multi-bot comments",
+            "passed": False,
+            "required": True,
+            "details": "No GitHub PR reference found in conversation.",
+        }
+
+    token = _get_github_token()
+    if not token:
+        return {
+            "name": "GitHub PR has multi-bot comments",
+            "passed": False,
+            "required": True,
+            "details": "GITHUB_TOKEN/GH_TOKEN not set; cannot verify PR comments.",
+        }
+
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    errors: list[str] = []
+    for ref in refs:
+        owner = str(ref["owner"])
+        repo = str(ref["repo"])
+        number = int(ref["number"])
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments"
+        try:
+            response = httpx.get(url, headers=headers, timeout=20.0, params={"per_page": 100})
+        except httpx.HTTPError as exc:
+            errors.append(f"{owner}/{repo}#{number}: request failed ({exc})")
+            continue
+
+        if response.status_code != 200:
+            errors.append(f"{owner}/{repo}#{number}: {response.status_code}")
+            continue
+
+        comments = response.json()
+        bot_logins = _collect_bot_logins(comments)
+        if len(bot_logins) >= min_bots:
+            return {
+                "name": "GitHub PR has multi-bot comments",
+                "passed": True,
+                "required": True,
+                "details": f"Found {len(bot_logins)} bot authors in {owner}/{repo} PR #{number}: {', '.join(sorted(bot_logins))}.",
+            }
+        errors.append(f"{owner}/{repo}#{number}: found {len(bot_logins)} bot authors")
+
+    return {
+        "name": "GitHub PR has multi-bot comments",
+        "passed": False,
+        "required": True,
+        "details": f"Insufficient bot authors ({'; '.join(errors)}).",
+    }
+
+
+def _check_github_discussion_multi_bot_comments(
+    transcript: str, min_bots: int = 2
+) -> dict[str, str | bool]:
+    refs = _extract_github_discussion_refs(transcript)
+    if not refs:
+        return {
+            "name": "GitHub discussion has multi-bot comments",
+            "passed": False,
+            "required": True,
+            "details": "No GitHub discussion reference found in conversation.",
+        }
+
+    token = _get_github_token()
+    if not token:
+        return {
+            "name": "GitHub discussion has multi-bot comments",
+            "passed": False,
+            "required": True,
+            "details": "GITHUB_TOKEN/GH_TOKEN not set; cannot verify discussion comments.",
+        }
+
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    errors: list[str] = []
+    for ref in refs:
+        owner = str(ref["owner"])
+        repo = str(ref["repo"])
+        number = int(ref["number"])
+        url = f"https://api.github.com/repos/{owner}/{repo}/discussions/{number}/comments"
+        try:
+            response = httpx.get(url, headers=headers, timeout=20.0, params={"per_page": 100})
+        except httpx.HTTPError as exc:
+            errors.append(f"{owner}/{repo}#{number}: request failed ({exc})")
+            continue
+
+        if response.status_code != 200:
+            errors.append(f"{owner}/{repo}#{number}: {response.status_code}")
+            continue
+
+        comments = response.json()
+        bot_logins = _collect_bot_logins(comments)
+        if len(bot_logins) >= min_bots:
+            return {
+                "name": "GitHub discussion has multi-bot comments",
+                "passed": True,
+                "required": True,
+                "details": f"Found {len(bot_logins)} bot authors in {owner}/{repo} discussion #{number}: {', '.join(sorted(bot_logins))}.",
+            }
+        errors.append(f"{owner}/{repo}#{number}: found {len(bot_logins)} bot authors")
+
+    return {
+        "name": "GitHub discussion has multi-bot comments",
+        "passed": False,
+        "required": True,
+        "details": f"Insufficient bot authors ({'; '.join(errors)}).",
     }
 
 
@@ -2389,6 +2685,24 @@ async def run_evaluation(
 
         if post_checks_config.get("github_pr_author_is_bot"):
             result = _check_github_pr_author_is_bot(transcript)
+            post_checks_results.append(result)
+            status = "✅" if result.get("passed") else "❌"
+            print(f"    {status} {result.get('name')}: {result.get('details')}")
+
+        if post_checks_config.get("github_issue_multi_bot_comments"):
+            result = _check_github_issue_multi_bot_comments(transcript)
+            post_checks_results.append(result)
+            status = "✅" if result.get("passed") else "❌"
+            print(f"    {status} {result.get('name')}: {result.get('details')}")
+
+        if post_checks_config.get("github_pr_multi_bot_comments"):
+            result = _check_github_pr_multi_bot_comments(transcript)
+            post_checks_results.append(result)
+            status = "✅" if result.get("passed") else "❌"
+            print(f"    {status} {result.get('name')}: {result.get('details')}")
+
+        if post_checks_config.get("github_discussion_multi_bot_comments"):
+            result = _check_github_discussion_multi_bot_comments(transcript)
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
