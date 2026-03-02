@@ -21,7 +21,7 @@ import threading
 import time
 from typing import Any
 
-from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
+from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig, get_mcp_config_dict
 from agents.sessions import get_or_create_session, get_session_store
 from agents.shared.kubectl_tools import get_multi_namespace_context
 
@@ -500,27 +500,36 @@ class OpenHandsSoftwareEngineer:
             num_retries=3,  # Retry transient failures (overall timeout is the safety net)
         )
 
-    def _create_agent(self, llm: LLM) -> Agent:
-        """Create Agent with LLM and tools."""
+    def _create_agent(self, llm: LLM, *, use_tools: bool = True) -> Agent:
+        """Create Agent with LLM and tools (MCP when available)."""
         # Load agent context from AGENTS.md hierarchy
         # Falls back to hardcoded context if files not found
         agent_context = compose_agent_context(
             "software_engineer", fallback_context=SOFTWARE_ENGINEER_CONTEXT_FALLBACK
         )
 
+        agent_kwargs: dict[str, Any] = {
+            "llm": llm,
+            "condenser": build_condenser(llm),
+            # Use our custom template that renders agent_context into the system prompt.
+            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
+            "system_prompt_filename": get_prompt_path(),
+            "system_prompt_kwargs": {
+                "agent_context": agent_context,
+            },
+        }
+
+        if use_tools:
+            mcp_config = get_mcp_config_dict(self.config.mcp_servers)
+            if mcp_config.get("mcpServers"):
+                agent_kwargs["mcp_config"] = mcp_config
+
         return Agent(
-            llm=llm,
             tools=[
                 Tool(name=TerminalTool.name),
                 Tool(name=FileEditorTool.name),
             ],
-            condenser=build_condenser(llm),
-            # Use our custom template that renders agent_context into the system prompt.
-            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
-            system_prompt_filename=get_prompt_path(),
-            system_prompt_kwargs={
-                "agent_context": agent_context,
-            },
+            **agent_kwargs,
         )
 
     def _extract_repo_from_task(self, task: str, context_id: str | None = None) -> str:
@@ -2120,7 +2129,8 @@ code matches. Use `gh search code` and `gh api` for further investigation:
         )
 
         llm = self._create_llm()
-        agent = self._create_agent(llm)
+        use_tools = bool(kwargs.get("use_tools", True))
+        agent = self._create_agent(llm, use_tools=use_tools)
 
         # Use provided workspace or create temporary one
         temp_dir = None
@@ -2317,6 +2327,11 @@ code matches. Use `gh search code` and `gh api` for further investigation:
                         "address",
                     )
                 )
+                if sentry_related:
+                    extra_guidance_lines.append(
+                        "REQUIRED: Query Sentry directly via MCP tools (preferred) or sentry-cli. "
+                        "Do NOT claim 'no issues' based only on injected context."
+                    )
                 if sentry_related and pr_requested:
                     extra_guidance_lines.append(
                         "REQUIRED: create a PR with gh CLI and include the PR URL/number in your response. "
