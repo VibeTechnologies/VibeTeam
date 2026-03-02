@@ -585,10 +585,9 @@ async def mark_email_as_read(message_id: str) -> str:
 
 
 def get_email_context(max_results: int = 5) -> str:
-    """Get email context for injection into agent prompts.
+    """Get email context for agent prompts.
 
-    This is designed for OpenHands-style context injection where we
-    provide current state to the agent upfront.
+    Provides current inbox state as a formatted summary.
 
     Args:
         max_results: Maximum emails to include in context

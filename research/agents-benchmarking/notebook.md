@@ -16,7 +16,7 @@ Investigate why OpenHands scores lower (3/5) than CrewAI (4/5) in the error-anal
 
 **Winner: CrewAI**
 
-### After Fix (skip_context_injection)
+### After Fix (no auto context)
 | Framework | Status | Latency | Score | 
 |-----------|--------|---------|-------|
 | CrewAI | PASS | 46s | 4/5 |
@@ -122,9 +122,6 @@ OpenHands is 77% slower than CrewAI (62s vs 35s), though this doesn't affect sco
 
 ## Experiments to Run
 
-### Experiment 1: Disable Sentry Context Injection for Benchmarks
-Add a `skip_context_injection` parameter to OpenHands `run()` to prevent automatic context injection for benchmark tasks. This will make OpenHands behave like CrewAI (only use provided task content).
-
 ### Experiment 2: Increase max_output_tokens
 Try increasing from 4096 to 8192 to prevent truncation.
 
@@ -133,40 +130,9 @@ See if higher reasoning improves score even if slower.
 
 ---
 
-## Proposed Fix
-
-Modify `agents/openhands/support_engineer.py` to add a `skip_context_injection` parameter:
-
-```python
-def run(
-    self,
-    task: str,
-    context_type: str = "ephemeral",
-    context_id: str | None = None,
-    workspace: str | None = None,
-    use_tools: bool = True,
-    skip_context_injection: bool = False,  # NEW
-    **kwargs: Any,
-) -> dict[str, Any]:
-    ...
-    # Only inject context if not skipped
-    if not skip_context_injection:
-        # existing context injection logic
-```
-
-Then update `scripts/benchmark_agents.py`:
-
-```python
-if framework == "openhands":
-    run_kwargs["use_tools"] = False
-    run_kwargs["skip_context_injection"] = True  # NEW
-```
-
----
-
 ## Next Steps
 
-1. Consider adding `skip_context_injection` to AutoGen as well (if it has similar issues)
+1. Consider adding a no-auto-context mode to AutoGen as well (if it has similar issues)
 2. Investigate why AutoGen dropped from 3/5 to 2/5 (may be run-to-run variance)
 3. Run multiple benchmark iterations to account for variance
 
@@ -178,4 +144,3 @@ if framework == "openhands":
 - `reports/evaluation-report-20260129-205724-f1142ab.md` - Previous benchmark report (before fix)
 - `agents/openhands/support_engineer.py` - OpenHands agent implementation (modified)
 - `scripts/benchmark_agents.py` - Benchmark runner (modified)
-

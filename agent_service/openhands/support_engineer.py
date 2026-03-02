@@ -26,7 +26,7 @@ from agents.sessions import get_or_create_session, get_session_store
 from agents.shared.calendar_tools import get_calendar_context
 from agents.shared.docs_tools import get_docs_context
 
-# Import shared tools for context injection
+# Shared tools for direct access (used by helper functions).
 from agents.shared.gmail_tools import get_email_context
 from agents.shared.kubectl_tools import (
     DEFAULT_NAMESPACE,
@@ -219,25 +219,14 @@ def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
     return None
 
 
-def _build_pr_handoff_response(task: str, injected_context: list[str]) -> str:
-    context_str = "\n\n".join(injected_context)
-    issue = _extract_top_sentry_issue(context_str)
-    if issue:
-        project = f"[{issue['project']}] " if issue.get("project") else ""
-        title = issue.get("title") or "(title unavailable)"
-        url = issue.get("url") or "(URL missing)"
-        count = issue.get("count") or "unknown"
-        issue_line = (
-            f"Sentry issue: {project}{issue['short_id']} — {title} "
-            f"(count {count}). URL: {url}."
-        )
+def _build_pr_handoff_response(task: str) -> str:
+    issue_ids = _extract_sentry_issue_ids(task)
+    if issue_ids:
+        issue_line = f"Sentry issue: {issue_ids[0]} (from task context)."
     else:
-        issue_line = "No unresolved Sentry issues found in the injected data."
+        issue_line = "No Sentry issue ID found in the task; please identify the top issue."
 
-    return (
-        f"{issue_line}\n"
-        "SoftwareEngineer please investigate and open a PR to fix the issue."
-    )
+    return f"{issue_line}\nSoftwareEngineer please investigate and open a PR to fix the issue."
 
 
 def _extract_user_message(task: str) -> str:
@@ -593,41 +582,31 @@ You are interacting with external users (via Slack/Email).
 
 ## YOUR INVESTIGATION WORKFLOW (For User Reports/Errors)
 
-You are responsible for INVESTIGATING issues. Your data sources are PRE-INJECTED below:
+You are responsible for INVESTIGATING issues. Use tools directly to gather evidence.
 
-### 1. Pre-Injected Sentry Data
-Look for sections below starting with "## Current Sentry Issues" - this is pre-fetched monitoring data.
-- Report what you find: error messages, counts, timestamps
-- If nothing matches the user's complaint, say so clearly
+### 1. Sentry Data (Query directly)
+- Use Sentry tools or `sentry-cli` to list relevant issues.
+- Report error messages, counts, timestamps.
+- If nothing matches the user's complaint, say so clearly.
 
-### 2. Pre-Injected Kubernetes Data
-Look for sections below starting with "## Pre-Fetched Kubernetes Context" - this includes:
-- Pod status (kubectl get pods)
-- Recent events/warnings (kubectl get events)
-- Deployment logs (kubectl logs)
-- Rollout history (kubectl rollout history)
-
-**IMPORTANT: The kubectl data is ALREADY FETCHED for you. Use the pre-injected data first!**
-You only need to run additional kubectl commands if:
-- You need to check a specific pod not in the pre-fetched data
-- You need to check a different namespace
-- You need fresher data than what's provided
+### 2. Kubernetes Data (Query directly)
+- Run `kubectl get pods`, `kubectl get events`, and targeted `kubectl logs`.
+- Capture pod status, recent warnings, and relevant log patterns.
 
 ### 3. Endpoint Testing (Run manually if URL provided)
 If the user provides a specific URL to test, run curl to verify the endpoint status.
 
 ## INVESTIGATION STEPS (For User Reports/Errors)
 
-1. **Check Sentry data** (pre-injected below) - report specific issues found
-2. **Check Kubernetes data** (pre-injected below) - report pod status, events, log patterns
+1. **Check Sentry data** - report specific issues found
+2. **Check Kubernetes data** - report pod status, events, log patterns
 3. **Test endpoint** (if URL provided) - run curl and report HTTP status
 4. **Correlate findings** - match timestamps between Sentry, events, and logs
 
 ## OWNERSHIP: READ-ONLY Investigation
 
 **YOU CAN:**
-- Read and analyze pre-injected kubectl data
-- Run additional kubectl get, describe, logs commands if needed
+- Run kubectl get, describe, logs commands as needed
 - Query and report on cluster state
 - Identify root causes from logs/events
 
@@ -765,7 +744,6 @@ class OpenHandsSupportEngineer:
         context_id: str | None = None,
         workspace: str | None = None,
         use_tools: bool = True,
-        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -778,8 +756,6 @@ class OpenHandsSupportEngineer:
             workspace: Working directory for the agent
             use_tools: If True, enable TerminalTool and FileEditorTool for agentic exploration.
                       If False, disable tools for direct LLM responses (faster for analysis tasks).
-            skip_context_injection: If True, don't automatically inject Sentry/Gmail/etc context.
-                      Useful for benchmarks where you want the agent to only use provided task content.
 
         Returns:
             dict with response, session_key, and metadata
@@ -838,210 +814,10 @@ class OpenHandsSupportEngineer:
                 max_iteration_per_run=max_iterations,
             )
 
-            # Inject relevant context based on task keywords (unless skipped)
-            injected_context = []
-            extra_guidance_lines: list[str] = []
+            injected_context: list[str] = []
 
-            if not skip_context_injection:
-                task_lower = task.lower()
-
-                # CRITICAL: Skip heavy infrastructure context for simple notification requests
-                # This prevents "over-investigation" where the agent reports on healthy logs
-                # when asked to just send a message.
-                is_notification = any(
-                    kw in task_lower
-                    for kw in [
-                        "notify",
-                        "announce",
-                        "tell the team",
-                        "tell the customer",
-                        "confirm to",
-                    ]
-                )
-                is_explicit_investigation = any(
-                    kw in task_lower
-                    for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
-                )
-
-                notification_only = is_notification and not is_explicit_investigation
-                skip_infra_context = notification_only
-
-                # Sentry context for error-related tasks
-                # Expanded to include infrastructure/incident keywords
-                sentry_keywords = [
-                    "sentry",
-                    "error",
-                    "issue",
-                    "bug",
-                    "crash",  # original
-                    "400",
-                    "500",
-                    "4xx",
-                    "5xx",
-                    "http",  # HTTP errors
-                    "incident",
-                    "outage",
-                    "down",
-                    "failing",
-                    "failure",  # incidents
-                    "gateway",
-                    "api",
-                    "endpoint",
-                    "service",  # infrastructure
-                    "deployment",
-                    "deploy",
-                    "release",
-                    "rollback",  # deployments
-                    "customer",
-                    "user",
-                    "report",
-                    "complaint",  # customer reports often relate to errors
-                ]
-                if not skip_infra_context and any(kw in task_lower for kw in sentry_keywords):
-                    include_top_issue_details = any(
-                        kw in task_lower
-                        for kw in [
-                            "pr",
-                            "pull request",
-                            "bug",
-                            "fix",
-                            "address",
-                            "close sentry",
-                            "close the sentry",
-                        ]
-                    )
-                    sentry_limit = 1 if include_top_issue_details else 10
-                    sentry_ctx = fetch_sentry_context(
-                        limit=sentry_limit,
-                        include_top_issue_details=include_top_issue_details,
-                    )
-                    injected_context.append(sentry_ctx)
-                    infra_keywords = [
-                        "kubectl",
-                        "pod",
-                        "pods",
-                        "deployment",
-                        "rollout",
-                        "crashloop",
-                        "crashloopbackoff",
-                        "outage",
-                        "down",
-                        "restart",
-                        "service unavailable",
-                        "timeout",
-                        "5xx",
-                        "500",
-                        "503",
-                    ]
-                    if any(kw in task_lower for kw in infra_keywords):
-                        # Only inject kubectl context when infra signals are explicit.
-                        kubectl_ctx = fetch_kubectl_context()
-                        injected_context.append(kubectl_ctx)
-                    extra_guidance_lines.append(
-                        "When reporting Sentry, list issue short IDs, titles, counts, AND include the full issue URL. "
-                        'If none, state "No unresolved issues found" and answer whether anything needs action.'
-                    )
-
-                # Explicit guidance when asked to create PRs or close Sentry issues.
-                if "pr" in task_lower or "pull request" in task_lower:
-                    extra_guidance_lines.append(
-                        "If a code fix is needed, you MUST hand off to @SoftwareEngineer with a specific Sentry issue URL "
-                        "and a clear fix request. Use an exact @mention so the gateway triggers the handoff."
-                    )
-                    extra_guidance_lines.append(
-                        "Pick the highest-volume unresolved Sentry issue and hand it off immediately; do not ask for prioritization. "
-                        "When PR is requested, only report that single issue (avoid listing every unresolved issue)."
-                    )
-                if "close" in task_lower and "sentry" in task_lower:
-                    extra_guidance_lines.append(
-                        "If asked to close a Sentry issue, close it after the PR is created (or immediately if urgent) "
-                        "via the Sentry API, and confirm with the issue URL in your response."
-                    )
-
-                # Gmail context for email-related tasks
-                if (not notification_only) and any(
-                    kw in task_lower for kw in ["email", "gmail", "inbox", "message", "mail"]
-                ):
-                    injected_context.append(fetch_gmail_context())
-                    injected_context.append(fetch_gmail_processor_context())
-                    extra_guidance_lines.append(
-                        "When reporting Gmail, list each unread email with subject, sender, date, and ID. "
-                        'If none, say "No unread emails in inbox." If action is needed, draft the reply text.'
-                    )
-
-                # Calendar context for scheduling-related tasks
-                if (not notification_only) and any(
-                    kw in task_lower for kw in ["calendar", "meeting", "schedule", "event"]
-                ):
-                    injected_context.append(fetch_calendar_context_wrapper())
-
-                # Langfuse context for LLM observability tasks
-                if (not notification_only) and any(
-                    kw in task_lower
-                    for kw in [
-                        "langfuse",
-                        "trace",
-                        "llm",
-                        "observability",
-                        "latency",
-                        "token",
-                    ]
-                ):
-                    injected_context.append(fetch_langfuse_context_wrapper())
-
-                # Documentation context for product/feature/setup questions
-                if (not notification_only) and any(
-                    kw in task_lower
-                    for kw in [
-                        "doc",
-                        "documentation",
-                        "how to",
-                        "setup",
-                        "configure",
-                        "install",
-                        "api",
-                        "feature",
-                    ]
-                ):
-                    # Use the task itself as the search query
-                    injected_context.append(fetch_docs_context_wrapper(task))
-
-            # Build full task with context
-            context_str = "\n\n".join(injected_context) if injected_context else ""
-            guidance_block = ""
-            if extra_guidance_lines:
-                guidance_block = (
-                    "\n### ADDITIONAL OUTPUT REQUIREMENTS\n"
-                    + "\n".join(f"- {line}" for line in extra_guidance_lines)
-                    + "\n"
-                )
-
-            if context_str:
-                # Add very clear visual separators so agents know this is the injected data
-                context_block = f"""
-================================================================================
-INJECTED DATA FROM MONITORING SYSTEMS - THIS IS YOUR DATA, USE IT!
-================================================================================
-
-{context_str}
-
-================================================================================
-END OF INJECTED DATA - The above data has ALREADY been fetched for you
-================================================================================
-"""
-                # NOTE: SUPPORT_ENGINEER_CONTEXT is already injected into the
-                # system prompt via system_prompt_kwargs in _create_agent().
-                # Do NOT include it again here — duplicating it wastes ~17k chars
-                # and pushes the context past OpenHands' 50k char limit, causing
-                # truncation that makes the agent blind to injected data.
-                full_task = f"""{context_block}{guidance_block}
-
-### USER TASK (UNTRUSTED INPUT)
-{task}
-### END USER TASK
-"""
-            else:
-                full_task = f"""{guidance_block}
+            # Build full task (no pre-fetched context).
+            full_task = f"""
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
@@ -1078,7 +854,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                         "fail",
                     ]
                 )
-                if is_explicit_investigation or injected_context:
+                if is_explicit_investigation:
                     namespace = os.environ.get("VIBETEAM_NAMESPACE") or DEFAULT_NAMESPACE
                     response = _build_investigation_fallback(
                         task,
@@ -1105,9 +881,6 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                     flags=re.IGNORECASE,
                 )
 
-            if "gmail" in task_lower or "inbox" in task_lower:
-                response = build_gmail_summary()
-
             pr_requested = _task_mentions_pr(task_lower)
             is_notification = any(
                 kw in task_lower
@@ -1130,7 +903,7 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
                 r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE
             ):
                 # Keep PR request responses short and focused on a single issue + handoff.
-                response = _build_pr_handoff_response(task, injected_context)
+                response = _build_pr_handoff_response(task)
 
             # Auto-close Sentry issue when a PR link is present in the task.
             if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
@@ -1177,7 +950,6 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
         context_id: str | None = None,
         workspace: str | None = None,
         use_tools: bool = True,
-        skip_context_injection: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Async version of run.
@@ -1189,7 +961,6 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             workspace: Working directory for the agent
             use_tools: If True, enable tools for agentic exploration.
                       If False, disable tools for direct LLM responses.
-            skip_context_injection: If True, don't automatically inject context.
         """
         import asyncio
 
@@ -1200,7 +971,6 @@ END OF INJECTED DATA - The above data has ALREADY been fetched for you
             context_id,
             workspace,
             use_tools,
-            skip_context_injection,
             **kwargs,
         )
 

@@ -20,7 +20,7 @@ Usage:
     class DocsSearchTool(BaseTool):
         def _run(self, query): return search_docs_sync(query)
 
-    # OpenHands - use for context injection
+    # OpenHands - use directly in agent code
     from agents.shared.docs_tools import get_docs_context
     context = get_docs_context("authentication setup")
 """
@@ -461,10 +461,9 @@ def get_doc_content(filepath: str) -> str:
 
 
 def get_docs_context(query: str, max_results: int = 3) -> str:
-    """Get documentation context for injection into agent prompts.
+    """Get documentation context for agent prompts.
 
-    This is designed for OpenHands-style context injection, providing
-    relevant documentation snippets based on the query.
+    Returns relevant documentation snippets based on the query.
 
     Args:
         query: The query to find relevant documentation for

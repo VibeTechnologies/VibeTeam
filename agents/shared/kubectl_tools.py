@@ -1,9 +1,8 @@
 """
 Shared kubectl tool functions for all agent frameworks.
 
-Pre-fetches Kubernetes cluster state for context injection.
-This eliminates the need for agents to run kubectl commands,
-significantly reducing response time.
+Fetches Kubernetes cluster state for agent investigations.
+Agents may still run kubectl directly for the latest data.
 
 Requirements:
     - kubectl must be installed and configured
