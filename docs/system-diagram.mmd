@@ -1,0 +1,53 @@
+flowchart TB
+  %% External sources
+  subgraph external_platforms["External Platforms"]
+    Slack[Slack Events and Slash Commands]
+    GitHub[GitHub Webhooks]
+    Sentry[Sentry Webhooks]
+    Gmail[Gmail Poller]
+    REST[REST API]
+  end
+
+  %% Gateway
+  Gateway[Gateway FastAPI\nslack events\nslack trigger\nwebhook\nwebhook sentry\napi run\ncallback agent]
+
+  %% Agent services
+  subgraph agent_services["Agent Services FastAPI"]
+    OpenHands[OpenHands Service]
+    OpenClaw[OpenClaw Service]
+    AutoGen[AutoGen Service Disabled]
+    CrewAI[CrewAI Service Disabled]
+    Scheduler[Scheduler Service]
+  end
+
+  %% Supporting services
+  subgraph supporting_services["Supporting Services"]
+    LiteLLM[LiteLLM In Namespace]
+    Azure[Azure OpenAI]
+    Postgres[(Postgres Session Store)]
+    Browserless[Browserless Chrome DevTools]
+    OpenClawGW[OpenClaw Gateway Node]
+  end
+
+  Slack --> Gateway
+  GitHub --> Gateway
+  Sentry --> Gateway
+  REST --> Gateway
+
+  Gateway -->|role + framework via agents.yaml| OpenHands
+  Gateway -->|role + framework via agents.yaml| OpenClaw
+  Gateway --> AutoGen
+  Gateway --> CrewAI
+  Gateway --> Scheduler
+
+  OpenHands -->|direct| Azure
+  OpenHands --> Postgres
+  OpenHands --> Browserless
+
+  OpenClaw --> OpenClawGW
+  OpenClawGW --> LiteLLM
+  LiteLLM --> Azure
+  OpenClaw --> Browserless
+
+  Gmail --> Postgres
+  OpenHands --> Postgres

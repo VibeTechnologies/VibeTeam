@@ -163,6 +163,10 @@ AGENTS_CONFIG_PATH=agents.yaml
 ## Evaluation
 
 Use `scripts/eval_slack_e2e.py` to run end-to-end Slack evaluations. Reports are saved under `results/eval_reports/`.
+The `software_engineer_github_app_hello_world` scenario targets
+`VibeTechnologies/vibeteam-eval-hello-world` and validates PR creation plus bot
+attribution, so the SoftwareEngineer GitHub App must be installed on that repo.
+Post-checks also require `GITHUB_TOKEN` (or `GH_TOKEN`) to verify PR metadata.
 
 ## Gmail Processor
 

@@ -49,7 +49,7 @@ Supported role suffixes:
 2. Choose the `VibeTechnologies` org
 3. Select repositories:
    - Recommended: All repositories
-   - If selected: at least `VibeTeam` and `VibeWebAgent`
+   - If selected: at least `VibeTeam`, `VibeWebAgent`, and `vibeteam-eval-hello-world`
 4. Record the Installation ID from the URL
    - Example: `https://github.com/organizations/VibeTechnologies/settings/installations/<ID>`
 

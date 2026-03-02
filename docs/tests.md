@@ -72,6 +72,7 @@ export $( < .env) && .venv/bin/python -m pytest tests/ -v
 # E2E evaluation (posts to real Slack)
 uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
 uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0AATPSADB8 --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario software_engineer_github_app_hello_world --channel C0AATPSADB8 --timeout 900
 ```
 
 ## Test Categories
