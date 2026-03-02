@@ -16,6 +16,7 @@ agents:
     framework: openhands
     slack_handle: SoftwareEngineer
     agent_dir: agents/SoftwareEngineer
+    skip_context_injection: true
   marketing_manager:
     framework: openhands
     slack_handle: MarketingManager

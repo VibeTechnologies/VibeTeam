@@ -60,6 +60,8 @@
 - The gateway resolves which framework to use per role using `agents.yaml`.
 - `agents.yaml` is the single source of truth for role → framework mapping, Slack handle,
   and agent directory references (AGENTS.md resolves from the directory).
+- Optional `skip_context_injection` can be set per agent to force end-to-end
+  investigations without gateway prefetch context.
 - Example:
 
 ```yaml
@@ -73,6 +75,11 @@ agents:
     framework: openhands
     slack_handle: SupportEngineer
     agent_dir: agents/SupportEngineer
+  software_engineer:
+    framework: openhands
+    slack_handle: SoftwareEngineer
+    agent_dir: agents/SoftwareEngineer
+    skip_context_injection: true
 ```
 
 ## OpenClaw Flow
