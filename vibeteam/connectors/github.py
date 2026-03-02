@@ -244,6 +244,19 @@ class GitHubConnector:
         response.raise_for_status()
         return response.json()
 
+    def _graphql(self, query: str, variables: dict | None = None) -> dict:
+        """Make a GraphQL request to GitHub."""
+        response = requests.post(
+            f"{GITHUB_API_BASE}/graphql",
+            headers=self._headers(),
+            json={"query": query, "variables": variables or {}},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("errors"):
+            raise RuntimeError(f"GitHub GraphQL error: {payload['errors']}")
+        return payload.get("data", {})
+
     # =====================
     # Issue Operations
     # =====================
@@ -307,10 +320,34 @@ class GitHubConnector:
 
     def add_discussion_comment(self, discussion_number: int, body: str) -> dict:
         """Add a comment to a discussion."""
-        endpoint = (
-            f"/repos/{self.owner}/{self.repo}/discussions/{discussion_number}/comments"
+        query = """
+        query($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            discussion(number: $number) { id }
+          }
+        }
+        """
+        data = self._graphql(
+            query,
+            {"owner": self.owner, "repo": self.repo, "number": discussion_number},
         )
-        return self._post(endpoint, {"body": body})
+        discussion = (data.get("repository") or {}).get("discussion") or {}
+        discussion_id = discussion.get("id")
+        if not discussion_id:
+            raise RuntimeError("Discussion not found or missing ID")
+
+        mutation = """
+        mutation($discussionId: ID!, $body: String!) {
+          addDiscussionComment(input: {discussionId: $discussionId, body: $body}) {
+            comment { id body createdAt }
+          }
+        }
+        """
+        data = self._graphql(mutation, {"discussionId": discussion_id, "body": body})
+        comment = (data.get("addDiscussionComment") or {}).get("comment") or {}
+        if not comment:
+            raise RuntimeError("Failed to create discussion comment")
+        return comment
 
     def search_issues(
         self,

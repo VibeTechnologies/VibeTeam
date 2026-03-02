@@ -297,17 +297,64 @@ async def post_github_discussion_comment(
         return
 
     try:
+        owner, name = repo.split("/", 1)
+    except ValueError:
+        logger.error(f"Invalid repo format for discussion comment: {repo}")
+        return
+
+    discussion_query = """
+    query($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        discussion(number: $number) { id }
+      }
+    }
+    """
+    comment_mutation = """
+    mutation($discussionId: ID!, $body: String!) {
+      addDiscussionComment(input: {discussionId: $discussionId, body: $body}) {
+        comment { id }
+      }
+    }
+    """
+
+    try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"https://api.github.com/repos/{repo}/discussions/{discussion_number}/comments",
+                "https://api.github.com/graphql",
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
                 },
-                json={"body": body},
+                json={
+                    "query": discussion_query,
+                    "variables": {"owner": owner, "repo": name, "number": discussion_number},
+                },
             )
             response.raise_for_status()
+            payload = response.json()
+            if payload.get("errors"):
+                raise RuntimeError(payload["errors"])
+            discussion = (payload.get("data") or {}).get("repository", {}).get("discussion")
+            discussion_id = discussion.get("id") if isinstance(discussion, dict) else None
+            if not discussion_id:
+                logger.error(f"Missing discussion ID for {repo}#{discussion_number}")
+                return
+
+            response = await client.post(
+                "https://api.github.com/graphql",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={
+                    "query": comment_mutation,
+                    "variables": {"discussionId": discussion_id, "body": body},
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("errors"):
+                raise RuntimeError(payload["errors"])
             logger.info(f"Posted discussion comment to {repo}#{discussion_number}")
 
     except Exception as e:
