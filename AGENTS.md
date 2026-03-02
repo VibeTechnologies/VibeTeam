@@ -18,6 +18,12 @@ to run an evaluation test.
 
 Before running any test `export $( < .env )`
 
+Azure credentials for evals live in `~/.env.d/codex.env`. Export them before `.env`:
+```bash
+export $( < ~/.env.d/codex.env )
+export $( < .env )
+```
+
 for example
 ```shell
 export $( < .env ) && .venv/bin/python -m pytest tests/test_openhands_service_integration.py -v --run-integration -s
