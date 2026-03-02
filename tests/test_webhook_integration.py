@@ -1841,7 +1841,7 @@ class TestGitHubHelperFunctions:
                 "403 Forbidden",
                 request=httpx.Request(
                     "POST",
-                    "https://api.github.com/repos/owner/repo/discussions/1/comments",
+                    "https://api.github.com/graphql",
                 ),
                 response=httpx.Response(403),
             )
