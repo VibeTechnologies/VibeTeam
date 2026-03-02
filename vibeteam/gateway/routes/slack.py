@@ -1132,7 +1132,7 @@ async def _submit_agent_async(
         thread_ts=thread_ts,
     )
 
-    # Mirror async path: pick template to decide context injection + iteration limits.
+    # Pick template to decide context injection + iteration limits.
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     skip_context = template == "health_check"
@@ -1144,25 +1144,6 @@ async def _submit_agent_async(
         "investigation": 120,
     }
     max_iterations = max_iterations_map.get(template, 120)
-
-    # Determine if we should skip heavy context injection.
-    # Health checks are self-contained — the template has all instructions.
-    # Pre-fetched context (logs, events from all namespaces) causes the agent
-    # to rabbit-hole into investigating every anomaly it sees.
-    is_thread_reply = thread_ts is not None
-    template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
-    skip_context = template == "health_check"
-
-    # Set max_iterations based on task type to prevent scope creep.
-    # Use generous limits and rely on idle timeouts + iteration warnings to
-    # avoid doom loops while allowing longer investigations (e.g., Sentry -> PR).
-    max_iterations_map = {
-        "health_check": 15,
-        "conversational": 30,
-        "notification": 30,
-        "deployment": 80,
-        "investigation": 120,
-    }
     max_iterations = max_iterations_map.get(template, 120)
 
     # Best-effort: show assistant "typing" status in the thread while the agent runs.
@@ -1328,6 +1309,19 @@ async def _run_agent_and_respond(
         channel=channel,
         thread_ts=thread_ts,
     )
+
+    # Pick template to decide context injection + iteration limits (sync path).
+    is_thread_reply = thread_ts is not None
+    template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
+    skip_context = template == "health_check"
+    max_iterations_map = {
+        "health_check": 15,
+        "conversational": 30,
+        "notification": 30,
+        "deployment": 80,
+        "investigation": 120,
+    }
+    max_iterations = max_iterations_map.get(template, 120)
 
     status_thread_ts = thread_ts or message_ts
     await set_thread_status(channel, status_thread_ts, config.SLACK_ASSISTANT_STATUS_TEXT)
