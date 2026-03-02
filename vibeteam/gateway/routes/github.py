@@ -17,6 +17,7 @@ import hmac
 import json
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
@@ -571,6 +572,14 @@ async def handle_github_webhook(
 
         message_router = get_message_router()
         role_mentions = message_router.parse_role_mentions(discussion_body)
+        if not role_mentions and discussion_body:
+            fallback_roles: list[AgentRole] = []
+            for role in ("software_engineer", "support_engineer", "release_engineer", "product_manager", "marketing_manager"):
+                handle = get_slack_handle(role) or role.replace("_", " ").title()
+                if handle and re.search(rf"\\b{re.escape(handle)}\\b", discussion_body, re.IGNORECASE):
+                    fallback_roles.append(role)
+            if fallback_roles:
+                role_mentions = fallback_roles
 
         if role_mentions:
             logger.info(f"Role mentions in discussion #{discussion_number}: {role_mentions}")
