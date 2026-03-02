@@ -13,10 +13,10 @@ import os
 import subprocess
 from typing import Any
 
-from agents.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.handoff import HANDOFF_PROMPT
-from agents.shared.slack_tools import (
+from agent_service.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
+from agent_service.shared.handoff import HANDOFF_PROMPT
+from agent_service.shared.slack_tools import (
     read_slack_channel,
     read_slack_thread,
     send_message,

@@ -163,7 +163,7 @@ def gmail_credentials():
 def verify_gmail_connectivity(gmail_credentials):
     """Verify we can connect to Gmail before running tests."""
     try:
-        from agents.shared.gmail_tools import fetch_unread_emails
+        from agent_service.shared.gmail_tools import fetch_unread_emails
 
         result = fetch_unread_emails(max_results=1)
         # If we get any response (including "no emails"), connection works
@@ -201,7 +201,7 @@ class TestSharedToolsDirect:
 
     def test_gmail_fetch_emails(self, gmail_credentials):
         """Test fetching emails via shared tools."""
-        from agents.shared.gmail_tools import fetch_unread_emails
+        from agent_service.shared.gmail_tools import fetch_unread_emails
 
         start = time.perf_counter()
         result = fetch_unread_emails(max_results=5)
@@ -219,7 +219,7 @@ class TestSharedToolsDirect:
 
     def test_gmail_context(self, gmail_credentials):
         """Test getting email context for agent injection."""
-        from agents.shared.gmail_tools import get_email_context
+        from agent_service.shared.gmail_tools import get_email_context
 
         start = time.perf_counter()
         context = get_email_context(max_results=3)
@@ -237,7 +237,7 @@ class TestSharedToolsDirect:
 
     def test_calendar_list_events(self):
         """Test listing calendar events via shared tools."""
-        from agents.shared.calendar_tools import get_calendar_context
+        from agent_service.shared.calendar_tools import get_calendar_context
 
         start = time.perf_counter()
         context = get_calendar_context(days=3)
@@ -254,7 +254,7 @@ class TestSharedToolsDirect:
 
     def test_langfuse_context(self, langfuse_credentials):
         """Test getting Langfuse context for agent injection."""
-        from agents.shared.langfuse_tools import get_langfuse_context
+        from agent_service.shared.langfuse_tools import get_langfuse_context
 
         start = time.perf_counter()
         context = get_langfuse_context(hours=6)

@@ -11,8 +11,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-from agents.config import AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
+from agent_service.config import AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
 
 from .client import OpenCodeClient, OpenCodeClientConfig, create_client
 

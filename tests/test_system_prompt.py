@@ -1047,14 +1047,14 @@ class TestAzureLLMConsolidation:
 
     @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
     def test_agent_imports_from_shared_llm(self, agent_file: str):
-        """Every agent must import AzureLLM from agents.shared.llm."""
+        """Every agent must import AzureLLM from agent_service.shared.llm."""
         content = self._read_agent(agent_file)
-        assert "from agents.shared.llm import" in content, (
-            f"{agent_file} must import from agents.shared.llm, "
+        assert "from agent_service.shared.llm import" in content, (
+            f"{agent_file} must import from agent_service.shared.llm, "
             f"not define its own AzureLLM or use base LLM"
         )
-        assert "AzureLLM" in content.split("from agents.shared.llm import")[1].split("\n")[0], (
-            f"{agent_file} must import AzureLLM from agents.shared.llm"
+        assert "AzureLLM" in content.split("from agent_service.shared.llm import")[1].split("\n")[0], (
+            f"{agent_file} must import AzureLLM from agent_service.shared.llm"
         )
 
     @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
@@ -1063,7 +1063,7 @@ class TestAzureLLMConsolidation:
         content = self._read_agent(agent_file)
         assert "class AzureLLM" not in content, (
             f"{agent_file} defines its own AzureLLM class. "
-            f"Remove it and import from agents.shared.llm instead."
+            f"Remove it and import from agent_service.shared.llm instead."
         )
 
     @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
@@ -1100,7 +1100,7 @@ class TestAzureLLMConsolidation:
             imported_names = [name.strip() for name in import_line.split(",")]
             assert "LLM" not in imported_names, (
                 f"{agent_file} imports LLM from openhands.sdk. "
-                f"Import from agents.shared.llm instead for Azure compatibility."
+                f"Import from agent_service.shared.llm instead for Azure compatibility."
             )
 
 

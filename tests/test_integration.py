@@ -16,7 +16,7 @@ import asyncio
 
 import pytest
 
-from agents.metrics import track_task
+from agent_service.metrics import track_task
 
 # ============================================================================
 # AutoGen Tests

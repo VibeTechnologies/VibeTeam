@@ -20,12 +20,12 @@ import os
 import tempfile
 from typing import Any
 
-from agents.config import (
+from agent_service.config import (
     MARKETING_MANAGER_CONFIG,
     AgentConfig,
     get_mcp_config_dict,
 )
-from agents.sessions import get_or_create_session, get_session_store
+from agent_service.sessions import get_or_create_session, get_session_store
 
 # Browser tools are available via MCP; no prefetch context is injected.
 
@@ -38,8 +38,8 @@ except ImportError:
     Agent = None
     LocalConversation = None
 
-from agents.shared.agents_md_loader import compose_agent_context
-from agents.shared.llm import LLM, AzureLLM
+from agent_service.shared.agents_md_loader import compose_agent_context
+from agent_service.shared.llm import LLM, AzureLLM
 
 from .utils import build_condenser, coerce_text, get_prompt_path
 

@@ -559,7 +559,7 @@ class TestLangfuseToolsClient:
     """Tests for LangfuseClient in agents/shared/langfuse_tools.py."""
 
     def test_init_with_explicit_keys(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(
             public_key="pk-test", secret_key="sk-test", base_url="https://lf.example.com"
@@ -569,7 +569,7 @@ class TestLangfuseToolsClient:
         assert client.base_url == "https://lf.example.com"
 
     def test_init_from_env_vars(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         env = {
             "LANGFUSE_PUBLIC_KEY": "pk-env",
@@ -583,7 +583,7 @@ class TestLangfuseToolsClient:
             assert client.base_url == "https://lf-env.example.com"
 
     def test_init_uses_default_url(self):
-        from agents.shared.langfuse_tools import DEFAULT_LANGFUSE_URL, LangfuseClient
+        from agent_service.shared.langfuse_tools import DEFAULT_LANGFUSE_URL, LangfuseClient
 
         env = {"LANGFUSE_PUBLIC_KEY": "pk-test", "LANGFUSE_SECRET_KEY": "sk-test"}
         with patch.dict(os.environ, env, clear=True):
@@ -591,7 +591,7 @@ class TestLangfuseToolsClient:
             assert client.base_url == DEFAULT_LANGFUSE_URL
 
     def test_init_strips_trailing_slash(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(
             public_key="pk", secret_key="sk", base_url="https://lf.example.com/"
@@ -599,14 +599,14 @@ class TestLangfuseToolsClient:
         assert not client.base_url.endswith("/")
 
     def test_init_raises_without_keys(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError, match="Langfuse credentials required"):
                 LangfuseClient()
 
     def test_request_builds_correct_url(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -627,7 +627,7 @@ class TestLangfuseToolsClient:
             )
 
     def test_get_traces_sends_params(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -640,7 +640,7 @@ class TestLangfuseToolsClient:
             assert "fromTimestamp" in call_kwargs.kwargs["params"]
 
     def test_get_stats_empty_traces(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -655,7 +655,7 @@ class TestLangfuseToolsClient:
             assert stats.period_hours == 1
 
     def test_get_stats_computes_correctly(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -695,7 +695,7 @@ class TestLangfuseToolsClient:
             assert abs(stats.cost_usd - 0.03) < 0.001
 
     def test_detect_anomalies_no_traces(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -704,7 +704,7 @@ class TestLangfuseToolsClient:
             assert anomalies == []
 
     def test_detect_anomalies_high_latency(self):
-        from agents.shared.langfuse_tools import (
+        from agent_service.shared.langfuse_tools import (
             LATENCY_CRITICAL_MS,
             LATENCY_WARNING_MS,
             LangfuseClient,
@@ -725,7 +725,7 @@ class TestLangfuseToolsClient:
             assert latency_anomalies[0].severity == "critical"  # has one > critical
 
     def test_detect_anomalies_high_error_rate(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -741,7 +741,7 @@ class TestLangfuseToolsClient:
             assert error_anomalies[0].severity == "critical"  # 60% > 15%
 
     def test_detect_anomalies_token_budget(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -757,7 +757,7 @@ class TestLangfuseToolsClient:
             assert token_anomalies[0].severity == "critical"  # 1.2M > 95% of 1M
 
     def test_health_check_success(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -768,7 +768,7 @@ class TestLangfuseToolsClient:
             assert client.health_check() is True
 
     def test_health_check_failure(self):
-        from agents.shared.langfuse_tools import LangfuseClient
+        from agent_service.shared.langfuse_tools import LangfuseClient
 
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
@@ -783,7 +783,7 @@ class TestLangfuseToolsHighLevel:
     """Tests for high-level functions in agents/shared/langfuse_tools.py."""
 
     def test_get_langfuse_client_returns_client(self):
-        from agents.shared.langfuse_tools import _get_langfuse_client
+        from agent_service.shared.langfuse_tools import _get_langfuse_client
 
         env = {"LANGFUSE_PUBLIC_KEY": "pk-test", "LANGFUSE_SECRET_KEY": "sk-test"}
         with patch.dict(os.environ, env, clear=True):
@@ -791,7 +791,7 @@ class TestLangfuseToolsHighLevel:
             assert not isinstance(result, tuple)
 
     def test_get_langfuse_client_returns_error_tuple(self):
-        from agents.shared.langfuse_tools import _get_langfuse_client
+        from agent_service.shared.langfuse_tools import _get_langfuse_client
 
         with patch.dict(os.environ, {}, clear=True):
             result = _get_langfuse_client()
@@ -801,7 +801,7 @@ class TestLangfuseToolsHighLevel:
 
     @pytest.mark.asyncio
     async def test_get_langfuse_traces_no_creds(self):
-        from agents.shared.langfuse_tools import get_langfuse_traces
+        from agent_service.shared.langfuse_tools import get_langfuse_traces
 
         with patch.dict(os.environ, {}, clear=True):
             result = await get_langfuse_traces(hours=1)
@@ -809,7 +809,7 @@ class TestLangfuseToolsHighLevel:
 
     @pytest.mark.asyncio
     async def test_get_langfuse_stats_no_creds(self):
-        from agents.shared.langfuse_tools import get_langfuse_stats
+        from agent_service.shared.langfuse_tools import get_langfuse_stats
 
         with patch.dict(os.environ, {}, clear=True):
             result = await get_langfuse_stats(hours=1)
@@ -817,21 +817,21 @@ class TestLangfuseToolsHighLevel:
 
     @pytest.mark.asyncio
     async def test_detect_langfuse_anomalies_no_creds(self):
-        from agents.shared.langfuse_tools import detect_langfuse_anomalies
+        from agent_service.shared.langfuse_tools import detect_langfuse_anomalies
 
         with patch.dict(os.environ, {}, clear=True):
             result = await detect_langfuse_anomalies(hours=1)
             assert "not configured" in result.lower()
 
     def test_get_langfuse_context_no_creds(self):
-        from agents.shared.langfuse_tools import get_langfuse_context
+        from agent_service.shared.langfuse_tools import get_langfuse_context
 
         with patch.dict(os.environ, {}, clear=True):
             result = get_langfuse_context(hours=1)
             assert "not configured" in result.lower()
 
     def test_get_langfuse_context_with_mock(self):
-        from agents.shared.langfuse_tools import LangfuseStats, get_langfuse_context
+        from agent_service.shared.langfuse_tools import LangfuseStats, get_langfuse_context
 
         mock_stats = LangfuseStats(
             total_traces=42,
@@ -1046,7 +1046,7 @@ class TestCrossLayerConsistency:
 
     def test_default_urls_match(self):
         """All layers should agree on the default Langfuse URL."""
-        from agents.shared.langfuse_tools import DEFAULT_LANGFUSE_URL
+        from agent_service.shared.langfuse_tools import DEFAULT_LANGFUSE_URL
 
         # The __init__.py uses "https://langfuse.vibebrowser.app" directly
         # The tracing.py uses "https://langfuse.vibebrowser.app" as fallback
@@ -1074,7 +1074,7 @@ class TestCrossLayerConsistency:
 
     def test_anomaly_thresholds_consistent(self):
         """LangfuseClient and LangfuseConnector should use matching thresholds."""
-        from agents.shared.langfuse_tools import (
+        from agent_service.shared.langfuse_tools import (
             ERROR_RATE_CRITICAL,
             ERROR_RATE_WARNING,
             LATENCY_CRITICAL_MS,

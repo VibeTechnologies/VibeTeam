@@ -10,11 +10,11 @@ Capabilities:
 import os
 from typing import Any
 
-from agents.config import MARKETING_MANAGER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
+from agent_service.config import MARKETING_MANAGER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
 
 # Import shared browser tools
-from agents.shared.browser_tools import (
+from agent_service.shared.browser_tools import (
     analyze_competitor_page_sync,
     extract_links_sync,
     fetch_webpage_sync,

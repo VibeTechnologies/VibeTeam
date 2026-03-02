@@ -12,8 +12,8 @@ Capabilities:
 import os
 from typing import Any
 
-from agents.config import PRODUCT_MANAGER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
+from agent_service.config import PRODUCT_MANAGER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
 
 from .slack_tools import get_slack_tools
 

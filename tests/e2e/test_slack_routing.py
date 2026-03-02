@@ -28,10 +28,10 @@ import httpx
 import pytest
 
 from vibeteam.agents_config import get_slack_handle
-from agents.shared.role_resolver import (
+from agent_service.shared.role_resolver import (
     ROLE_MENTION_MAP as ROLE_MAP,
 )
-from agents.shared.role_resolver import (
+from agent_service.shared.role_resolver import (
     ROLE_PATTERN,
 )
 

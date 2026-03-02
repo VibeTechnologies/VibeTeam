@@ -21,20 +21,20 @@ import tempfile
 from dataclasses import dataclass
 from typing import Any
 
-from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.calendar_tools import get_calendar_context
-from agents.shared.docs_tools import get_docs_context
+from agent_service.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
+from agent_service.shared.calendar_tools import get_calendar_context
+from agent_service.shared.docs_tools import get_docs_context
 
 # Shared tools for direct access (used by helper functions).
-from agents.shared.gmail_tools import get_email_context
-from agents.shared.kubectl_tools import (
+from agent_service.shared.gmail_tools import get_email_context
+from agent_service.shared.kubectl_tools import (
     DEFAULT_NAMESPACE,
     get_deployment_logs,
     get_multi_namespace_context,
 )
-from agents.shared.langfuse_tools import get_langfuse_context
-from agents.shared.sentry_tools import SentryClient, get_sentry_context
+from agent_service.shared.langfuse_tools import get_langfuse_context
+from agent_service.shared.sentry_tools import SentryClient, get_sentry_context
 
 
 def fetch_sentry_context(
@@ -536,8 +536,8 @@ except ImportError:
     TerminalTool = None
     FileEditorTool = None
 
-from agents.shared.agents_md_loader import compose_agent_context
-from agents.shared.llm import LLM, AzureLLM
+from agent_service.shared.agents_md_loader import compose_agent_context
+from agent_service.shared.llm import LLM, AzureLLM
 
 from .utils import build_condenser, get_prompt_path
 

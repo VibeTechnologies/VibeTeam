@@ -10,7 +10,7 @@ import re
 
 import pytest
 
-from agents.shared.role_resolver import (
+from agent_service.shared.role_resolver import (
     KEYWORD_ROUTING,
     ROLE_MENTION_MAP,
     ROLE_PATTERN,

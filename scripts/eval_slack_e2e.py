@@ -52,8 +52,8 @@ load_dotenv()
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.shared.llm import resolve_azure_model
-from agents.shared.role_resolver import ROLE_PATTERN, parse_role_mentions
+from agent_service.shared.llm import resolve_azure_model
+from agent_service.shared.role_resolver import ROLE_PATTERN, parse_role_mentions
 from vibeteam.connectors.slack import SlackConnector
 
 # Try to import DeepEval
@@ -1429,6 +1429,24 @@ ROLE_DISPLAY = _build_role_display()
 # ==============================================================================
 
 
+def _parse_api_version(version: str | None) -> tuple[int, int, int] | None:
+    if not version:
+        return None
+    try:
+        date_part = version.split("-preview")[0]
+        year, month, day = date_part.split("-")
+        return int(year), int(month), int(day)
+    except Exception:
+        return None
+
+
+def _supports_responses_api(version: str | None) -> bool:
+    parsed = _parse_api_version(version)
+    if not parsed:
+        return False
+    return parsed >= (2025, 3, 1)
+
+
 class AzureOpenAIModel(DeepEvalBaseLLM):  # type: ignore[misc]
     """Azure OpenAI model wrapper for DeepEval G-Eval."""
 
@@ -1438,11 +1456,13 @@ class AzureOpenAIModel(DeepEvalBaseLLM):  # type: ignore[misc]
         api_base: str,
         api_version: str = "2024-08-01-preview",
         model: str = "gpt-5.2",
+        wire_api: str | None = None,
     ):
         self.api_key = api_key
         self.api_base = api_base.rstrip("/")
         self.api_version = api_version
         self.model_name = model
+        self.wire_api = (wire_api or "").strip().lower()
 
     def load_model(self):
         return self
@@ -1453,18 +1473,42 @@ class AzureOpenAIModel(DeepEvalBaseLLM):  # type: ignore[misc]
 
     async def a_generate(self, prompt: str, **kwargs) -> str:
         """Async generation using Azure OpenAI."""
-        url = f"{self.api_base}/openai/deployments/{self.model_name}/chat/completions"
+        use_responses = False
+        if self.wire_api:
+            use_responses = self.wire_api == "responses"
+        else:
+            if self.model_name.endswith("-codex") and _supports_responses_api(self.api_version):
+                use_responses = True
+
+        if use_responses:
+            if self.api_base.endswith("/openai"):
+                url = f"{self.api_base}/responses"
+            else:
+                url = f"{self.api_base}/openai/responses"
+        else:
+            if self.api_base.endswith("/openai"):
+                url = f"{self.api_base}/deployments/{self.model_name}/chat/completions"
+            else:
+                url = f"{self.api_base}/openai/deployments/{self.model_name}/chat/completions"
 
         headers = {
             "api-key": self.api_key,
             "Content-Type": "application/json",
         }
 
-        payload = {
-            "messages": [{"role": "user", "content": prompt}],
-            "max_completion_tokens": kwargs.get("max_tokens", 2000),
-            "temperature": kwargs.get("temperature", 0.1),
-        }
+        if use_responses:
+            payload = {
+                "model": self.model_name,
+                "input": [{"role": "user", "content": prompt}],
+                "max_output_tokens": kwargs.get("max_tokens", 2000),
+                "temperature": kwargs.get("temperature", 0.1),
+            }
+        else:
+            payload = {
+                "messages": [{"role": "user", "content": prompt}],
+                "max_completion_tokens": kwargs.get("max_tokens", 2000),
+                "temperature": kwargs.get("temperature", 0.1),
+            }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
@@ -1475,6 +1519,16 @@ class AzureOpenAIModel(DeepEvalBaseLLM):  # type: ignore[misc]
             )
             response.raise_for_status()
             data = response.json()
+            if use_responses:
+                output_text = ""
+                for item in data.get("output", []) or []:
+                    if item.get("type") == "message":
+                        for content in item.get("content", []) or []:
+                            if content.get("type") in ("output_text", "text"):
+                                output_text += content.get("text", "")
+                if output_text:
+                    return output_text
+                return data.get("output_text", "") or str(data)
             return data["choices"][0]["message"]["content"]
 
     def get_model_name(self) -> str:
@@ -2736,6 +2790,12 @@ async def run_evaluation(
             "AZURE_EVAL_API_VERSION",
             os.environ.get("AZURE_API_VERSION", "2024-08-01-preview"),
         )
+        wire_api = os.environ.get("AZURE_EVAL_WIRE_API", os.environ.get("AZURE_WIRE_API", "")).strip().lower()
+        if not os.environ.get("AZURE_EVAL_API_VERSION") and api_base and api_base.rstrip("/").endswith("/openai"):
+            # Matches ~/.codex/config.toml defaults (responses API).
+            api_version = "2025-04-01-preview"
+            if not wire_api:
+                wire_api = "responses"
 
         # Warn if credentials appear to be from wrong environment
         if api_base and "vibebrowser" not in api_base.lower():
@@ -2772,6 +2832,7 @@ async def run_evaluation(
                     api_base=api_base,
                     model=resolved_model or raw_model or "gpt-5.2",
                     api_version=api_version,
+                    wire_api=wire_api or None,
                 )
 
                 transcript = build_transcript(conversation)

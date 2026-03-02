@@ -23,7 +23,7 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
-from agents.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
+from agent_service.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
 from vibeteam.router import Router
 from vibeteam.agents_config import get_slack_handle
 from vibeteam.router.models import AgentRole, route_by_keywords
@@ -1136,13 +1136,13 @@ async def _submit_agent_async(
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     max_iterations_map = {
-        "health_check": 15,
-        "conversational": 30,
-        "notification": 30,
-        "deployment": 80,
-        "investigation": 120,
+        "health_check": 30,
+        "conversational": 60,
+        "notification": 60,
+        "deployment": 160,
+        "investigation": 240,
     }
-    max_iterations = max_iterations_map.get(template, 120)
+    max_iterations = max_iterations_map.get(template, 240)
 
     # Best-effort: show assistant "typing" status in the thread while the agent runs.
     status_thread_ts = thread_ts or message_ts
@@ -1311,13 +1311,13 @@ async def _run_agent_and_respond(
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     max_iterations_map = {
-        "health_check": 15,
-        "conversational": 30,
-        "notification": 30,
-        "deployment": 80,
-        "investigation": 120,
+        "health_check": 30,
+        "conversational": 60,
+        "notification": 60,
+        "deployment": 160,
+        "investigation": 240,
     }
-    max_iterations = max_iterations_map.get(template, 120)
+    max_iterations = max_iterations_map.get(template, 240)
 
     status_thread_ts = thread_ts or message_ts
     await set_thread_status(channel, status_thread_ts, config.SLACK_ASSISTANT_STATUS_TEXT)

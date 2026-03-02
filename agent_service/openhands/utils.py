@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any
 
-from agents.shared.llm import get_model_context_window, resolve_azure_model
+from agent_service.shared.llm import get_model_context_window, resolve_azure_model
 
 logger = logging.getLogger(__name__)
 

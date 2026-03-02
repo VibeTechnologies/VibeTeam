@@ -19,7 +19,7 @@ _env_file = _project_root / ".env"
 if _env_file.exists():
     load_dotenv(_env_file)
 
-from agents.metrics import reset_collector
+from agent_service.metrics import reset_collector
 
 
 def pytest_addoption(parser):
@@ -84,7 +84,7 @@ def pytest_sessionfinish(session, exitstatus):
     """Export metrics after test session if requested."""
     export_path = session.config.getoption("--export-metrics")
     if export_path:
-        from agents.metrics import get_collector
+        from agent_service.metrics import get_collector
 
         collector = get_collector()
         if collector.get_all():
@@ -96,7 +96,7 @@ def pytest_sessionfinish(session, exitstatus):
 @pytest.fixture(scope="session")
 def metrics_collector():
     """Provide the global metrics collector."""
-    from agents.metrics import get_collector
+    from agent_service.metrics import get_collector
 
     return get_collector()
 

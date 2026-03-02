@@ -27,7 +27,7 @@ class TestSlackToolsUnit:
 
     def test_slack_client_requires_token(self):
         """Test SlackClient raises error without token."""
-        from agents.shared.slack_tools import SlackClient
+        from agent_service.shared.slack_tools import SlackClient
 
         # Clear any existing token
         with patch.dict(os.environ, {}, clear=True):
@@ -39,7 +39,7 @@ class TestSlackToolsUnit:
         """Test SlackMessage dataclass properties."""
         from datetime import datetime
 
-        from agents.shared.slack_tools import SlackMessage
+        from agent_service.shared.slack_tools import SlackMessage
 
         msg = SlackMessage(
             ts="1234567890.123456",
@@ -59,7 +59,7 @@ class TestSlackToolsUnit:
 
     def test_slack_channel_dataclass(self):
         """Test SlackChannel dataclass."""
-        from agents.shared.slack_tools import SlackChannel
+        from agent_service.shared.slack_tools import SlackChannel
 
         channel = SlackChannel(
             id="C12345",
@@ -76,7 +76,7 @@ class TestSlackToolsUnit:
 
     def test_slack_client_with_mock(self):
         """Test SlackClient instantiation with mocked WebClient."""
-        from agents.shared.slack_tools import SlackClient
+        from agent_service.shared.slack_tools import SlackClient
 
         # Mock the slack_sdk module before importing SlackClient
         mock_webclient_class = MagicMock()
@@ -94,7 +94,7 @@ class TestSlackToolsUnit:
 
     def test_context_management(self):
         """Test Slack context management functions."""
-        from agents.shared.slack_tools import (
+        from agent_service.shared.slack_tools import (
             clear_slack_context,
             get_slack_context,
             is_slack_context_set,
@@ -127,7 +127,7 @@ class TestSlackToolsUnit:
 
     def test_get_agent_display_name(self):
         """Test agent display name mapping."""
-        from agents.shared.slack_tools import _get_agent_display_name
+        from agent_service.shared.slack_tools import _get_agent_display_name
 
         assert _get_agent_display_name("swe") == "SoftwareEngineer"
         assert _get_agent_display_name("release") == "ReleaseEngineer"
@@ -138,7 +138,7 @@ class TestSlackToolsUnit:
 
     def test_handoff_instructions(self):
         """Test handoff instructions contain expected content."""
-        from agents.shared.slack_tools import get_slack_handoff_instructions
+        from agent_service.shared.slack_tools import get_slack_handoff_instructions
 
         instructions = get_slack_handoff_instructions()
         assert "@SoftwareEngineer" in instructions
@@ -149,7 +149,7 @@ class TestSlackToolsUnit:
     @pytest.mark.asyncio
     async def test_send_message_no_token(self):
         """Test send_message returns error when no token is available."""
-        from agents.shared.slack_tools import clear_slack_context, send_message
+        from agent_service.shared.slack_tools import clear_slack_context, send_message
 
         clear_slack_context()
 
@@ -161,7 +161,7 @@ class TestSlackToolsUnit:
     @pytest.mark.asyncio
     async def test_send_message_with_context(self):
         """Test send_message uses context correctly."""
-        from agents.shared.slack_tools import (
+        from agent_service.shared.slack_tools import (
             clear_slack_context,
             send_message,
             set_slack_context,
@@ -234,7 +234,7 @@ class TestSlackToolsIntegration:
     @pytest.fixture
     def slack_client(self):
         """Create a real Slack client."""
-        from agents.shared.slack_tools import SlackClient
+        from agent_service.shared.slack_tools import SlackClient
 
         token = os.environ.get("SLACK_BOT_TOKEN")
         if not token:
@@ -289,7 +289,7 @@ class TestSlackToolsIntegration:
     @pytest.mark.asyncio
     async def test_real_send_message_async(self, slack_client):
         """Test async send_message with real Slack."""
-        from agents.shared.slack_tools import (
+        from agent_service.shared.slack_tools import (
             clear_slack_context,
             send_message,
             set_slack_context,
@@ -316,7 +316,7 @@ class TestSlackToolsIntegration:
     @pytest.mark.asyncio
     async def test_real_read_channel_async(self):
         """Test async read_slack_channel with real Slack."""
-        from agents.shared.slack_tools import read_slack_channel
+        from agent_service.shared.slack_tools import read_slack_channel
 
         test_channel = os.environ.get("SLACK_TEST_CHANNEL", "C0AATPSADB8")
         token = os.environ.get("SLACK_BOT_TOKEN")
@@ -337,7 +337,7 @@ class TestSlackToolsIntegration:
     def test_slack_timeout_behavior(self, slack_client):
         """Test that Slack client respects timeout settings."""
         # Create client with short timeout
-        from agents.shared.slack_tools import SlackClient
+        from agent_service.shared.slack_tools import SlackClient
 
         token = os.environ.get("SLACK_BOT_TOKEN")
         if not token:

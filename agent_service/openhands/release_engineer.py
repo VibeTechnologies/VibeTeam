@@ -20,9 +20,9 @@ import os
 import tempfile
 from typing import Any
 
-from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.kubectl_tools import get_multi_namespace_context
+from agent_service.config import RELEASE_ENGINEER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
+from agent_service.shared.kubectl_tools import get_multi_namespace_context
 
 
 def fetch_kubectl_context() -> str:
@@ -46,8 +46,8 @@ except ImportError:
     TerminalTool = None
     FileEditorTool = None
 
-from agents.shared.agents_md_loader import compose_agent_context
-from agents.shared.llm import LLM, AzureLLM
+from agent_service.shared.agents_md_loader import compose_agent_context
+from agent_service.shared.llm import LLM, AzureLLM
 
 from .utils import build_condenser, get_prompt_path
 
