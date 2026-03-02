@@ -8,16 +8,16 @@ interface that can be used by AutoGen, CrewAI, and OpenHands agents.
 
 Usage:
     # AutoGen - use directly as FunctionTool
-    from agents.shared.gmail_tools import list_emails, send_email
+    from agent_service.shared.gmail_tools import list_emails, send_email
     agent = AssistantAgent(tools=[list_emails, send_email, ...])
 
     # CrewAI - wrap in BaseTool
-    from agents.shared.gmail_tools import fetch_unread_emails
+    from agent_service.shared.gmail_tools import fetch_unread_emails
     class EmailSearchTool(BaseTool):
         def _run(self, query): return fetch_unread_emails(query)
 
     # OpenHands - use directly in agent code
-    from agents.shared.gmail_tools import get_email_context
+    from agent_service.shared.gmail_tools import get_email_context
     context = get_email_context()
 """
 
@@ -55,7 +55,6 @@ from agent_service.shared.gmail_tools import (
     send_email,
     send_email_reply,
 )
-from agent_service.shared.handoff import HANDOFF_PROMPT
 from agent_service.shared.langfuse_tools import (
     detect_langfuse_anomalies,
     get_langfuse_context,
@@ -143,8 +142,6 @@ __all__ = [
     "is_slack_context_set",
     "get_slack_context_for_injection",
     "get_slack_handoff_instructions",
-    # Handoff
-    "HANDOFF_PROMPT",
     # Role resolution
     "AgentRole",
     "ROLE_MENTION_MAP",

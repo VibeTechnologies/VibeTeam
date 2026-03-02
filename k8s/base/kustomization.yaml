@@ -8,6 +8,7 @@ resources:
   # Infrastructure
   - postgres.yaml
   - browserless.yaml
+  - agents-config.yaml
   # Gateway (routes webhooks to agent microservices)
   - vibeteam-gateway.yaml
   # Agent Microservices (FastAPI servers handling all agent roles)

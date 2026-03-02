@@ -13,15 +13,15 @@ with context, enabling agents to answer questions about product documentation.
 
 Usage:
     # AutoGen - use directly as FunctionTool
-    from agents.shared.docs_tools import search_docs, get_docs_context
+    from agent_service.shared.docs_tools import search_docs, get_docs_context
 
     # CrewAI - wrap in BaseTool
-    from agents.shared.docs_tools import search_docs_sync
+    from agent_service.shared.docs_tools import search_docs_sync
     class DocsSearchTool(BaseTool):
         def _run(self, query): return search_docs_sync(query)
 
     # OpenHands - use directly in agent code
-    from agents.shared.docs_tools import get_docs_context
+    from agent_service.shared.docs_tools import get_docs_context
     context = get_docs_context("authentication setup")
 """
 
@@ -607,7 +607,7 @@ def search_infra_docs_sync(query: str, max_results: int = 5) -> str:
 
 
 def get_infra_context(query: str, max_results: int = 3) -> str:
-    """Get infrastructure context for injection into agent prompts.
+    """Get infrastructure context for agent analysis.
 
     This is designed for ReleaseEngineer and other ops-focused agents
     to get relevant infrastructure documentation as context.

@@ -12,5 +12,6 @@ resources:
 patches:
   - path: openhands-svc-patch.yaml
   - path: gateway-patch.yaml
+  - path: agents-config-patch.yaml
 
 # Note: Avoid commonLabels/commonAnnotations as they affect selectors which are immutable

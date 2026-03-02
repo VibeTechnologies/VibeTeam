@@ -2,7 +2,7 @@
 Real Gmail Integration Tests for Multi-Framework Agents.
 
 These tests verify that all agent frameworks can interact with REAL Gmail API
-using the shared tools layer (agents.shared.gmail_tools) backed by
+using the shared tools layer (agent_service.shared.gmail_tools) backed by
 vibeteam.connectors.gmail.GmailConnector.
 
 Requirements:

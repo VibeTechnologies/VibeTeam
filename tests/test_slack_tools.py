@@ -1,5 +1,5 @@
 """
-Tests for agents/shared/slack_tools.py
+Tests for agent_service/shared/slack_tools.py
 
 Tests both unit tests (with mocks) and integration tests (with real Slack API).
 """
@@ -16,7 +16,7 @@ class TestSlackToolsUnit:
     def test_import_slack_tools(self):
         """Test that slack_tools can be imported without vibeteam dependency."""
         # This should not import vibeteam
-        import agents.shared.slack_tools as slack_tools
+        import agent_service.shared.slack_tools as slack_tools
 
         # Verify key exports exist
         assert hasattr(slack_tools, "SlackClient")
@@ -208,11 +208,11 @@ class TestSlackToolsNoVibeteamDependency:
             del sys.modules[mod]
 
         # Also remove slack_tools to force reimport
-        if "agents.shared.slack_tools" in sys.modules:
-            del sys.modules["agents.shared.slack_tools"]
+        if "agent_service.shared.slack_tools" in sys.modules:
+            del sys.modules["agent_service.shared.slack_tools"]
 
         # Import slack_tools
-        import agents.shared.slack_tools  # noqa: F401
+        import agent_service.shared.slack_tools  # noqa: F401
 
         # Check that vibeteam was NOT imported
         vibeteam_modules = [k for k in sys.modules if k.startswith("vibeteam")]

@@ -1,5 +1,5 @@
 """
-Unit tests for agents/shared/sentry_tools.py
+Unit tests for agent_service/shared/sentry_tools.py
 
 Tests the standalone Sentry tools that don't depend on vibeteam.connectors.
 These tools are used by OpenHands agents in the container where vibeteam
@@ -125,7 +125,7 @@ class TestSentryToolsUnit:
         )
         assert issue_high.is_frequent
 
-    @patch("agents.shared.sentry_tools.requests.get")
+    @patch("agent_service.shared.sentry_tools.requests.get")
     def test_sentry_client_fetch_with_mock(self, mock_get):
         """Test SentryClient.fetch_unresolved_issues with mocked response."""
         from agent_service.shared.sentry_tools import SentryClient
@@ -159,7 +159,7 @@ class TestSentryToolsUnit:
         assert issues[0].count == 42
         assert issues[0].title == "TypeError: Cannot read property"
 
-    @patch("agents.shared.sentry_tools.requests.get")
+    @patch("agent_service.shared.sentry_tools.requests.get")
     def test_get_sentry_context_formats_output(self, mock_get):
         """Test that get_sentry_context formats issues correctly."""
         from agent_service.shared.sentry_tools import get_sentry_context
@@ -301,7 +301,7 @@ class TestSentryToolsNoVibeteamDependency:
             # Re-import sentry_tools - should work without vibeteam
             import importlib
 
-            import agents.shared.sentry_tools as st
+            import agent_service.shared.sentry_tools as st
 
             importlib.reload(st)
 

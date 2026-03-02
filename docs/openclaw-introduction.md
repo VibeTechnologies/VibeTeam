@@ -12,7 +12,7 @@ OpenClaw provides durable multi-session agent execution and a browser-capable ru
 
 ## High-Level Flow
 
-1. Slack/Gateway routes an OpenClaw role (via `agents.yaml`) to `openclaw-svc`.
+1. Slack/Gateway routes an OpenClaw role (via `agents/agents.yaml`) to `openclaw-svc`.
 2. `openclaw-svc` connects to OpenClaw Gateway over WebSocket.
 3. OpenClaw Gateway loads `openclaw.json` from `openclaw-config` and agent prompts from `openclaw-agent-prompts`.
 4. OpenClaw uses the in-namespace LiteLLM service for Azure OpenAI access.
@@ -20,7 +20,7 @@ OpenClaw provides durable multi-session agent execution and a browser-capable ru
 
 ## Configuration Sources
 
-- **Routing**: `agents.yaml` (framework, Slack handle, prompt path, OpenClaw agent ID)
+- **Routing**: `agents/agents.yaml` (framework, Slack handle, prompt path, OpenClaw agent ID)
 - **OpenClaw config**: `k8s/base/openclaw-config.yaml`
 - **OpenClaw prompts**: `k8s/base/openclaw-prompts/`
 - **Gateway**: `k8s/base/openclaw-gateway.yaml`

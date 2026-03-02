@@ -361,7 +361,7 @@ def main():
     host = os.getenv("HOST", "0.0.0.0")
 
     uvicorn.run(
-        "agents.crewai.server:app",
+        "agent_service.crewai.server:app",
         host=host,
         port=port,
         reload=os.getenv("DEBUG", "").lower() == "true",

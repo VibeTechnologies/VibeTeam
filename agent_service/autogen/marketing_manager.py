@@ -23,7 +23,7 @@ from agent_service.shared.browser_tools import (
     take_screenshot,
     web_search,
 )
-from agent_service.shared.handoff import HANDOFF_PROMPT
+from agent_service.shared.agents_md_loader import load_shared_instructions
 from agent_service.shared.slack_tools import (
     send_message,
 )
@@ -52,6 +52,8 @@ AZURE_MODEL_INFO = {
     "structured_output": True,
 }
 
+
+SHARED_INSTRUCTIONS = load_shared_instructions().strip()
 
 MARKETING_MANAGER_SYSTEM_PROMPT = f"""You are Ada, the Marketing Manager for VibeTeam.
 
@@ -82,7 +84,7 @@ Your responsibilities:
 - Include calls to action when appropriate
 - Maintain consistent brand voice
 
-{HANDOFF_PROMPT}
+{SHARED_INSTRUCTIONS}
 
 When you complete a task, summarize the content created and any scheduled posts.
 """

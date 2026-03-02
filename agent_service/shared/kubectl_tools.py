@@ -12,11 +12,71 @@ Requirements:
 import logging
 import os
 import subprocess
+import tempfile
 import time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+_INCLUSTER_KUBECONFIG: str | None = None
+
+
+def _ensure_incluster_kubeconfig() -> str | None:
+    """Ensure kubectl can authenticate in-cluster without a pre-mounted kubeconfig.
+
+    If KUBECONFIG is already set or ~/.kube/config exists, do nothing.
+    Otherwise, build a minimal kubeconfig from the service account token
+    and point KUBECONFIG to it.
+    """
+    global _INCLUSTER_KUBECONFIG
+    if _INCLUSTER_KUBECONFIG:
+        return _INCLUSTER_KUBECONFIG
+
+    if os.environ.get("KUBECONFIG"):
+        return os.environ.get("KUBECONFIG")
+
+    home_config = Path.home() / ".kube" / "config"
+    if home_config.exists():
+        return str(home_config)
+
+    host = os.environ.get("KUBERNETES_SERVICE_HOST")
+    if not host:
+        return None
+    port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
+
+    token_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/token")
+    ca_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+    if not token_path.exists() or not ca_path.exists():
+        return None
+
+    token = token_path.read_text().strip()
+    kubeconfig_path = Path(tempfile.gettempdir()) / "vibeteam-kubeconfig.yaml"
+    kubeconfig = f"""apiVersion: v1
+kind: Config
+clusters:
+- name: in-cluster
+  cluster:
+    server: https://{host}:{port}
+    certificate-authority: {ca_path}
+users:
+- name: vibeteam-agent
+  user:
+    token: {token}
+contexts:
+- name: vibeteam
+  context:
+    cluster: in-cluster
+    user: vibeteam-agent
+    namespace: {DEFAULT_NAMESPACE}
+current-context: vibeteam
+"""
+    kubeconfig_path.write_text(kubeconfig)
+    os.environ["KUBECONFIG"] = str(kubeconfig_path)
+    _INCLUSTER_KUBECONFIG = str(kubeconfig_path)
+    return _INCLUSTER_KUBECONFIG
+
 
 # Default namespace for VibeTeam internal infrastructure
 DEFAULT_NAMESPACE = os.getenv("VIBETEAM_NAMESPACE", "vibeteam")
@@ -37,6 +97,8 @@ PRODUCTION_DEPLOYMENTS = [
     "stripe-service",
     "litellm",
 ]
+
+_ensure_incluster_kubeconfig()
 
 
 @dataclass
@@ -68,11 +130,16 @@ def run_kubectl(args: list[str], timeout: int = 30) -> KubectlResult:
     cmd_str = " ".join(cmd)
 
     try:
+        env = os.environ.copy()
+        kubeconfig = _ensure_incluster_kubeconfig()
+        if kubeconfig:
+            env["KUBECONFIG"] = kubeconfig
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
         return KubectlResult(
             command=cmd_str,
@@ -196,7 +263,7 @@ def get_kubectl_context(
     log_tail: int = 50,
 ) -> str:
     """
-    Fetch comprehensive kubectl context for agent injection.
+    Fetch comprehensive kubectl context for agent analysis.
 
     Two-phase approach for minimal latency:
     1. Fetch pods first to discover which deployments actually exist
@@ -265,11 +332,10 @@ def get_kubectl_context(
 
     # Format output
     sections = []
-    sections.append("## Pre-Fetched Kubernetes Context")
+    sections.append("## Kubernetes Context Snapshot")
     sections.append("")
-    sections.append("The following kubectl data has been pre-fetched for your investigation.")
     sections.append(
-        "You do NOT need to run these commands again - the data is current as of this request."
+        "Snapshot of kubectl data captured at request time. Run additional commands if needed."
     )
     sections.append("")
     sections.append("**INTERPRETATION GUIDE:**")
@@ -346,7 +412,7 @@ def get_multi_namespace_context(log_tail: int = 50) -> str:
     Fetch kubectl context for both production (vibe) and internal (vibeteam) namespaces.
 
     This gives agents visibility into customer-facing services AND internal
-    agent infrastructure in a single pre-injection, eliminating the namespace
+    agent infrastructure in a single snapshot, eliminating the namespace
     knowledge gap where agents only saw vibeteam data.
 
     Args:
@@ -375,12 +441,3 @@ def get_multi_namespace_context(log_tail: int = 50) -> str:
 def get_k8s_context(namespace: str = DEFAULT_NAMESPACE) -> str:
     """Alias for get_kubectl_context for consistency with other tools."""
     return get_kubectl_context(namespace=namespace)
-
-
-# -----------------------------------------------------------------------------
-# Compatibility shim
-# -----------------------------------------------------------------------------
-# Keep agents.shared.kubectl_tools as the canonical module for tests and
-# cross-framework imports. Re-export its symbols here so patches applied to
-# agents.shared.* are visible when callers import from agent_service.shared.*.
-from agents.shared.kubectl_tools import *  # noqa: F401,F403,E402
