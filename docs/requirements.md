@@ -26,11 +26,11 @@ agents:
     framework: openclaw
     openclaw_agent_id: product-manager
     slack_handle: ProductManager
-    prompt_path: agents/ProductManager/AGENTS.md
+    agent_dir: agents/ProductManager
   support_engineer:
     framework: openhands
     slack_handle: SupportEngineer
-    prompt_path: agents/SupportEngineer/AGENTS.md
+    agent_dir: agents/SupportEngineer
 ```
 
 ## Browser Automation

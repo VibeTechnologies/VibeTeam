@@ -171,6 +171,10 @@ class RunRequest(BaseModel):
     skip_context_injection: bool = Field(
         False, description="Skip automatic context injection from Sentry/Gmail/etc"
     )
+    max_iterations: int = Field(
+        30,
+        description="Maximum agent iterations (tool calls) before forced stop (default: 30)",
+    )
 
 
 class RunResponse(BaseModel):
@@ -412,6 +416,7 @@ async def run_task(request: RunRequest):
                         workspace=request.workspace,
                         use_tools=request.use_tools,
                         skip_context_injection=request.skip_context_injection,
+                        max_iterations=request.max_iterations,
                         progress_heartbeat=_progress_heartbeat,
                     )
 

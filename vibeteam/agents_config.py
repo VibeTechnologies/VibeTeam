@@ -25,6 +25,7 @@ class AgentEntry:
     framework: str | None = None
     openclaw_agent_id: str | None = None
     slack_handle: str | None = None
+    agent_dir: str | None = None
     prompt_path: str | None = None
 
 
@@ -59,6 +60,7 @@ def get_agent_entry(role: str | None) -> AgentEntry | None:
     if not isinstance(raw, dict):
         raw = {}
     slack_handle = raw.get("slack_handle")
+    agent_dir = raw.get("agent_dir")
     display = slack_handle or role.replace("_", " ").title()
     return AgentEntry(
         role=role,  # type: ignore[arg-type]
@@ -66,6 +68,7 @@ def get_agent_entry(role: str | None) -> AgentEntry | None:
         framework=raw.get("framework"),
         openclaw_agent_id=raw.get("openclaw_agent_id"),
         slack_handle=slack_handle,
+        agent_dir=agent_dir,
         prompt_path=raw.get("prompt_path"),
     )
 
@@ -97,7 +100,28 @@ def get_prompt_path(role: str | None) -> str | None:
     entry = get_agent_entry(role)
     if not entry:
         return None
-    return entry.prompt_path
+    if entry.prompt_path:
+        return entry.prompt_path
+    if entry.agent_dir:
+        try:
+            return str(Path(entry.agent_dir) / "AGENTS.md")
+        except Exception:
+            return None
+    return None
+
+
+def get_agent_dir(role: str | None) -> str | None:
+    entry = get_agent_entry(role)
+    if not entry:
+        return None
+    if entry.agent_dir:
+        return entry.agent_dir
+    if entry.prompt_path:
+        try:
+            return str(Path(entry.prompt_path).parent)
+        except Exception:
+            return None
+    return None
 
 
 def list_agents() -> list[AgentEntry]:
@@ -116,6 +140,7 @@ __all__ = [
     "resolve_openclaw_agent_id",
     "resolve_framework",
     "get_slack_handle",
+    "get_agent_dir",
     "get_prompt_path",
     "list_agents",
 ]
