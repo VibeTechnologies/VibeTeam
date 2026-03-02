@@ -25,7 +25,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from agents.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
 from vibeteam.router import Router
-from vibeteam.agents_config import get_slack_handle
+from vibeteam.agents_config import get_skip_context_injection, get_slack_handle
 from vibeteam.router.models import AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
@@ -1136,9 +1136,9 @@ async def _submit_agent_async(
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     skip_context = template == "health_check"
-    if role == "software_engineer":
-        # Force end-to-end investigation via tools (no injected Sentry/kubectl/code context).
-        skip_context = True
+    skip_context_override = get_skip_context_injection(role)
+    if skip_context_override is not None:
+        skip_context = skip_context_override
     max_iterations_map = {
         "health_check": 15,
         "conversational": 30,
@@ -1146,7 +1146,6 @@ async def _submit_agent_async(
         "deployment": 80,
         "investigation": 120,
     }
-    max_iterations = max_iterations_map.get(template, 120)
     max_iterations = max_iterations_map.get(template, 120)
 
     # Best-effort: show assistant "typing" status in the thread while the agent runs.
@@ -1317,9 +1316,9 @@ async def _run_agent_and_respond(
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     skip_context = template == "health_check"
-    if role == "software_engineer":
-        # Force end-to-end investigation via tools (no injected Sentry/kubectl/code context).
-        skip_context = True
+    skip_context_override = get_skip_context_injection(role)
+    if skip_context_override is not None:
+        skip_context = skip_context_override
     max_iterations_map = {
         "health_check": 15,
         "conversational": 30,

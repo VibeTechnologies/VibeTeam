@@ -31,7 +31,16 @@ agents:
     framework: openhands
     slack_handle: SupportEngineer
     agent_dir: agents/SupportEngineer
+  software_engineer:
+    framework: openhands
+    slack_handle: SoftwareEngineer
+    agent_dir: agents/SoftwareEngineer
+    skip_context_injection: true
 ```
+
+Optional agent flags:
+- `skip_context_injection`: when true, the gateway skips pre-fetched context
+  injection (Sentry/kubectl/Gmail) so the agent must use tools directly.
 
 ## Browser Automation
 
