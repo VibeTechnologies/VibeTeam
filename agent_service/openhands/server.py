@@ -21,9 +21,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from agents.config import AgentConfig
-from agents.shared.integration_checks import validate_required_integrations
-from agents.shared.db import close_db, get_postgres_store, init_db
+from agent_service.config import AgentConfig
+from agent_service.shared.integration_checks import validate_required_integrations
+from agent_service.shared.db import close_db, get_postgres_store, init_db
 
 from .team import OpenHandsTeam, create_team
 from .utils import (

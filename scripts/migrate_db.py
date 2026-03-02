@@ -83,7 +83,7 @@ async def run_migrations():
     from sqlalchemy.ext.asyncio import create_async_engine
 
     # Import ORM models so Base.metadata includes them
-    from agents.shared.db import Base  # noqa: F811
+    from agent_service.shared.db import Base  # noqa: F811
 
     url = await get_db_url()
     logger.info(f"Connecting to database...")

@@ -15,7 +15,7 @@ from typing import Any
 
 import yaml
 
-from agents.shared.role_resolver import AgentRole
+from agent_service.shared.role_resolver import AgentRole
 
 
 @dataclass(frozen=True)

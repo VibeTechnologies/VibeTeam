@@ -46,7 +46,7 @@ If running evals, pause rollouts first to prevent mid-eval restarts (see "Analyz
 Customer reports issue
         ↓
 SupportEngineer INVESTIGATES:
-  - Check Sentry (pre-injected data)
+  - Check Sentry directly via MCP or `sentry-cli`
   - Run kubectl get pods, events, logs (READ-ONLY)
   - Identify root cause
         ↓
@@ -118,6 +118,7 @@ Key console indicators:
 |---------|-------|-----|
 | `No agent response received` | Gateway restarted mid-request | Pause rollouts before eval |
 | `401 PermissionDenied` on eval | Wrong Azure credentials in shell | `unset AZURE_OPENAI_*` before running |
+| `404` on `/openai/responses` | Eval using Responses API with old API version | Set `AZURE_EVAL_API_VERSION=2025-04-01-preview` |
 | `Waiting...` forever | Agent service not processing | Check `kubectl logs deployment/openhands-svc` |
 | Score below threshold | Agent didn't use kubectl/Sentry | Check task injection in `slack.py` |
 | Handoff never completes | Gateway doesn't detect @mention | Check `parse_role_mentions()` in router |
@@ -140,6 +141,18 @@ Key console indicators:
    ```
 
 4. **Verify the agent received correct instructions** - Check task injection in `vibeteam/gateway/routes/slack.py`
+
+### Azure Eval (Responses API)
+
+This repo commonly evaluates with Azure Responses API, matching `~/.codex/config.toml`:
+- `base_url = "https://vibebrowser-dev.openai.azure.com/openai"`
+- `wire_api = "responses"`
+- `api-version = "2025-04-01-preview"`
+
+If DeepEval shows `/openai/responses` 404s, set:
+```bash
+export AZURE_EVAL_API_VERSION=2025-04-01-preview
+```
 
 ### After Successful Evaluation
 

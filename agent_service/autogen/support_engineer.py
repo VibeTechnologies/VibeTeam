@@ -14,9 +14,9 @@ import os
 from datetime import datetime
 from typing import Any
 
-from agents.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.handoff import HANDOFF_PROMPT
+from agent_service.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
+from agent_service.shared.handoff import HANDOFF_PROMPT
 
 # AutoGen imports - will fail gracefully if not installed
 try:
@@ -100,23 +100,23 @@ IMPORTANT:
 
 
 # Import shared tool functions - these use real connectors
-from agents.shared.calendar_tools import (
+from agent_service.shared.calendar_tools import (
     create_calendar_event,
     list_calendar_events,
 )
-from agents.shared.docs_tools import (
+from agent_service.shared.docs_tools import (
     get_doc_content,
     list_docs,
     search_docs,
 )
-from agents.shared.gmail_tools import (
+from agent_service.shared.gmail_tools import (
     list_emails,
     send_email,
 )
-from agents.shared.langfuse_tools import (
+from agent_service.shared.langfuse_tools import (
     get_langfuse_traces,
 )
-from agents.shared.slack_tools import (
+from agent_service.shared.slack_tools import (
     read_slack_channel,
     read_slack_thread,
     send_message,
@@ -168,7 +168,7 @@ async def get_sentry_issues(project: str | None = None, hours: int = 24, limit: 
         return f"Error fetching Sentry issues: {e}"
 
 
-# get_langfuse_traces is imported from agents.shared.langfuse_tools
+# get_langfuse_traces is imported from agent_service.shared.langfuse_tools
 
 
 async def create_support_ticket(

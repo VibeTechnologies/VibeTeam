@@ -67,7 +67,7 @@ class PostSlackMessageTool(BaseTool if CREWAI_AVAILABLE else object):
     args_schema: type[BaseModel] = PostMessageInput
 
     def _run(self, message: str, channel: str = "") -> str:
-        from agents.shared.slack_tools import post_slack_message_sync
+        from agent_service.shared.slack_tools import post_slack_message_sync
 
         return post_slack_message_sync(message, channel if channel else None)
 
@@ -80,7 +80,7 @@ class ReadSlackChannelTool(BaseTool if CREWAI_AVAILABLE else object):
     args_schema: type[BaseModel] = ReadChannelInput
 
     def _run(self, limit: int = 10) -> str:
-        from agents.shared.slack_tools import read_slack_channel_sync
+        from agent_service.shared.slack_tools import read_slack_channel_sync
 
         return read_slack_channel_sync(limit=limit)
 
@@ -93,7 +93,7 @@ class ReadSlackThreadTool(BaseTool if CREWAI_AVAILABLE else object):
     args_schema: type[BaseModel] = ReadThreadInput
 
     def _run(self, thread_ts: str, limit: int = 50) -> str:
-        from agents.shared.slack_tools import read_slack_thread_sync
+        from agent_service.shared.slack_tools import read_slack_thread_sync
 
         return read_slack_thread_sync(thread_ts, limit=limit)
 
@@ -109,7 +109,7 @@ class MentionAgentTool(BaseTool if CREWAI_AVAILABLE else object):
     args_schema: type[BaseModel] = MentionAgentInput
 
     def _run(self, agent_key: str, message: str) -> str:
-        from agents.shared.slack_tools import mention_agent_sync
+        from agent_service.shared.slack_tools import mention_agent_sync
 
         return mention_agent_sync(agent_key, message)
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from agents.shared.kubectl_tools import (
+from agent_service.shared.kubectl_tools import (
     DEFAULT_NAMESPACE,
     PRODUCTION_DEPLOYMENTS,
     PRODUCTION_NAMESPACE,
