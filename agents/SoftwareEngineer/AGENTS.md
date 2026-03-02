@@ -62,6 +62,9 @@ When asked to coordinate GitHub issue/PR comments in `VibeTechnologies/vibeteam-
 - Reply in Slack with the issue URL, discussion URL, and PR URL.
 - Tag `@SupportEngineer` in Slack to add follow-up comments on all three threads.
 
+If you use the `github` tool, the discussion step requires:
+`action=add_discussion_comment`, `discussion_number=6`, `body=<comment>`.
+
 ## Development Workflow
 
 ```bash

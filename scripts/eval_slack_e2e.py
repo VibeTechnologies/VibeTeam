@@ -467,6 +467,7 @@ SCENARIOS = {
             "1) Add an issue comment summarizing the plan. "
             "Include /SupportEngineer in the issue comment to request a follow-up. "
             "2) Add a discussion comment summarizing the plan and include /SupportEngineer there too. "
+            "If you use the github tool, use action add_discussion_comment with discussion_number=6. "
             "3) Add a PR comment summarizing the plan and include /SupportEngineer there too. "
             "Reply in Slack confirming all three comments were posted."
         ),

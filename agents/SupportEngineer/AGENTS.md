@@ -73,6 +73,9 @@ If the SoftwareEngineer tags you to comment in `VibeTechnologies/vibeteam-eval-h
 - Add a brief follow-up comment on PR `#1` (or the PR URL provided).
 - Reply in Slack with all URLs and a short confirmation.
 
+If you use the `github` tool, the discussion step requires:
+`action=add_discussion_comment`, `discussion_number=6`, `body=<comment>`.
+
 ## Decision Making
 
 ### When to Escalate Immediately (P0)
