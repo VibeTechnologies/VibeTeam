@@ -2204,9 +2204,10 @@ code matches. Use `gh search code` and `gh api` for further investigation:
 
             # max_iterations caps the number of agent iterations (tool calls)
             # to prevent runaway execution. Default is 30.
+            # Slack tasks can require longer runs (Sentry triage, PR creation),
+            # so we avoid tightening the limit for Slack and rely on idle timeouts
+            # plus iteration warnings to prevent doom loops.
             max_iterations = kwargs.get("max_iterations", 30)
-            if context_type == "slack":
-                max_iterations = min(max_iterations, 12)
             conversation = LocalConversation(
                 agent=agent,
                 workspace=workspace_path,

@@ -1132,6 +1132,19 @@ async def _submit_agent_async(
         thread_ts=thread_ts,
     )
 
+    # Mirror async path: pick template to decide context injection + iteration limits.
+    is_thread_reply = thread_ts is not None
+    template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
+    skip_context = template == "health_check"
+    max_iterations_map = {
+        "health_check": 15,
+        "conversational": 30,
+        "notification": 30,
+        "deployment": 80,
+        "investigation": 120,
+    }
+    max_iterations = max_iterations_map.get(template, 120)
+
     # Determine if we should skip heavy context injection.
     # Health checks are self-contained — the template has all instructions.
     # Pre-fetched context (logs, events from all namespaces) causes the agent
@@ -1141,15 +1154,16 @@ async def _submit_agent_async(
     skip_context = template == "health_check"
 
     # Set max_iterations based on task type to prevent scope creep.
-    # Health checks need very few tool calls; investigations need more.
+    # Use generous limits and rely on idle timeouts + iteration warnings to
+    # avoid doom loops while allowing longer investigations (e.g., Sentry -> PR).
     max_iterations_map = {
-        "health_check": 8,
-        "conversational": 10,
-        "notification": 10,
-        "deployment": 25,
-        "investigation": 30,
+        "health_check": 15,
+        "conversational": 30,
+        "notification": 30,
+        "deployment": 80,
+        "investigation": 120,
     }
-    max_iterations = max_iterations_map.get(template, 30)
+    max_iterations = max_iterations_map.get(template, 120)
 
     # Best-effort: show assistant "typing" status in the thread while the agent runs.
     status_thread_ts = thread_ts or message_ts
@@ -1328,6 +1342,13 @@ async def _run_agent_and_respond(
             framework=framework,
             context_type="slack",
             context_id=f"{channel}:{thread_ts or 'new'}",
+            skip_context_injection=skip_context,
+            max_iterations=max_iterations,
+            execution_timeout=(
+                config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS
+                if config.SLACK_AGENT_IDLE_TIMEOUT_SECONDS > 0
+                else None
+            ),
         )
 
         agent_duration = time.time() - agent_start_time

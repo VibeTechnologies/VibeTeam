@@ -91,6 +91,12 @@ def _resolve_prompt_path(agent_name: str, agents_root: Path) -> Path:
             if isinstance(agents, dict):
                 cfg = agents.get(agent_name, {})
                 if isinstance(cfg, dict):
+                    agent_dir = cfg.get("agent_dir")
+                    if agent_dir:
+                        agent_root = Path(str(agent_dir))
+                        if not agent_root.is_absolute():
+                            agent_root = agents_root.parent / agent_root
+                        return agent_root / "AGENTS.md"
                     prompt_path = cfg.get("prompt_path")
                     if prompt_path:
                         prompt = Path(str(prompt_path))

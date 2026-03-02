@@ -171,6 +171,9 @@ async def call_agent_service(
     context_type: str = "api",
     context_id: str | None = None,
     stream: bool = False,
+    skip_context_injection: bool | None = None,
+    max_iterations: int | None = None,
+    execution_timeout: int | None = None,
 ) -> dict[str, Any]:
     """
     Call an agent microservice to execute a task.
@@ -208,8 +211,15 @@ async def call_agent_service(
     # For openhands, add parameters
     if fw == "openhands":
         payload["use_tools"] = True
-        # Enable context injection so agents get Sentry/Gmail/Langfuse data
-        payload["skip_context_injection"] = False
+        # Enable context injection unless explicitly disabled.
+        if skip_context_injection is None:
+            payload["skip_context_injection"] = False
+        else:
+            payload["skip_context_injection"] = skip_context_injection
+        if max_iterations is not None:
+            payload["max_iterations"] = max_iterations
+        if execution_timeout is not None:
+            payload["execution_timeout"] = execution_timeout
 
     # Retry logic for transient connection failures
     max_retries = 3

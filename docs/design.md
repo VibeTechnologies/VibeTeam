@@ -59,7 +59,7 @@
 
 - The gateway resolves which framework to use per role using `agents.yaml`.
 - `agents.yaml` is the single source of truth for role → framework mapping, Slack handle,
-  and prompt file references.
+  and agent directory references (AGENTS.md resolves from the directory).
 - Example:
 
 ```yaml
@@ -68,11 +68,11 @@ agents:
     framework: openclaw
     openclaw_agent_id: product-manager
     slack_handle: ProductManager
-    prompt_path: agents/ProductManager/AGENTS.md
+    agent_dir: agents/ProductManager
   support_engineer:
     framework: openhands
     slack_handle: SupportEngineer
-    prompt_path: agents/SupportEngineer/AGENTS.md
+    agent_dir: agents/SupportEngineer
 ```
 
 ## OpenClaw Flow
