@@ -345,6 +345,55 @@ async def fetch_github_discussion(
         return None
 
 
+async def fetch_github_discussion_comment(
+    repo: str,
+    comment_node_id: str,
+    role: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch discussion comment details via GraphQL node ID."""
+    token = await get_installation_token(role)
+    if not token:
+        token = os.environ.get("GITHUB_TOKEN")
+
+    if not token:
+        logger.warning("No GitHub token available, skipping discussion comment fetch")
+        return None
+
+    query = """
+    query($id: ID!) {
+      node(id: $id) {
+        ... on DiscussionComment {
+          body
+          createdAt
+          discussion {
+            number
+            title
+            body
+          }
+        }
+      }
+    }
+    """
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.github.com/graphql",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                json={"query": query, "variables": {"id": comment_node_id}},
+            )
+            response.raise_for_status()
+            data = response.json()
+        node = (data.get("data") or {}).get("node") or {}
+        return node if isinstance(node, dict) else None
+    except Exception as e:
+        logger.error(f"Failed to fetch discussion comment details: {e}")
+        return None
+
+
 async def run_agent_for_github_discussion(
     repo: str,
     discussion_number: int,
@@ -619,6 +668,7 @@ async def handle_github_webhook(
     if x_github_event == "discussion_comment" and action == "created":
         comment = payload.get("comment", {})
         comment_body = comment.get("body", "")
+        comment_node_id = comment.get("node_id", "")
         comment_user = comment.get("user", {}).get("login", "")
         comment_user_type = comment.get("user", {}).get("type", "")
         discussion = payload.get("discussion", {})
@@ -629,6 +679,17 @@ async def handle_github_webhook(
         # Ignore bot's own comments
         if comment_user_type == "Bot" or config.BOT_USERNAME.replace("[bot]", "") in comment_user:
             return {"status": "ignored", "reason": "own_comment"}
+
+        if comment_node_id and not comment_body:
+            fetched_comment = await fetch_github_discussion_comment(
+                repo_full_name, comment_node_id, role="software_engineer"
+            )
+            if fetched_comment:
+                comment_body = fetched_comment.get("body", comment_body) or comment_body
+                fetched_discussion = fetched_comment.get("discussion") or {}
+                discussion_number = discussion_number or fetched_discussion.get("number")
+                discussion_body = discussion_body or fetched_discussion.get("body", "")
+                discussion_title = discussion_title or fetched_discussion.get("title", "")
 
         if discussion_number and (not discussion_body or not discussion_title):
             fetched = await fetch_github_discussion(

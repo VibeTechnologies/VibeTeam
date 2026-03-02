@@ -184,14 +184,14 @@ def _fetch_issue_comments(owner: str, repo: str, number: int, token: str) -> lis
         return response.json()
 
 
-def _create_discussion(owner: str, repo: str, token: str) -> tuple[int, str, datetime]:
+def _create_discussion(owner: str, repo: str, token: str) -> tuple[int, str, str, datetime]:
     repo_id, category_id = _get_repo_and_category_id(owner, repo, token)
     title = f"Eval GitHub discussion handoff {uuid.uuid4().hex[:8]}"
     body = "Eval discussion to test agent handoff via GitHub discussion comments."
     mutation = """
     mutation($repoId: ID!, $catId: ID!, $title: String!, $body: String!) {
       createDiscussion(input: {repositoryId: $repoId, categoryId: $catId, title: $title, body: $body}) {
-        discussion { number url createdAt }
+        discussion { id number url createdAt }
       }
     }
     """
@@ -203,26 +203,70 @@ def _create_discussion(owner: str, repo: str, token: str) -> tuple[int, str, dat
     discussion = (data.get("createDiscussion") or {}).get("discussion") or {}
     if not discussion:
         raise RuntimeError("Failed to create discussion via GraphQL")
-    return int(discussion["number"]), discussion["url"], _parse_ts(discussion["createdAt"])
+    return (
+        int(discussion["number"]),
+        discussion["url"],
+        discussion["id"],
+        _parse_ts(discussion["createdAt"]),
+    )
 
 
 def _create_discussion_comment(
-    owner: str, repo: str, token: str, number: int, body: str
+    owner: str, repo: str, token: str, discussion_id: str, body: str
 ) -> datetime:
-    url = f"https://api.github.com/repos/{owner}/{repo}/discussions/{number}/comments"
-    with httpx.Client(timeout=20.0) as client:
-        response = client.post(url, headers=_headers(token), json={"body": body})
-        response.raise_for_status()
-        data = response.json()
-    return _parse_ts(data["created_at"])
+    mutation = """
+    mutation($discussionId: ID!, $body: String!) {
+      addDiscussionComment(input: {discussionId: $discussionId, body: $body}) {
+        comment { createdAt }
+      }
+    }
+    """
+    data = _graphql_request(
+        token,
+        mutation,
+        {"discussionId": discussion_id, "body": body},
+    )
+    comment = (data.get("addDiscussionComment") or {}).get("comment") or {}
+    created_at = comment.get("createdAt")
+    if not created_at:
+        raise RuntimeError("Failed to create discussion comment via GraphQL")
+    return _parse_ts(created_at)
 
 
 def _fetch_discussion_comments(owner: str, repo: str, number: int, token: str) -> list[dict]:
-    url = f"https://api.github.com/repos/{owner}/{repo}/discussions/{number}/comments"
-    with httpx.Client(timeout=20.0) as client:
-        response = client.get(url, headers=_headers(token), params={"per_page": 100})
-        response.raise_for_status()
-        return response.json()
+    query = """
+    query($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        discussion(number: $number) {
+          comments(first: 100) {
+            nodes {
+              createdAt
+              author {
+                login
+                __typename
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    data = _graphql_request(token, query, {"owner": owner, "repo": repo, "number": number})
+    discussion = (data.get("repository") or {}).get("discussion") or {}
+    comments = (discussion.get("comments") or {}).get("nodes") or []
+    normalized: list[dict] = []
+    for comment in comments:
+        author = comment.get("author") or {}
+        normalized.append(
+            {
+                "created_at": comment.get("createdAt", ""),
+                "user": {
+                    "login": author.get("login"),
+                    "type": author.get("__typename"),
+                },
+            }
+        )
+    return normalized
 
 
 def _create_pr_comment(owner: str, repo: str, token: str, pr_number: int, body: str) -> datetime:
@@ -270,10 +314,10 @@ def _run_issue_handoff_existing(
 
 def _run_discussion_handoff(owner: str, repo: str, token: str, timeout: int) -> dict:
     _ensure_discussions_enabled(owner, repo, token)
-    discussion_number, discussion_url, _ = _create_discussion(owner, repo, token)
+    discussion_number, discussion_url, discussion_id, _ = _create_discussion(owner, repo, token)
     trigger_body = "Triggering handoff via discussion comment.\n/SoftwareEngineer /SupportEngineer"
     trigger_ts = _create_discussion_comment(
-        owner, repo, token, discussion_number, trigger_body
+        owner, repo, token, discussion_id, trigger_body
     )
 
     def fetch() -> list[dict]:
