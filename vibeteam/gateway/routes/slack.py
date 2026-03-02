@@ -1136,6 +1136,9 @@ async def _submit_agent_async(
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     skip_context = template == "health_check"
+    if role == "software_engineer":
+        # Force end-to-end investigation via tools (no injected Sentry/kubectl/code context).
+        skip_context = True
     max_iterations_map = {
         "health_check": 15,
         "conversational": 30,
@@ -1314,6 +1317,9 @@ async def _run_agent_and_respond(
     is_thread_reply = thread_ts is not None
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     skip_context = template == "health_check"
+    if role == "software_engineer":
+        # Force end-to-end investigation via tools (no injected Sentry/kubectl/code context).
+        skip_context = True
     max_iterations_map = {
         "health_check": 15,
         "conversational": 30,
