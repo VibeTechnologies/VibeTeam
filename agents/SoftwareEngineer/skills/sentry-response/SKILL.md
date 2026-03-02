@@ -18,6 +18,7 @@ description: Handle Sentry issues end-to-end for SoftwareEngineer (investigate, 
 ## Tool Selection
 - Prefer **Sentry MCP tools** if they exist (e.g., `mcp__sentry__*`).
 - If MCP is not available, use **sentry-cli** to pull issue data.
+- Do **not** conclude “no issues” from injected data alone — always query Sentry directly.
 
 ### Sentry MCP (Preferred)
 - List unresolved issues.

@@ -152,6 +152,7 @@ SOFTWARE_ENGINEER_CONFIG = AgentConfig(
     mcp_servers={
         "github": MCP_SERVERS["github"],
         "filesystem": MCP_SERVERS["filesystem"],
+        "sentry": MCP_SERVERS["sentry"],
         **_CHROME_SERVER,
     },
 )

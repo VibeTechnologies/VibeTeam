@@ -82,6 +82,7 @@ gh pr create --title "Fix login bug" --body "Fixes #345"
 
 ### Sentry Handoff Completion (When SupportEngineer Escalates a Sentry Bug)
 - If the handoff includes a Sentry issue URL/ID, **echo it back** in your response.
+- Do **not** rely on injected context for Sentry status. **Always** query Sentry via MCP if available, otherwise use `sentry-cli`.
 - After creating the PR, **tag @SupportEngineer** with the PR link and the Sentry issue URL so they can close the issue.
 
 ## Code Standards
