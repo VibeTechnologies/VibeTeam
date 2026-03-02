@@ -585,7 +585,7 @@ You are interacting with external users (via Slack/Email).
 You are responsible for INVESTIGATING issues. Use tools directly to gather evidence.
 
 ### 1. Sentry Data (Query directly)
-- Use Sentry tools or `sentry-cli` to list relevant issues.
+- Use the Sentry tools (preferred). If `sentry-cli` is available you may use it, but do not block on it.
 - Report error messages, counts, timestamps.
 - If nothing matches the user's complaint, say so clearly.
 

@@ -368,7 +368,7 @@ def main():
     host = os.getenv("HOST", "0.0.0.0")
 
     uvicorn.run(
-        "agents.autogen.server:app",
+        "agent_service.autogen.server:app",
         host=host,
         port=port,
         reload=os.getenv("DEBUG", "").lower() == "true",

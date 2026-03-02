@@ -58,7 +58,7 @@ class OpenHandsTeam:
         """
         Parse @mention from text to determine target agent.
 
-        Delegates to agents.shared.role_resolver.parse_first_role_mention
+        Delegates to agent_service.shared.role_resolver.parse_first_role_mention
         which supports all mention patterns: @RoleName, /RoleName,
         persona names (@einstein, @grace, @ada), and short aliases
         (@swe, @pm, @dev, etc.).
@@ -69,7 +69,7 @@ class OpenHandsTeam:
         """
         Route to agent based on keywords if no @mention found.
 
-        Delegates to agents.shared.role_resolver.route_by_keywords
+        Delegates to agent_service.shared.role_resolver.route_by_keywords
         which is the single source of truth for keyword routing.
         """
         return route_by_keywords(text)

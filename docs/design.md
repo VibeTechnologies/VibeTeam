@@ -19,7 +19,7 @@
 │   - Normalizes events → UnifiedMessage                                       │
 │   - Routes by @RoleName or keyword fallback                                  │
 │   - Handoff detection from bot replies                                       │
-│   - Framework selection via agents.yaml                                      │
+│   - Framework selection via agents/agents.yaml                               │
 │   - Sync or async callbacks                                                  │
 └──────────┬───────────────────────────────────────────────────────────────────┘
            │
@@ -51,14 +51,14 @@
 
 ### Role Resolution
 
-- Role mentions and keyword routing are centralized in `agents/shared/role_resolver.py`.
+- Role mentions and keyword routing are centralized in `agent_service/shared/role_resolver.py`.
 - Slack, GitHub, and other sources parse `@RoleName` and `/RoleName` mentions.
 - If no role is mentioned, a keyword-based fallback selects a default role.
 
 ### Framework Resolution
 
-- The gateway resolves which framework to use per role using `agents.yaml`.
-- `agents.yaml` is the single source of truth for role → framework mapping, Slack handle,
+- The gateway resolves which framework to use per role using `agents/agents.yaml`.
+- `agents/agents.yaml` is the single source of truth for role → framework mapping, Slack handle,
   and agent directory references (AGENTS.md resolves from the directory).
 - Example:
 

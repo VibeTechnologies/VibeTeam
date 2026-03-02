@@ -2,7 +2,7 @@
 Real Browser Integration Tests for Multi-Framework Agents.
 
 These tests verify that all agent frameworks can perform web browsing operations
-using the shared browser tools layer (agents.shared.browser_tools) which uses
+using the shared browser tools layer (agent_service.shared.browser_tools) which uses
 playwright for real browser automation with urllib fallback.
 
 Requirements:

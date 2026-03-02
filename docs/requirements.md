@@ -2,7 +2,7 @@
 
 ## Overview
 
-VibeTeam routes work via `@RoleName` or `/RoleName` mentions across Slack, GitHub, and Sentry. The gateway resolves which agent framework to use from `agents.yaml`. The canonical architecture lives in [design.md](design.md). For OpenClaw-specific context, see [openclaw-introduction.md](openclaw-introduction.md).
+VibeTeam routes work via `@RoleName` or `/RoleName` mentions across Slack, GitHub, and Sentry. The gateway resolves which agent framework to use from `agents/agents.yaml`. The canonical architecture lives in [design.md](design.md). For OpenClaw-specific context, see [openclaw-introduction.md](openclaw-introduction.md).
 
 ## Agents and Frameworks
 
@@ -16,7 +16,7 @@ VibeTeam routes work via `@RoleName` or `/RoleName` mentions across Slack, GitHu
 
 **Note:** AutoGen and CrewAI are currently disabled (deployments run with `replicas: 0`).
 
-Framework mapping is configured in `agents.yaml` (override with `AGENTS_CONFIG_PATH`).
+Framework mapping is configured in `agents/agents.yaml` (override with `AGENTS_CONFIG_PATH`).
 
 Example:
 
@@ -163,7 +163,7 @@ CHROME_DEVTOOLS_BROWSER_URL=http://browserless:3000
 ```bash
 OPENCLAW_GATEWAY_URL=http://openclaw-gateway:18789
 OPENCLAW_GATEWAY_TOKEN=
-AGENTS_CONFIG_PATH=agents.yaml
+AGENTS_CONFIG_PATH=agents/agents.yaml
 ```
 
 ## Evaluation

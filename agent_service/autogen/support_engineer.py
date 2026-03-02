@@ -16,7 +16,7 @@ from typing import Any
 
 from agent_service.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
 from agent_service.sessions import get_or_create_session, get_session_store
-from agent_service.shared.handoff import HANDOFF_PROMPT
+from agent_service.shared.agents_md_loader import load_shared_instructions
 
 # AutoGen imports - will fail gracefully if not installed
 try:
@@ -42,6 +42,8 @@ AZURE_MODEL_INFO = {
     "structured_output": True,
 }
 
+
+SHARED_INSTRUCTIONS = load_shared_instructions().strip()
 
 SUPPORT_ENGINEER_SYSTEM_PROMPT = f"""You are Grace, the Support Engineer for VibeTeam.
 
@@ -95,7 +97,7 @@ IMPORTANT:
 - High-frequency errors: Create GitHub issue
 - Performance issues: Log for weekly review
 
-{HANDOFF_PROMPT}
+{SHARED_INSTRUCTIONS}
 """
 
 

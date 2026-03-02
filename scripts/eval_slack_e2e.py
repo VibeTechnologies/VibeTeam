@@ -1415,7 +1415,7 @@ SCENARIOS = {
     },
 }
 
-# Role display names (from agents.yaml)
+# Role display names (from agents/agents.yaml)
 from vibeteam.agents_config import list_agents
 
 

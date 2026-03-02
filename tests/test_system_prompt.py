@@ -491,17 +491,11 @@ class TestSoftwareEngineerCodeFirstInvestigation:
         content = self._read_swe_context()
         assert "CODE FIRST" in content or "code FIRST" in content
 
-    def test_code_first_appears_before_prefetched_data(self):
-        """The code-first instruction must appear BEFORE the pre-fetched data section."""
+    def test_no_prefetched_context_section(self):
+        """Prompt should not advertise pre-fetched context injection."""
         content = self._read_swe_context()
-        code_first_pos = content.find("CODE FIRST")
-        if code_first_pos == -1:
-            code_first_pos = content.find("code FIRST")
-        prefetched_pos = content.find("PRE-FETCHED DATA")
-        assert code_first_pos != -1, "CODE FIRST instruction not found"
-        assert prefetched_pos != -1, "PRE-FETCHED DATA section not found"
-        assert code_first_pos < prefetched_pos, (
-            "CODE FIRST instruction must appear before PRE-FETCHED DATA section"
+        assert "PRE-FETCHED" not in content, (
+            "SoftwareEngineer prompt must not reference pre-fetched context"
         )
 
     def test_mentions_extension_directories(self):
@@ -985,7 +979,7 @@ class TestAzureLLMConsolidation:
 
     Previously, AzureLLM was defined 3 times (SWE, support, release) and
     marketing_manager + product_manager used base LLM — a production bug.
-    Now AzureLLM lives in agents/shared/llm.py and all agents import from there.
+    Now AzureLLM lives in agent_service/shared/llm.py and all agents import from there.
     """
 
     AGENTS_DIR = os.path.join(
@@ -1020,7 +1014,7 @@ class TestAzureLLMConsolidation:
         filepath = os.path.join(
             os.path.dirname(__file__),
             os.pardir,
-            "agents",
+            "agent_service",
             "shared",
             "llm.py",
         )
@@ -1028,10 +1022,12 @@ class TestAzureLLMConsolidation:
             return f.read()
 
     def test_shared_llm_module_exists(self):
-        """agents/shared/llm.py must exist as the single source of truth."""
-        filepath = os.path.join(os.path.dirname(__file__), os.pardir, "agents", "shared", "llm.py")
+        """agent_service/shared/llm.py must exist as the single source of truth."""
+        filepath = os.path.join(
+            os.path.dirname(__file__), os.pardir, "agent_service", "shared", "llm.py"
+        )
         assert os.path.exists(filepath), (
-            "agents/shared/llm.py must exist. AzureLLM should be defined once, not per-agent."
+            "agent_service/shared/llm.py must exist. AzureLLM should be defined once, not per-agent."
         )
 
     def test_shared_llm_defines_azure_llm_class(self):
@@ -1143,63 +1139,6 @@ class TestSoftwareEngineerFileEditorTool:
             "_create_agent tools list must include FileEditorTool."
         )
 
-    def test_prefetch_repo_code_method_exists(self):
-        """SWE agent must have a _prefetch_repo_code method."""
-        content = self._read_swe_source()
-        assert "def _prefetch_repo_code" in content, (
-            "SWE agent must have _prefetch_repo_code method to pre-fetch code "
-            "before the agent starts, eliminating the need for sequential search"
-        )
-
-    def test_prefetch_clones_repo(self):
-        """_prefetch_repo_code must clone the VibeTechnologies/VibeWebAgent repo."""
-        content = self._read_swe_source()
-        method_start = content.find("def _prefetch_repo_code")
-        assert method_start != -1
-        next_def = content.find("\n    def ", method_start + 10)
-        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
-
-        assert "git" in method_body and "clone" in method_body, (
-            "_prefetch_repo_code must clone the repo"
-        )
-        assert "VibeTechnologies/VibeWebAgent" in method_body, (
-            "_prefetch_repo_code must clone VibeTechnologies/VibeWebAgent"
-        )
-
-    def test_prefetch_runs_grep(self):
-        """_prefetch_repo_code must grep for keywords from the task."""
-        content = self._read_swe_source()
-        method_start = content.find("def _prefetch_repo_code")
-        assert method_start != -1
-        next_def = content.find("\n    def ", method_start + 10)
-        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
-
-        assert "grep" in method_body, "_prefetch_repo_code must run grep to find relevant code"
-
-    def test_prefetch_extracts_keywords(self):
-        """_prefetch_repo_code must extract keywords from the task text."""
-        content = self._read_swe_source()
-        method_start = content.find("def _prefetch_repo_code")
-        assert method_start != -1
-        next_def = content.find("\n    def ", method_start + 10)
-        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
-
-        assert "keywords" in method_body, "_prefetch_repo_code must extract keywords from the task"
-        assert "skip_words" in method_body, (
-            "_prefetch_repo_code must filter out common English words"
-        )
-
-    def test_run_does_not_call_prefetch_for_github_issues(self):
-        """run() should not call _prefetch_repo_code (no automatic context injection)."""
-        content = self._read_swe_source()
-        method_start = content.find("def run(")
-        assert method_start != -1
-        next_def = content.find("\n    def ", method_start + 10)
-        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
-
-        assert "_prefetch_repo_code" not in method_body, (
-            "run() should not call _prefetch_repo_code when context injection is disabled"
-        )
 
     def test_phase1_mentions_orient_repo(self):
         """Phase 1 workflow should orient the agent in the repo."""
@@ -1232,16 +1171,4 @@ class TestSoftwareEngineerFileEditorTool:
 
         assert "Avoid full-file reads" in ctx, (
             "Prompt must tell agent to avoid full-file reads"
-        )
-
-    def test_prefetch_limits_output_size(self):
-        """_prefetch_repo_code must limit output to prevent context overflow."""
-        content = self._read_swe_source()
-        method_start = content.find("def _prefetch_repo_code")
-        assert method_start != -1
-        next_def = content.find("\n    def ", method_start + 10)
-        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
-
-        assert "8000" in method_body or "truncat" in method_body.lower(), (
-            "_prefetch_repo_code must limit output size to prevent context overflow"
         )

@@ -34,8 +34,8 @@ flowchart TB
   Sentry --> Gateway
   REST --> Gateway
 
-  Gateway -->|role + framework via agents.yaml| OpenHands
-  Gateway -->|role + framework via agents.yaml| OpenClaw
+  Gateway -->|role + framework via agents/agents.yaml| OpenHands
+  Gateway -->|role + framework via agents/agents.yaml| OpenClaw
   Gateway --> AutoGen
   Gateway --> CrewAI
   Gateway --> Scheduler

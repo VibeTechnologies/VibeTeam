@@ -73,7 +73,7 @@ class Router:
         """
         Extract role mentions from message text.
 
-        Delegates to agents.shared.role_resolver.parse_role_mentions
+        Delegates to agent_service.shared.role_resolver.parse_role_mentions
         which is the single source of truth for role parsing.
 
         Args:

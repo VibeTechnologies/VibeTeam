@@ -17,7 +17,7 @@ from typing import Any
 from agent_service.config import RELEASE_ENGINEER_CONFIG, AgentConfig
 from agent_service.sessions import get_or_create_session, get_session_store
 from agent_service.shared.docs_tools import search_infra_docs
-from agent_service.shared.handoff import HANDOFF_PROMPT
+from agent_service.shared.agents_md_loader import load_shared_instructions
 from agent_service.shared.slack_tools import (
     read_slack_channel,
     read_slack_thread,
@@ -48,6 +48,8 @@ GPT5_MODEL_INFO = {
     "structured_output": True,
 }
 
+
+SHARED_INSTRUCTIONS = load_shared_instructions().strip()
 
 RELEASE_ENGINEER_SYSTEM_PROMPT = f"""You are Einstein, the Release Engineer for VibeTeam.
 
@@ -119,7 +121,7 @@ kubectl logs -f deployment/vibeteam -n production
 gh release create v1.0.0 --generate-notes
 ```
 
-{HANDOFF_PROMPT}
+{SHARED_INSTRUCTIONS}
 """
 
 

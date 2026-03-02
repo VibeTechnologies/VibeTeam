@@ -1,0 +1,15 @@
+# Shared agents configuration volume
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agents-config
+  labels:
+    app: agents-config
+    team: vibeteam
+spec:
+  # Requires a storage class that supports ReadWriteMany for shared access.
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi

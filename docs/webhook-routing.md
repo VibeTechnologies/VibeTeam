@@ -13,7 +13,7 @@ This guide summarizes how external events reach agents. For the canonical routin
 
 ## Routing Rules (Short)
 
-- Role mentions are parsed via `agents/shared/role_resolver.py` and accept `@RoleName` or `/RoleName`.
+- Role mentions are parsed via `agent_service/shared/role_resolver.py` and accept `@RoleName` or `/RoleName`.
 - Subscribed agents receive all subsequent messages in the thread.
 - Bot messages are processed to detect handoff mentions.
 

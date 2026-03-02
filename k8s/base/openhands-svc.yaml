@@ -33,6 +33,66 @@ spec:
       serviceAccountName: vibeteam-agent
       imagePullSecrets:
         - name: ghcr-pull-secret
+      initContainers:
+        - name: kubeconfig-init
+          image: alpine:3.19
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /kube
+              TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              cat <<EOF > /kube/config
+              apiVersion: v1
+              kind: Config
+              clusters:
+              - name: in-cluster
+                cluster:
+                  server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}
+                  certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              users:
+              - name: vibeteam-agent
+                user:
+                  token: ${TOKEN}
+              contexts:
+              - name: vibeteam
+                context:
+                  cluster: in-cluster
+                  user: vibeteam-agent
+                  namespace: vibeteam
+              current-context: vibeteam
+              EOF
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /kube
+        - name: agents-sync
+          image: alpine/git:2.45.2
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              if [ -f /app/agents/agents.yaml ]; then
+                echo "Agents config already present."
+                exit 0
+              fi
+              mkdir -p /app/agents
+              if mkdir /app/agents/.init-lock 2>/dev/null; then
+                git clone --depth 1 --branch "${AGENTS_REPO_REF}" "${AGENTS_REPO_URL}" /tmp/repo
+                cp -R /tmp/repo/agents/. /app/agents/
+                rm -rf /tmp/repo
+                rmdir /app/agents/.init-lock
+              else
+                echo "Waiting for agents config to be populated..."
+                until [ -f /app/agents/agents.yaml ]; do sleep 2; done
+              fi
+          env:
+            - name: AGENTS_REPO_URL
+              value: "https://github.com/VibeTechnologies/VibeTeam.git"
+            - name: AGENTS_REPO_REF
+              value: "master"
+          volumeMounts:
+            - name: agents-config
+              mountPath: /app/agents
       containers:
         - name: openhands
           image: ghcr.io/vibetechnologies/vibeteam-openhands:latest
@@ -88,13 +148,25 @@ spec:
               value: "http://browserless:3000"
             - name: OPENHANDS_SYNC_IDLE_TIMEOUT_SECONDS
               value: "300"
+            - name: RUNTIME
+              value: "process"
+            - name: KUBECONFIG
+              value: /kube/config
             - name: VIBETEAM_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: AGENTS_DIR
+              value: "/app/agents"
+            - name: AGENTS_CONFIG_PATH
+              value: "/app/agents/agents.yaml"
           volumeMounts:
             - name: gmail-oauth
               mountPath: /gmail
+            - name: agents-config
+              mountPath: /app/agents
+            - name: kubeconfig
+              mountPath: /kube
           resources:
             requests:
               memory: "3Gi"
@@ -122,6 +194,11 @@ spec:
         - name: gmail-oauth
           secret:
             secretName: gmail-oauth-secret
+        - name: kubeconfig
+          emptyDir: {}
+        - name: agents-config
+          persistentVolumeClaim:
+            claimName: agents-config
 ---
 apiVersion: v1
 kind: Service

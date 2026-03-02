@@ -25,6 +25,11 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 - For handoffs: include specific evidence, not just "check this thing"
 - For null findings: clearly state "No issues found" rather than staying silent
 
+## Agent Configuration & Skills (Source of Truth)
+- The agent configuration lives in `agents/agents.yaml` inside the shared agents directory (`/app/agents` in deployments).
+- You may update this configuration and add or modify skills under `agents/<AgentName>/skills/` if needed to solve the task.
+- Keep changes scoped and documented in your response (what changed and why).
+
 ### Avoid Doom Loops
 - Keep moving toward evidence; do not repeat the same command without new signal
 - If you have made no progress after several tool calls, summarize what you learned and stop

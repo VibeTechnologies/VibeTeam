@@ -9,15 +9,15 @@ requests when playwright is not available.
 
 Usage:
     # AutoGen - use directly as FunctionTool
-    from agents.shared.browser_tools import web_search, fetch_webpage, take_screenshot
+    from agent_service.shared.browser_tools import web_search, fetch_webpage, take_screenshot
 
     # CrewAI - wrap in BaseTool
-    from agents.shared.browser_tools import fetch_webpage_sync
+    from agent_service.shared.browser_tools import fetch_webpage_sync
     class BrowserTool(BaseTool):
         def _run(self, url): return fetch_webpage_sync(url)
 
     # OpenHands - use directly in agent code
-    from agents.shared.browser_tools import get_webpage_context
+    from agent_service.shared.browser_tools import get_webpage_context
 """
 
 import asyncio
@@ -418,7 +418,7 @@ def extract_links_sync(url: str, filter_pattern: str = "") -> str:
 
 
 def get_browser_context(url: str) -> str:
-    """Get webpage context for injection into agent prompts.
+    """Get webpage context for agent analysis.
 
     Returns browser context for agent prompts.
 

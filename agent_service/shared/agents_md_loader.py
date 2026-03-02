@@ -23,13 +23,17 @@ def get_agents_root() -> Path:
     Handles both local dev and K8s deployment with git-sync.
     In K8s with git-sync, code lives under /code/current (a symlink).
     """
+    env_root = os.environ.get("AGENTS_DIR")
+    if env_root:
+        return Path(env_root)
+
     code_current = Path("/code/current")
     if code_current.exists():
         return code_current / "agents"
 
     # Local dev fallback: find agents directory relative to this file
     current_file = Path(__file__).resolve()
-    return current_file.parent.parent
+    return current_file.parent.parent.parent / "agents"
 
 
 def load_shared_instructions() -> str:
@@ -41,12 +45,8 @@ def load_shared_instructions() -> str:
     agents_root = get_agents_root()
     shared_path = agents_root / "shared" / "AGENTS.md"
     if not shared_path.exists():
-        fallback_path = Path(__file__).resolve().parent / "AGENTS.md"
-        if fallback_path.exists():
-            shared_path = fallback_path
-        else:
-            logger.warning(f"Shared AGENTS.md not found at {shared_path}")
-            return ""
+        logger.warning(f"Shared AGENTS.md not found at {shared_path}")
+        return ""
 
     try:
         content = shared_path.read_text(encoding="utf-8")
@@ -82,8 +82,8 @@ def load_agent_instructions(agent_name: str) -> str:
 
 
 def _resolve_prompt_path(agent_name: str, agents_root: Path) -> Path:
-    """Resolve AGENTS.md path using agents.yaml when available."""
-    config_path = Path(os.environ.get("AGENTS_CONFIG_PATH", "agents.yaml"))
+    """Resolve AGENTS.md path using agents/agents.yaml when available."""
+    config_path = Path(os.environ.get("AGENTS_CONFIG_PATH", "agents/agents.yaml"))
     if not config_path.is_absolute():
         config_path = agents_root.parent / config_path
 
@@ -98,16 +98,16 @@ def _resolve_prompt_path(agent_name: str, agents_root: Path) -> Path:
                     if agent_dir:
                         agent_root = Path(str(agent_dir))
                         if not agent_root.is_absolute():
-                            agent_root = agents_root.parent / agent_root
+                            agent_root = agents_root / agent_root
                         return agent_root / "AGENTS.md"
                     prompt_path = cfg.get("prompt_path")
                     if prompt_path:
                         prompt = Path(str(prompt_path))
                         if not prompt.is_absolute():
-                            prompt = agents_root.parent / prompt
+                            prompt = agents_root / prompt
                         return prompt
         except Exception as e:
-            logger.warning("Failed to load agents.yaml from %s: %s", config_path, e)
+            logger.warning("Failed to load agents/agents.yaml from %s: %s", config_path, e)
 
     # Convert snake_case to PascalCase
     # e.g., 'support_engineer' -> 'SupportEngineer'

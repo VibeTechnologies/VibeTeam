@@ -15,7 +15,7 @@ from typing import Any
 
 from agent_service.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
 from agent_service.sessions import get_or_create_session, get_session_store
-from agent_service.shared.handoff import HANDOFF_PROMPT
+from agent_service.shared.agents_md_loader import load_shared_instructions
 from agent_service.shared.slack_tools import (
     read_slack_channel,
     read_slack_thread,
@@ -44,6 +44,8 @@ GPT_MODEL_INFO = {
     "structured_output": True,
 }
 
+
+SHARED_INSTRUCTIONS = load_shared_instructions().strip()
 
 SOFTWARE_ENGINEER_SYSTEM_PROMPT = f"""You are Alan, the Software Engineer for VibeTeam.
 
@@ -93,7 +95,7 @@ Your responsibilities:
 - Keep functions focused and small
 - Write tests for new functionality
 
-{HANDOFF_PROMPT}
+{SHARED_INSTRUCTIONS}
 
 You can also use Slack tools:
 - `send_message(message)` - Send responses to Slack (USE THIS FOR ALL RESPONSES)

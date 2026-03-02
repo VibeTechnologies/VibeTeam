@@ -30,6 +30,7 @@ export $( < .env ) && .venv/bin/python -m pytest tests/test_openhands_service_in
 ```
 
 Each agent has specific service ownership and handoff responsibilities. Every agent has their own skill sets, defined in agents/<agent_name>/skills/<skill_name>/SKILL.md.
+Agent configuration lives in `agents/agents.yaml` inside the shared agents directory and may be updated by agents when needed.
 
 Do not ask for tokens, evrything inside .env, just export it `export $( < .env )`
 
@@ -52,7 +53,7 @@ If running evals, pause rollouts first to prevent mid-eval restarts (see "Analyz
 Customer reports issue
         ↓
 SupportEngineer INVESTIGATES:
-  - Check Sentry directly via MCP or `sentry-cli`
+  - Check Sentry via Sentry tools (API) or `sentry-cli` if available
   - Run kubectl get pods, events, logs (READ-ONLY)
   - Identify root cause
         ↓
@@ -126,7 +127,8 @@ Key console indicators:
 | `401 PermissionDenied` on eval | Wrong Azure credentials in shell | `unset AZURE_OPENAI_*` before running |
 | `404` on `/openai/responses` | Eval using Responses API with old API version | Set `AZURE_EVAL_API_VERSION=2025-04-01-preview` |
 | `Waiting...` forever | Agent service not processing | Check `kubectl logs deployment/openhands-svc` |
-| Score below threshold | Agent didn't use kubectl/Sentry | Check task injection in `slack.py` |
+| `kubectl` says "server could not find requested resource" | Missing kubeconfig inside OpenHands runtime | Ensure `RUNTIME=process` and `KUBECONFIG=/kube/config` via kubeconfig init container in `openhands-svc` |
+| Score below threshold | Agent didn't use kubectl/Sentry | Check routing prompt and tool access in `slack.py` |
 | Handoff never completes | Gateway doesn't detect @mention | Check `parse_role_mentions()` in router |
 
 ### Debugging Failed Evaluations
@@ -186,7 +188,8 @@ Before running VibeTeam agents or after infrastructure changes, verify system re
 
 - `vibeteam/`: gateway, routing, connectors, webhook handlers
 - `agent_service/`: FastAPI services for OpenHands/OpenClaw/AutoGen/CrewAI
-- `agents/`: role prompts, configs, shared prompt utilities
+- `agents/`: role prompts and skills (non-Python)
+- `agent_service/shared/`: shared Python tools/utilities for all agent frameworks
 - `scripts/`: eval runners, deployment helpers, maintenance utilities
 - `k8s/`: Kubernetes base + overlays, secrets templates
 - `tests/`: unit and integration tests

@@ -4,7 +4,7 @@ Langfuse Integration Tests.
 Verifies all 4 layers of the Langfuse integration:
 1. vibeteam/__init__.py — _init_langfuse() auto-init on import
 2. vibeteam/tracing.py — SwarmTrace, AgentSpan, get_langfuse_client()
-3. agents/shared/langfuse_tools.py — LangfuseClient REST API wrapper
+3. agent_service/shared/langfuse_tools.py — LangfuseClient REST API wrapper
 4. vibeteam/connectors/langfuse.py — LangfuseConnector (higher-level)
 
 Run with:
@@ -551,12 +551,12 @@ class TestObserveAgent:
 
 
 # ---------------------------------------------------------------------------
-# 3. agents/shared/langfuse_tools.py — LangfuseClient
+# 3. agent_service/shared/langfuse_tools.py — LangfuseClient
 # ---------------------------------------------------------------------------
 
 
 class TestLangfuseToolsClient:
-    """Tests for LangfuseClient in agents/shared/langfuse_tools.py."""
+    """Tests for LangfuseClient in agent_service/shared/langfuse_tools.py."""
 
     def test_init_with_explicit_keys(self):
         from agent_service.shared.langfuse_tools import LangfuseClient
@@ -615,7 +615,7 @@ class TestLangfuseToolsClient:
         mock_response.raise_for_status = MagicMock()
 
         with patch(
-            "agents.shared.langfuse_tools.requests.request", return_value=mock_response
+            "agent_service.shared.langfuse_tools.requests.request", return_value=mock_response
         ) as mock_req:
             client._request("GET", "/traces", params={"limit": 10})
             mock_req.assert_called_once_with(
@@ -764,7 +764,7 @@ class TestLangfuseToolsClient:
         mock_response = MagicMock()
         mock_response.status_code = 200
 
-        with patch("agents.shared.langfuse_tools.requests.get", return_value=mock_response):
+        with patch("agent_service.shared.langfuse_tools.requests.get", return_value=mock_response):
             assert client.health_check() is True
 
     def test_health_check_failure(self):
@@ -773,14 +773,14 @@ class TestLangfuseToolsClient:
         client = LangfuseClient(public_key="pk", secret_key="sk", base_url="https://lf.example.com")
 
         with patch(
-            "agents.shared.langfuse_tools.requests.get",
+            "agent_service.shared.langfuse_tools.requests.get",
             side_effect=requests.exceptions.ConnectionError("refused"),
         ):
             assert client.health_check() is False
 
 
 class TestLangfuseToolsHighLevel:
-    """Tests for high-level functions in agents/shared/langfuse_tools.py."""
+    """Tests for high-level functions in agent_service/shared/langfuse_tools.py."""
 
     def test_get_langfuse_client_returns_client(self):
         from agent_service.shared.langfuse_tools import _get_langfuse_client
@@ -843,7 +843,7 @@ class TestLangfuseToolsHighLevel:
             period_hours=6,
         )
 
-        with patch("agents.shared.langfuse_tools._get_langfuse_client") as mock_get:
+        with patch("agent_service.shared.langfuse_tools._get_langfuse_client") as mock_get:
             mock_client = MagicMock()
             mock_client.get_stats.return_value = mock_stats
             mock_client.detect_anomalies.return_value = []

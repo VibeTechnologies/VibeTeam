@@ -34,8 +34,8 @@ spec:
           command: ["python", "-m", "uvicorn", "agent_service.openhands.server:app", "--host", "0.0.0.0", "--port", "8080"]
           resources:
             requests:
-              memory: "1Gi"
-              cpu: "250m"
+              memory: "256Mi"
+              cpu: "100m"
             limits:
               memory: "4Gi"
               cpu: "1000m"
@@ -53,6 +53,10 @@ spec:
           env:
             - name: PYTHONPATH
               value: "/code/current"
+            - name: AGENTS_DIR
+              value: "/code/current/agents"
+            - name: AGENTS_CONFIG_PATH
+              value: "/code/current/agents/agents.yaml"
           volumeMounts:
             - name: code
               mountPath: /code

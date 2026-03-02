@@ -483,11 +483,3 @@ def get_langfuse_context(hours: int = 6) -> str:
     except Exception as e:
         return f"## LLM Observability Status\n\nError loading Langfuse data: {e}"
 
-
-# -----------------------------------------------------------------------------
-# Compatibility shim
-# -----------------------------------------------------------------------------
-# Keep agents.shared.langfuse_tools as the canonical module for tests and
-# cross-framework imports. Re-export its symbols here so patches applied to
-# agents.shared.* are visible when callers import from agent_service.shared.*.
-from agents.shared.langfuse_tools import *  # noqa: F401,F403,E402
