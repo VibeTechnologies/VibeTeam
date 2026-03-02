@@ -748,6 +748,20 @@ async def handle_github_webhook(
 
         message_router = get_message_router()
         role_mentions = message_router.parse_role_mentions(comment_body)
+        if not role_mentions and comment_body:
+            fallback_roles: list[AgentRole] = []
+            for role in (
+                "software_engineer",
+                "support_engineer",
+                "release_engineer",
+                "product_manager",
+                "marketing_manager",
+            ):
+                handle = get_slack_handle(role) or role.replace("_", " ").title()
+                if handle and re.search(rf"\\b{re.escape(handle)}\\b", comment_body, re.IGNORECASE):
+                    fallback_roles.append(role)
+            if fallback_roles:
+                role_mentions = fallback_roles
 
         if role_mentions:
             logger.info(
