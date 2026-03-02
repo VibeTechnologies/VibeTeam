@@ -127,6 +127,9 @@ Gateway supports GitHub webhooks for:
 - `pull_request_review_comment`
 - `discussion` and `discussion_comment`
 
+Discussion comments are posted via GraphQL and require GitHub App discussions
+permissions to avoid `Resource not accessible by integration` failures.
+
 ## LLM Configuration
 
 - Default model: Azure OpenAI `gpt-5.2`.

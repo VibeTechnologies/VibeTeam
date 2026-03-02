@@ -181,6 +181,8 @@ handoffs over issues, discussions, and PR comments. This requires:
 - GitHub webhooks enabled for `issues`, `issue_comment`, `pull_request_review_comment`,
   `discussion`, and `discussion_comment` events.
 - Discussions enabled on `VibeTechnologies/vibeteam-eval-hello-world`.
+- Role GitHub Apps granted Discussions read/write permission (otherwise discussion
+  comments fail with `Resource not accessible by integration`).
 - `GITHUB_TOKEN` (or `GH_TOKEN`) with issue/discussion write permissions.
 
 ## Gmail Processor
