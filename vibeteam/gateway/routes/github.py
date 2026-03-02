@@ -561,13 +561,13 @@ async def handle_github_webhook(
         if discussion_user_type == "Bot" or config.BOT_USERNAME.replace("[bot]", "") in discussion_user:
             return {"status": "ignored", "reason": "own_comment"}
 
-        if discussion_number and (not discussion_body or not discussion_title):
+        if discussion_number:
             fetched = await fetch_github_discussion(
                 repo_full_name, discussion_number, role="software_engineer"
             )
             if fetched:
-                discussion_body = discussion_body or fetched.get("body", "")
-                discussion_title = discussion_title or fetched.get("title", "")
+                discussion_body = fetched.get("body", discussion_body) or discussion_body
+                discussion_title = fetched.get("title", discussion_title) or discussion_title
 
         message_router = get_message_router()
         role_mentions = message_router.parse_role_mentions(discussion_body)
