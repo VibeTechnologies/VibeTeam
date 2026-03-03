@@ -31,7 +31,7 @@ Fix 3 bugs causing the `stripe_webhook_failure` eval to fail:
 
 ### 1. PostgreSQL UUID Type Mismatch [HIGH]
 
-**Problem:** `agents/shared/db.py:36` defines `id = Column(String(36))` but
+**Problem:** `agent_service/shared/db.py:36` defines `id = Column(String(36))` but
 `scripts/migrate_db.py:106` creates the table with `id UUID PRIMARY KEY`.
 PostgreSQL rejects the INSERT: `column "id" is of type uuid but expression is
 of type character varying`.

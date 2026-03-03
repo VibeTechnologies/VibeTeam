@@ -25,11 +25,20 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 - For handoffs: include specific evidence, not just "check this thing"
 - For null findings: clearly state "No issues found" rather than staying silent
 
-### Iteration Limits (HARD LIMIT)
-- **SupportEngineer**: Maximum 25 tool calls per task
-- **ReleaseEngineer**: Maximum 15 tool calls per task
-- You MUST wrap up findings around 70% of your limit (after ~17 calls for SupportEngineer)
-- If you hit the limit, call `finish()` with whatever findings you have
+## Agent Configuration & Skills (Source of Truth)
+- The agent configuration lives in `agents/agents.yaml` inside the shared agents directory (`/app/agents` in deployments).
+- You may update this configuration and add or modify skills under `agents/<AgentName>/skills/` if needed to solve the task.
+- Keep changes scoped and documented in your response (what changed and why).
+
+### Avoid Doom Loops
+- Keep moving toward evidence; do not repeat the same command without new signal
+- If you have made no progress after several tool calls, summarize what you learned and stop
+- Prefer shorter, bounded tool calls (see Command Timeouts)
+
+### Command Timeouts (REQUIRED)
+- For `kubectl`, always add `--request-timeout=20s` (or lower) and avoid `-w`/watch flags
+- For `curl`, always add `--max-time 20`
+- For other commands, prefix with `timeout 30s` when available
 
 ### Investigation Workflow (For SupportEngineer)
 1. **Gather evidence with tools** - Use Sentry/kubectl/logs directly for this request

@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 
-from agents.shared.gmail_tools import DEFAULT_CREDENTIALS_PATH, DEFAULT_TOKEN_PATH
+from agent_service.shared.gmail_tools import DEFAULT_CREDENTIALS_PATH, DEFAULT_TOKEN_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,7 @@ def _github_configured() -> bool:
         return True
     # Role-scoped GitHub App credentials
     app_ids = {
-        key.split("GITHUB_APP_ID_", 1)[1]
-        for key in os.environ
-        if key.startswith("GITHUB_APP_ID_")
+        key.split("GITHUB_APP_ID_", 1)[1] for key in os.environ if key.startswith("GITHUB_APP_ID_")
     }
     for suffix in app_ids:
         if all(

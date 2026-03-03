@@ -21,16 +21,11 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
-COPY agents/autogen/requirements.txt ./requirements.txt
+COPY agent_service/autogen/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy shared agent code
-COPY agents/__init__.py ./agents/
-COPY agents/config.py ./agents/
-COPY agents/sessions.py ./agents/
-COPY agents/metrics.py ./agents/
-COPY agents/shared/ ./agents/shared/
-COPY agents/autogen/ ./agents/autogen/
+# Copy application code
+COPY agent_service/ ./agent_service/
 
 # Copy vibeteam connectors (for Sentry, Langfuse, etc.)
 COPY vibeteam/__init__.py ./vibeteam/
@@ -57,7 +52,7 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
 # Copy application code
-COPY --from=builder /app/agents /app/agents
+COPY --from=builder /app/agent_service /app/agent_service
 COPY --from=builder /app/vibeteam /app/vibeteam
 
 # Create non-root user
@@ -81,4 +76,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the FastAPI server
-CMD ["python", "-m", "uvicorn", "agents.autogen.server:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "uvicorn", "agent_service.autogen.server:app", "--host", "0.0.0.0", "--port", "8080"]

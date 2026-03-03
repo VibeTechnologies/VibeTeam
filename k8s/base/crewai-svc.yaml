@@ -24,6 +24,35 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
+      initContainers:
+        - name: agents-sync
+          image: alpine/git:2.45.2
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              if [ -f /app/agents/agents.yaml ]; then
+                echo "Agents config already present."
+                exit 0
+              fi
+              mkdir -p /app/agents
+              if mkdir /app/agents/.init-lock 2>/dev/null; then
+                git clone --depth 1 --branch "${AGENTS_REPO_REF}" "${AGENTS_REPO_URL}" /tmp/repo
+                cp -R /tmp/repo/agents/. /app/agents/
+                rm -rf /tmp/repo
+                rmdir /app/agents/.init-lock
+              else
+                echo "Waiting for agents config to be populated..."
+                until [ -f /app/agents/agents.yaml ]; do sleep 2; done
+              fi
+          env:
+            - name: AGENTS_REPO_URL
+              value: "https://github.com/VibeTechnologies/VibeTeam.git"
+            - name: AGENTS_REPO_REF
+              value: "master"
+          volumeMounts:
+            - name: agents-config
+              mountPath: /app/agents
       containers:
         - name: crewai
           image: ghcr.io/vibetechnologies/vibeteam-crewai:latest
@@ -73,6 +102,10 @@ spec:
                   key: SENTRY_AUTH_TOKEN
             - name: CHROME_DEVTOOLS_BROWSER_URL
               value: "http://browserless:3000"
+            - name: AGENTS_DIR
+              value: "/app/agents"
+            - name: AGENTS_CONFIG_PATH
+              value: "/app/agents/agents.yaml"
           resources:
             requests:
               memory: "512Mi"
@@ -83,6 +116,8 @@ spec:
           volumeMounts:
             - name: sessions-volume
               mountPath: /app/.sessions
+            - name: agents-config
+              mountPath: /app/agents
           livenessProbe:
             httpGet:
               path: /health
@@ -102,6 +137,9 @@ spec:
       volumes:
         - name: sessions-volume
           emptyDir: {}
+        - name: agents-config
+          persistentVolumeClaim:
+            claimName: agents-config
 ---
 apiVersion: v1
 kind: Service

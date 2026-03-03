@@ -5,10 +5,10 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-COPY agents/scheduler/requirements.txt ./
+COPY agent_service/scheduler/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY agents/scheduler/ ./agents/scheduler/
+COPY agent_service/scheduler/ ./agent_service/scheduler/
 
 ENV PYTHONPATH="/app"
 EXPOSE 8080

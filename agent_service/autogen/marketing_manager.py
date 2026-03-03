@@ -12,19 +12,19 @@ import asyncio
 import os
 from typing import Any
 
-from agents.config import MARKETING_MANAGER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
+from agent_service.config import MARKETING_MANAGER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
 
 # Import shared browser tools
-from agents.shared.browser_tools import (
+from agent_service.shared.browser_tools import (
     analyze_competitor_page,
     extract_links,
     fetch_webpage,
     take_screenshot,
     web_search,
 )
-from agents.shared.handoff import HANDOFF_PROMPT
-from agents.shared.slack_tools import (
+from agent_service.shared.agents_md_loader import load_shared_instructions
+from agent_service.shared.slack_tools import (
     send_message,
 )
 
@@ -52,6 +52,8 @@ AZURE_MODEL_INFO = {
     "structured_output": True,
 }
 
+
+SHARED_INSTRUCTIONS = load_shared_instructions().strip()
 
 MARKETING_MANAGER_SYSTEM_PROMPT = f"""You are Ada, the Marketing Manager for VibeTeam.
 
@@ -82,7 +84,7 @@ Your responsibilities:
 - Include calls to action when appropriate
 - Maintain consistent brand voice
 
-{HANDOFF_PROMPT}
+{SHARED_INSTRUCTIONS}
 
 When you complete a task, summarize the content created and any scheduled posts.
 """
@@ -90,7 +92,7 @@ When you complete a task, summarize the content created and any scheduled posts.
 
 # Tool functions for MarketingManager
 # NOTE: web_search, fetch_webpage, take_screenshot, extract_links, and analyze_competitor_page
-# are imported from agents.shared.browser_tools above
+# are imported from agent_service.shared.browser_tools above
 
 
 async def create_social_post(platform: str, content: str, hashtags: str = "") -> str:

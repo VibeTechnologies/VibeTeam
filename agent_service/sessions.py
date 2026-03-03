@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agents.config import SessionConfig
+from agent_service.config import SessionConfig
 
 
 @dataclass

@@ -27,7 +27,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 try:
-    from agents.shared.integration_checks import validate_required_integrations
+    from agent_service.shared.integration_checks import validate_required_integrations
 except Exception:  # Optional for minimal images
     validate_required_integrations = None  # type: ignore[assignment]
 
@@ -52,7 +52,7 @@ if validate_required_integrations is None:
             )
 
 try:
-    from agents.shared.db import close_db, get_postgres_store, init_db
+    from agent_service.shared.db import close_db, get_postgres_store, init_db
 except Exception:
     close_db = None
     get_postgres_store = None
@@ -90,7 +90,7 @@ def _resolve_role_for_token(role: str | None, task: str) -> str | None:
     if role:
         return role
     try:
-        from agents.shared.role_resolver import parse_first_role_mention, route_by_keywords
+        from agent_service.shared.role_resolver import parse_first_role_mention, route_by_keywords
 
         parsed = parse_first_role_mention(task)
         if parsed:
@@ -492,8 +492,15 @@ async def run_task(request: RunRequest):
             request.openclaw_agent_id
             or resolve_openclaw_agent_id(request.role)
             or (entry.openclaw_agent_id if entry else None)
-            or "product-manager"
         )
+        if not agent_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "OpenClaw agent_id not configured. Set openclaw_agent_id in "
+                    "agents/agents.yaml for the role or pass openclaw_agent_id."
+                ),
+            )
         session_key = request.session_key or _build_session_key(
             agent_id, request.context_type, context_id
         )

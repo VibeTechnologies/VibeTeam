@@ -12,10 +12,10 @@ import asyncio
 import os
 from typing import Any
 
-from agents.config import PRODUCT_MANAGER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.handoff import HANDOFF_PROMPT
-from agents.shared.slack_tools import (
+from agent_service.config import PRODUCT_MANAGER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
+from agent_service.shared.agents_md_loader import load_shared_instructions
+from agent_service.shared.slack_tools import (
     read_slack_channel,
     read_slack_thread,
     send_message,
@@ -43,6 +43,8 @@ GPT_MODEL_INFO = {
     "structured_output": True,
 }
 
+
+SHARED_INSTRUCTIONS = load_shared_instructions().strip()
 
 PRODUCT_MANAGER_SYSTEM_PROMPT = f"""You are Maya, the Product Manager for VibeTeam.
 
@@ -93,7 +95,7 @@ As the supervisor agent, you can delegate to:
 Feature requests are tracked in GitHub Issue #322 (VibeTechnologies/VibeWebAgent).
 Format: | Request | Customer | Priority | Status | Assigned |
 
-{HANDOFF_PROMPT}
+{SHARED_INSTRUCTIONS}
 
 You can also use Slack tools:
 - `send_message(message)` - Send responses to the user

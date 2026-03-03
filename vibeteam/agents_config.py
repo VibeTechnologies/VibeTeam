@@ -1,8 +1,8 @@
 """
-Agent configuration helpers backed by agents.yaml.
+Agent configuration helpers backed by agents/agents.yaml.
 
 This module provides role metadata, framework routing, and OpenClaw agent ID
-resolution for services that need to respect agents.yaml configuration.
+resolution for services that need to respect agents/agents.yaml configuration.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 
 import yaml
 
-from agents.shared.role_resolver import AgentRole
+from agent_service.shared.role_resolver import AgentRole
 
 
 @dataclass(frozen=True)
@@ -29,11 +29,22 @@ class AgentEntry:
     prompt_path: str | None = None
 
 
-AGENTS_CONFIG_PATH = os.environ.get("AGENTS_CONFIG_PATH", "agents.yaml")
+AGENTS_CONFIG_PATH = os.environ.get("AGENTS_CONFIG_PATH", "agents/agents.yaml")
+
+
+def _get_agents_config_path() -> Path:
+    path = Path(AGENTS_CONFIG_PATH)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return path
+
+
+def _get_agents_config_dir() -> Path:
+    return _get_agents_config_path().parent
 
 
 def _load_agents_config() -> dict[str, Any]:
-    path = Path(AGENTS_CONFIG_PATH)
+    path = _get_agents_config_path()
     if not path.exists():
         return {}
     try:
@@ -61,6 +72,22 @@ def get_agent_entry(role: str | None) -> AgentEntry | None:
         raw = {}
     slack_handle = raw.get("slack_handle")
     agent_dir = raw.get("agent_dir")
+    prompt_path = raw.get("prompt_path")
+    base_dir = _get_agents_config_dir()
+    if agent_dir:
+        try:
+            agent_path = Path(str(agent_dir))
+            if not agent_path.is_absolute():
+                agent_dir = str(base_dir / agent_path)
+        except Exception:
+            pass
+    if prompt_path:
+        try:
+            prompt_path_obj = Path(str(prompt_path))
+            if not prompt_path_obj.is_absolute():
+                prompt_path = str(base_dir / prompt_path_obj)
+        except Exception:
+            pass
     display = slack_handle or role.replace("_", " ").title()
     return AgentEntry(
         role=role,  # type: ignore[arg-type]
@@ -69,7 +96,7 @@ def get_agent_entry(role: str | None) -> AgentEntry | None:
         openclaw_agent_id=raw.get("openclaw_agent_id"),
         slack_handle=slack_handle,
         agent_dir=agent_dir,
-        prompt_path=raw.get("prompt_path"),
+        prompt_path=prompt_path,
     )
 
 

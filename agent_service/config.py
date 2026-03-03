@@ -99,7 +99,7 @@ class LLMConfig:
             self.api_key or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_API_KEY")
         )
         try:
-            from agents.shared.llm import resolve_azure_model
+            from agent_service.shared.llm import resolve_azure_model
 
             self.model = resolve_azure_model(
                 self.model,

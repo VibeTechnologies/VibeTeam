@@ -8,13 +8,13 @@ resources:
   # Infrastructure
   - postgres.yaml
   - browserless.yaml
+  - agents-config.yaml
   # Gateway (routes webhooks to agent microservices)
   - vibeteam-gateway.yaml
   # Agent Microservices (FastAPI servers handling all agent roles)
   - openhands-svc.yaml
   - openclaw-svc.yaml
   # OpenClaw gateway (shared, multi-persona)
-  - openclaw-config.yaml
   - openclaw-gateway.yaml
   - scheduler-svc.yaml
   # LiteLLM proxy (in-namespace for OpenClaw)
@@ -35,6 +35,9 @@ generatorOptions:
   disableNameSuffixHash: true
 
 configMapGenerator:
+  - name: openclaw-config
+    files:
+      - openclaw.json=openclaw-config.json
   - name: openclaw-agent-prompts
     files:
       - AGENTS.md=openclaw-prompts/ProductManager.AGENTS.md

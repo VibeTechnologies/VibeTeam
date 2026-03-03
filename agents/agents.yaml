@@ -3,20 +3,20 @@ agents:
     framework: openclaw
     openclaw_agent_id: product-manager
     slack_handle: ProductManager
-    agent_dir: agents/ProductManager
+    agent_dir: ProductManager
   support_engineer:
     framework: openhands
     slack_handle: SupportEngineer
-    agent_dir: agents/SupportEngineer
+    agent_dir: SupportEngineer
   release_engineer:
     framework: openhands
     slack_handle: ReleaseEngineer
-    agent_dir: agents/ReleaseEngineer
+    agent_dir: ReleaseEngineer
   software_engineer:
     framework: openhands
     slack_handle: SoftwareEngineer
-    agent_dir: agents/SoftwareEngineer
+    agent_dir: SoftwareEngineer
   marketing_manager:
     framework: openhands
     slack_handle: MarketingManager
-    agent_dir: agents/MarketingManager
+    agent_dir: MarketingManager

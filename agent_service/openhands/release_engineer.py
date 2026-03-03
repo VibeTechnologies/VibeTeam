@@ -20,9 +20,9 @@ import os
 import tempfile
 from typing import Any
 
-from agents.config import RELEASE_ENGINEER_CONFIG, AgentConfig
-from agents.sessions import get_or_create_session, get_session_store
-from agents.shared.kubectl_tools import get_multi_namespace_context
+from agent_service.config import RELEASE_ENGINEER_CONFIG, AgentConfig
+from agent_service.sessions import get_or_create_session, get_session_store
+from agent_service.shared.kubectl_tools import get_multi_namespace_context
 
 
 def fetch_kubectl_context() -> str:
@@ -46,8 +46,8 @@ except ImportError:
     TerminalTool = None
     FileEditorTool = None
 
-from agents.shared.agents_md_loader import compose_agent_context
-from agents.shared.llm import LLM, AzureLLM
+from agent_service.shared.agents_md_loader import compose_agent_context
+from agent_service.shared.llm import LLM, AzureLLM
 
 from .utils import build_condenser, get_prompt_path
 
@@ -76,12 +76,6 @@ You are the **ReleaseEngineer**.
 
 You have FULL access to the production Kubernetes cluster. When you receive a handoff
 from SupportEngineer with investigation findings, YOUR JOB IS TO ACT.
-
-## PRE-FETCHED DATA AVAILABLE
-Look for the section starting with "PRE-FETCHED KUBERNETES STATE" below.
-This contains the CURRENT state of pods, events, logs, and rollout history.
-**USE THIS DATA** to understand the current state, but you still MUST run kubectl
-commands for any write operations (deploy, rollback, restart, scale).
 
 ## ==========================================================================
 ## CRITICAL SAFETY RULE: DO NOT DESTROY YOUR OWN INFRASTRUCTURE
@@ -125,8 +119,8 @@ commands for any write operations (deploy, rollback, restart, scale).
 ## CRITICAL: TAKE ACTION, DON'T JUST INVESTIGATE
 
 SupportEngineer has already investigated. When you receive a handoff:
-1. **Review their findings** and the **Pre-Fetched Kubernetes Context** below
-2. **Verify if needed** (only if pre-fetched data is insufficient)
+1. **Review their findings**
+2. **Verify if needed** (use kubectl/gh to confirm before acting)
 3. **TAKE THE APPROPRIATE ACTION** - don't just recommend, DO IT
 
 ## ⚠️ EFFICIENCY: COMBINE COMMANDS TO SAVE TOOL CALLS

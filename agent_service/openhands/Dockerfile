@@ -24,15 +24,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 COPY agent_service/openhands/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy shared agent code
-COPY agents/__init__.py ./agents/
-COPY agents/config.py ./agents/
-COPY agents/sessions.py ./agents/
-COPY agents/metrics.py ./agents/
-COPY agents/shared/ ./agents/shared/
-COPY agents.yaml ./agents.yaml
-COPY agent_service/__init__.py ./agent_service/
-COPY agent_service/openhands/ ./agent_service/openhands/
+# Copy application code
+COPY agent_service/ ./agent_service/
 
 # Production stage
 FROM python:3.12-slim
@@ -44,12 +37,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     ca-certificates \
+    bash \
+    tar \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && KUBECTL_VERSION="v1.31.4" \
     && curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
     && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl \
     && rm kubectl \
+    && curl -fsSL https://sentry.io/get-cli/ | bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy GitHub CLI from builder
@@ -59,8 +55,6 @@ COPY --from=builder /usr/bin/gh /usr/bin/gh
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 
 # Copy application code
-COPY --from=builder /app/agents /app/agents
-COPY --from=builder /app/agents.yaml /app/agents.yaml
 COPY --from=builder /app/agent_service /app/agent_service
 
 # Create non-root user

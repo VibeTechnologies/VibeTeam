@@ -8,8 +8,8 @@ Coordinates multiple agents and routes tasks based on @mentions.
 
 from typing import Any
 
-from agents.config import AgentConfig
-from agents.shared.role_resolver import parse_first_role_mention, route_by_keywords
+from agent_service.config import AgentConfig
+from agent_service.shared.role_resolver import parse_first_role_mention, route_by_keywords
 
 from .marketing_manager import OpenHandsMarketingManager
 from .product_manager import OpenHandsProductManager
@@ -58,7 +58,7 @@ class OpenHandsTeam:
         """
         Parse @mention from text to determine target agent.
 
-        Delegates to agents.shared.role_resolver.parse_first_role_mention
+        Delegates to agent_service.shared.role_resolver.parse_first_role_mention
         which supports all mention patterns: @RoleName, /RoleName,
         persona names (@einstein, @grace, @ada), and short aliases
         (@swe, @pm, @dev, etc.).
@@ -69,7 +69,7 @@ class OpenHandsTeam:
         """
         Route to agent based on keywords if no @mention found.
 
-        Delegates to agents.shared.role_resolver.route_by_keywords
+        Delegates to agent_service.shared.role_resolver.route_by_keywords
         which is the single source of truth for keyword routing.
         """
         return route_by_keywords(text)

@@ -186,7 +186,7 @@ class SlackAgentRunner:
     def setup(self):
         """Set up the agent and Slack connector."""
         from vibeteam.connectors.slack import SlackConnector
-        from agents.shared.slack_tools import set_slack_context
+        from agent_service.shared.slack_tools import set_slack_context
 
         # Create agent
         AgentClass = get_agent_class(self.framework, self.agent_key)
@@ -218,7 +218,7 @@ class SlackAgentRunner:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Processing: {task[:100]}...")
 
         # Update Slack context with thread
-        from agents.shared.slack_tools import set_slack_context
+        from agent_service.shared.slack_tools import set_slack_context
 
         set_slack_context(
             connector=self.connector,

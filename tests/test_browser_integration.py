@@ -2,7 +2,7 @@
 Real Browser Integration Tests for Multi-Framework Agents.
 
 These tests verify that all agent frameworks can perform web browsing operations
-using the shared browser tools layer (agents.shared.browser_tools) which uses
+using the shared browser tools layer (agent_service.shared.browser_tools) which uses
 playwright for real browser automation with urllib fallback.
 
 Requirements:
@@ -162,7 +162,7 @@ def validate_competitor_analysis_response(response: str) -> bool:
 def check_playwright():
     """Check if playwright is available."""
     try:
-        from agents.shared.browser_tools import PLAYWRIGHT_AVAILABLE
+        from agent_service.shared.browser_tools import PLAYWRIGHT_AVAILABLE
 
         return PLAYWRIGHT_AVAILABLE
     except ImportError:
@@ -192,7 +192,7 @@ class TestSharedBrowserToolsDirect:
 
     def test_fetch_webpage_basic(self):
         """Test fetching a basic webpage."""
-        from agents.shared.browser_tools import fetch_webpage_sync
+        from agent_service.shared.browser_tools import fetch_webpage_sync
 
         start = time.perf_counter()
         result = fetch_webpage_sync("https://example.com")
@@ -213,7 +213,7 @@ class TestSharedBrowserToolsDirect:
         if not check_playwright:
             pytest.skip("Playwright not available - using urllib fallback")
 
-        from agents.shared.browser_tools import fetch_webpage_sync
+        from agent_service.shared.browser_tools import fetch_webpage_sync
 
         start = time.perf_counter()
         # Use a simple page that works without JS too
@@ -231,7 +231,7 @@ class TestSharedBrowserToolsDirect:
 
     def test_web_search(self, check_playwright):
         """Test web search functionality."""
-        from agents.shared.browser_tools import web_search_sync
+        from agent_service.shared.browser_tools import web_search_sync
 
         start = time.perf_counter()
         result = web_search_sync("python programming", num_results=3)
@@ -252,7 +252,7 @@ class TestSharedBrowserToolsDirect:
         if not check_playwright:
             pytest.skip("Playwright required for screenshots")
 
-        from agents.shared.browser_tools import take_screenshot_sync
+        from agent_service.shared.browser_tools import take_screenshot_sync
 
         start = time.perf_counter()
         result = take_screenshot_sync("https://example.com")
@@ -279,7 +279,7 @@ class TestSharedBrowserToolsDirect:
         if not check_playwright:
             pytest.skip("Playwright required for link extraction")
 
-        from agents.shared.browser_tools import extract_links_sync
+        from agent_service.shared.browser_tools import extract_links_sync
 
         start = time.perf_counter()
         result = extract_links_sync("https://example.com")
@@ -296,7 +296,7 @@ class TestSharedBrowserToolsDirect:
 
     def test_analyze_competitor_page(self):
         """Test competitor analysis functionality."""
-        from agents.shared.browser_tools import analyze_competitor_page_sync
+        from agent_service.shared.browser_tools import analyze_competitor_page_sync
 
         start = time.perf_counter()
         result = analyze_competitor_page_sync("https://example.com")
@@ -313,7 +313,7 @@ class TestSharedBrowserToolsDirect:
 
     def test_get_browser_context(self):
         """Test browser context for agent injection."""
-        from agents.shared.browser_tools import get_browser_context
+        from agent_service.shared.browser_tools import get_browser_context
 
         start = time.perf_counter()
         context = get_browser_context("https://example.com")

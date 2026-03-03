@@ -42,7 +42,7 @@ ENTRYPOINT_DEV = AGENT_SERVICE_DIR / "entrypoint-dev.sh"
 SERVER_PY = AGENT_SERVICE_DIR / "server.py"
 UTILS_PY = AGENT_SERVICE_DIR / "utils.py"
 K8S_OPENHANDS_PATCH = REPO_ROOT / "k8s" / "overlays" / "dev" / "openhands-svc-patch.yaml"
-AGENTS_MD_LOADER = AGENTS_DIR / "shared" / "agents_md_loader.py"
+AGENTS_MD_LOADER = REPO_ROOT / "agent_service" / "shared" / "agents_md_loader.py"
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from agents.shared.kubectl_tools import (
+from agent_service.shared.kubectl_tools import (
     DEFAULT_NAMESPACE,
     PRODUCTION_DEPLOYMENTS,
     PRODUCTION_NAMESPACE,
@@ -84,10 +84,10 @@ class TestExtractDeploymentNames:
 class TestGetKubectlContextParallel:
     """Test get_kubectl_context with mocked kubectl calls."""
 
-    @patch("agents.shared.kubectl_tools.get_rollout_history")
-    @patch("agents.shared.kubectl_tools.get_deployment_logs")
-    @patch("agents.shared.kubectl_tools.get_events")
-    @patch("agents.shared.kubectl_tools.get_pods")
+    @patch("agent_service.shared.kubectl_tools.get_rollout_history")
+    @patch("agent_service.shared.kubectl_tools.get_deployment_logs")
+    @patch("agent_service.shared.kubectl_tools.get_events")
+    @patch("agent_service.shared.kubectl_tools.get_pods")
     def test_skips_nonexistent_deployments(self, mock_pods, mock_events, mock_logs, mock_rollout):
         """When pods output shows only gateway + openhands, autogen/crewai logs are skipped."""
         mock_pods.return_value = KubectlResult(
@@ -129,13 +129,13 @@ class TestGetKubectlContextParallel:
         assert "crewai-svc" not in log_calls
 
         # Output should still contain section headers
-        assert "Pre-Fetched Kubernetes Context" in result
+        assert "Kubernetes Context Snapshot" in result
         assert "kubectl get pods" in result
 
-    @patch("agents.shared.kubectl_tools.get_rollout_history")
-    @patch("agents.shared.kubectl_tools.get_deployment_logs")
-    @patch("agents.shared.kubectl_tools.get_events")
-    @patch("agents.shared.kubectl_tools.get_pods")
+    @patch("agent_service.shared.kubectl_tools.get_rollout_history")
+    @patch("agent_service.shared.kubectl_tools.get_deployment_logs")
+    @patch("agent_service.shared.kubectl_tools.get_events")
+    @patch("agent_service.shared.kubectl_tools.get_pods")
     def test_includes_all_when_all_running(self, mock_pods, mock_events, mock_logs, mock_rollout):
         """When all 4 deployments have pods, all 4 get log fetches."""
         mock_pods.return_value = KubectlResult(
@@ -171,10 +171,10 @@ class TestGetKubectlContextParallel:
         assert "autogen-svc" in log_calls
         assert "crewai-svc" in log_calls
 
-    @patch("agents.shared.kubectl_tools.get_rollout_history")
-    @patch("agents.shared.kubectl_tools.get_deployment_logs")
-    @patch("agents.shared.kubectl_tools.get_events")
-    @patch("agents.shared.kubectl_tools.get_pods")
+    @patch("agent_service.shared.kubectl_tools.get_rollout_history")
+    @patch("agent_service.shared.kubectl_tools.get_deployment_logs")
+    @patch("agent_service.shared.kubectl_tools.get_events")
+    @patch("agent_service.shared.kubectl_tools.get_pods")
     def test_handles_pods_failure_gracefully(self, mock_pods, mock_events, mock_logs, mock_rollout):
         """If get_pods fails, fall back to trying all deployments."""
         mock_pods.return_value = KubectlResult(
@@ -213,9 +213,9 @@ class TestGetKubectlContextParallel:
 class TestGetKubectlContextNamespaceAware:
     """Test get_kubectl_context with non-default namespaces."""
 
-    @patch("agents.shared.kubectl_tools.get_deployment_logs")
-    @patch("agents.shared.kubectl_tools.get_events")
-    @patch("agents.shared.kubectl_tools.get_pods")
+    @patch("agent_service.shared.kubectl_tools.get_deployment_logs")
+    @patch("agent_service.shared.kubectl_tools.get_events")
+    @patch("agent_service.shared.kubectl_tools.get_pods")
     def test_production_namespace_uses_correct_headers(self, mock_pods, mock_events, mock_logs):
         """When called with vibe namespace, section headers reflect the correct namespace."""
         mock_pods.return_value = KubectlResult(
@@ -250,10 +250,10 @@ class TestGetKubectlContextNamespaceAware:
         # Should contain production deployment logs
         assert "user-portal" in result or "stripe-service" in result
 
-    @patch("agents.shared.kubectl_tools.get_rollout_history")
-    @patch("agents.shared.kubectl_tools.get_deployment_logs")
-    @patch("agents.shared.kubectl_tools.get_events")
-    @patch("agents.shared.kubectl_tools.get_pods")
+    @patch("agent_service.shared.kubectl_tools.get_rollout_history")
+    @patch("agent_service.shared.kubectl_tools.get_deployment_logs")
+    @patch("agent_service.shared.kubectl_tools.get_events")
+    @patch("agent_service.shared.kubectl_tools.get_pods")
     def test_vibeteam_namespace_includes_rollout_history(
         self, mock_pods, mock_events, mock_logs, mock_rollout
     ):
@@ -292,7 +292,7 @@ class TestGetKubectlContextNamespaceAware:
 class TestGetMultiNamespaceContext:
     """Test get_multi_namespace_context fetches both namespaces."""
 
-    @patch("agents.shared.kubectl_tools.get_kubectl_context")
+    @patch("agent_service.shared.kubectl_tools.get_kubectl_context")
     def test_fetches_both_namespaces(self, mock_get_ctx):
         """get_multi_namespace_context calls get_kubectl_context for vibeteam and vibe."""
         mock_get_ctx.side_effect = [
@@ -316,12 +316,12 @@ class TestGetMultiNamespaceContext:
         assert "vibe context" in result
         assert "---" in result  # separator
 
-    @patch("agents.shared.kubectl_tools.get_kubectl_context")
+    @patch("agent_service.shared.kubectl_tools.get_kubectl_context")
     def test_handles_production_failure_gracefully(self, mock_get_ctx):
         """If production namespace fetch fails, vibeteam context is still returned."""
         mock_get_ctx.side_effect = [
             "## vibeteam context\npods running fine",
-            "## Pre-Fetched Kubernetes Context\nError: connection refused",
+            "## Kubernetes Context Snapshot\nError: connection refused",
         ]
 
         result = get_multi_namespace_context()

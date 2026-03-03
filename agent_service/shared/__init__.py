@@ -8,20 +8,20 @@ interface that can be used by AutoGen, CrewAI, and OpenHands agents.
 
 Usage:
     # AutoGen - use directly as FunctionTool
-    from agents.shared.gmail_tools import list_emails, send_email
+    from agent_service.shared.gmail_tools import list_emails, send_email
     agent = AssistantAgent(tools=[list_emails, send_email, ...])
 
     # CrewAI - wrap in BaseTool
-    from agents.shared.gmail_tools import fetch_unread_emails
+    from agent_service.shared.gmail_tools import fetch_unread_emails
     class EmailSearchTool(BaseTool):
         def _run(self, query): return fetch_unread_emails(query)
 
     # OpenHands - use directly in agent code
-    from agents.shared.gmail_tools import get_email_context
+    from agent_service.shared.gmail_tools import get_email_context
     context = get_email_context()
 """
 
-from agents.shared.browser_tools import (
+from agent_service.shared.browser_tools import (
     analyze_competitor_page,
     analyze_competitor_page_sync,
     extract_links,
@@ -34,12 +34,12 @@ from agents.shared.browser_tools import (
     web_search,
     web_search_sync,
 )
-from agents.shared.calendar_tools import (
+from agent_service.shared.calendar_tools import (
     create_calendar_event,
     get_calendar_context,
     list_calendar_events,
 )
-from agents.shared.docs_tools import (
+from agent_service.shared.docs_tools import (
     get_doc_content,
     get_docs_context,
     list_docs,
@@ -47,7 +47,7 @@ from agents.shared.docs_tools import (
     search_docs,
     search_docs_sync,
 )
-from agents.shared.gmail_tools import (
+from agent_service.shared.gmail_tools import (
     fetch_unread_emails,
     get_email_context,
     list_emails,
@@ -55,13 +55,13 @@ from agents.shared.gmail_tools import (
     send_email,
     send_email_reply,
 )
-from agents.shared.handoff import HANDOFF_PROMPT
-from agents.shared.langfuse_tools import (
+from agent_service.shared.langfuse_tools import (
+    detect_langfuse_anomalies,
     get_langfuse_context,
     get_langfuse_stats,
     get_langfuse_traces,
 )
-from agents.shared.role_resolver import (
+from agent_service.shared.role_resolver import (
     ROLE_MENTION_MAP,
     ROLE_PATTERN,
     AgentRole,
@@ -70,7 +70,7 @@ from agents.shared.role_resolver import (
     parse_role_mentions,
     route_by_keywords,
 )
-from agents.shared.slack_tools import (
+from agent_service.shared.slack_tools import (
     clear_slack_context,
     get_slack_context,
     get_slack_context_for_injection,
@@ -142,8 +142,6 @@ __all__ = [
     "is_slack_context_set",
     "get_slack_context_for_injection",
     "get_slack_handoff_instructions",
-    # Handoff
-    "HANDOFF_PROMPT",
     # Role resolution
     "AgentRole",
     "ROLE_MENTION_MAP",

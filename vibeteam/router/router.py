@@ -10,10 +10,10 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from agents.shared.role_resolver import (
+from agent_service.shared.role_resolver import (
     get_display_name as _get_display_name,
 )
-from agents.shared.role_resolver import (
+from agent_service.shared.role_resolver import (
     parse_role_mentions as _parse_role_mentions,
 )
 from vibeteam.router.db import SubscriptionDB, get_subscription_db
@@ -73,7 +73,7 @@ class Router:
         """
         Extract role mentions from message text.
 
-        Delegates to agents.shared.role_resolver.parse_role_mentions
+        Delegates to agent_service.shared.role_resolver.parse_role_mentions
         which is the single source of truth for role parsing.
 
         Args:

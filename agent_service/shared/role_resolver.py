@@ -11,7 +11,7 @@ Previously this logic was duplicated across multiple locations:
 - vibeteam/router/models.py (ROLE_MENTION_MAP)
 - vibeteam/router/router.py (ROLE_PATTERN regex + parse_role_mentions)
 - vibeteam/gateway/routes/slack.py (keyword routing fallback)
-- agents/openhands/team.py (parse_mention + route_by_keywords)
+- agent_service/openhands/team.py (parse_mention + route_by_keywords)
 - tests/e2e/test_slack_routing.py (ROLE_PATTERN + ROLE_MAP copy)
 
 All consumers should now import from this module.
@@ -65,7 +65,7 @@ BASE_ROLE_MENTION_MAP: dict[str, AgentRole] = {
 
 @lru_cache(maxsize=1)
 def _load_agents_yaml() -> dict:
-    path = Path(os.environ.get("AGENTS_CONFIG_PATH", "agents.yaml"))
+    path = Path(os.environ.get("AGENTS_CONFIG_PATH", "agents/agents.yaml"))
     if not path.exists():
         return {}
     try:
@@ -146,7 +146,7 @@ def parse_first_role_mention(text: str) -> AgentRole | None:
 
 
 def get_display_name(role: AgentRole) -> str:
-    """Get the Slack handle/display name for a role from agents.yaml."""
+    """Get the Slack handle/display name for a role from agents/agents.yaml."""
     config = _load_agents_yaml()
     agents = config.get("agents", {}) if isinstance(config, dict) else {}
     if isinstance(agents, dict):

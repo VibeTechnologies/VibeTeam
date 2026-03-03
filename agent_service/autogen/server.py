@@ -18,8 +18,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from agents.config import AgentConfig
-from agents.shared.db import close_db, get_postgres_store, init_db
+from agent_service.config import AgentConfig
+from agent_service.shared.db import close_db, get_postgres_store, init_db
 
 from .team import AutoGenTeam, create_team
 
@@ -34,7 +34,7 @@ def _resolve_role_for_token(role: str | None, task: str) -> str | None:
     if role:
         return role
     try:
-        from agents.shared.role_resolver import parse_first_role_mention, route_by_keywords
+        from agent_service.shared.role_resolver import parse_first_role_mention, route_by_keywords
 
         parsed = parse_first_role_mention(task)
         if parsed:
@@ -368,7 +368,7 @@ def main():
     host = os.getenv("HOST", "0.0.0.0")
 
     uvicorn.run(
-        "agents.autogen.server:app",
+        "agent_service.autogen.server:app",
         host=host,
         port=port,
         reload=os.getenv("DEBUG", "").lower() == "true",

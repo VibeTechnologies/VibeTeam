@@ -1,5 +1,5 @@
 """
-Unit tests for agents/shared/sentry_tools.py
+Unit tests for agent_service/shared/sentry_tools.py
 
 Tests the standalone Sentry tools that don't depend on vibeteam.connectors.
 These tools are used by OpenHands agents in the container where vibeteam
@@ -25,7 +25,7 @@ class TestSentryToolsUnit:
     def test_import_sentry_tools(self):
         """Test that sentry_tools can be imported without vibeteam dependency."""
         # This is the key test - it should work without vibeteam.connectors
-        from agents.shared.sentry_tools import (
+        from agent_service.shared.sentry_tools import (
             SentryClient,
             SentryIssue,
             get_sentry_context,
@@ -37,7 +37,7 @@ class TestSentryToolsUnit:
 
     def test_get_sentry_context_no_token(self):
         """Test that get_sentry_context fails gracefully without token."""
-        from agents.shared.sentry_tools import get_sentry_context
+        from agent_service.shared.sentry_tools import get_sentry_context
 
         # Temporarily remove token if set
         original_token = os.environ.pop("SENTRY_AUTH_TOKEN", None)
@@ -50,7 +50,7 @@ class TestSentryToolsUnit:
 
     def test_sentry_client_requires_token(self):
         """Test that SentryClient raises error without token."""
-        from agents.shared.sentry_tools import SentryClient
+        from agent_service.shared.sentry_tools import SentryClient
 
         # Temporarily remove token if set
         original_token = os.environ.pop("SENTRY_AUTH_TOKEN", None)
@@ -63,7 +63,7 @@ class TestSentryToolsUnit:
 
     def test_sentry_issue_dataclass(self):
         """Test SentryIssue dataclass properties."""
-        from agents.shared.sentry_tools import SentryIssue
+        from agent_service.shared.sentry_tools import SentryIssue
 
         issue = SentryIssue(
             id="123",
@@ -87,7 +87,7 @@ class TestSentryToolsUnit:
 
     def test_sentry_issue_is_frequent(self):
         """Test SentryIssue.is_frequent property."""
-        from agents.shared.sentry_tools import SentryIssue
+        from agent_service.shared.sentry_tools import SentryIssue
 
         # Not frequent (count <= 10)
         issue_low = SentryIssue(
@@ -125,10 +125,10 @@ class TestSentryToolsUnit:
         )
         assert issue_high.is_frequent
 
-    @patch("agents.shared.sentry_tools.requests.get")
+    @patch("agent_service.shared.sentry_tools.requests.get")
     def test_sentry_client_fetch_with_mock(self, mock_get):
         """Test SentryClient.fetch_unresolved_issues with mocked response."""
-        from agents.shared.sentry_tools import SentryClient
+        from agent_service.shared.sentry_tools import SentryClient
 
         # Mock response
         mock_response = MagicMock()
@@ -159,10 +159,10 @@ class TestSentryToolsUnit:
         assert issues[0].count == 42
         assert issues[0].title == "TypeError: Cannot read property"
 
-    @patch("agents.shared.sentry_tools.requests.get")
+    @patch("agent_service.shared.sentry_tools.requests.get")
     def test_get_sentry_context_formats_output(self, mock_get):
         """Test that get_sentry_context formats issues correctly."""
-        from agents.shared.sentry_tools import get_sentry_context
+        from agent_service.shared.sentry_tools import get_sentry_context
 
         # Mock response
         mock_response = MagicMock()
@@ -216,7 +216,7 @@ class TestSentryToolsIntegration:
 
     def test_real_sentry_fetch(self, sentry_token):
         """Test fetching real Sentry issues."""
-        from agents.shared.sentry_tools import SentryClient
+        from agent_service.shared.sentry_tools import SentryClient
 
         client = SentryClient(auth_token=sentry_token, timeout=10.0)
 
@@ -243,7 +243,7 @@ class TestSentryToolsIntegration:
 
     def test_get_sentry_context_real(self, sentry_token):
         """Test get_sentry_context with real Sentry."""
-        from agents.shared.sentry_tools import get_sentry_context
+        from agent_service.shared.sentry_tools import get_sentry_context
 
         start = time.perf_counter()
         result = get_sentry_context(hours=24, limit=5)
@@ -263,7 +263,7 @@ class TestSentryToolsIntegration:
 
     def test_sentry_timeout_behavior(self, sentry_token):
         """Test that timeout is respected."""
-        from agents.shared.sentry_tools import SentryClient
+        from agent_service.shared.sentry_tools import SentryClient
 
         # Create client with very short timeout
         client = SentryClient(auth_token=sentry_token, timeout=0.001)
@@ -301,7 +301,7 @@ class TestSentryToolsNoVibeteamDependency:
             # Re-import sentry_tools - should work without vibeteam
             import importlib
 
-            import agents.shared.sentry_tools as st
+            import agent_service.shared.sentry_tools as st
 
             importlib.reload(st)
 

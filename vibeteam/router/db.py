@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 def _get_db_session():
     """Lazy import of database session context manager."""
     try:
-        from agents.shared.db import get_db_session
+        from agent_service.shared.db import get_db_session
 
         return get_db_session
     except ImportError:
         raise ImportError(
-            "Database support requires agents.shared.db. "
+            "Database support requires agent_service.shared.db. "
             "Make sure SQLAlchemy and asyncpg are installed."
         ) from None
 

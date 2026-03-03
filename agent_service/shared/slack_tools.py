@@ -423,7 +423,7 @@ def get_slack_thread_context(
     limit: int = 50,
 ) -> str:
     """
-    Get Slack thread context for injection into agent prompts.
+    Get Slack thread context for agent analysis.
 
     Args:
         channel: Channel to read from
@@ -431,7 +431,7 @@ def get_slack_thread_context(
         limit: Maximum messages to return
 
     Returns:
-        Formatted context string for prompt injection
+        Formatted context string for agent context
     """
     result = _get_slack_client()
     if isinstance(result, tuple):
@@ -661,7 +661,7 @@ def _get_agent_display_name(agent_key: str) -> str:
 
     Delegates to role_resolver for known roles, falls back to the key itself.
     """
-    from agents.shared.role_resolver import ROLE_MENTION_MAP
+    from agent_service.shared.role_resolver import ROLE_MENTION_MAP
     from vibeteam.agents_config import get_slack_handle
 
     # Try as a mention alias (e.g. "swe", "marketer", "supervisor")
@@ -683,6 +683,7 @@ def _get_agent_display_name(agent_key: str) -> str:
 # ==============================================================================
 
 # Alias for backward compatibility with __init__.py
+# Legacy alias (kept for compatibility)
 get_slack_context_for_injection = get_slack_thread_context
 
 

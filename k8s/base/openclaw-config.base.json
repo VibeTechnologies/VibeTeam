@@ -1,0 +1,46 @@
+{
+  "gateway": {
+    "mode": "local",
+    "controlUi": {
+      "allowInsecureAuth": true,
+      "dangerouslyAllowHostHeaderOriginFallback": true,
+      "dangerouslyDisableDeviceAuth": true
+    }
+  },
+  "browser": {
+    "enabled": true,
+    "attachOnly": true,
+    "cdpUrl": "http://browserless:3000",
+    "remoteCdpTimeoutMs": 10000,
+    "remoteCdpHandshakeTimeoutMs": 10000
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "litellm/gpt-5.2"
+      }
+    },
+    "list": []
+  },
+  "models": {
+    "mode": "replace",
+    "providers": {
+      "litellm": {
+        "baseUrl": "${LITELLM_BASE_URL}",
+        "apiKey": "${LITELLM_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-5.2",
+            "name": "GPT-5.2",
+            "reasoning": true,
+            "input": ["text", "image"],
+            "cost": { "input": 3, "output": 12, "cacheRead": 0.75, "cacheWrite": 1.5 },
+            "contextWindow": 1047576,
+            "maxTokens": 32768
+          }
+        ]
+      }
+    }
+  }
+}

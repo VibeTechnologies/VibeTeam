@@ -326,16 +326,16 @@ Failed to connect to http://openhands-svc:8080 after 3 attempts: [ReadTimeout]
 | `agents/openhands/support_engineer.py` | SupportEngineer agent with Sentry/Gmail context |
 | `agents/openhands/software_engineer.py` | SoftwareEngineer agent |
 | `agents/openhands/release_engineer.py` | ReleaseEngineer agent with K8s tools |
-| `agents/config.py` | Agent configuration, LLM settings |
+| `agent_service/config.py` | Agent configuration, LLM settings |
 
 ### Shared Tools
 
 | File | Purpose |
 |------|---------|
-| `agents/shared/slack_tools.py` | Slack API interactions |
-| `agents/shared/gmail_tools.py` | Gmail API interactions |
-| `agents/shared/calendar_tools.py` | Google Calendar API |
-| `agents/shared/langfuse_tools.py` | Langfuse observability |
+| `agent_service/shared/slack_tools.py` | Slack API interactions |
+| `agent_service/shared/gmail_tools.py` | Gmail API interactions |
+| `agent_service/shared/calendar_tools.py` | Google Calendar API |
+| `agent_service/shared/langfuse_tools.py` | Langfuse observability |
 
 ### Evaluation
 
