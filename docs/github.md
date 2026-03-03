@@ -25,7 +25,7 @@ Supported role suffixes:
 
 1. Go to GitHub Settings → Developer settings → GitHub Apps → New GitHub App
 2. Basic info:
-   - Name: `VibeTeam SWE Bot` (or per role)
+   - Name: use the Slack handle from `agents/agents.yaml` (e.g., `SoftwareEngineer`)
    - Homepage URL: `https://github.com/VibeTechnologies/VibeTeam`
 3. Permissions (Repository):
    - Contents: Read & Write

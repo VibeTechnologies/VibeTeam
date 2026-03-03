@@ -46,6 +46,9 @@ GitHub App name (slug), so pick a short name when you create the app:
 If you need a different login, create a new app with the desired name and reinstall it.
 Renaming an existing app is not a reliable way to change the login.
 
+**Recommendation:** Use the role names from `agents/agents.yaml` (the Slack handles) as
+the GitHub App names so mentions align across Slack and GitHub.
+
 ## Want It to Feel Like “Real People”?
 
 Two options:

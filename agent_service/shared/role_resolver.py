@@ -87,9 +87,14 @@ def _load_handle_map() -> dict[str, AgentRole]:
         handle = cfg.get("slack_handle")
         if not handle:
             continue
-        key = re.sub(r"\\W+", "", str(handle)).lower()
-        if key:
-            handle_map[key] = role  # type: ignore[assignment]
+        raw = str(handle)
+        normalized = re.sub(r"\\W+", "", raw).lower()
+        slug = re.sub(r"(?<!^)(?=[A-Z])", "-", raw).lower()
+        slug = re.sub(r"[_\s]+", "-", slug)
+        slug = re.sub(r"[^a-z0-9-]+", "-", slug).strip("-")
+        for key in {normalized, raw.lower(), slug}:
+            if key:
+                handle_map[key] = role  # type: ignore[assignment]
     return handle_map
 
 
