@@ -23,8 +23,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from scripts.eval_slack_e2e import (
     ROLE_DISPLAY,
     SCENARIOS,
+    _build_slack_thread_links,
     _is_placeholder,
     build_transcript,
+    generate_eval_report,
     run_evaluation,
 )
 
@@ -81,6 +83,60 @@ class TestBuildTranscript:
         messages = [("unknown_role", "Test")]
         result = build_transcript(messages)
         assert "[Unknown_Role] Test" in result
+
+
+class TestEvalReportLinks:
+    """Tests for conversation links included in generated eval reports."""
+
+    def test_build_slack_thread_links(self, monkeypatch):
+        monkeypatch.setenv("SLACK_WORKSPACE_DOMAIN", "vibeteam")
+        links = _build_slack_thread_links("C0AATPSADB8", "1772530795.010779")
+        assert (
+            links["app_redirect"]
+            == "https://slack.com/app_redirect?channel=C0AATPSADB8&thread_ts=1772530795.010779"
+        )
+        assert (
+            links["workspace_permalink"]
+            == "https://vibeteam.slack.com/archives/C0AATPSADB8/p1772530795010779?thread_ts=1772530795.010779&cid=C0AATPSADB8"
+        )
+
+    def test_generate_eval_report_includes_slack_and_github_links(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SLACK_WORKSPACE_DOMAIN", "vibeteam")
+        scenario = SCENARIOS["github_issue_pr_handoff_slack"]
+        conversation = [
+            ("user", scenario["message"]),
+            (
+                "software_engineer",
+                "Posted comments:\n"
+                "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/3#issuecomment-1\n"
+                "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/pull/1#issuecomment-2",
+            ),
+        ]
+
+        report_path = generate_eval_report(
+            scenario_name="github_issue_pr_handoff_slack",
+            scenario_config=scenario,
+            slack_channel="C0AATPSADB8",
+            thread_ts="1772530795.010779",
+            conversation=conversation,
+            metrics_results=[],
+            post_checks_results=[],
+            latency_ms=1234,
+            output_dir=tmp_path,
+        )
+
+        report = report_path.read_text(encoding="utf-8")
+        assert "## Conversation Links" in report
+        assert (
+            "https://slack.com/app_redirect?channel=C0AATPSADB8&thread_ts=1772530795.010779"
+            in report
+        )
+        assert (
+            "https://vibeteam.slack.com/archives/C0AATPSADB8/p1772530795010779?thread_ts=1772530795.010779&cid=C0AATPSADB8"
+            in report
+        )
+        assert "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/3" in report
+        assert "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/pull/1" in report
 
 
 # ==============================================================================

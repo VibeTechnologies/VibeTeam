@@ -169,12 +169,18 @@ AGENTS_CONFIG_PATH=agents/agents.yaml
 ## Evaluation
 
 Use `scripts/eval_slack_e2e.py` to run end-to-end Slack evaluations. Reports are saved under `results/eval_reports/`.
+Requirement: cross-channel GitHub handoff evals MUST use native role mentions
+(`@SoftwareEngineer`, `@SupportEngineer`, etc.) in Slack and GitHub trigger text.
+Do not use slash-role mentions (`/SoftwareEngineer`) in these eval scenarios.
+Verification must confirm role GitHub App bot responses in the target issue/PR threads.
 The `software_engineer_github_app_hello_world` scenario targets
 `VibeTechnologies/vibeteam-eval-hello-world` and validates PR creation plus bot
 attribution, so the SoftwareEngineer GitHub App must be installed on that repo.
 Post-checks also require `GITHUB_TOKEN` (or `GH_TOKEN`) to verify PR metadata.
 The `github_issue_pr_handoff_slack` scenario validates issue + PR handoff comments in
-the same eval repo. Discussion handoffs are validated via `eval_github_e2e.py`.
+the same eval repo. Use `github_issue_pr_handoff_github` in `eval_github_e2e.py`
+to validate the same issue+PR handoff semantics from GitHub webhooks.
+Discussion handoffs remain covered via `github_threads_all`.
 
 Use `scripts/eval_github_e2e.py` to validate GitHub webhook routing and multi-agent
 handoffs over issues, discussions, and PR comments. This requires:

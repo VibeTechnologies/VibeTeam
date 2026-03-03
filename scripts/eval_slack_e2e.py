@@ -464,8 +464,8 @@ SCENARIOS = {
             "Issue: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/3 "
             "PR: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/pull/1 "
             "1) Add an issue comment summarizing the plan. "
-            "Include /SupportEngineer in the issue comment to request a follow-up. "
-            "2) Add a PR comment summarizing the plan and include /SupportEngineer there too. "
+            "Include @SupportEngineer in the issue comment to request a follow-up. "
+            "2) Add a PR comment summarizing the plan and include @SupportEngineer there too. "
             "Reply in Slack confirming both comments were posted."
         ),
         "expected_agent": "software_engineer",
@@ -1676,6 +1676,63 @@ def _extract_github_discussion_refs(text: str) -> list[dict[str, str | int]]:
     return refs
 
 
+def _build_slack_thread_links(slack_channel: str, thread_ts: str) -> dict[str, str]:
+    """Build stable links to a Slack thread for eval reporting."""
+    links: dict[str, str] = {
+        "app_redirect": f"https://slack.com/app_redirect?channel={slack_channel}&thread_ts={thread_ts}"
+    }
+    ts_compact = thread_ts.replace(".", "")
+    workspace_base = os.environ.get("SLACK_WORKSPACE_URL", "").strip().rstrip("/")
+    if not workspace_base:
+        workspace_domain = os.environ.get("SLACK_WORKSPACE_DOMAIN", "").strip()
+        if workspace_domain:
+            workspace_base = f"https://{workspace_domain}.slack.com"
+    if workspace_base:
+        links["workspace_permalink"] = (
+            f"{workspace_base}/archives/{slack_channel}/p{ts_compact}"
+            f"?thread_ts={thread_ts}&cid={slack_channel}"
+        )
+    return links
+
+
+def _extract_github_urls(text: str) -> list[str]:
+    """Extract GitHub URLs from free-form text with light normalization."""
+    pattern = re.compile(r"https?://github\.com/[^\s<>\]\[)\"']+", re.IGNORECASE)
+    urls: list[str] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(text):
+        raw = match.group(0).strip()
+        # Trim common trailing punctuation from plain-text links.
+        cleaned = raw.rstrip(".,;:!?)")
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            urls.append(cleaned)
+    return urls
+
+
+def _extract_github_conversation_links(conversation: list[tuple[str, str]]) -> list[str]:
+    """Collect unique GitHub conversation links mentioned in the eval thread."""
+    links: list[str] = []
+    seen: set[str] = set()
+
+    def _add(link: str) -> None:
+        if link and link not in seen:
+            seen.add(link)
+            links.append(link)
+
+    for _, text in conversation:
+        for url in _extract_github_urls(text):
+            _add(url)
+        for ref in _extract_github_issue_refs(text):
+            _add(f"https://github.com/{ref['owner']}/{ref['repo']}/issues/{ref['number']}")
+        for ref in _extract_github_pr_refs(text):
+            _add(f"https://github.com/{ref['owner']}/{ref['repo']}/pull/{ref['number']}")
+        for ref in _extract_github_discussion_refs(text):
+            _add(f"https://github.com/{ref['owner']}/{ref['repo']}/discussions/{ref['number']}")
+
+    return links
+
+
 def _collect_bot_logins(comments: list[dict]) -> set[str]:
     logins: set[str] = set()
     for comment in comments:
@@ -2180,6 +2237,8 @@ def generate_eval_report(
 
     # Extract agents from conversation
     agents_ran = list({role for role, _ in conversation if role != "user"})
+    slack_links = _build_slack_thread_links(slack_channel, thread_ts)
+    github_links = _extract_github_conversation_links(conversation)
 
     # Build the report
     lines = [
@@ -2197,12 +2256,34 @@ def generate_eval_report(
         "|-----------|-------|",
         f"| Slack Channel | `{slack_channel}` |",
         f"| Thread TS | `{thread_ts}` |",
+        f"| Slack Thread URL | {slack_links['app_redirect']} |",
         f"| Expected Agent | {scenario_config['expected_agent']} |",
         f"| Agents Responded | {', '.join(agents_ran) if agents_ran else 'None'} |",
         f"| Response Latency | {latency_ms}ms |",
         f"| Message Count | {len(conversation)} |",
         "",
     ]
+    if "workspace_permalink" in slack_links:
+        lines.append(
+            f"| Slack Workspace Permalink | {slack_links['workspace_permalink']} |"
+        )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Conversation Links",
+            "",
+            f"- Slack thread (app redirect): {slack_links['app_redirect']}",
+        ]
+    )
+    if "workspace_permalink" in slack_links:
+        lines.append(f"- Slack thread (workspace permalink): {slack_links['workspace_permalink']}")
+    if github_links:
+        for link in github_links:
+            lines.append(f"- GitHub: {link}")
+    else:
+        lines.append("- GitHub: none detected in conversation")
+    lines.append("")
 
     if metrics_results:
         lines.extend(

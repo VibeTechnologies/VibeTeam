@@ -2,8 +2,8 @@
 """
 End-to-end GitHub webhook evaluation.
 
-Scenarios create GitHub issues/discussions/PR comments containing /RoleName
-mentions and then verify that multiple agent bots respond in the thread.
+Scenarios create GitHub issues/discussions/PR comments containing native
+@RoleName mentions and then verify that multiple agent bots respond in the thread.
 
 Usage:
   uv run python scripts/eval_github_e2e.py --scenario github_issue_handoff
@@ -26,10 +26,14 @@ import httpx
 
 DEFAULT_REPO = os.environ.get("GITHUB_TEST_REPO", "VibeTechnologies/vibeteam-eval-hello-world")
 DEFAULT_PR = int(os.environ.get("GITHUB_TEST_PR", "1"))
+NATIVE_GITHUB_HANDOFF_MENTIONS = "@SoftwareEngineer @SupportEngineer"
 
 SCENARIOS = {
     "github_issue_handoff": {
         "name": "GitHub Issue Handoff (Webhook)",
+    },
+    "github_issue_pr_handoff_github": {
+        "name": "GitHub Issue + PR Handoff (Webhook)",
     },
     "github_discussion_handoff": {
         "name": "GitHub Discussion Handoff (Webhook)",
@@ -65,7 +69,7 @@ def _headers(token: str) -> dict[str, str]:
     }
 
 
-def _graphql_request(token: str, query: str, variables: dict[str, str]) -> dict:
+def _graphql_request(token: str, query: str, variables: dict[str, object]) -> dict:
     url = "https://api.github.com/graphql"
     with httpx.Client(timeout=20.0) as client:
         response = client.post(
@@ -233,6 +237,33 @@ def _create_discussion(owner: str, repo: str, token: str) -> tuple[int, str, str
     )
 
 
+def _resolve_discussion(
+    owner: str, repo: str, token: str, number: int
+) -> tuple[int, str, str, datetime]:
+    query = """
+    query($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        discussion(number: $number) {
+          id
+          number
+          url
+          createdAt
+        }
+      }
+    }
+    """
+    data = _graphql_request(token, query, {"owner": owner, "repo": repo, "number": number})
+    discussion = (data.get("repository") or {}).get("discussion") or {}
+    if not discussion:
+        raise RuntimeError(f"Discussion #{number} not found in {owner}/{repo}")
+    return (
+        int(discussion["number"]),
+        discussion["url"],
+        discussion["id"],
+        _parse_ts(discussion["createdAt"]),
+    )
+
+
 def _create_discussion_comment(
     owner: str, repo: str, token: str, discussion_id: str, body: str
 ) -> datetime:
@@ -302,7 +333,10 @@ def _create_pr_comment(owner: str, repo: str, token: str, pr_number: int, body: 
 
 def _run_issue_handoff(owner: str, repo: str, token: str, timeout: int) -> dict:
     issue_number, issue_url, _ = _create_issue(owner, repo, token)
-    trigger_body = "Triggering handoff via issue comment.\n/SoftwareEngineer /SupportEngineer"
+    trigger_body = (
+        "Triggering handoff via issue comment.\n"
+        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
+    )
     trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
 
     def fetch() -> list[dict]:
@@ -320,7 +354,10 @@ def _run_issue_handoff_existing(
     owner: str, repo: str, token: str, issue_number: int, timeout: int
 ) -> dict:
     issue_url = f"https://github.com/{owner}/{repo}/issues/{issue_number}"
-    trigger_body = "Triggering handoff via issue comment.\n/SoftwareEngineer /SupportEngineer"
+    trigger_body = (
+        "Triggering handoff via issue comment.\n"
+        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
+    )
     trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
 
     def fetch() -> list[dict]:
@@ -337,7 +374,36 @@ def _run_issue_handoff_existing(
 def _run_discussion_handoff(owner: str, repo: str, token: str, timeout: int) -> dict:
     _ensure_discussions_enabled(owner, repo, token)
     discussion_number, discussion_url, discussion_id, _ = _create_discussion(owner, repo, token)
-    trigger_body = "Triggering handoff via discussion comment.\n/SoftwareEngineer /SupportEngineer"
+    trigger_body = (
+        "Triggering handoff via discussion comment.\n"
+        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
+    )
+    trigger_ts = _create_discussion_comment(
+        owner, repo, token, discussion_id, trigger_body
+    )
+
+    def fetch() -> list[dict]:
+        return _fetch_discussion_comments(owner, repo, discussion_number, token)
+
+    bot_logins = _wait_for_bot_authors(fetch, trigger_ts, 2, timeout)
+    return {
+        "thread": discussion_url,
+        "bot_logins": sorted(bot_logins),
+        "passed": len(bot_logins) >= 2,
+    }
+
+
+def _run_discussion_handoff_existing(
+    owner: str, repo: str, token: str, discussion_number: int, timeout: int
+) -> dict:
+    _ensure_discussions_enabled(owner, repo, token)
+    _, discussion_url, discussion_id, _ = _resolve_discussion(
+        owner, repo, token, discussion_number
+    )
+    trigger_body = (
+        "Triggering handoff via discussion comment.\n"
+        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
+    )
     trigger_ts = _create_discussion_comment(
         owner, repo, token, discussion_id, trigger_body
     )
@@ -354,7 +420,10 @@ def _run_discussion_handoff(owner: str, repo: str, token: str, timeout: int) -> 
 
 
 def _run_pr_comment_handoff(owner: str, repo: str, token: str, pr_number: int, timeout: int) -> dict:
-    trigger_body = "Triggering handoff via PR comment.\n/SoftwareEngineer /SupportEngineer"
+    trigger_body = (
+        "Triggering handoff via PR comment.\n"
+        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
+    )
     trigger_ts = _create_pr_comment(owner, repo, token, pr_number, trigger_body)
 
     def fetch() -> list[dict]:
@@ -367,6 +436,116 @@ def _run_pr_comment_handoff(owner: str, repo: str, token: str, pr_number: int, t
         "bot_logins": sorted(bot_logins),
         "passed": len(bot_logins) >= 2,
     }
+
+
+def _run_issue_handoff_presence(
+    owner: str, repo: str, token: str, issue_number: int, timeout: int
+) -> dict:
+    issue_url = f"https://github.com/{owner}/{repo}/issues/{issue_number}"
+    trigger_body = (
+        "Triggering issue handoff presence check.\n"
+        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
+    )
+    trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
+
+    def fetch_recent() -> list[dict]:
+        return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
+
+    recent_bot_logins = _wait_for_bot_authors(fetch_recent, trigger_ts, 1, timeout)
+    all_bot_logins = _collect_bot_logins(
+        _fetch_issue_comments(owner, repo, issue_number, token, since=None)
+    )
+    passed = bool(recent_bot_logins) and len(all_bot_logins) >= 2
+    return {
+        "thread": issue_url,
+        "bot_logins": sorted(all_bot_logins),
+        "recent_bot_logins": sorted(recent_bot_logins),
+        "passed": passed,
+    }
+
+
+def _run_pr_handoff_presence(
+    owner: str, repo: str, token: str, pr_number: int, timeout: int
+) -> dict:
+    pr_url = f"https://github.com/{owner}/{repo}/pull/{pr_number}"
+    trigger_body = (
+        "Triggering PR handoff presence check.\n"
+        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
+    )
+    trigger_ts = _create_pr_comment(owner, repo, token, pr_number, trigger_body)
+
+    def fetch_recent() -> list[dict]:
+        return _fetch_issue_comments(owner, repo, pr_number, token, since=trigger_ts)
+
+    recent_bot_logins = _wait_for_bot_authors(fetch_recent, trigger_ts, 1, timeout)
+    all_bot_logins = _collect_bot_logins(
+        _fetch_issue_comments(owner, repo, pr_number, token, since=None)
+    )
+    passed = bool(recent_bot_logins) and len(all_bot_logins) >= 2
+    return {
+        "thread": pr_url,
+        "bot_logins": sorted(all_bot_logins),
+        "recent_bot_logins": sorted(recent_bot_logins),
+        "passed": passed,
+    }
+
+
+def _run_issue_pr_handoff(
+    owner: str, repo: str, token: str, issue_number: int, pr_number: int, timeout: int
+) -> dict:
+    if issue_number:
+        issue_results = _run_issue_handoff_presence(
+            owner, repo, token, issue_number, timeout
+        )
+    else:
+        created_issue_number, issue_url, _ = _create_issue(owner, repo, token)
+        issue_results = _run_issue_handoff_presence(
+            owner, repo, token, created_issue_number, timeout
+        )
+        issue_results["thread"] = issue_url
+
+    pr_results = _run_pr_handoff_presence(owner, repo, token, pr_number, timeout)
+    combined_logins = sorted(
+        set(issue_results.get("bot_logins", [])) | set(pr_results.get("bot_logins", []))
+    )
+    passed = bool(issue_results.get("passed")) and bool(pr_results.get("passed"))
+
+    return {
+        "thread": f"{issue_results.get('thread')} | {pr_results.get('thread')}",
+        "bot_logins": combined_logins,
+        "passed": passed,
+        "threads": {
+            "issue": issue_results,
+            "pr": pr_results,
+        },
+    }
+
+
+def _collect_thread_links(results: dict) -> list[str]:
+    """Extract unique GitHub thread links from scenario results."""
+    links: list[str] = []
+    seen: set[str] = set()
+
+    def _add(link: str) -> None:
+        clean = link.strip()
+        if clean and clean.startswith("https://github.com/") and clean not in seen:
+            seen.add(clean)
+            links.append(clean)
+
+    thread = results.get("thread")
+    if isinstance(thread, str):
+        for candidate in thread.split("|"):
+            _add(candidate)
+
+    thread_results = results.get("threads")
+    if isinstance(thread_results, dict):
+        for value in thread_results.values():
+            if isinstance(value, dict):
+                thread_link = value.get("thread")
+                if isinstance(thread_link, str):
+                    _add(thread_link)
+
+    return links
 
 
 def _write_report(scenario: str, results: dict) -> str:
@@ -382,6 +561,47 @@ def _write_report(scenario: str, results: dict) -> str:
         f"**Bot authors:** {', '.join(results.get('bot_logins', [])) or 'n/a'}",
         "",
     ]
+    links = _collect_thread_links(results)
+    lines.extend(
+        [
+            "## Conversation Links",
+            "",
+        ]
+    )
+    if links:
+        for link in links:
+            lines.append(f"- GitHub: {link}")
+    else:
+        lines.append("- GitHub: none")
+    lines.append("")
+
+    thread_results = results.get("threads")
+    if isinstance(thread_results, dict):
+        lines.extend(
+            [
+                "## Thread Details",
+                "",
+            ]
+        )
+        for thread_name in ("issue", "pr"):
+            thread_result = thread_results.get(thread_name) or {}
+            status = "✅" if thread_result.get("passed") else "❌"
+            lines.extend(
+                [
+                    f"### {thread_name.upper()}",
+                    "",
+                    f"- Passed: {status}",
+                    f"- Thread: {thread_result.get('thread', 'n/a')}",
+                    (
+                        f"- Bot authors: {', '.join(thread_result.get('bot_logins', [])) or 'n/a'}"
+                    ),
+                    (
+                        "- Recent bot authors after trigger: "
+                        f"{', '.join(thread_result.get('recent_bot_logins', [])) or 'n/a'}"
+                    ),
+                    "",
+                ]
+            )
 
     os.makedirs("results/eval_reports", exist_ok=True)
     with open(filename, "w", encoding="utf-8") as handle:
@@ -397,6 +617,12 @@ def main() -> int:
     parser.add_argument("--pr", type=int, default=DEFAULT_PR)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--issue", type=int, default=0, help="Existing issue number to use")
+    parser.add_argument(
+        "--discussion",
+        type=int,
+        default=0,
+        help="Existing discussion number to use",
+    )
 
     args = parser.parse_args()
 
@@ -420,8 +646,17 @@ def main() -> int:
                 )
             else:
                 results = _run_issue_handoff(owner, repo, token, args.timeout)
+        elif scenario == "github_issue_pr_handoff_github":
+            results = _run_issue_pr_handoff(
+                owner, repo, token, args.issue, args.pr, args.timeout
+            )
         elif scenario == "github_discussion_handoff":
-            results = _run_discussion_handoff(owner, repo, token, args.timeout)
+            if args.discussion:
+                results = _run_discussion_handoff_existing(
+                    owner, repo, token, args.discussion, args.timeout
+                )
+            else:
+                results = _run_discussion_handoff(owner, repo, token, args.timeout)
         elif scenario == "github_pr_comment_handoff":
             results = _run_pr_comment_handoff(owner, repo, token, args.pr, args.timeout)
         else:
