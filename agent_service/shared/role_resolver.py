@@ -112,6 +112,25 @@ ROLE_PATTERN = re.compile(
 )
 
 # ---------------------------------------------------------------------------
+# GitHub App bot handles (optional mention aliases)
+# ---------------------------------------------------------------------------
+
+_github_bot_pattern = re.compile(
+    r"@?(?P<login>vibeteam-[a-z0-9-]+-bot(?:-\d+)?)(?:\[bot\])?",
+    re.IGNORECASE,
+)
+
+_github_bot_role_hints: list[tuple[str, AgentRole]] = [
+    ("swe", "software_engineer"),
+    ("software", "software_engineer"),
+    ("support", "support_engineer"),
+    ("release", "release_engineer"),
+    ("product", "product_manager"),
+    ("pm", "product_manager"),
+    ("marketing", "marketing_manager"),
+]
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -121,17 +140,23 @@ def parse_role_mentions(text: str) -> list[AgentRole]:
     Extract all role mentions from text.
 
     Matches @RoleName or /RoleName patterns, including short forms,
-    persona names, and aliases.
+    persona names, aliases, and GitHub bot handles.
 
     Returns a deduplicated list in order of first appearance.
     """
-    matches = ROLE_PATTERN.findall(text)
     roles: list[AgentRole] = []
+    matches = ROLE_PATTERN.findall(text)
     for match in matches:
         key = match.lower()
         role = ROLE_MENTION_MAP.get(key)
         if role and role not in roles:
             roles.append(role)
+    for bot_match in _github_bot_pattern.finditer(text):
+        login = bot_match.group("login").lower()
+        for hint, role in _github_bot_role_hints:
+            if hint in login and role not in roles:
+                roles.append(role)
+                break
     return roles
 
 

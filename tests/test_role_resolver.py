@@ -100,6 +100,20 @@ class TestParseRoleMentions:
     def test_slash_prefix(self, text, expected):
         assert parse_role_mentions(text) == expected
 
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("@vibeteam-support-bot-260301", ["support_engineer"]),
+            ("@vibeteam-support-bot-260301[bot]", ["support_engineer"]),
+            ("vibeteam-swe-bot-260301[bot]", ["software_engineer"]),
+            ("@vibeteam-release-bot", ["release_engineer"]),
+            ("@vibeteam-product-bot-260301", ["product_manager"]),
+            ("@vibeteam-marketing-bot-260301", ["marketing_manager"]),
+        ],
+    )
+    def test_github_bot_mentions(self, text, expected):
+        assert parse_role_mentions(text) == expected
+
     # --- Persona names (team.py) ---
 
     @pytest.mark.parametrize(
