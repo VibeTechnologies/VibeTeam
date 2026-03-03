@@ -88,7 +88,7 @@ See [openclaw-introduction.md](openclaw-introduction.md) for a focused OpenClaw 
 1. Gateway routes ProductManager (or other OpenClaw roles) to `openclaw-svc`.
 2. `openclaw-svc` connects to the OpenClaw gateway over WebSocket.
 3. OpenClaw gateway loads:
-   - `openclaw.json` (ConfigMap `openclaw-config`)
+   - `openclaw.json` (ConfigMap `openclaw-config`, generated from `agents/agents.yaml`)
    - Agent prompts from `openclaw-agent-prompts` (ConfigMap)
 4. OpenClaw uses LiteLLM in-namespace (`litellm` service) to reach Azure OpenAI.
 

@@ -219,6 +219,11 @@ vibeteam-gateway (FastAPI)
                          +--> OpenClaw browser/CDP tooling
 ```
 
+## OpenClaw Config Generation
+
+`k8s/base/openclaw-config.json` is generated from `agents/agents.yaml`. Do not edit it by hand.
+Run `python scripts/render_openclaw_config.py` before `kubectl apply -k ...` or deployment scripts.
+
 ## Deployment
 
 ### Quick Deploy (Recommended)

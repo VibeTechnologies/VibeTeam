@@ -84,6 +84,8 @@ check_required_secrets() {
 
 deploy_dev() {
     check_required_secrets
+    echo "=== Rendering OpenClaw config ==="
+    python "$PROJECT_DIR/scripts/render_openclaw_config.py"
     echo "=== Deploying dev overlay ==="
     kubectl apply -k "$PROJECT_DIR/k8s/overlays/dev"
     
