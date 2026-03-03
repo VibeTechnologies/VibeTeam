@@ -109,6 +109,7 @@ class TestParseRoleMentions:
             ("@vibeteam-release-bot", ["release_engineer"]),
             ("@vibeteam-product-bot-260301", ["product_manager"]),
             ("@vibeteam-marketing-bot-260301", ["marketing_manager"]),
+            ("@software-engineer[bot]", ["software_engineer"]),
         ],
     )
     def test_github_bot_mentions(self, text, expected):
