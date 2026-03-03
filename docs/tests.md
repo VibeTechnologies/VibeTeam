@@ -85,6 +85,9 @@ uv run python scripts/eval_github_e2e.py --scenario github_threads_all --repo Vi
 `GITHUB_TEST_REPO` (default `VibeTechnologies/vibeteam-eval-hello-world`) and
 `GITHUB_TEST_PR` (default `1`).
 
+Discussion handoffs require GitHub App Discussions read/write permission on the eval repo.
+If the app was updated, re-install or approve the new permissions before rerunning the eval.
+
 ## Test Categories
 
 ### Worth Covering (High Value)

@@ -31,6 +31,7 @@ Supported role suffixes:
    - Contents: Read & Write
    - Issues: Read & Write
    - Pull Requests: Read & Write
+   - Discussions: Read & Write
    - Metadata: Read
 4. Webhooks (optional, only if using `/webhook`):
    - Enable webhooks
@@ -52,6 +53,9 @@ Supported role suffixes:
    - If selected: at least `VibeTeam`, `VibeWebAgent`, and `vibeteam-eval-hello-world`
 4. Record the Installation ID from the URL
    - Example: `https://github.com/organizations/VibeTechnologies/settings/installations/<ID>`
+5. If you later add permissions (e.g., Discussions), re-install or approve the updated
+   permissions for every role app on the eval repo, otherwise discussion comments will fail
+   with `Resource not accessible by integration`.
 
 ## Configure VibeTeam
 
@@ -141,6 +145,12 @@ from vibeteam.connectors.github import GitHubConnector
 connector = GitHubConnector()  # reads env vars
 issues = connector.search_issues("test", state="open")
 print(f"Found {len(issues)} issues")
+```
+
+### Check Permissions (Role Apps)
+
+```bash
+export $( < .env ) && uv run python scripts/check_github_app_permissions.py --require-discussions
 ```
 
 ## Troubleshooting
