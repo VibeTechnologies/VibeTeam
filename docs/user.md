@@ -29,7 +29,11 @@ login, for example:
 - `@software-engineer[bot]`
 - `@vibeteam-support-bot-260301[bot]`
 
-If you omit `[bot]`, GitHub will not resolve the mention.
+If you omit `[bot]`, GitHub will not resolve the mention, but the VibeTeam router
+still accepts it (for example, `@vibeteam-support-bot-260301`).
+
+You can also trigger handoffs with `/RoleName` (e.g., `/SupportEngineer`), but
+GitHub bot mentions work without any `/` prefix.
 
 ## Can We Use Simpler Bot Names?
 
