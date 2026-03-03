@@ -492,8 +492,15 @@ async def run_task(request: RunRequest):
             request.openclaw_agent_id
             or resolve_openclaw_agent_id(request.role)
             or (entry.openclaw_agent_id if entry else None)
-            or "product-manager"
         )
+        if not agent_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "OpenClaw agent_id not configured. Set openclaw_agent_id in "
+                    "agents/agents.yaml for the role or pass openclaw_agent_id."
+                ),
+            )
         session_key = request.session_key or _build_session_key(
             agent_id, request.context_type, context_id
         )

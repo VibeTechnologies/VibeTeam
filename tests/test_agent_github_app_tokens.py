@@ -168,7 +168,7 @@ async def test_openclaw_role_token_context_mentions(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(oc_server, "run_openclaw_task", fake_run_openclaw_task)
     monkeypatch.setattr(oc_server, "get_postgres_store", _dummy_store)
     monkeypatch.setattr(oc_server, "get_agent_entry", lambda _role: None)
-    monkeypatch.setattr(oc_server, "resolve_openclaw_agent_id", lambda _role: None)
+    monkeypatch.setattr(oc_server, "resolve_openclaw_agent_id", lambda _role: "product-manager")
 
     called: dict[str, str | None] = {}
 
