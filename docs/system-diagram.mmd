@@ -1,53 +1,52 @@
-flowchart TB
-  %% External sources
-  subgraph external_platforms["External Platforms"]
-    Slack[Slack Events and Slash Commands]
-    GitHub[GitHub Webhooks]
-    Sentry[Sentry Webhooks]
-    Gmail[Gmail Poller]
-    REST[REST API]
+flowchart LR
+  subgraph External_Platforms["External Platforms"]
+    Slack["Slack Events"]
+    GitHub["GitHub Webhooks\nissues / issue_comment\npull_request_review_comment\ndiscussion / discussion_comment"]
+    Sentry["Sentry Webhooks"]
+    Gmail["Gmail Poller"]
+    REST["REST /api/run"]
   end
 
-  %% Gateway
-  Gateway[Gateway FastAPI\nslack events\nslack trigger\nwebhook\nwebhook sentry\napi run\ncallback agent]
-
-  %% Agent services
-  subgraph agent_services["Agent Services FastAPI"]
-    OpenHands[OpenHands Service]
-    OpenClaw[OpenClaw Service]
-    AutoGen[AutoGen Service Disabled]
-    CrewAI[CrewAI Service Disabled]
-    Scheduler[Scheduler Service]
+  subgraph Gateway["Gateway (FastAPI)"]
+    Normalize["Normalize -> UnifiedMessage"]
+    Route["Route by /RoleName, @RoleName, keywords"]
+    Handoff["Handoff detection"]
   end
 
-  %% Supporting services
-  subgraph supporting_services["Supporting Services"]
-    LiteLLM[LiteLLM In Namespace]
-    Azure[Azure OpenAI]
-    Postgres[(Postgres Session Store)]
-    Browserless[Browserless Chrome DevTools]
-    OpenClawGW[OpenClaw Gateway Node]
+  Slack --> Normalize
+  GitHub --> Normalize
+  Sentry --> Normalize
+  Gmail --> Normalize
+  REST --> Normalize
+
+  Normalize --> Route --> Handoff
+
+  subgraph Agents["Agent Services"]
+    OpenHands["OpenHands Agents\nSWE / Support / Release / Marketing"]
+    OpenClaw["OpenClaw Agents\nProduct"]
   end
 
-  Slack --> Gateway
-  GitHub --> Gateway
-  Sentry --> Gateway
-  REST --> Gateway
+  Handoff --> OpenHands
+  Handoff --> OpenClaw
 
-  Gateway -->|role + framework via agents.yaml| OpenHands
-  Gateway -->|role + framework via agents.yaml| OpenClaw
-  Gateway --> AutoGen
-  Gateway --> CrewAI
-  Gateway --> Scheduler
+  subgraph Tooling["Connectors / Tools"]
+    SlackAPI["Slack API"]
+    GitHubAPI["GitHub API (REST + GraphQL)\nissues / PRs / discussions"]
+    SentryAPI["Sentry API"]
+    GmailAPI["Gmail API"]
+    Browserless["Browserless MCP"]
+  end
 
-  OpenHands -->|direct| Azure
-  OpenHands --> Postgres
+  OpenHands --> SlackAPI
+  OpenHands --> GitHubAPI
+  OpenHands --> SentryAPI
+  OpenHands --> GmailAPI
   OpenHands --> Browserless
+  OpenClaw --> GitHubAPI
 
-  OpenClaw --> OpenClawGW
-  OpenClawGW --> LiteLLM
-  LiteLLM --> Azure
-  OpenClaw --> Browserless
+  SlackAPI --> Slack
+  GitHubAPI --> GitHub
+  SentryAPI --> Sentry
+  GmailAPI --> Gmail
 
-  Gmail --> Postgres
-  OpenHands --> Postgres
+  AppAuth["GitHub App Tokens\n(role-scoped, Discussions RW)"] --> GitHubAPI

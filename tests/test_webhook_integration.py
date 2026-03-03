@@ -236,6 +236,71 @@ class TestGitHubWebhookRouting:
         assert "release_engineer" in data["message"].lower()
         mock_agent.assert_called_once()
 
+    def test_discussion_comment_missing_body_fetches_graphql(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
+        """Test that missing discussion comment body falls back to GraphQL fetch."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "discussion": {
+                "number": 57,
+                "title": "Discussion Comment",
+                "body": "Original discussion body",
+            },
+            "comment": {
+                "body": "",
+                "node_id": "DISCUSSION_COMMENT_NODE",
+                "user": {"login": "testuser", "type": "User"},
+            },
+            "repository": {"full_name": "owner/repo"},
+        }
+
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, github_webhook_secret)
+
+        fetched_comment = {
+            "body": "Please advise on rollout\n/ReleaseEngineer",
+            "discussion": {
+                "number": 57,
+                "title": "Discussion Comment",
+                "body": "Original discussion body",
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.github.fetch_github_discussion_comment",
+                new_callable=AsyncMock,
+                return_value=fetched_comment,
+            ) as mock_fetch,
+            patch(
+                "vibeteam.gateway.routes.github.call_agent_service",
+                new_callable=AsyncMock,
+                return_value={"response": "Deployment guidance provided"},
+            ) as mock_agent,
+        ):
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "discussion_comment",
+                    "X-Hub-Signature-256": signature,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "release_engineer" in data["message"].lower()
+        mock_fetch.assert_called_once_with(
+            "owner/repo", "DISCUSSION_COMMENT_NODE", role="software_engineer"
+        )
+        mock_agent.assert_called_once()
+
     def test_invalid_signature_rejected(self, test_client, monkeypatch):
         """Test that webhooks with invalid signatures are rejected."""
         # Patch the config directly since FastAPI loads it at import time

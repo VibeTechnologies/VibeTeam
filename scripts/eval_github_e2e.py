@@ -148,6 +148,19 @@ def _get_repo_and_category_id(owner: str, repo: str, token: str) -> tuple[str, s
         raise RuntimeError("Repository ID not found via GraphQL")
     if not categories:
         raise RuntimeError("No discussion categories available")
+    preferred = [
+        "General",
+        "Q&A",
+        "Ideas",
+        "Show and tell",
+        "Polls",
+        "Announcements",
+    ]
+    by_name = {str(cat.get("name", "")).lower(): cat for cat in categories}
+    for name in preferred:
+        match = by_name.get(name.lower())
+        if match and match.get("id"):
+            return str(repository["id"]), str(match["id"])
     return str(repository["id"]), str(categories[0]["id"])
 
 
@@ -176,10 +189,19 @@ def _create_issue_comment(
     return _parse_ts(data["created_at"])
 
 
-def _fetch_issue_comments(owner: str, repo: str, number: int, token: str) -> list[dict]:
+def _fetch_issue_comments(
+    owner: str,
+    repo: str,
+    number: int,
+    token: str,
+    since: datetime | None = None,
+) -> list[dict]:
     url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments"
+    params = {"per_page": 100}
+    if since is not None:
+        params["since"] = since.isoformat().replace("+00:00", "Z")
     with httpx.Client(timeout=20.0) as client:
-        response = client.get(url, headers=_headers(token), params={"per_page": 100})
+        response = client.get(url, headers=_headers(token), params=params)
         response.raise_for_status()
         return response.json()
 
@@ -284,7 +306,7 @@ def _run_issue_handoff(owner: str, repo: str, token: str, timeout: int) -> dict:
     trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
 
     def fetch() -> list[dict]:
-        return _fetch_issue_comments(owner, repo, issue_number, token)
+        return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
 
     bot_logins = _wait_for_bot_authors(fetch, trigger_ts, 2, timeout)
     return {
@@ -302,7 +324,7 @@ def _run_issue_handoff_existing(
     trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
 
     def fetch() -> list[dict]:
-        return _fetch_issue_comments(owner, repo, issue_number, token)
+        return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
 
     bot_logins = _wait_for_bot_authors(fetch, trigger_ts, 2, timeout)
     return {
@@ -336,7 +358,7 @@ def _run_pr_comment_handoff(owner: str, repo: str, token: str, pr_number: int, t
     trigger_ts = _create_pr_comment(owner, repo, token, pr_number, trigger_body)
 
     def fetch() -> list[dict]:
-        return _fetch_issue_comments(owner, repo, pr_number, token)
+        return _fetch_issue_comments(owner, repo, pr_number, token, since=trigger_ts)
 
     bot_logins = _wait_for_bot_authors(fetch, trigger_ts, 2, timeout)
     pr_url = f"https://github.com/{owner}/{repo}/pull/{pr_number}"
