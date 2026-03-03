@@ -16,6 +16,31 @@ VibeTeam provides specialized agents that run as Kubernetes CronJobs:
 | **Software Engineer** | Every 4 hours | Analyze GitHub issues, suggest fixes |
 | **Release Engineer** | Daily 9 AM | Track merged PRs, release readiness |
 
+## System Diagram
+
+```
+Slack/GitHub/Sentry
+        |
+        v
+vibeteam-gateway (FastAPI)
+        |
+        |-- routes by role/framework (agents/agents.yaml)
+        |
+        +--> OpenHands svc (agent_service/openhands)
+        |        |
+        |        +--> Azure OpenAI + MCP tools (GitHub, Sentry, kubectl, etc.)
+        |
+        +--> OpenClaw svc (agent_service/openclaw)
+                 |
+                 +--> OpenClaw Gateway (Node, WS)
+                         |
+                         +--> LiteLLM (in-namespace)
+                         |
+                         +--> Azure OpenAI
+                         |
+                         +--> OpenClaw browser/CDP tooling
+```
+
 ## Installation
 
 ```bash
