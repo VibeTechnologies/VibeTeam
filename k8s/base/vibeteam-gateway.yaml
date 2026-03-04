@@ -160,6 +160,8 @@ spec:
                   name: vibeteam-secrets
                   key: LANGFUSE_BASE_URL
                   optional: true
+            - name: LANGFUSE_HOST
+              value: "$(LANGFUSE_BASE_URL)"
             # Async callback configuration
             - name: GATEWAY_URL
               value: "http://vibeteam-gateway:8080"
