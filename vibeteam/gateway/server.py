@@ -149,7 +149,7 @@ def get_http_client() -> httpx.AsyncClient:
             keepalive_expiry=5.0,  # Short expiry if any keepalive
         )
         _http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(120.0, connect=30.0),  # Longer connect timeout for K8s DNS
+            timeout=httpx.Timeout(300.0, connect=30.0),  # Longer connect timeout for K8s DNS
             limits=limits,
         )
     return _http_client
