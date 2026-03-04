@@ -19,13 +19,13 @@ Slack Event Subscriptions use one Request URL per app. This means one Slack app 
 
 Recommended:
 
-- Prod app -> prod gateway URL
-- Dev app -> dev gateway URL
+- Primary app -> `vibeteam` gateway URL
+- Optional secondary app -> `vibeteam-openclaw-1` gateway URL
 
 Alternative (single app):
 
-- Keep app Request URL on prod
-- Run dev validation via `/slack/trigger` against the dev gateway
+- Keep app Request URL on `vibeteam`
+- Run isolated validation via `/slack/trigger` against `vibeteam-openclaw-1`
 
 ## 1. Create the Slack App
 

@@ -4,25 +4,26 @@ This document is the authoritative source for where VibeTeam is deployed and how
 
 ## Cluster And Namespace Policy
 
-- Kubernetes context/cluster: `aks-1`
-- Dev namespace: `vibeteam-dev`
-- Prod namespace: `vibeteam-prod`
-- Do not deploy to any separate production cluster. Use `aks-1` only.
+- Kubernetes cluster: AKS (`aks-1` kubeconfig)
+- Active context in `~/.kube/aks-1`: `openclaw-aks`
+- Production namespace: `vibeteam`
+- Secondary namespace for isolated OpenClaw eval/testing: `vibeteam-openclaw-1`
+- Do not deploy to any separate cluster. Use `aks-1` only.
 
 ## Slack Topology (Critical)
 
-Slack Event Subscriptions support a single Request URL per app. A single Slack app cannot deliver events to both `vibeteam-dev` and `vibeteam-prod` at the same time unless you add a routing proxy in front.
+Slack Event Subscriptions support a single Request URL per app. A single Slack app cannot deliver events to both `vibeteam` and `vibeteam-openclaw-1` at the same time unless you add a routing proxy in front.
 
 Recommended setup:
 
-- Use one Slack app for prod, pointing to the prod gateway URL.
-- Use a separate Slack app for dev, pointing to the dev gateway URL.
+- Keep the primary Slack app pointed at the production gateway in `vibeteam`.
+- If you need live Slack events in `vibeteam-openclaw-1`, use a separate Slack app or a request router.
 - Store each app's token/signing secret in the matching namespace secret.
 
 If you keep one Slack app:
 
-- Point it to prod only.
-- Use `/slack/trigger` for dev evals by targeting the dev gateway directly.
+- Point it to production (`vibeteam`) only.
+- Use `/slack/trigger` for isolated evals by targeting the `vibeteam-openclaw-1` gateway directly.
 - Do not expect both namespaces to receive live Slack events simultaneously.
 
 ## Preflight (Mandatory)
@@ -32,14 +33,16 @@ Run these checks before any `kubectl apply`:
 ```bash
 kubectl config current-context
 kubectl config get-contexts
-kubectl --context aks-1 get ns vibeteam-dev
-kubectl --context aks-1 get ns vibeteam-prod
+KUBECONFIG=~/.kube/aks-1 kubectl config current-context
+KUBECONFIG=~/.kube/aks-1 kubectl get ns vibeteam
+KUBECONFIG=~/.kube/aks-1 kubectl get ns vibeteam-openclaw-1
 ```
 
-If your active context is not `aks-1`, switch explicitly:
+Use the AKS kubeconfig explicitly to avoid targeting the wrong cluster:
 
 ```bash
-kubectl config use-context aks-1
+export KUBECONFIG=~/.kube/aks-1
+kubectl config use-context openclaw-aks
 ```
 
 ## Deploy
@@ -47,19 +50,19 @@ kubectl config use-context aks-1
 ### Dev Deploy
 
 ```bash
-kubectl --context aks-1 apply -k k8s/overlays/dev
-kubectl --context aks-1 rollout status deployment/vibeteam-gateway -n vibeteam-dev --timeout=180s
-kubectl --context aks-1 rollout status deployment/openhands-svc -n vibeteam-dev --timeout=180s
-kubectl --context aks-1 rollout status deployment/openclaw-svc -n vibeteam-dev --timeout=180s
+KUBECONFIG=~/.kube/aks-1 kubectl apply -k k8s/overlays/dev
+KUBECONFIG=~/.kube/aks-1 kubectl rollout status deployment/vibeteam-gateway -n vibeteam-openclaw-1 --timeout=180s
+KUBECONFIG=~/.kube/aks-1 kubectl rollout status deployment/openhands-svc -n vibeteam-openclaw-1 --timeout=180s
+KUBECONFIG=~/.kube/aks-1 kubectl rollout status deployment/openclaw-svc -n vibeteam-openclaw-1 --timeout=180s
 ```
 
 ### Prod Deploy
 
 ```bash
-kubectl --context aks-1 apply -k k8s/overlays/prod
-kubectl --context aks-1 rollout status deployment/vibeteam-gateway -n vibeteam-prod --timeout=180s
-kubectl --context aks-1 rollout status deployment/openhands-svc -n vibeteam-prod --timeout=180s
-kubectl --context aks-1 rollout status deployment/openclaw-svc -n vibeteam-prod --timeout=180s
+KUBECONFIG=~/.kube/aks-1 kubectl apply -k k8s/overlays/prod
+KUBECONFIG=~/.kube/aks-1 kubectl rollout status deployment/vibeteam-gateway -n vibeteam --timeout=180s
+KUBECONFIG=~/.kube/aks-1 kubectl rollout status deployment/openhands-svc -n vibeteam --timeout=180s
+KUBECONFIG=~/.kube/aks-1 kubectl rollout status deployment/openclaw-svc -n vibeteam --timeout=180s
 ```
 
 ## Testing Workflow
@@ -67,7 +70,7 @@ kubectl --context aks-1 rollout status deployment/openclaw-svc -n vibeteam-prod 
 Run tests in this order.
 
 1. Unit/integration tests locally.
-2. Slack eval against dev namespace deployments.
+2. Slack eval against the active Slack app target (normally `vibeteam`).
 3. Optional GitHub webhook evals for handoff flows.
 
 ### 1) Unit And Integration Tests
@@ -83,8 +86,8 @@ export $( < .env )
 Pause rollouts to avoid git-sync restarts mid-eval:
 
 ```bash
-kubectl --context aks-1 rollout pause deployment/vibeteam-gateway -n vibeteam-dev
-kubectl --context aks-1 rollout pause deployment/openhands-svc -n vibeteam-dev
+KUBECONFIG=~/.kube/aks-1 kubectl rollout pause deployment/vibeteam-gateway -n vibeteam
+KUBECONFIG=~/.kube/aks-1 kubectl rollout pause deployment/openhands-svc -n vibeteam
 ```
 
 Run eval:
@@ -98,8 +101,8 @@ export $( < .env )
 Resume rollouts after eval:
 
 ```bash
-kubectl --context aks-1 rollout resume deployment/vibeteam-gateway -n vibeteam-dev
-kubectl --context aks-1 rollout resume deployment/openhands-svc -n vibeteam-dev
+KUBECONFIG=~/.kube/aks-1 kubectl rollout resume deployment/vibeteam-gateway -n vibeteam
+KUBECONFIG=~/.kube/aks-1 kubectl rollout resume deployment/openhands-svc -n vibeteam
 ```
 
 ### 3) OpenClaw CDP Smoke Eval (Dev)
@@ -113,14 +116,14 @@ export $( < .env )
 ## Operational Checks
 
 ```bash
-kubectl --context aks-1 get pods -n vibeteam-dev
-kubectl --context aks-1 logs deployment/vibeteam-gateway -n vibeteam-dev --tail=200
-kubectl --context aks-1 logs deployment/openhands-svc -n vibeteam-dev --tail=200
-kubectl --context aks-1 logs deployment/openclaw-svc -n vibeteam-dev --tail=200
+KUBECONFIG=~/.kube/aks-1 kubectl get pods -n vibeteam
+KUBECONFIG=~/.kube/aks-1 kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=200
+KUBECONFIG=~/.kube/aks-1 kubectl logs deployment/openhands-svc -n vibeteam --tail=200
+KUBECONFIG=~/.kube/aks-1 kubectl logs deployment/openclaw-svc -n vibeteam --tail=200
 ```
 
 ## Notes
 
-- `k8s/overlays/dev/kustomization.yaml` targets `vibeteam-dev`.
-- `k8s/overlays/prod/kustomization.yaml` targets `vibeteam-prod`.
+- `k8s/overlays/dev/kustomization.yaml` targets `vibeteam-openclaw-1`.
+- `k8s/overlays/prod/kustomization.yaml` targets `vibeteam`.
 - If you see commands elsewhere using `-n vibeteam`, treat this document as authoritative and use the namespace that matches your target environment.

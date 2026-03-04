@@ -3,10 +3,11 @@ You are working on AI agentic team. Agent are implemented on OpenHands that runs
 ## Kubernetes Targeting Policy
 
 - Authoritative deploy/test guide: `docs/k8s.md`
-- Use Kubernetes context `aks-1` only.
-- Use namespaces `vibeteam-dev` (dev) and `vibeteam-prod` (prod).
-- Do not deploy to any separate production cluster.
-- One Slack app cannot fan out events to both namespaces simultaneously; use separate Slack apps/endpoints per environment or route through a dedicated ingress proxy.
+- Use AKS kubeconfig `~/.kube/aks-1` (context `openclaw-aks`) only.
+- Use the production namespace `vibeteam` for live Slack-driven traffic.
+- `vibeteam-openclaw-1` is for isolated OpenClaw validation when needed.
+- Do not deploy to any separate cluster.
+- One Slack app cannot fan out events to multiple namespaces simultaneously; use separate Slack apps/endpoints per environment or route through a dedicated ingress proxy.
 
 ## Testing Expectations
 
