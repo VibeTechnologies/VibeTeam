@@ -79,11 +79,17 @@ uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack
 
 # GitHub webhook evaluation (issues/discussions/PR comments)
 uv run python scripts/eval_github_e2e.py --scenario github_threads_all --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --timeout 600
+uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --issue 3 --pr 1 --timeout 600
 ```
 
 `eval_github_e2e.py` also respects:
 `GITHUB_TEST_REPO` (default `VibeTechnologies/vibeteam-eval-hello-world`) and
 `GITHUB_TEST_PR` (default `1`).
+
+`github_issue_pr_handoff_github` mirrors the Slack handoff scenario by validating
+multi-agent bot responses on both the target issue and PR threads.
+Requirement: use native mentions (`@SoftwareEngineer`, `@SupportEngineer`) in eval
+trigger text for this cross-channel handoff validation. Do not use slash mentions.
 
 Discussion handoffs require GitHub App Discussions read/write permission on the eval repo.
 If the app was updated, re-install or approve the new permissions before rerunning the eval.
