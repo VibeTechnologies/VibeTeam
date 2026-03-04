@@ -360,6 +360,70 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "support_vibe_dev_health": {
+        "name": "Support Engineer - vibe-dev Health and Logs Validation",
+        "message": (
+            "@VibeTeam @SupportEngineer validate vibe-dev namespace health now. "
+            "Run kubectl checks for pods, deployments, and events. "
+            "If any workloads are unhealthy, inspect recent logs and summarize severity "
+            "with evidence."
+        ),
+        "expected_agent": "support_engineer",
+        "timeout": 600,
+        "skip_handoff": True,
+        "evaluation_criteria": {
+            "NamespaceCoverage": (
+                "Did the SupportEngineer explicitly validate the vibe-dev namespace "
+                "with concrete kubectl evidence? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit mention of vibe-dev; "
+                "(2) Evidence from pods/deployments/events checks (or explicit 'no resources found'); "
+                "(3) Findings tied to the observed namespace state. "
+                "SCORING: "
+                "Score 0.0-0.3: No vibe-dev check or generic response. "
+                "Score 0.3-0.6: Mentions vibe-dev but little/no concrete evidence. "
+                "Score 0.6-0.8: Provides concrete namespace evidence and summary. "
+                "Score 0.8-1.0: Complete, evidence-based namespace validation."
+            ),
+            "HealthAndLogs": (
+                "Did the agent evaluate health and logs appropriately based on what exists? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) If unhealthy workloads exist, includes relevant logs/events evidence; "
+                "(2) If namespace is empty, explicitly states no workloads and therefore no logs; "
+                "(3) Severity assessment is consistent with evidence. "
+                "SCORING: "
+                "Score 0.0-0.3: No health/log assessment. "
+                "Score 0.3-0.6: Partial assessment without clear evidence. "
+                "Score 0.6-0.8: Correct assessment with evidence. "
+                "Score 0.8-1.0: Correct, complete assessment with clear severity."
+            ),
+            "ResponseEfficiency": (
+                "Was the response concise, focused, and non-speculative? "
+                "SCORING: "
+                "Score 0.0-0.3: Rambling, speculative, or contradictory. "
+                "Score 0.3-0.5: Some redundancy or unclear conclusion. "
+                "Score 0.5-0.7: Reasonably concise with clear conclusion. "
+                "Score 0.7-0.9: Focused and efficient. "
+                "Score 0.9-1.0: Minimal, precise, and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "NamespaceCoverage": [
+                "Check for explicit vibe-dev mention and concrete kubectl-derived evidence.",
+                "Accept explicit 'no resources found' as valid evidence when namespace is empty.",
+                "Score <= 0.3 if vibe-dev is not validated.",
+            ],
+            "HealthAndLogs": [
+                "If workloads are unhealthy, check for logs/events evidence and severity.",
+                "If namespace is empty, check that the agent clearly states no workloads/logs.",
+                "Penalize fabricated or speculative failures without evidence.",
+            ],
+            "ResponseEfficiency": [
+                "Check that the response is concise and directly answers health/log status.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "software_engineer_pr_attribution": {
         "name": "Software Engineer - PR Attribution (GitHub App)",
         "message": (
