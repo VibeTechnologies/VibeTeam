@@ -598,7 +598,9 @@ class TestPerScenarioTimeout:
         allowed_overrides = {
             "release_deploy",
             "marketing_reddit_engagement",
+            "marketing_reddit_ai_agents_copilot_pr",
             "marketing_hn_engagement",
+            "marketing_hn_ai_agents_copilot_pr",
             "marketing_google_finance_news",
         }
         for name, config in SCENARIOS.items():

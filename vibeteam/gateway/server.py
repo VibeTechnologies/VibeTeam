@@ -2,7 +2,8 @@
 VibeTeam Gateway Server.
 
 FastAPI server that receives external events and routes them to agent microservices.
-Replaces the subprocess-based approach with HTTP calls to autogen-svc/crewai-svc.
+Framework routing is role-driven via agents/agents.yaml with legacy framework
+override support.
 """
 
 import logging
@@ -15,7 +16,7 @@ import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from vibeteam.agents_config import resolve_framework
+from vibeteam.agents_config import normalize_framework_name, resolve_framework
 
 # Configure logging
 logging.basicConfig(
@@ -34,8 +35,6 @@ class GatewayConfig:
     """Gateway configuration from environment variables."""
 
     # Agent service URLs
-    AUTOGEN_SERVICE_URL = os.environ.get("AUTOGEN_SERVICE_URL", "http://autogen-svc:8080")
-    CREWAI_SERVICE_URL = os.environ.get("CREWAI_SERVICE_URL", "http://crewai-svc:8080")
     OPENHANDS_SERVICE_URL = os.environ.get("OPENHANDS_SERVICE_URL", "http://openhands-svc:8080")
     OPENCLAW_SERVICE_URL = os.environ.get("OPENCLAW_SERVICE_URL", "http://openclaw-svc:8080")
     SCHEDULER_SERVICE_URL = os.environ.get("SCHEDULER_SERVICE_URL", "http://scheduler-svc:8080")
@@ -77,15 +76,12 @@ class GatewayConfig:
 
     @classmethod
     def get_agent_service_url(cls, framework: str | None = None) -> str:
-        """Get the URL for the specified agent framework."""
-        fw = framework or cls.DEFAULT_FRAMEWORK
-        if fw == "crewai":
-            return cls.CREWAI_SERVICE_URL
-        elif fw == "openhands":
-            return cls.OPENHANDS_SERVICE_URL
-        elif fw == "openclaw":
+        """Get the URL for the specified (normalized) agent framework."""
+        fw = normalize_framework_name(framework) or normalize_framework_name(cls.DEFAULT_FRAMEWORK)
+        if fw == "openclaw":
             return cls.OPENCLAW_SERVICE_URL
-        return cls.AUTOGEN_SERVICE_URL
+        # Default everything else to OpenHands for legacy compatibility.
+        return cls.OPENHANDS_SERVICE_URL
 
 
 config = GatewayConfig()
@@ -105,7 +101,9 @@ class RunRequest(BaseModel):
         description="Agent role (support_engineer, release_engineer, software_engineer, etc.)",
     )
     framework: str | None = Field(
-        None, description="Agent framework (autogen, crewai, openhands, openclaw)"
+        None,
+        description="Optional framework override (legacy). "
+        "Aliases autogen/crewai map to openhands.",
     )
     context_type: str = Field("api", description="Context type")
     context_id: str | None = Field(None, description="Context ID")
@@ -181,7 +179,7 @@ async def call_agent_service(
     Args:
         task: Task description
         role: Agent role (determines routing)
-        framework: Agent framework (autogen, crewai)
+        framework: Optional framework override (legacy)
         context_type: Context type for session tracking
         context_id: Context ID for session tracking
         stream: Whether to stream the response
@@ -313,7 +311,7 @@ async def call_agent_service_async(
     Args:
         task: Task description
         role: Agent role
-        framework: Agent framework
+        framework: Optional framework override (legacy)
         context_type: Context type for session tracking
         context_id: Context ID for session tracking
         callback_url: URL where agent should POST results
@@ -398,7 +396,7 @@ async def call_scheduler_service(
         task: Task description
         run_at: ISO datetime to run (None for immediate)
         role: Agent role
-        framework: Agent framework
+        framework: Optional framework override (legacy)
         context_type: Context type
         context_id: Context ID
 
@@ -407,12 +405,13 @@ async def call_scheduler_service(
     """
     client = get_http_client()
 
+    fw = resolve_framework(role, framework, config.DEFAULT_FRAMEWORK)
+    service_name = "openclaw-svc" if fw == "openclaw" else "openhands-svc"
+
     payload = {
         "task": task,
         "role": role,
-        "agent_service": (
-            "autogen-svc" if framework not in ("crewai", "openhands") else f"{framework}-svc"
-        ),
+        "agent_service": service_name,
         "context_type": context_type,
         "context_id": context_id,
     }
@@ -456,9 +455,8 @@ async def check_service_health(url: str) -> str:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info("Starting VibeTeam Gateway...")
-    logger.info(f"AutoGen service: {config.AUTOGEN_SERVICE_URL}")
-    logger.info(f"CrewAI service: {config.CREWAI_SERVICE_URL}")
     logger.info(f"OpenHands service: {config.OPENHANDS_SERVICE_URL}")
+    logger.info(f"OpenClaw service: {config.OPENCLAW_SERVICE_URL}")
     logger.info(f"Scheduler service: {config.SCHEDULER_SERVICE_URL}")
     logger.info(f"Default framework: {config.DEFAULT_FRAMEWORK}")
 
@@ -495,9 +493,8 @@ async def health_check():
     """Health check endpoint with downstream service status."""
     # Check downstream services
     services = {
-        "autogen-svc": await check_service_health(config.AUTOGEN_SERVICE_URL),
-        "crewai-svc": await check_service_health(config.CREWAI_SERVICE_URL),
         "openhands-svc": await check_service_health(config.OPENHANDS_SERVICE_URL),
+        "openclaw-svc": await check_service_health(config.OPENCLAW_SERVICE_URL),
         "scheduler-svc": await check_service_health(config.SCHEDULER_SERVICE_URL),
     }
 

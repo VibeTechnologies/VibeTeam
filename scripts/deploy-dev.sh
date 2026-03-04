@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build and deploy dev images that pull fresh code from GitHub on restart
 # Usage: ./scripts/deploy-dev.sh [target]
-#   target: openhands, autogen, crewai, gateway, all (default: all), or deploy
+#   target: openhands, openclaw, autogen, crewai, gateway, all (default: all), or deploy
 
 set -euo pipefail
 
@@ -93,12 +93,17 @@ deploy_dev() {
     restart_if_exists "vibeteam-gateway"
     restart_if_exists "openhands-svc"
     restart_if_exists "openhands-agents"
+    restart_if_exists "openclaw-svc"
     restart_if_exists "autogen-svc"
     restart_if_exists "crewai-svc"
 }
 
 case "$TARGET" in
     openhands)
+        build_and_push "openhands" "$PROJECT_DIR/agent_service/openhands/Dockerfile" "$PROJECT_DIR"
+        ;;
+    openclaw)
+        # OpenClaw service uses the OpenHands dev image in the dev overlay.
         build_and_push "openhands" "$PROJECT_DIR/agent_service/openhands/Dockerfile" "$PROJECT_DIR"
         ;;
     autogen)
@@ -119,7 +124,7 @@ case "$TARGET" in
         deploy_dev
         ;;
     *)
-        echo "Usage: $0 [openhands|autogen|crewai|gateway|all|deploy]"
+        echo "Usage: $0 [openhands|openclaw|autogen|crewai|gateway|all|deploy]"
         exit 1
         ;;
 esac

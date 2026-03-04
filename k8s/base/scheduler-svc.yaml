@@ -30,10 +30,10 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: DATABASE_URL
-            - name: AUTOGEN_SERVICE_URL
-              value: "http://autogen-svc:8080"
-            - name: CREWAI_SERVICE_URL
-              value: "http://crewai-svc:8080"
+            - name: OPENHANDS_SERVICE_URL
+              value: "http://openhands-svc:8080"
+            - name: OPENCLAW_SERVICE_URL
+              value: "http://openclaw-svc:8080"
           resources:
             requests:
               memory: "256Mi"

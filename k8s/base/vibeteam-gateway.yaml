@@ -70,6 +70,8 @@ spec:
               value: "http://crewai-svc:8080"
             - name: OPENHANDS_SERVICE_URL
               value: "http://openhands-svc:8080"
+            - name: OPENCLAW_SERVICE_URL
+              value: "http://openclaw-svc:8080"
             - name: SCHEDULER_SERVICE_URL
               value: "http://scheduler-svc:8080"
             - name: DEFAULT_FRAMEWORK

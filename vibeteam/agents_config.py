@@ -30,6 +30,10 @@ class AgentEntry:
 
 
 AGENTS_CONFIG_PATH = os.environ.get("AGENTS_CONFIG_PATH", "agents/agents.yaml")
+FRAMEWORK_ALIASES = {
+    "autogen": "openhands",
+    "crewai": "openhands",
+}
 
 
 def _repo_root() -> Path:
@@ -123,13 +127,24 @@ def resolve_openclaw_agent_id(role: str | None) -> str | None:
     return entry.openclaw_agent_id
 
 
+def normalize_framework_name(framework: str | None) -> str | None:
+    """Normalize framework names and apply legacy aliases."""
+    if framework is None:
+        return None
+    normalized = framework.strip().lower()
+    if not normalized:
+        return None
+    return FRAMEWORK_ALIASES.get(normalized, normalized)
+
+
 def resolve_framework(role: str | None, framework_override: str | None, default: str) -> str:
-    if framework_override:
-        return framework_override
+    override = normalize_framework_name(framework_override)
+    if override:
+        return override
     entry = get_agent_entry(role)
     if entry and entry.framework:
-        return entry.framework
-    return default
+        return normalize_framework_name(entry.framework) or "openhands"
+    return normalize_framework_name(default) or "openhands"
 
 
 def get_slack_handle(role: str | None) -> str | None:
@@ -181,6 +196,7 @@ __all__ = [
     "AgentEntry",
     "get_agent_entry",
     "resolve_openclaw_agent_id",
+    "normalize_framework_name",
     "resolve_framework",
     "get_slack_handle",
     "get_agent_dir",
