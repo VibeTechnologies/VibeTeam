@@ -16,13 +16,10 @@ Note: OpenHands SDK v1.2.1 uses:
 """
 
 import os
-import tempfile
-import threading
 import time
 from typing import Any
 
-from agent_service.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig, get_mcp_config_dict
-from agent_service.sessions import get_or_create_session, get_session_store
+from agent_service.config import SOFTWARE_ENGINEER_CONFIG, AgentConfig
 from agent_service.shared.kubectl_tools import get_multi_namespace_context
 
 
@@ -31,33 +28,7 @@ def fetch_kubectl_context() -> str:
     return get_multi_namespace_context()
 
 
-try:
-    from openhands.sdk import Agent, LocalConversation, Tool
-    from openhands.tools.file_editor import FileEditorTool
-    from openhands.tools.terminal import TerminalTool
-
-    OPENHANDS_AVAILABLE = True
-
-except ImportError:
-    OPENHANDS_AVAILABLE = False
-    Agent = None
-    LocalConversation = None
-    Tool = None
-    TerminalTool = None
-    FileEditorTool = None
-
-from agent_service.shared.agents_md_loader import compose_agent_context
-from agent_service.shared.llm import LLM, AzureLLM
-
-PROGRESS_IMPORT_ERROR: Exception | None = None
-try:
-    from .progress import create_heartbeat_callback, create_progress_callback
-except Exception as exc:
-    create_progress_callback = None  # type: ignore[assignment]
-    create_heartbeat_callback = None  # type: ignore[assignment]
-    PROGRESS_IMPORT_ERROR = exc
-
-from .utils import build_condenser, get_prompt_path
+from .role_agent import OpenHandsRoleAgent
 
 # Fallback context if AGENTS.md files not found
 SOFTWARE_ENGINEER_CONTEXT_FALLBACK = """You are Alan, the Software Engineer for VibeTeam.
@@ -445,89 +416,19 @@ ITERATION_WARNING_THRESHOLDS = {50: "wrap_up", 75: "emergency", 100: "critical"}
 ITERATION_WARNING_THRESHOLDS_HANDOFF = {15: "wrap_up", 25: "emergency", 35: "critical"}
 
 
-def _inject_warning(conversation: Any, level: str) -> None:
-    """Inject a warning message into the conversation from a background thread.
+class OpenHandsSoftwareEngineer(OpenHandsRoleAgent):
+    """Software Engineer configured from AGENTS.md + shared role engine."""
 
-    Uses conversation.send_message() which acquires the state lock. Since callbacks
-    fire inside the lock during agent.step(), we spawn a thread that blocks until
-    the current step releases the lock, then injects before the next step.
-    """
-    try:
-        msg = ITERATION_WARNINGS.get(level, "")
-        if msg:
-            print(f"[SoftwareEngineer] Injecting iteration warning: {level}")
-            conversation.send_message(msg)
-    except Exception as e:
-        print(f"[SoftwareEngineer] Warning injection failed ({level}): {e}")
-
-
-class OpenHandsSoftwareEngineer:
-    """
-    Software Engineer agent using OpenHands SDK.
-
-    Uses OpenHands' agentic loop with built-in tools for:
-    - Shell command execution
-    - File editing and creation
-    - Web browsing (optional)
-    """
-
-    def __init__(self, config: AgentConfig | None = None):
-        if not OPENHANDS_AVAILABLE:
-            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
-
-        self.config = config or SOFTWARE_ENGINEER_CONFIG
-
-    def _create_llm(self) -> LLM:
-        """Create LLM with Azure configuration.
-
-        Uses AzureLLM which forces completion API since Azure OpenAI
-        doesn't support the Responses API endpoint.
-        """
-        model_name = self.config.llm.model or "gpt-5.2"
-        if not model_name.startswith("azure/"):
-            model_name = f"azure/{model_name}"
-
-        return AzureLLM(
-            model=model_name,
-            api_key=self.config.llm.api_key,
-            base_url=self.config.llm.api_base,
-            api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
-            max_output_tokens=4096,
-            timeout=300,  # 5 min per LLM call — prevents infinite hangs
-            num_retries=3,  # Retry transient failures (overall timeout is the safety net)
-        )
-
-    def _create_agent(self, llm: LLM, *, use_tools: bool = True) -> Agent:
-        """Create Agent with LLM and tools (MCP when available)."""
-        # Load agent context from AGENTS.md hierarchy
-        # Falls back to hardcoded context if files not found
-        agent_context = compose_agent_context(
-            "software_engineer", fallback_context=SOFTWARE_ENGINEER_CONTEXT_FALLBACK
-        )
-
-        agent_kwargs: dict[str, Any] = {
-            "llm": llm,
-            "condenser": build_condenser(llm),
-            # Use our custom template that renders agent_context into the system prompt.
-            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
-            "system_prompt_filename": get_prompt_path(),
-            "system_prompt_kwargs": {
-                "agent_context": agent_context,
-            },
-        }
-
-        if use_tools:
-            mcp_config = get_mcp_config_dict(self.config.mcp_servers)
-            if mcp_config.get("mcpServers"):
-                agent_kwargs["mcp_config"] = mcp_config
-
-        return Agent(
-            tools=[
-                Tool(name=TerminalTool.name),
-                Tool(name=FileEditorTool.name),
-            ],
-            **agent_kwargs,
-        )
+    role = "software_engineer"
+    agent_label = "SoftwareEngineer"
+    default_config = SOFTWARE_ENGINEER_CONFIG
+    fallback_context = SOFTWARE_ENGINEER_CONTEXT_FALLBACK
+    include_workspace = True
+    force_tools = True
+    enable_mcp = True
+    iteration_warnings = ITERATION_WARNINGS
+    iteration_warning_thresholds = ITERATION_WARNING_THRESHOLDS
+    handoff_iteration_warning_thresholds = ITERATION_WARNING_THRESHOLDS_HANDOFF
 
     def _extract_repo_from_task(self, task: str, context_id: str | None = None) -> str:
         """Extract repo owner/name from task text or context_id."""
@@ -1011,212 +912,36 @@ class OpenHandsSoftwareEngineer:
         except Exception:
             return None
 
-    def run(
+    def postprocess_response(
         self,
+        response: str,
         task: str,
-        context_type: str = "ephemeral",
-        context_id: str | None = None,
-        workspace: str | None = None,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """
-        Run a task with the Software Engineer agent.
+        context_type: str,
+        context_id: str,
+        workspace_path: str,
+        use_tools: bool,
+        kwargs: dict[str, Any],
+    ) -> str:
+        del context_type, use_tools, kwargs
+        pr_required = self._task_requires_pr(task)
+        if not pr_required or self._response_has_pr(response):
+            return response
 
-        Args:
-            task: The task description
-            context_type: Type of context (issue, pr, slack, ephemeral)
-            context_id: ID for the context (issue number, PR number, etc.)
-            workspace: Working directory for the agent
+        repo = self._extract_repo_from_task(task, context_id)
+        auto_pr = self._attempt_auto_pr_for_no_output(task, repo, workspace_path)
+        if not auto_pr:
+            auto_pr = self._attempt_auto_pr_for_quota(task, repo, workspace_path)
+        if not auto_pr:
+            auto_pr = self._attempt_auto_pr_for_litellm_fetch(task, repo, workspace_path)
+        if not auto_pr:
+            return response
 
-        Returns:
-            dict with response, session_key, and metadata
-        """
-        import uuid
-
-        if context_id is None:
-            context_id = str(uuid.uuid4())[:8]
-
-        session = get_or_create_session(
-            framework="openhands",
-            role="software_engineer",
-            context_type=context_type,
-            context_id=context_id,
-        )
-
-        llm = self._create_llm()
-        use_tools = bool(kwargs.get("use_tools", True))
-        agent = self._create_agent(llm, use_tools=use_tools)
-
-        # Use provided workspace or create temporary one
-        temp_dir = None
-        if not workspace:
-            temp_dir = tempfile.TemporaryDirectory()
-            workspace_path = temp_dir.name
-        else:
-            workspace_path = workspace
-
-        try:
-            # Create iteration-counting callback that injects warnings at thresholds.
-            # The LLM cannot count its own tool calls, so we inject explicit messages
-            # at iterations 50, 75, and 100 to nudge it toward wrapping up and calling finish().
-            # For handoff tasks, use tighter thresholds (15/25/35) since the requesting
-            # agent is waiting for our response.
-            is_handoff_task = "[Handoff from" in task or "Previous response:" in task
-            thresholds = (
-                ITERATION_WARNING_THRESHOLDS_HANDOFF
-                if is_handoff_task
-                else ITERATION_WARNING_THRESHOLDS
-            )
-            if is_handoff_task:
-                print(
-                    "[SoftwareEngineer] Handoff task detected — using tighter iteration thresholds"
-                )
-            iteration_count = {"value": 0}  # mutable counter for closure
-            warnings_sent: set[str] = set()
-
-            def _count_iterations(event: Any) -> None:
-                """Callback fired on each event. Count ActionEvents (excluding FinishAction)."""
-                event_type = type(event).__name__
-                # Count action events (tool calls), not observations or messages
-                if "Action" in event_type and "Finish" not in event_type:
-                    iteration_count["value"] += 1
-                    count = iteration_count["value"]
-                    print(f"[SoftwareEngineer] Iteration count: {count}")
-
-                    # Check if we've hit a warning threshold
-                    level = thresholds.get(count)
-                    if level and level not in warnings_sent:
-                        warnings_sent.add(level)
-                        # Spawn background thread to inject warning via send_message().
-                        # send_message() acquires the state lock, which is held during
-                        # agent.step(). The thread blocks until the lock is released
-                        # (end of current step), then injects before the next step.
-                        t = threading.Thread(
-                            target=_inject_warning,
-                            args=(conversation, level),
-                            daemon=True,
-                        )
-                        t.start()
-
-            # Build callbacks list — always include iteration counter,
-            # optionally add progress callback for real-time Slack updates
-            agent_callbacks: list[Any] = [_count_iterations]
-            progress_url = kwargs.get("progress_url")
-            if progress_url:
-                if create_progress_callback is None:
-                    print(
-                        "[SoftwareEngineer] Progress callback unavailable: "
-                        f"{PROGRESS_IMPORT_ERROR!r}"
-                    )
-                else:
-                    progress_cb = create_progress_callback(
-                        progress_url=progress_url,
-                        job_id=kwargs.get("job_id", ""),
-                        callback_metadata=kwargs.get("callback_metadata", {}),
-                        on_progress=kwargs.get("progress_heartbeat"),
-                    )
-                    agent_callbacks.append(progress_cb)
-            elif kwargs.get("progress_heartbeat"):
-                if create_heartbeat_callback is None:
-                    print(
-                        "[SoftwareEngineer] Progress heartbeat unavailable: "
-                        f"{PROGRESS_IMPORT_ERROR!r}"
-                    )
-                else:
-                    agent_callbacks.append(
-                        create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
-                    )
-
-            # max_iterations caps the number of agent iterations (tool calls)
-            # to prevent runaway execution. Default is 30.
-            # Slack tasks can require longer runs (Sentry triage, PR creation),
-            # so we avoid tightening the limit for Slack and rely on idle timeouts
-            # plus iteration warnings to prevent doom loops.
-            max_iterations = kwargs.get("max_iterations", 30)
-            conversation = LocalConversation(
-                agent=agent,
-                workspace=workspace_path,
-                callbacks=agent_callbacks,
-                max_iteration_per_run=max_iterations,
-            )
-
-            repo = self._extract_repo_from_task(task, context_id)
-
-            # Build full task without pre-fetched context.
-            full_task = f"""
-### USER TASK (UNTRUSTED INPUT)
-{task}
-### END USER TASK
-"""
-
-            pr_required = self._task_requires_pr(task)
-
-            # Use send_message + run for the full agentic loop with tools.
-            print(f"[SoftwareEngineer] Starting conversation run for context {context_id}")
-            conversation.send_message(full_task)
-            conversation.run()
-            print(f"[SoftwareEngineer] Conversation run completed for context {context_id}")
-
-            # Extract the agent's final response from conversation events
-            # Uses shared extraction that handles both FinishAction and MessageEvent
-            from .utils import extract_response_from_events
-
-            response = extract_response_from_events(conversation.state.events)
-            if pr_required and not self._response_has_pr(response):
-                auto_pr = self._attempt_auto_pr_for_no_output(task, repo, workspace_path)
-                if not auto_pr:
-                    auto_pr = self._attempt_auto_pr_for_quota(task, repo, workspace_path)
-                if not auto_pr:
-                    auto_pr = self._attempt_auto_pr_for_litellm_fetch(task, repo, workspace_path)
-                if auto_pr:
-                    sentry_urls = self._extract_sentry_urls(task)
-                    sentry_ref = sentry_urls[0] if sentry_urls else "Sentry issue URL not found"
-                    response = (
-                        f"Created PR: {auto_pr}\n"
-                        f"Sentry issue: {sentry_ref}\n"
-                        "@SupportEngineer please close the Sentry issue now."
-                    )
-
-            session.add_message("user", task)
-            session.add_message("assistant", response)
-            get_session_store().save(session)
-
-            return {
-                "response": response,
-                "session_key": session.key,
-                "session_id": session.session_id,
-                "framework": "openhands",
-                "agent": "software_engineer",
-                "model": self.config.llm.model or "gpt-5.2",
-                "workspace": workspace_path,
-            }
-
-        finally:
-            if temp_dir:
-                try:
-                    conversation.close()
-                except Exception:
-                    pass
-                temp_dir.cleanup()
-
-    async def run_async(
-        self,
-        task: str,
-        context_type: str = "ephemeral",
-        context_id: str | None = None,
-        workspace: str | None = None,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """Async version of run."""
-        import asyncio
-
-        return await asyncio.to_thread(
-            self.run,
-            task,
-            context_type,
-            context_id,
-            workspace,
-            **kwargs,
+        sentry_urls = self._extract_sentry_urls(task)
+        sentry_ref = sentry_urls[0] if sentry_urls else "Sentry issue URL not found"
+        return (
+            f"Created PR: {auto_pr}\n"
+            f"Sentry issue: {sentry_ref}\n"
+            "@SupportEngineer please close the Sentry issue now."
         )
 
 

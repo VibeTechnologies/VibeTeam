@@ -17,12 +17,10 @@ Note: OpenHands SDK v1.2.1 uses:
 
 import os
 import re
-import tempfile
 from dataclasses import dataclass
 from typing import Any
 
 from agent_service.config import SUPPORT_ENGINEER_CONFIG, AgentConfig
-from agent_service.sessions import get_or_create_session, get_session_store
 from agent_service.shared.calendar_tools import get_calendar_context
 from agent_service.shared.docs_tools import get_docs_context
 
@@ -529,25 +527,7 @@ def convert_numbered_lists_to_bullets(text: str) -> str:
     return re.sub(pattern, r"\1- ", text, flags=re.MULTILINE)
 
 
-try:
-    from openhands.sdk import Agent, LocalConversation, Tool
-    from openhands.tools.file_editor import FileEditorTool
-    from openhands.tools.terminal import TerminalTool
-
-    OPENHANDS_AVAILABLE = True
-
-except ImportError:
-    OPENHANDS_AVAILABLE = False
-    Agent = None
-    LocalConversation = None
-    Tool = None
-    TerminalTool = None
-    FileEditorTool = None
-
-from agent_service.shared.agents_md_loader import compose_agent_context
-from agent_service.shared.llm import LLM, AzureLLM
-
-from .utils import build_condenser, get_prompt_path
+from .role_agent import OpenHandsRoleAgent
 
 # Fallback context if AGENTS.md files not found
 SUPPORT_ENGINEER_CONTEXT_FALLBACK = """You are Grace, the Support Engineer for VibeTeam.
@@ -680,70 +660,111 @@ DO NOT try to use Slack/email tools. Your text response is automatically posted.
 """
 
 
-class OpenHandsSupportEngineer:
-    """
-    Support Engineer agent using OpenHands SDK.
+class OpenHandsSupportEngineer(OpenHandsRoleAgent):
+    """Support Engineer configured from AGENTS.md + shared role engine."""
 
-    Uses OpenHands' agentic loop for customer support tasks.
-    """
+    role = "support_engineer"
+    agent_label = "SupportEngineer"
+    default_config = SUPPORT_ENGINEER_CONFIG
+    fallback_context = SUPPORT_ENGINEER_CONTEXT_FALLBACK
+    include_workspace = False
 
-    def __init__(self, config: AgentConfig | None = None):
-        if not OPENHANDS_AVAILABLE:
-            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
+    def _extra_llm_kwargs(self) -> dict[str, Any]:
+        return {
+            "reasoning_effort": "medium",
+            "extended_thinking_budget": 10000,
+        }
 
-        self.config = config or SUPPORT_ENGINEER_CONFIG
+    def build_task_prompt(self, task: str, use_tools: bool) -> str:
+        full_task = super().build_task_prompt(task, use_tools)
+        if not use_tools:
+            return convert_numbered_lists_to_bullets(full_task)
+        return full_task
 
-    def _create_llm(self) -> LLM:
-        """Create LLM with Azure configuration."""
-        model_name = self.config.llm.model or "gpt-5.2"
-        if not model_name.startswith("azure/"):
-            model_name = f"azure/{model_name}"
+    def postprocess_response(
+        self,
+        response: str,
+        task: str,
+        context_type: str,
+        context_id: str,
+        workspace_path: str,
+        use_tools: bool,
+        kwargs: dict[str, Any],
+    ) -> str:
+        del context_type, context_id, workspace_path, use_tools, kwargs
+        fallback_prefix = "I investigated but ran out of iterations before completing."
+        response_needs_fallback = not response.strip() or response.startswith(fallback_prefix)
+        if response_needs_fallback:
+            task_lower = task.lower()
+            is_explicit_investigation = any(
+                kw in task_lower
+                for kw in [
+                    "investigate",
+                    "check",
+                    "debug",
+                    "analyze",
+                    "why",
+                    "error",
+                    "fail",
+                ]
+            )
+            if is_explicit_investigation:
+                namespace = os.environ.get("VIBETEAM_NAMESPACE") or DEFAULT_NAMESPACE
+                response = _build_investigation_fallback(task, [], namespace)
 
-        return AzureLLM(
-            model=model_name,
-            api_key=self.config.llm.api_key,
-            base_url=self.config.llm.api_base,
-            api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
-            max_output_tokens=4096,
-            # Reduce reasoning overhead for faster responses in benchmark scenarios
-            reasoning_effort="medium",
-            extended_thinking_budget=10000,
-            timeout=300,  # 5 min per LLM call — prevents infinite hangs
-            num_retries=3,  # Retry transient failures (overall timeout is the safety net)
-        )
-
-    def _create_agent(self, llm: LLM, use_tools: bool = True) -> Agent:
-        """Create Agent with LLM and optionally tools.
-
-        Args:
-            llm: The LLM instance to use
-            use_tools: If True, include TerminalTool and FileEditorTool.
-                      If False, create agent without tools for direct responses.
-        """
-        tools = []
-        if use_tools:
-            tools = [
-                Tool(name=TerminalTool.name),
-                Tool(name=FileEditorTool.name),
+        task_lower = task.lower()
+        if any(
+            kw in task_lower
+            for kw in [
+                "gmail",
+                "inbox",
+                "sentry issues",
+                "stripe",
+                "webhook",
             ]
+        ):
+            response = re.sub(
+                r"[@/](ProductManager|MarketingManager|SupportEngineer|ReleaseEngineer|SoftwareEngineer)\b",
+                r"\1",
+                response,
+                flags=re.IGNORECASE,
+            )
 
-        # Load agent context from AGENTS.md hierarchy
-        # Falls back to hardcoded context if files not found
-        agent_context = compose_agent_context(
-            "support_engineer", fallback_context=SUPPORT_ENGINEER_CONTEXT_FALLBACK
+        pr_requested = _task_mentions_pr(task_lower)
+        is_notification = any(
+            kw in task_lower
+            for kw in [
+                "notify",
+                "announce",
+                "tell the team",
+                "tell the customer",
+                "confirm to",
+            ]
         )
+        is_explicit_investigation = any(
+            kw in task_lower
+            for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
+        )
+        if is_notification and not is_explicit_investigation:
+            response = build_notification_message(task)
 
-        return Agent(
-            llm=llm,
-            tools=tools,
-            condenser=build_condenser(llm),
-            # Use our custom template that renders agent_context into the system prompt.
-            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
-            system_prompt_filename=get_prompt_path(),
-            system_prompt_kwargs={
-                "agent_context": agent_context,
-            },
-        )
+        if pr_requested and not re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
+            response = _build_pr_handoff_response(task)
+
+        if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
+            issue_ids = _extract_sentry_issue_ids(task)
+            pr_urls = _extract_pr_urls(task)
+            pr_url = pr_urls[0] if pr_urls else "PR link not found"
+            if issue_ids:
+                try:
+                    client = SentryClient(timeout=10.0)
+                    closed_id = issue_ids[0]
+                    client.resolve_issue(closed_id)
+                    response = f"Closed Sentry issue {closed_id}. PR: {pr_url}."
+                except Exception as exc:
+                    response = f"Sentry: failed to close issue ({exc}). PR: {pr_url}."
+
+        return response
 
     def run(
         self,
@@ -754,236 +775,12 @@ class OpenHandsSupportEngineer:
         use_tools: bool = True,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """
-        Run a task with the Support Engineer agent.
-
-        Args:
-            task: The task description
-            context_type: Type of context (issue, pr, slack, ephemeral)
-            context_id: ID for the context
-            workspace: Working directory for the agent
-            use_tools: If True, enable TerminalTool and FileEditorTool for agentic exploration.
-                      If False, disable tools for direct LLM responses (faster for analysis tasks).
-
-        Returns:
-            dict with response, session_key, and metadata
-        """
-        import uuid
-
-        if context_id is None:
-            context_id = str(uuid.uuid4())[:8]
-
-        session = get_or_create_session(
-            framework="openhands",
-            role="support_engineer",
+        return super().run(
+            task=task,
             context_type=context_type,
             context_id=context_id,
-        )
-
-        llm = self._create_llm()
-        agent = self._create_agent(llm, use_tools=use_tools)
-
-        # Use provided workspace or create temporary one
-        temp_dir = None
-        if not workspace:
-            temp_dir = tempfile.TemporaryDirectory()
-            workspace_path = temp_dir.name
-        else:
-            workspace_path = workspace
-
-        try:
-            # Build callbacks list for progress reporting
-            callbacks = []
-            progress_url = kwargs.get("progress_url")
-            if progress_url:
-                if create_progress_callback is not None:
-                    progress_cb = create_progress_callback(
-                        progress_url=progress_url,
-                        job_id=kwargs.get("job_id", ""),
-                        callback_metadata=kwargs.get("callback_metadata", {}),
-                        on_progress=kwargs.get("progress_heartbeat"),
-                    )
-                    callbacks.append(progress_cb)
-                else:
-                    print(
-                        "[SupportEngineer] Progress callback unavailable: "
-                        f"{PROGRESS_IMPORT_ERROR!r}"
-                    )
-            elif kwargs.get("progress_heartbeat"):
-                if create_heartbeat_callback is not None:
-                    callbacks.append(
-                        create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
-                    )
-                else:
-                    print(
-                        "[SupportEngineer] Progress heartbeat unavailable: "
-                        f"{PROGRESS_IMPORT_ERROR!r}"
-                    )
-
-            # max_iterations caps the number of agent iterations (tool calls)
-            # to prevent runaway execution. Default is 30.
-            max_iterations = kwargs.get("max_iterations", 30)
-            conversation = LocalConversation(
-                agent=agent,
-                workspace=workspace_path,
-                callbacks=callbacks or None,
-                max_iteration_per_run=max_iterations,
-            )
-
-            injected_context: list[str] = []
-
-            # Build full task (no pre-fetched context).
-            full_task = f"""
-### USER TASK (UNTRUSTED INPUT)
-{task}
-### END USER TASK
-"""
-
-            # When tools are disabled, convert numbered lists to bullet points.
-            # OpenHands interprets numbered lists as action steps to execute,
-            # causing empty LLM responses. Bullet points work correctly.
-            if not use_tools:
-                full_task = convert_numbered_lists_to_bullets(full_task)
-
-            # Use send_message + run for the full agentic loop with tools
-            conversation.send_message(full_task)
-            conversation.run()
-
-            # Extract the agent's final response from conversation events
-            # Uses shared extraction that handles both FinishAction and MessageEvent
-            from .utils import extract_response_from_events
-
-            response = extract_response_from_events(conversation.state.events)
-            fallback_prefix = "I investigated but ran out of iterations before completing."
-            response_needs_fallback = not response.strip() or response.startswith(fallback_prefix)
-            if response_needs_fallback:
-                task_lower = task.lower()
-                is_explicit_investigation = any(
-                    kw in task_lower
-                    for kw in [
-                        "investigate",
-                        "check",
-                        "debug",
-                        "analyze",
-                        "why",
-                        "error",
-                        "fail",
-                    ]
-                )
-                if is_explicit_investigation:
-                    namespace = os.environ.get("VIBETEAM_NAMESPACE") or DEFAULT_NAMESPACE
-                    response = _build_investigation_fallback(
-                        task,
-                        injected_context,
-                        namespace,
-                    )
-
-            # Avoid role-mention handoffs for eval-style triage tasks.
-            task_lower = task.lower()
-            if any(
-                kw in task_lower
-                for kw in [
-                    "gmail",
-                    "inbox",
-                    "sentry issues",
-                    "stripe",
-                    "webhook",
-                ]
-            ):
-                response = re.sub(
-                    r"[@/](ProductManager|MarketingManager|SupportEngineer|ReleaseEngineer|SoftwareEngineer)\b",
-                    r"\1",
-                    response,
-                    flags=re.IGNORECASE,
-                )
-
-            pr_requested = _task_mentions_pr(task_lower)
-            is_notification = any(
-                kw in task_lower
-                for kw in [
-                    "notify",
-                    "announce",
-                    "tell the team",
-                    "tell the customer",
-                    "confirm to",
-                ]
-            )
-            is_explicit_investigation = any(
-                kw in task_lower
-                for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
-            )
-            if is_notification and not is_explicit_investigation:
-                response = build_notification_message(task)
-
-            if pr_requested and not re.search(
-                r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE
-            ):
-                # Keep PR request responses short and focused on a single issue + handoff.
-                response = _build_pr_handoff_response(task)
-
-            # Auto-close Sentry issue when a PR link is present in the task.
-            if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
-                issue_ids = _extract_sentry_issue_ids(task)
-                pr_urls = _extract_pr_urls(task)
-                pr_url = pr_urls[0] if pr_urls else "PR link not found"
-                if issue_ids:
-                    try:
-                        client = SentryClient(timeout=10.0)
-                        closed_id = issue_ids[0]
-                        client.resolve_issue(closed_id)
-                        response = f"Closed Sentry issue {closed_id}. PR: {pr_url}."
-                    except Exception as exc:
-                        response = f"Sentry: failed to close issue ({exc}). PR: {pr_url}."
-
-            session.add_message("user", task)
-            session.add_message("assistant", response)
-            get_session_store().save(session)
-
-            return {
-                "response": response,
-                "session_key": session.key,
-                "session_id": session.session_id,
-                "framework": "openhands",
-                "agent": "support_engineer",
-                "model": self.config.llm.model or "gpt-5.2",
-            }
-
-        finally:
-            if temp_dir:
-                try:
-                    conversation.close()
-                except Exception:
-                    pass
-                temp_dir.cleanup()
-
-    async def run_async(
-        self,
-        task: str,
-        context_type: str = "ephemeral",
-        context_id: str | None = None,
-        workspace: str | None = None,
-        use_tools: bool = True,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """Async version of run.
-
-        Args:
-            task: The task description
-            context_type: Type of context (issue, pr, slack, ephemeral)
-            context_id: ID for the context
-            workspace: Working directory for the agent
-            use_tools: If True, enable tools for agentic exploration.
-                      If False, disable tools for direct LLM responses.
-        """
-        import asyncio
-
-        return await asyncio.to_thread(
-            self.run,
-            task,
-            context_type,
-            context_id,
-            workspace,
-            use_tools,
+            workspace=workspace,
+            use_tools=use_tools,
             **kwargs,
         )
 

@@ -22,6 +22,17 @@ PROMPTS_DIR = os.path.join(
     "prompts",
 )
 TEMPLATE_PATH = os.path.join(PROMPTS_DIR, "agent_system.j2")
+OPENHANDS_DIR = os.path.join(
+    os.path.dirname(__file__),
+    os.pardir,
+    "agent_service",
+    "openhands",
+)
+ROLE_BASE_AGENTS = {
+    "release_engineer.py",
+    "software_engineer.py",
+    "support_engineer.py",
+}
 
 
 class TestTemplateExists:
@@ -78,36 +89,31 @@ class TestAgentPromptFilenameConstruction:
         "product_manager.py",
     ]
 
+    @staticmethod
+    def _read_openhands_source(filename: str) -> str:
+        with open(os.path.join(OPENHANDS_DIR, filename)) as f:
+            return f.read()
+
     @pytest.mark.parametrize("agent_file", AGENT_FILES)
     def test_agent_has_system_prompt_filename(self, agent_file: str):
-        """Each agent must set system_prompt_filename in _create_agent."""
-        filepath = os.path.join(
-            os.path.dirname(__file__),
-            os.pardir,
-            "agent_service",
-            "openhands",
-            agent_file,
-        )
-        with open(filepath) as f:
-            content = f.read()
-
-        assert "system_prompt_filename" in content, (
-            f"{agent_file} does not set system_prompt_filename"
-        )
+        """Agents may set system prompt config directly or via shared role base."""
+        content = self._read_openhands_source(agent_file)
+        if agent_file in ROLE_BASE_AGENTS:
+            role_base = self._read_openhands_source("role_agent.py")
+            assert "OpenHandsRoleAgent" in content
+            assert "system_prompt_filename" in role_base
+            return
+        assert "system_prompt_filename" in content, f"{agent_file} does not set system_prompt_filename"
 
     @pytest.mark.parametrize("agent_file", AGENT_FILES)
     def test_agent_uses_correct_template_path(self, agent_file: str):
-        """Each agent must reference prompts/agent_system.j2."""
-        filepath = os.path.join(
-            os.path.dirname(__file__),
-            os.pardir,
-            "agent_service",
-            "openhands",
-            agent_file,
-        )
-        with open(filepath) as f:
-            content = f.read()
-
+        """Agents may reference get_prompt_path directly or through shared role base."""
+        content = self._read_openhands_source(agent_file)
+        if agent_file in ROLE_BASE_AGENTS:
+            role_base = self._read_openhands_source("role_agent.py")
+            assert "OpenHandsRoleAgent" in content
+            assert "get_prompt_path" in role_base
+            return
         assert "get_prompt_path" in content, (
             f"{agent_file} should use get_prompt_path() from utils for git-sync compatible path resolution"
         )
@@ -128,16 +134,14 @@ class TestAgentPromptFilenameConstruction:
 
     @pytest.mark.parametrize("agent_file", AGENT_FILES)
     def test_agent_has_system_prompt_kwargs(self, agent_file: str):
-        """Each agent must also set system_prompt_kwargs with agent_context."""
-        filepath = os.path.join(
-            os.path.dirname(__file__),
-            os.pardir,
-            "agent_service",
-            "openhands",
-            agent_file,
-        )
-        with open(filepath) as f:
-            content = f.read()
+        """Agents may set prompt kwargs directly or inherit them from shared base."""
+        content = self._read_openhands_source(agent_file)
+        if agent_file in ROLE_BASE_AGENTS:
+            role_base = self._read_openhands_source("role_agent.py")
+            assert "OpenHandsRoleAgent" in content
+            assert "system_prompt_kwargs" in role_base
+            assert '"agent_context"' in role_base
+            return
 
         assert "system_prompt_kwargs" in content, f"{agent_file} does not set system_prompt_kwargs"
         assert '"agent_context"' in content, (
@@ -572,6 +576,11 @@ class TestSoftwareEngineerIterationBudget:
             'SOFTWARE_ENGINEER_CONTEXT = """',
         )
 
+    @staticmethod
+    def _read_role_agent_source() -> str:
+        with open(os.path.join(OPENHANDS_DIR, "role_agent.py")) as f:
+            return f.read()
+
     def test_has_final_reminder_section(self):
         """Prompt must have a FINAL REMINDER section near the end."""
         content = self._read_swe_context()
@@ -655,9 +664,7 @@ class TestSoftwareEngineerIterationBudget:
 
     def test_no_explicit_max_iteration_per_run(self):
         """max_iteration_per_run should be set via kwargs, not hardcoded in the source."""
-        content = self._read_swe_context()
-        # The agent should read max_iterations from kwargs and pass to LocalConversation.
-        # It should NOT hardcode a specific value — the gateway controls the limit.
+        content = self._read_role_agent_source()
         assert "max_iterations" in content, (
             "SWE agent must read max_iterations from kwargs and pass to LocalConversation. "
             "This prevents runaway execution when asyncio.wait_for timeout cannot kill the thread."
@@ -679,38 +686,20 @@ class TestSoftwareEngineerIterationBudget:
         )
 
     def test_other_agents_no_explicit_max_iteration(self):
-        """SupportEngineer and ReleaseEngineer must use max_iterations from kwargs."""
-        # SupportEngineer — reads max_iterations from kwargs, passes to LocalConversation
-        se_filepath = os.path.join(
-            os.path.dirname(__file__),
-            os.pardir,
-            "agent_service",
-            "openhands",
-            "support_engineer.py",
-        )
-        with open(se_filepath) as f:
-            se_content = f.read()
-        assert "max_iterations" in se_content, (
-            "support_engineer.py must read max_iterations from kwargs. "
+        """Role agents must inherit max_iterations handling from shared base."""
+        role_base = self._read_role_agent_source()
+        assert "max_iterations" in role_base, (
+            "role_agent.py must read max_iterations from kwargs. "
             "asyncio.wait_for timeout cannot kill the agent thread; "
             "max_iteration_per_run is the real safety net."
         )
 
-        # ReleaseEngineer — reads max_iterations from kwargs, passes to LocalConversation
-        re_filepath = os.path.join(
-            os.path.dirname(__file__),
-            os.pardir,
-            "agent_service",
-            "openhands",
-            "release_engineer.py",
-        )
-        with open(re_filepath) as f:
+        with open(os.path.join(OPENHANDS_DIR, "support_engineer.py")) as f:
+            se_content = f.read()
+        with open(os.path.join(OPENHANDS_DIR, "release_engineer.py")) as f:
             re_content = f.read()
-        assert "max_iterations" in re_content, (
-            "release_engineer.py must read max_iterations from kwargs. "
-            "asyncio.wait_for timeout cannot kill the agent thread; "
-            "max_iteration_per_run is the real safety net."
-        )
+        assert "OpenHandsRoleAgent" in se_content
+        assert "OpenHandsRoleAgent" in re_content
 
     def test_has_forbidden_actions_section(self):
         """Prompt must have a FORBIDDEN ACTIONS section to prevent sequential file reading."""
@@ -848,29 +837,29 @@ class TestSoftwareEngineerIterationBudget:
         )
 
     def test_inject_warning_function_exists(self):
-        """_inject_warning function must exist at module level."""
-        content = self._read_swe_context()
-        assert "def _inject_warning(" in content, (
-            "_inject_warning function must be defined to inject warnings via send_message()"
+        """Shared role base must define warning injection helper."""
+        content = self._read_role_agent_source()
+        assert "def _inject_iteration_warning(" in content, (
+            "role_agent.py must define warning injection helper via send_message()"
         )
 
     def test_inject_warning_uses_send_message(self):
-        """_inject_warning must use conversation.send_message() to inject warnings."""
-        content = self._read_swe_context()
-        func_start = content.find("def _inject_warning(")
+        """Warning injection helper must use conversation.send_message()."""
+        content = self._read_role_agent_source()
+        func_start = content.find("def _inject_iteration_warning(")
         assert func_start != -1
         # Find next def at module level
-        next_def = content.find("\ndef ", func_start + 10)
+        next_def = content.find("\n    def ", func_start + 10)
         if next_def == -1:
             next_def = content.find("\nclass ", func_start + 10)
         func_body = content[func_start:next_def] if next_def != -1 else content[func_start:]
         assert "send_message" in func_body, (
-            "_inject_warning must call conversation.send_message() to inject warnings"
+            "_inject_iteration_warning must call conversation.send_message() to inject warnings"
         )
 
     def test_run_passes_callbacks_to_local_conversation(self):
-        """run() must pass callbacks=[_count_iterations] to LocalConversation."""
-        content = self._read_swe_context()
+        """Shared run() must pass callbacks to LocalConversation."""
+        content = self._read_role_agent_source()
         run_start = content.find("def run(")
         assert run_start != -1
         next_def = content.find("\n    def ", run_start + 10)
@@ -879,20 +868,21 @@ class TestSoftwareEngineerIterationBudget:
         assert "callbacks=" in run_body, "run() must pass callbacks parameter to LocalConversation"
 
     def test_run_has_iteration_counter(self):
-        """run() must create an iteration counter for the callback closure."""
-        content = self._read_swe_context()
-        run_start = content.find("def run(")
-        assert run_start != -1
-        next_def = content.find("\n    def ", run_start + 10)
-        run_body = content[run_start:next_def] if next_def != -1 else content[run_start:]
-
-        assert "iteration_count" in run_body, (
-            "run() must have an iteration counter for the callback"
+        """Shared iteration callback builder must maintain an iteration counter."""
+        content = self._read_role_agent_source()
+        callback_start = content.find("def _build_iteration_callbacks(")
+        assert callback_start != -1
+        next_def = content.find("\n    def ", callback_start + 10)
+        callback_body = (
+            content[callback_start:next_def] if next_def != -1 else content[callback_start:]
+        )
+        assert "iteration_count" in callback_body, (
+            "_build_iteration_callbacks() must have an iteration counter for callbacks"
         )
 
     def test_threading_import_exists(self):
         """threading module must be imported for background warning injection."""
-        content = self._read_swe_context()
+        content = self._read_role_agent_source()
         assert "import threading" in content, (
             "threading must be imported for spawning background warning threads"
         )
@@ -927,13 +917,14 @@ class TestSoftwareEngineerIterationBudget:
 
     def test_callback_spawns_background_thread(self):
         """The iteration callback must spawn a background thread for warning injection."""
-        content = self._read_swe_context()
-        run_start = content.find("def run(")
-        assert run_start != -1
-        next_def = content.find("\n    def ", run_start + 10)
-        run_body = content[run_start:next_def] if next_def != -1 else content[run_start:]
-
-        assert "threading.Thread" in run_body, (
+        content = self._read_role_agent_source()
+        callback_start = content.find("def _build_iteration_callbacks(")
+        assert callback_start != -1
+        next_def = content.find("\n    def ", callback_start + 10)
+        callback_body = (
+            content[callback_start:next_def] if next_def != -1 else content[callback_start:]
+        )
+        assert "threading.Thread" in callback_body, (
             "Callback must spawn a threading.Thread to call _inject_warning. "
             "send_message() acquires the state lock, so it must run in a separate thread."
         )
@@ -1043,8 +1034,17 @@ class TestAzureLLMConsolidation:
 
     @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
     def test_agent_imports_from_shared_llm(self, agent_file: str):
-        """Every agent must import AzureLLM from agent_service.shared.llm."""
+        """Agents may import AzureLLM directly or through the shared role base."""
         content = self._read_agent(agent_file)
+        if agent_file in ROLE_BASE_AGENTS:
+            role_base = self._read_agent("role_agent.py")
+            assert "OpenHandsRoleAgent" in content
+            assert "from agent_service.shared.llm import" in role_base
+            assert (
+                "AzureLLM" in role_base.split("from agent_service.shared.llm import")[1].split("\n")[0]
+            )
+            return
+
         assert "from agent_service.shared.llm import" in content, (
             f"{agent_file} must import from agent_service.shared.llm, "
             f"not define its own AzureLLM or use base LLM"
@@ -1064,11 +1064,13 @@ class TestAzureLLMConsolidation:
 
     @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
     def test_agent_create_llm_returns_azure_llm(self, agent_file: str):
-        """Every agent's _create_llm must return AzureLLM(), not LLM()."""
+        """_create_llm may live in the agent module or shared role base."""
         content = self._read_agent(agent_file)
+        if agent_file in ROLE_BASE_AGENTS:
+            content = self._read_agent("role_agent.py")
         # Find the _create_llm method body
         method_start = content.find("def _create_llm")
-        assert method_start != -1, f"{agent_file} must have a _create_llm method"
+        assert method_start != -1, f"{agent_file} must have access to a _create_llm method"
         # Find the next method or class definition
         next_def = content.find("\n    def ", method_start + 10)
         method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
@@ -1121,22 +1123,17 @@ class TestSoftwareEngineerFileEditorTool:
         )
 
     def test_create_agent_includes_file_editor_tool(self):
-        """_create_agent must include FileEditorTool in the tools list."""
-        content = self._read_swe_source()
-        # Find the _create_agent method
-        method_start = content.find("def _create_agent")
-        assert method_start != -1, "_create_agent method not found"
-        next_def = content.find("\n    def ", method_start + 10)
-        method_body = content[method_start:next_def] if next_def != -1 else content[method_start:]
+        """Shared role base must include FileEditorTool, SWE must force tool usage."""
+        swe_content = self._read_swe_source()
+        with open(os.path.join(OPENHANDS_DIR, "role_agent.py")) as f:
+            role_base = f.read()
 
-        assert "TerminalTool" in method_body, "_create_agent must include TerminalTool"
-        # Check only the tools=[...] portion, not the docstring
-        tools_start = method_body.find("tools=[")
-        assert tools_start != -1, "_create_agent must have a tools=[...] list"
-        tools_end = method_body.find("]", tools_start)
-        tools_section = method_body[tools_start : tools_end + 1]
-        assert "FileEditorTool" in tools_section, (
-            "_create_agent tools list must include FileEditorTool."
+        assert "force_tools = True" in swe_content, "SoftwareEngineer must force tools on"
+        assert "def _build_tools" in role_base
+        assert "TerminalTool" in role_base
+        assert "FileEditorTool" in role_base
+        assert '"tools": self._build_tools(use_tools)' in role_base, (
+            "Role base _create_agent must wire tools from _build_tools"
         )
 
     def test_phase1_mentions_orient_repo(self):

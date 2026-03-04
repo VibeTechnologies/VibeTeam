@@ -16,12 +16,8 @@ Note: OpenHands SDK v1.2.1 uses:
 - LocalConversation: agent, workspace (both required)
 """
 
-import os
-import tempfile
-from typing import Any
 
 from agent_service.config import RELEASE_ENGINEER_CONFIG, AgentConfig
-from agent_service.sessions import get_or_create_session, get_session_store
 from agent_service.shared.kubectl_tools import get_multi_namespace_context
 
 
@@ -30,34 +26,7 @@ def fetch_kubectl_context() -> str:
     return get_multi_namespace_context()
 
 
-# OpenHands imports - will fail gracefully if not installed
-try:
-    from openhands.sdk import Agent, LocalConversation, Tool
-    from openhands.tools.file_editor import FileEditorTool
-    from openhands.tools.terminal import TerminalTool
-
-    OPENHANDS_AVAILABLE = True
-
-except ImportError:
-    OPENHANDS_AVAILABLE = False
-    Agent = None
-    LocalConversation = None
-    Tool = None
-    TerminalTool = None
-    FileEditorTool = None
-
-from agent_service.shared.agents_md_loader import compose_agent_context
-from agent_service.shared.llm import LLM, AzureLLM
-
-PROGRESS_IMPORT_ERROR: Exception | None = None
-try:
-    from .progress import create_heartbeat_callback, create_progress_callback
-except Exception as exc:
-    create_progress_callback = None  # type: ignore[assignment]
-    create_heartbeat_callback = None  # type: ignore[assignment]
-    PROGRESS_IMPORT_ERROR = exc
-
-from .utils import build_condenser, get_prompt_path
+from .role_agent import OpenHandsRoleAgent
 
 # OpenHands uses Jinja2 templates for system prompts.
 # We use agents/openhands/prompts/agent_system.j2 as a custom template
@@ -309,201 +278,19 @@ DO NOT try to use Slack/email tools. Your text response is automatically posted.
 """
 
 
-class OpenHandsReleaseEngineer:
-    """
-    Release Engineer agent using OpenHands SDK.
+class OpenHandsReleaseEngineer(OpenHandsRoleAgent):
+    """Release Engineer configured from AGENTS.md + shared role engine."""
 
-    Uses OpenHands' agentic loop with built-in tools for:
-    - Shell command execution
-    - File editing
-    - Web browsing (optional)
-    """
+    role = "release_engineer"
+    agent_label = "ReleaseEngineer"
+    default_config = RELEASE_ENGINEER_CONFIG
+    fallback_context = RELEASE_ENGINEER_CONTEXT_FALLBACK
+    include_workspace = True
+    force_tools = True
 
-    def __init__(self, config: AgentConfig | None = None):
-        if not OPENHANDS_AVAILABLE:
-            raise ImportError("OpenHands SDK not installed. Run: pip install openhands-ai")
-
-        self.config = config or RELEASE_ENGINEER_CONFIG
-
-    def _create_llm(self) -> LLM:
-        """Create LLM with Azure configuration."""
-        model_name = self.config.llm.model or "gpt-5.2"
-        # OpenHands uses litellm format: azure/<deployment>
-        if not model_name.startswith("azure/"):
-            model_name = f"azure/{model_name}"
-
-        return AzureLLM(
-            model=model_name,
-            api_key=self.config.llm.api_key,
-            base_url=self.config.llm.api_base,
-            api_version=os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
-            max_output_tokens=4096,  # Critical for Azure GPT-4 models
-            timeout=300,  # 5 min per LLM call — prevents infinite hangs
-            num_retries=3,  # Retry transient failures (overall timeout is the safety net)
-        )
-
-    def _create_agent(self, llm: LLM) -> Agent:
-        """Create Agent with LLM and tools."""
-        # Load agent context from AGENTS.md hierarchy
-        # Falls back to hardcoded context if files not found
-        agent_context = compose_agent_context(
-            "release_engineer", fallback_context=RELEASE_ENGINEER_CONTEXT_FALLBACK
-        )
-
-        return Agent(
-            llm=llm,
-            tools=[
-                Tool(name=TerminalTool.name),
-                Tool(name=FileEditorTool.name),
-            ],
-            condenser=build_condenser(llm),
-            # Use our custom template that renders agent_context into the system prompt.
-            # Without this, the default system_prompt.j2 ignores agent_context kwargs.
-            system_prompt_filename=get_prompt_path(),
-            system_prompt_kwargs={
-                "agent_context": agent_context,
-            },
-        )
-
-    def run(
-        self,
-        task: str,
-        context_type: str = "ephemeral",
-        context_id: str | None = None,
-        workspace: str | None = None,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """
-        Run a task with the Release Engineer agent.
-
-        Args:
-            task: The task description
-            context_type: Type of context (issue, pr, slack, ephemeral)
-            context_id: ID for the context (issue number, PR number, etc.)
-            workspace: Working directory for the agent
-
-        Returns:
-            dict with response, session_key, and metadata
-        """
-        import uuid
-
-        if context_id is None:
-            context_id = str(uuid.uuid4())[:8]
-
-        session = get_or_create_session(
-            framework="openhands",
-            role="release_engineer",
-            context_type=context_type,
-            context_id=context_id,
-        )
-
-        llm = self._create_llm()
-        agent = self._create_agent(llm)
-
-        # Use provided workspace or create temporary one
-        temp_dir = None
-        if not workspace:
-            temp_dir = tempfile.TemporaryDirectory()
-            workspace_path = temp_dir.name
-        else:
-            workspace_path = workspace
-
-        try:
-            # Build callbacks list for progress reporting
-            callbacks = []
-            progress_url = kwargs.get("progress_url")
-            if progress_url:
-                if create_progress_callback is not None:
-                    progress_cb = create_progress_callback(
-                        progress_url=progress_url,
-                        job_id=kwargs.get("job_id", ""),
-                        callback_metadata=kwargs.get("callback_metadata", {}),
-                        on_progress=kwargs.get("progress_heartbeat"),
-                    )
-                    callbacks.append(progress_cb)
-                else:
-                    print(
-                        "[ReleaseEngineer] Progress callback unavailable: "
-                        f"{PROGRESS_IMPORT_ERROR!r}"
-                    )
-            elif kwargs.get("progress_heartbeat"):
-                if create_heartbeat_callback is not None:
-                    callbacks.append(
-                        create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
-                    )
-                else:
-                    print(
-                        "[ReleaseEngineer] Progress heartbeat unavailable: "
-                        f"{PROGRESS_IMPORT_ERROR!r}"
-                    )
-
-            # Create local conversation with required workspace
-            # max_iterations caps the number of agent iterations (tool calls)
-            # to prevent runaway execution. Default is 30; health checks use 15.
-            max_iterations = kwargs.get("max_iterations", 30)
-            conversation = LocalConversation(
-                agent=agent,
-                workspace=workspace_path,
-                callbacks=callbacks or None,
-                max_iteration_per_run=max_iterations,
-            )
-
-            # Build full task without pre-fetched context.
-            full_task = f"Task: {task}"
-
-            # Use send_message + run for the full agentic loop with tools
-            conversation.send_message(full_task)
-            conversation.run()
-
-            # Extract the agent's final response from conversation events
-            # Uses shared extraction that handles both FinishAction and MessageEvent
-            from .utils import extract_response_from_events
-
-            response = extract_response_from_events(conversation.state.events)
-
-            # Update session
-            session.add_message("user", task)
-            session.add_message("assistant", response)
-            get_session_store().save(session)
-
-            return {
-                "response": response,
-                "session_key": session.key,
-                "session_id": session.session_id,
-                "framework": "openhands",
-                "agent": "release_engineer",
-                "model": self.config.llm.model or "gpt-5.2",
-                "workspace": workspace_path,
-            }
-
-        finally:
-            # Clean up temp directory if we created one
-            if temp_dir:
-                try:
-                    conversation.close()
-                except Exception:
-                    pass
-                temp_dir.cleanup()
-
-    async def run_async(
-        self,
-        task: str,
-        context_type: str = "ephemeral",
-        context_id: str | None = None,
-        workspace: str | None = None,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """Async version of run."""
-        import asyncio
-
-        return await asyncio.to_thread(
-            self.run,
-            task,
-            context_type,
-            context_id,
-            workspace,
-            **kwargs,
-        )
+    def build_task_prompt(self, task: str, use_tools: bool) -> str:
+        del use_tools
+        return f"Task: {task}"
 
 
 def create_release_engineer(
