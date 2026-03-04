@@ -195,7 +195,7 @@ class TestInvestigationFallback:
             "software_engineer",
             "@SoftwareEngineer issue #449 reports browser extension crashes.",
         )
-        assert result == "conversational"
+        assert result == "software_investigation"
 
     def test_sentry_alert(self):
         result = classify_task_template(

@@ -128,15 +128,22 @@ If you use the `github` tool, the discussion step requires:
 
 ## Cluster Investigation Commands
 
-When investigating production issues, first determine the correct namespace:
+When investigating infra issues, first determine the correct namespace:
 
 | Issue Type | Check Namespace | Why |
 |------------|----------------|-----|
-| Customer API errors, billing, payments | `vibe` (Production) | Customer-facing services run here |
+| "Vibe API Gateway", webhook.team.vibebrowser.app, agent routing, Slack callback issues | `vibeteam` (Internal) | `vibeteam-gateway` and agent services run here |
+| Customer API errors on `api.vibebrowser.app`, billing, payments | `vibe` (Production) | Customer-facing product services run here |
 | Staging/pre-prod issues | `vibe-dev` (Staging) | Staging services run here |
 | Agent infrastructure issues | `vibeteam` (Internal) | VibeTeam agents run here |
 
-**CRITICAL**: Production services (user-portal, stripe-service, litellm, api.vibebrowser.app) are in the `vibe` namespace — NOT `vibeteam`.
+**Namespace fallback rule (MANDATORY):**
+- If your first namespace check returns "namespace not found", immediately retry in `vibeteam` for gateway/agent investigations.
+- Do not stop at "namespace not found" without checking the fallback namespace.
+
+**CRITICAL**:
+- `api.vibebrowser.app` product APIs typically map to `vibe`/`vibe-dev`.
+- "Vibe API Gateway" in internal ops/evals typically refers to `vibeteam-gateway` in `vibeteam`.
 
 ### Production Investigation (`vibe` namespace)
 ```bash
