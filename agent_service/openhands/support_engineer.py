@@ -915,10 +915,7 @@ class OpenHandsSupportEngineer:
                         client = SentryClient(timeout=10.0)
                         closed_id = issue_ids[0]
                         client.resolve_issue(closed_id)
-                        response = (
-                            f"Closed Sentry issue {closed_id}. "
-                            f"PR: {pr_url}."
-                        )
+                        response = f"Closed Sentry issue {closed_id}. PR: {pr_url}."
                     except Exception as exc:
                         response = f"Sentry: failed to close issue ({exc}). PR: {pr_url}."
 

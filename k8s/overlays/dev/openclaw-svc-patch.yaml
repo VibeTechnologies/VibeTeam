@@ -1,14 +1,13 @@
-# Dev patch for vibeteam-gateway with git-sync sidecar
-# Continuously syncs code from GitHub - no pod restart needed for code changes
+# Dev patch for openclaw-svc to run from git-synced repo code
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vibeteam-gateway
-  namespace: vibeteam
+  name: openclaw-svc
 spec:
   template:
     spec:
-      # Init container to do initial clone before main container starts
+      securityContext:
+        fsGroup: 65533
       initContainers:
         - name: git-sync-init
           image: registry.k8s.io/git-sync/git-sync:v4.2.1
@@ -25,10 +24,10 @@ spec:
             runAsUser: 65533
             runAsGroup: 65533
       containers:
-        # Patch the main container to use synced code
-        - name: gateway
+        - name: openclaw
+          image: ghcr.io/vibetechnologies/vibeteam-openhands:dev
+          imagePullPolicy: Always
           workingDir: /code/current
-          command: ["python", "-m", "vibeteam.gateway.server"]
           env:
             - name: PYTHONPATH
               value: "/code/current"
@@ -36,7 +35,6 @@ spec:
             - name: code
               mountPath: /code
               readOnly: true
-        # Git-sync sidecar for continuous updates
         - name: git-sync
           image: registry.k8s.io/git-sync/git-sync:v4.2.1
           args:

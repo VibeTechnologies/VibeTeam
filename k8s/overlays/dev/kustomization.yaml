@@ -11,6 +11,7 @@ resources:
 # Strategic merge patches for dev mode
 patches:
   - path: openhands-svc-patch.yaml
+  - path: openclaw-svc-patch.yaml
   - path: gateway-patch.yaml
   - path: agents-config-patch.yaml
 

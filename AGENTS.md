@@ -1,5 +1,14 @@
 You are working on AI agentic team. Agent are implemented on OpenHands that runs as a service that host all the agents sessions. Gateways is used for integration with Slack. DeepEval is used to evaluate agent sessions. Use
 
+## Kubernetes Targeting Policy
+
+- Authoritative deploy/test guide: `docs/k8s.md`
+- Use AKS kubeconfig `~/.kube/aks-1` (context `openclaw-aks`) only.
+- Use the production namespace `vibeteam` for live Slack-driven traffic.
+- Use `vibeteam` as the only active namespace for deploys and Slack-triggered evals.
+- Do not deploy to any separate cluster.
+- One Slack app cannot fan out events to multiple namespaces simultaneously; use separate Slack apps/endpoints per environment or route through a dedicated ingress proxy.
+
 ## Testing Expectations
 
 Run unit tests and at least one Slack eval when changes affect agent behavior, routing, tools, or evaluation criteria.
@@ -79,7 +88,7 @@ uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribut
 uv run python scripts/eval_slack_e2e.py --list-scenarios
 ```
 
-**Note:** Slack evals run against the dev environment. Unless explicitly requested, it is acceptable to skip evals/E2E tests and report: “No. I did not run evals or E2E tests.” This should not be treated as an issue.
+**Note:** Slack evals run against the `vibeteam` deployment on `aks-1`. Unless explicitly requested, it is acceptable to skip evals/E2E tests and report: “No. I did not run evals or E2E tests.” This should not be treated as an issue.
 
 ## GitHub App Attribution
 
@@ -183,6 +192,7 @@ Before running VibeTeam agents or after infrastructure changes, verify system re
 
 - **[docs/requirements.md](docs/requirements.md)** - System requirements, agent roles, and responsibilities
 - **[docs/design.md](docs/design.md)** - Architecture, routing logic, and design decisions
+- **[docs/k8s.md](docs/k8s.md)** - Authoritative cluster, namespace, deploy, and test workflow
 
 ## Codebase Map
 

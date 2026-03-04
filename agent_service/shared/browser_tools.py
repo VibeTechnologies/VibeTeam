@@ -22,7 +22,8 @@ Usage:
 
 import asyncio
 import os
-from typing import Any
+from collections.abc import Awaitable
+from typing import Any, TypeVar
 from urllib.parse import quote_plus
 
 # Check for playwright availability
@@ -40,16 +41,28 @@ except ImportError:
 # Global browser instance for reuse
 _browser_instance: Browser | None = None
 _playwright_instance = None
+_browser_loop: asyncio.AbstractEventLoop | None = None
+_T = TypeVar("_T")
 
 
 async def _get_browser() -> Browser:
     """Get or create a browser instance."""
-    global _browser_instance, _playwright_instance
+    global _browser_instance, _playwright_instance, _browser_loop
 
     if not PLAYWRIGHT_AVAILABLE:
         raise ImportError(
             "Playwright not installed. Run: pip install playwright && playwright install chromium"
         )
+
+    current_loop = asyncio.get_running_loop()
+
+    # Sync wrappers use asyncio.run(), which creates a fresh event loop per call.
+    # If cached browser handles were created on a previous loop, drop those
+    # references to avoid cross-loop future errors.
+    if _browser_instance is not None and _browser_loop is not current_loop:
+        _browser_instance = None
+        _playwright_instance = None
+        _browser_loop = None
 
     if _browser_instance is None:
         _playwright_instance = await async_playwright().start()
@@ -57,21 +70,38 @@ async def _get_browser() -> Browser:
             headless=True,
             args=["--no-sandbox", "--disable-setuid-sandbox"],
         )
+        _browser_loop = current_loop
 
     return _browser_instance
 
 
 async def _cleanup_browser():
     """Clean up browser resources."""
-    global _browser_instance, _playwright_instance
+    global _browser_instance, _playwright_instance, _browser_loop
 
-    if _browser_instance:
-        await _browser_instance.close()
+    if not PLAYWRIGHT_AVAILABLE:
+        return
+
+    owning_loop = _browser_loop
+    current_loop = asyncio.get_running_loop()
+
+    try:
+        if _browser_instance and owning_loop is current_loop:
+            await _browser_instance.close()
+        if _playwright_instance and owning_loop is current_loop:
+            await _playwright_instance.stop()
+    finally:
         _browser_instance = None
-
-    if _playwright_instance:
-        await _playwright_instance.stop()
         _playwright_instance = None
+        _browser_loop = None
+
+
+async def _run_sync_with_browser_cleanup(coro: Awaitable[_T]) -> _T:
+    """Run a coroutine and ensure browser resources are cleaned up in that loop."""
+    try:
+        return await coro
+    finally:
+        await _cleanup_browser()
 
 
 async def fetch_webpage(url: str, timeout_ms: int = 30000) -> str:
@@ -201,7 +231,7 @@ async def _fetch_with_urllib(url: str) -> str:
 
 def fetch_webpage_sync(url: str, timeout_ms: int = 30000) -> str:
     """Synchronous version of fetch_webpage for CrewAI tools."""
-    return asyncio.run(fetch_webpage(url, timeout_ms))
+    return asyncio.run(_run_sync_with_browser_cleanup(fetch_webpage(url, timeout_ms)))
 
 
 async def web_search(query: str, num_results: int = 5) -> str:
@@ -279,7 +309,7 @@ For now, please use your knowledge to provide information about: {query}
 
 def web_search_sync(query: str, num_results: int = 5) -> str:
     """Synchronous version of web_search for CrewAI tools."""
-    return asyncio.run(web_search(query, num_results))
+    return asyncio.run(_run_sync_with_browser_cleanup(web_search(query, num_results)))
 
 
 async def take_screenshot(url: str, full_page: bool = False) -> dict[str, Any]:
@@ -343,7 +373,7 @@ async def take_screenshot(url: str, full_page: bool = False) -> dict[str, Any]:
 
 def take_screenshot_sync(url: str, full_page: bool = False) -> dict[str, Any]:
     """Synchronous version of take_screenshot."""
-    return asyncio.run(take_screenshot(url, full_page))
+    return asyncio.run(_run_sync_with_browser_cleanup(take_screenshot(url, full_page)))
 
 
 async def extract_links(url: str, filter_pattern: str = "") -> str:
@@ -414,7 +444,7 @@ async def extract_links(url: str, filter_pattern: str = "") -> str:
 
 def extract_links_sync(url: str, filter_pattern: str = "") -> str:
     """Synchronous version of extract_links."""
-    return asyncio.run(extract_links(url, filter_pattern))
+    return asyncio.run(_run_sync_with_browser_cleanup(extract_links(url, filter_pattern)))
 
 
 def get_browser_context(url: str) -> str:
@@ -466,4 +496,4 @@ Please provide your analysis.
 
 def analyze_competitor_page_sync(url: str) -> str:
     """Synchronous version of analyze_competitor_page."""
-    return asyncio.run(analyze_competitor_page(url))
+    return asyncio.run(_run_sync_with_browser_cleanup(analyze_competitor_page(url)))

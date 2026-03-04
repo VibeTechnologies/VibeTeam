@@ -149,7 +149,9 @@ class TestGitHubWebhookRouting:
         assert data["status"] == "accepted"
         assert "release_engineer" in data["message"].lower()
 
-    def test_discussion_created_with_role_mention(self, test_client, github_webhook_secret, monkeypatch):
+    def test_discussion_created_with_role_mention(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
         """Test that discussion body with /RoleName triggers appropriate agent."""
         monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
         monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")

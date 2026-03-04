@@ -41,6 +41,27 @@ spec:
           volumeMounts:
             - name: openclaw-state
               mountPath: /home/node/.openclaw
+        - name: init-openclaw-config
+          image: ghcr.io/openclaw/openclaw:latest
+          command:
+            - sh
+            - -c
+            - |
+              cp /config/openclaw.json /home/node/.openclaw/openclaw.json
+              chmod 0644 /home/node/.openclaw/openclaw.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: openclaw-state
+              mountPath: /home/node/.openclaw
+            - name: openclaw-config
+              mountPath: /config
       containers:
         - name: gateway
           image: ghcr.io/openclaw/openclaw:latest
@@ -75,23 +96,12 @@ spec:
                   key: OPENCLAW_GATEWAY_TOKEN
                   optional: true
             - name: LITELLM_BASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: vibeteam-secrets
-                  key: LITELLM_BASE_URL
-                  optional: true
+              value: http://litellm:4000
             - name: LITELLM_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: vibeteam-secrets
-                  key: LITELLM_API_KEY
-                  optional: true
+              value: local
           volumeMounts:
             - name: openclaw-state
               mountPath: /home/node/.openclaw
-            - name: openclaw-config
-              mountPath: /home/node/.openclaw/openclaw.json
-              subPath: openclaw.json
             - name: openclaw-agent-prompts
               mountPath: /home/node/.openclaw/agents/product-manager/agent/AGENTS.md
               subPath: AGENTS.md

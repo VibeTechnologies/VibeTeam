@@ -24,9 +24,8 @@ def _normalize_private_key(private_key: str) -> str:
     if not private_key:
         return private_key
     normalized = private_key.replace("\\n", "\n")
-    return (
-        normalized.replace("BEGIN_RSA_PRIVATE_KEY", "BEGIN RSA PRIVATE KEY")
-        .replace("END_RSA_PRIVATE_KEY", "END RSA PRIVATE KEY")
+    return normalized.replace("BEGIN_RSA_PRIVATE_KEY", "BEGIN RSA PRIVATE KEY").replace(
+        "END_RSA_PRIVATE_KEY", "END RSA PRIVATE KEY"
     )
 
 
@@ -77,9 +76,7 @@ def get_installation_token_for_role(role: str) -> str | None:
     default_private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY")
     default_installation_id = os.environ.get("GITHUB_APP_INSTALLATION_ID")
     if default_app_id and default_private_key and default_installation_id:
-        return get_installation_token(
-            default_app_id, default_private_key, default_installation_id
-        )
+        return get_installation_token(default_app_id, default_private_key, default_installation_id)
     return None
 
 

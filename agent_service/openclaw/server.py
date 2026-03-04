@@ -12,9 +12,9 @@ import inspect
 import json
 import logging
 import os
+import threading
 import time
 import uuid
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -32,6 +32,7 @@ except Exception:  # Optional for minimal images
     validate_required_integrations = None  # type: ignore[assignment]
 
 if validate_required_integrations is None:
+
     def validate_required_integrations(service_name: str) -> None:  # type: ignore[no-redef]
         missing: list[str] = []
         if not os.environ.get("SENTRY_AUTH_TOKEN"):
@@ -50,6 +51,7 @@ if validate_required_integrations is None:
                 f"[{service_name}] Required integrations not configured:\n- {details}\n"
                 "Service will not start until these are provided."
             )
+
 
 try:
     from agent_service.shared.db import close_db, get_postgres_store, init_db

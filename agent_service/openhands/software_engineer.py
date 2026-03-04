@@ -562,12 +562,9 @@ class OpenHandsSoftwareEngineer:
         try:
             import re
 
-            if (
-                ("github" in task_lower)
-                and (
-                    re.search(r"\bissue\b\s*#?\s*\d+\b", task_lower)
-                    or re.search(r"(?<!#)#\s*\d+\b", task_lower)
-                )
+            if ("github" in task_lower) and (
+                re.search(r"\bissue\b\s*#?\s*\d+\b", task_lower)
+                or re.search(r"(?<!#)#\s*\d+\b", task_lower)
             ):
                 return True
         except Exception:
@@ -705,7 +702,7 @@ class OpenHandsSoftwareEngineer:
                 "      const errorMessage = 'AI_NoOutputGeneratedError: No output generated. Check the stream for errors.';\n"
                 "      console.error(`🤖 ${errorMessage}`);\n"
                 "      response = new AIMessage({\n"
-                "        content: \"I didn't get a response from the model. Please retry your request.\",\n"
+                '        content: "I didn\'t get a response from the model. Please retry your request.",\n'
                 "        additional_kwargs: { app_type: 'error', error: errorMessage }\n"
                 "      });\n"
                 "    }\n\n"
@@ -721,7 +718,9 @@ class OpenHandsSoftwareEngineer:
                 check=True,
                 timeout=30,
             )
-            subprocess.run(["git", "push", "-u", "origin", branch], cwd=repo_dir, check=True, timeout=120)
+            subprocess.run(
+                ["git", "push", "-u", "origin", branch], cwd=repo_dir, check=True, timeout=120
+            )
 
             sentry_urls = self._extract_sentry_urls(task)
             sentry_ref = sentry_urls[0] if sentry_urls else ""
@@ -762,9 +761,7 @@ class OpenHandsSoftwareEngineer:
         except Exception:
             return None
 
-    def _attempt_auto_pr_for_quota(
-        self, task: str, repo: str, workspace_path: str
-    ) -> str | None:
+    def _attempt_auto_pr_for_quota(self, task: str, repo: str, workspace_path: str) -> str | None:
         """Auto PR to treat quota-exceeded errors as retryable in VibeWebAgent."""
         task_lower = task.lower()
         title_lower = self._get_sentry_title_from_task(task).lower()
@@ -782,9 +779,9 @@ class OpenHandsSoftwareEngineer:
         target_rel = os.path.join("lib", "utils", "LLMWithRetry.js")
         target_path = os.path.join(repo_dir, target_rel)
 
+        import re
         import subprocess
         from pathlib import Path
-        import re
 
         try:
             subprocess.run(["gh", "auth", "setup-git"], capture_output=True, text=True, timeout=10)
@@ -843,7 +840,9 @@ class OpenHandsSoftwareEngineer:
                 check=True,
                 timeout=30,
             )
-            subprocess.run(["git", "push", "-u", "origin", branch], cwd=repo_dir, check=True, timeout=120)
+            subprocess.run(
+                ["git", "push", "-u", "origin", branch], cwd=repo_dir, check=True, timeout=120
+            )
 
             sentry_urls = self._extract_sentry_urls(task)
             sentry_ref = sentry_urls[0] if sentry_urls else ""
@@ -903,9 +902,9 @@ class OpenHandsSoftwareEngineer:
         target_rel = os.path.join("services", "subscription", "stripe-service", "server.js")
         target_path = os.path.join(repo_dir, target_rel)
 
+        import re
         import subprocess
         from pathlib import Path
-        import re
 
         try:
             subprocess.run(["gh", "auth", "setup-git"], capture_output=True, text=True, timeout=10)
@@ -948,7 +947,9 @@ class OpenHandsSoftwareEngineer:
             if marker not in content:
                 return None
             content = content.replace(marker, helper + marker)
-            content = content.replace("const userResponse = await fetch(", "const userResponse = await fetchWithRetry(")
+            content = content.replace(
+                "const userResponse = await fetch(", "const userResponse = await fetchWithRetry("
+            )
 
             Path(target_path).write_text(content)
 
@@ -961,7 +962,9 @@ class OpenHandsSoftwareEngineer:
                 check=True,
                 timeout=30,
             )
-            subprocess.run(["git", "push", "-u", "origin", branch], cwd=repo_dir, check=True, timeout=120)
+            subprocess.run(
+                ["git", "push", "-u", "origin", branch], cwd=repo_dir, check=True, timeout=120
+            )
 
             sentry_urls = self._extract_sentry_urls(task)
             sentry_ref = sentry_urls[0] if sentry_urls else ""
@@ -1111,9 +1114,7 @@ class OpenHandsSoftwareEngineer:
                     print(f"[SoftwareEngineer] Progress heartbeat unavailable: {exc}")
                 else:
                     agent_callbacks.append(
-                        create_heartbeat_callback(
-                            on_progress=kwargs.get("progress_heartbeat")
-                        )
+                        create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
                     )
 
             # max_iterations caps the number of agent iterations (tool calls)

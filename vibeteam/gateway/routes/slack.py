@@ -22,10 +22,10 @@ from typing import Any, cast
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from agent_service.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
-from vibeteam.router import Router
 from vibeteam.agents_config import get_slack_handle
+from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
+from vibeteam.router import Router
 from vibeteam.router.models import AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
@@ -157,7 +157,7 @@ def _extract_handoff_snippet(response: str, role_display: str) -> str:
                 break
             return "\n".join(snippet).strip()
     # Fallback: first few lines to keep context minimal.
-    return "\n".join(l.strip() for l in lines[:6] if l.strip())
+    return "\n".join(line.strip() for line in lines[:6] if line.strip())
 
 
 def _extract_sentry_urls(text: str) -> list[str]:
@@ -730,6 +730,9 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         and not is_explicit_investigation
     )
 
+    investigation_roles = {"support_engineer", "release_engineer"}
+    uses_investigation_template = role in investigation_roles
+
     if is_deployment:
         return "deployment"
     elif is_health_check:
@@ -740,8 +743,12 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         # Thread follow-ups get a conversational template unless the user
         # is explicitly asking for a new investigation (e.g., "check the pods")
         return "conversational"
-    else:
+    elif uses_investigation_template:
         return "investigation"
+    else:
+        # Non-ops roles (e.g. product/marketing/software) should not be forced
+        # into the strict incident-investigation prompt by default.
+        return "conversational"
 
 
 def _build_task_prompt(

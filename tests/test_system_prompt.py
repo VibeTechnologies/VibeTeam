@@ -1049,9 +1049,9 @@ class TestAzureLLMConsolidation:
             f"{agent_file} must import from agent_service.shared.llm, "
             f"not define its own AzureLLM or use base LLM"
         )
-        assert "AzureLLM" in content.split("from agent_service.shared.llm import")[1].split("\n")[0], (
-            f"{agent_file} must import AzureLLM from agent_service.shared.llm"
-        )
+        assert (
+            "AzureLLM" in content.split("from agent_service.shared.llm import")[1].split("\n")[0]
+        ), f"{agent_file} must import AzureLLM from agent_service.shared.llm"
 
     @pytest.mark.parametrize("agent_file", ALL_AGENT_FILES)
     def test_agent_does_not_define_own_azure_llm(self, agent_file: str):
@@ -1139,7 +1139,6 @@ class TestSoftwareEngineerFileEditorTool:
             "_create_agent tools list must include FileEditorTool."
         )
 
-
     def test_phase1_mentions_orient_repo(self):
         """Phase 1 workflow should orient the agent in the repo."""
         content = self._read_swe_source()
@@ -1169,6 +1168,4 @@ class TestSoftwareEngineerFileEditorTool:
         ctx_end = content.find('"""', ctx_start + 30)
         ctx = content[ctx_start:ctx_end]
 
-        assert "Avoid full-file reads" in ctx, (
-            "Prompt must tell agent to avoid full-file reads"
-        )
+        assert "Avoid full-file reads" in ctx, "Prompt must tell agent to avoid full-file reads"

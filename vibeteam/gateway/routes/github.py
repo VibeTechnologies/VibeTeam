@@ -23,9 +23,9 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
+from vibeteam.agents_config import get_slack_handle
 from vibeteam.gateway.server import call_agent_service, config
 from vibeteam.router import Router
-from vibeteam.agents_config import get_slack_handle
 from vibeteam.router.models import AgentRole
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,9 @@ async def get_installation_token(role: str | None = None) -> str | None:
     return None
 
 
-async def post_acknowledgment(repo: str, issue_number: int, role: str = "software_engineer") -> None:
+async def post_acknowledgment(
+    repo: str, issue_number: int, role: str = "software_engineer"
+) -> None:
     """Post a comment acknowledging the assignment."""
     token = await get_installation_token(role)
     if not token:
@@ -491,9 +493,7 @@ Discussion: #{discussion_number}
             response = result.get("response", "")
             if response:
                 formatted = f"[{display_name}] {response}"
-                await post_github_discussion_comment(
-                    repo, discussion_number, formatted, role=role
-                )
+                await post_github_discussion_comment(repo, discussion_number, formatted, role=role)
 
                 if handoff_depth < max_handoff_depth:
                     message_router = get_message_router()
@@ -655,7 +655,10 @@ async def handle_github_webhook(
         discussion_user_type = discussion.get("user", {}).get("type", "")
 
         # Ignore bot discussions
-        if discussion_user_type == "Bot" or config.BOT_USERNAME.replace("[bot]", "") in discussion_user:
+        if (
+            discussion_user_type == "Bot"
+            or config.BOT_USERNAME.replace("[bot]", "") in discussion_user
+        ):
             return {"status": "ignored", "reason": "own_comment"}
 
         if discussion_number:
@@ -670,9 +673,17 @@ async def handle_github_webhook(
         role_mentions = message_router.parse_role_mentions(discussion_body)
         if not role_mentions and discussion_body:
             fallback_roles: list[AgentRole] = []
-            for role in ("software_engineer", "support_engineer", "release_engineer", "product_manager", "marketing_manager"):
+            for role in (
+                "software_engineer",
+                "support_engineer",
+                "release_engineer",
+                "product_manager",
+                "marketing_manager",
+            ):
                 handle = get_slack_handle(role) or role.replace("_", " ").title()
-                if handle and re.search(rf"\\b{re.escape(handle)}\\b", discussion_body, re.IGNORECASE):
+                if handle and re.search(
+                    rf"\\b{re.escape(handle)}\\b", discussion_body, re.IGNORECASE
+                ):
                     fallback_roles.append(role)
             if fallback_roles:
                 role_mentions = fallback_roles
@@ -775,9 +786,7 @@ async def handle_github_webhook(
                         discussion_title=discussion_title,
                         role=role,
                         context=(
-                            "Discussion body:\n\n"
-                            f"{discussion_body}\n\n"
-                            f"New comment:\n{comment_body}"
+                            f"Discussion body:\n\n{discussion_body}\n\nNew comment:\n{comment_body}"
                         ),
                     )
                 )
@@ -796,9 +805,7 @@ async def handle_github_webhook(
                     discussion_title=discussion_title,
                     role="software_engineer",
                     context=(
-                        "Discussion body:\n\n"
-                        f"{discussion_body}\n\n"
-                        f"New comment:\n{comment_body}"
+                        f"Discussion body:\n\n{discussion_body}\n\nNew comment:\n{comment_body}"
                     ),
                 )
             )

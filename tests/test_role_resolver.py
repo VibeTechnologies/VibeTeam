@@ -64,11 +64,26 @@ class TestParseRoleMentions:
     @pytest.mark.parametrize(
         "text,expected",
         [
-            (f"@{get_slack_handle('software_engineer') or 'SoftwareEngineer'} please fix this", ["software_engineer"]),
-            (f"@{get_slack_handle('release_engineer') or 'ReleaseEngineer'} deploy v2.1", ["release_engineer"]),
-            (f"@{get_slack_handle('support_engineer') or 'SupportEngineer'} check Sentry", ["support_engineer"]),
-            (f"@{get_slack_handle('product_manager') or 'ProductManager'} prioritize this", ["product_manager"]),
-            (f"@{get_slack_handle('marketing_manager') or 'MarketingManager'} draft announcement", ["marketing_manager"]),
+            (
+                f"@{get_slack_handle('software_engineer') or 'SoftwareEngineer'} please fix this",
+                ["software_engineer"],
+            ),
+            (
+                f"@{get_slack_handle('release_engineer') or 'ReleaseEngineer'} deploy v2.1",
+                ["release_engineer"],
+            ),
+            (
+                f"@{get_slack_handle('support_engineer') or 'SupportEngineer'} check Sentry",
+                ["support_engineer"],
+            ),
+            (
+                f"@{get_slack_handle('product_manager') or 'ProductManager'} prioritize this",
+                ["product_manager"],
+            ),
+            (
+                f"@{get_slack_handle('marketing_manager') or 'MarketingManager'} draft announcement",
+                ["marketing_manager"],
+            ),
         ],
     )
     def test_at_prefix_full_names(self, text, expected):
@@ -92,7 +107,10 @@ class TestParseRoleMentions:
     @pytest.mark.parametrize(
         "text,expected",
         [
-            (f"/{get_slack_handle('software_engineer') or 'SoftwareEngineer'} fix the bug", ["software_engineer"]),
+            (
+                f"/{get_slack_handle('software_engineer') or 'SoftwareEngineer'} fix the bug",
+                ["software_engineer"],
+            ),
             ("/SWE implement this", ["software_engineer"]),
             ("/PM check roadmap", ["product_manager"]),
         ],
@@ -199,11 +217,21 @@ class TestGetDisplayName:
     """Test get_display_name()."""
 
     def test_known_roles(self):
-        assert get_display_name("software_engineer") == (get_slack_handle("software_engineer") or "Software Engineer")
-        assert get_display_name("release_engineer") == (get_slack_handle("release_engineer") or "Release Engineer")
-        assert get_display_name("support_engineer") == (get_slack_handle("support_engineer") or "Support Engineer")
-        assert get_display_name("product_manager") == (get_slack_handle("product_manager") or "Product Manager")
-        assert get_display_name("marketing_manager") == (get_slack_handle("marketing_manager") or "Marketing Manager")
+        assert get_display_name("software_engineer") == (
+            get_slack_handle("software_engineer") or "Software Engineer"
+        )
+        assert get_display_name("release_engineer") == (
+            get_slack_handle("release_engineer") or "Release Engineer"
+        )
+        assert get_display_name("support_engineer") == (
+            get_slack_handle("support_engineer") or "Support Engineer"
+        )
+        assert get_display_name("product_manager") == (
+            get_slack_handle("product_manager") or "Product Manager"
+        )
+        assert get_display_name("marketing_manager") == (
+            get_slack_handle("marketing_manager") or "Marketing Manager"
+        )
 
     def test_fallback_for_unknown(self):
         # Should title-case with underscores replaced

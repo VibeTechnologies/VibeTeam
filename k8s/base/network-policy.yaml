@@ -86,6 +86,9 @@ spec:
         - podSelector:
             matchLabels:
               component: agent-service
+        - podSelector:
+            matchLabels:
+              app: openclaw-gateway
       ports:
         - protocol: TCP
           port: 3000
