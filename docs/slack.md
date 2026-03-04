@@ -13,6 +13,20 @@ This guide covers how to configure the Slack app for VibeTeam, including event s
 - A Slack workspace where you have admin permissions
 - The VibeTeam gateway deployed and reachable via HTTPS (e.g. `https://webhook.team.vibebrowser.app`)
 
+## Multi-Environment Constraint
+
+Slack Event Subscriptions use one Request URL per app. This means one Slack app cannot directly send events to both dev and prod gateways at the same time.
+
+Recommended:
+
+- Prod app -> prod gateway URL
+- Dev app -> dev gateway URL
+
+Alternative (single app):
+
+- Keep app Request URL on prod
+- Run dev validation via `/slack/trigger` against the dev gateway
+
 ## 1. Create the Slack App
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app

@@ -9,6 +9,22 @@ This document is the authoritative source for where VibeTeam is deployed and how
 - Prod namespace: `vibeteam-prod`
 - Do not deploy to any separate production cluster. Use `aks-1` only.
 
+## Slack Topology (Critical)
+
+Slack Event Subscriptions support a single Request URL per app. A single Slack app cannot deliver events to both `vibeteam-dev` and `vibeteam-prod` at the same time unless you add a routing proxy in front.
+
+Recommended setup:
+
+- Use one Slack app for prod, pointing to the prod gateway URL.
+- Use a separate Slack app for dev, pointing to the dev gateway URL.
+- Store each app's token/signing secret in the matching namespace secret.
+
+If you keep one Slack app:
+
+- Point it to prod only.
+- Use `/slack/trigger` for dev evals by targeting the dev gateway directly.
+- Do not expect both namespaces to receive live Slack events simultaneously.
+
 ## Preflight (Mandatory)
 
 Run these checks before any `kubectl apply`:

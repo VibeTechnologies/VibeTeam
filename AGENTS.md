@@ -6,6 +6,7 @@ You are working on AI agentic team. Agent are implemented on OpenHands that runs
 - Use Kubernetes context `aks-1` only.
 - Use namespaces `vibeteam-dev` (dev) and `vibeteam-prod` (prod).
 - Do not deploy to any separate production cluster.
+- One Slack app cannot fan out events to both namespaces simultaneously; use separate Slack apps/endpoints per environment or route through a dedicated ingress proxy.
 
 ## Testing Expectations
 
