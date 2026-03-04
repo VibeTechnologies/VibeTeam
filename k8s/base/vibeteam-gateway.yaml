@@ -142,6 +142,24 @@ spec:
                   name: vibeteam-secrets
                   key: SENTRY_CLIENT_SECRET
                   optional: true
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LANGFUSE_PUBLIC_KEY
+                  optional: true
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LANGFUSE_SECRET_KEY
+                  optional: true
+            - name: LANGFUSE_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: LANGFUSE_BASE_URL
+                  optional: true
             # Async callback configuration
             - name: GATEWAY_URL
               value: "http://vibeteam-gateway:8080"
