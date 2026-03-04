@@ -424,6 +424,92 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "software_engineer_tooling_vibe_dev_health": {
+        "name": "Software Engineer - Tooling Bootstrap + vibe-dev Health Validation",
+        "message": (
+            "@VibeTeam @SoftwareEngineer validate your runtime is ready for infrastructure work. "
+            "If required CLIs are missing, install them (at minimum verify jq is available) "
+            "and report versions. Then validate Kubernetes access with explicit "
+            "`kubectl auth can-i` checks for namespaces vibe-dev and vibeteam. "
+            "After access checks, inspect vibe-dev health (pods, deployments, events) "
+            "and evaluate recent logs for unhealthy workloads if any. Summarize severity "
+            "with evidence."
+        ),
+        "expected_agent": "software_engineer",
+        "timeout": 900,
+        "skip_handoff": True,
+        "evaluation_criteria": {
+            "ToolingBootstrap": (
+                "Did the SoftwareEngineer verify or bootstrap required runtime tooling, "
+                "including jq availability, with concrete evidence? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit tooling check step (versions or command outputs); "
+                "(2) jq availability confirmed (preinstalled or installed during run); "
+                "(3) No vague claims like 'tools are ready' without evidence. "
+                "SCORING: "
+                "Score 0.0-0.3: No tooling verification, or unsupported claims. "
+                "Score 0.3-0.6: Mentions tooling but no concrete evidence. "
+                "Score 0.6-0.8: Concrete tooling evidence including jq. "
+                "Score 0.8-1.0: Clear bootstrap/verification with concise evidence."
+            ),
+            "KubernetesAccess": (
+                "Did the agent prove Kubernetes authorization for required namespaces "
+                "using explicit auth checks? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) `kubectl auth can-i` evidence shown; "
+                "(2) Coverage includes both vibe-dev and vibeteam namespaces; "
+                "(3) Findings clearly state allowed/denied outcomes. "
+                "SCORING: "
+                "Score 0.0-0.3: No auth checks or wrong namespaces. "
+                "Score 0.3-0.6: Partial checks (only one namespace or unclear output). "
+                "Score 0.6-0.8: Both namespaces checked with clear outcomes. "
+                "Score 0.8-1.0: Complete, explicit authorization evidence and interpretation."
+            ),
+            "HealthAndLogs": (
+                "Did the agent evaluate vibe-dev health and logs in an evidence-based way? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Checks pods, deployments, and events in vibe-dev; "
+                "(2) If unhealthy workloads exist, includes relevant recent logs/events; "
+                "(3) If namespace is empty/healthy, explicitly states that and avoids fabrication; "
+                "(4) Severity assessment matches evidence. "
+                "SCORING: "
+                "Score 0.0-0.3: No meaningful health/log evaluation. "
+                "Score 0.3-0.6: Partial checks with weak evidence. "
+                "Score 0.6-0.8: Correct health/log assessment with evidence. "
+                "Score 0.8-1.0: Complete assessment with accurate severity summary."
+            ),
+            "ResponseEfficiency": (
+                "Was the response concise, focused, and non-speculative? "
+                "SCORING: "
+                "Score 0.0-0.3: Rambling, repetitive, or contradictory. "
+                "Score 0.3-0.5: Some redundancy and unclear conclusion. "
+                "Score 0.5-0.7: Reasonably concise with clear conclusion. "
+                "Score 0.7-0.9: Focused and efficient. "
+                "Score 0.9-1.0: Minimal, precise, complete."
+            ),
+        },
+        "evaluation_steps": {
+            "ToolingBootstrap": [
+                "Check for explicit tooling verification steps and command evidence.",
+                "Check that jq availability is explicitly confirmed (installed or present).",
+                "Score <= 0.3 if tooling claims have no concrete evidence.",
+            ],
+            "KubernetesAccess": [
+                "Check for explicit `kubectl auth can-i` checks.",
+                "Require both vibe-dev and vibeteam namespace checks.",
+                "Score <= 0.3 if auth checks are missing or namespaces are wrong.",
+            ],
+            "HealthAndLogs": [
+                "Check that pods/deployments/events were validated in vibe-dev.",
+                "If unhealthy workloads exist, check for recent logs/events evidence.",
+                "If no workloads/issues exist, require explicit statement and no fabricated failures.",
+            ],
+            "ResponseEfficiency": [
+                "Check that the response is concise and directly answers readiness plus health/log status.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "software_engineer_pr_attribution": {
         "name": "Software Engineer - PR Attribution (GitHub App)",
         "message": (
