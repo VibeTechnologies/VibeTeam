@@ -22,10 +22,10 @@ from typing import Any, cast
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from agent_service.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
-from vibeteam.router import Router
 from vibeteam.agents_config import get_slack_handle
+from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
+from vibeteam.router import Router
 from vibeteam.router.models import AgentRole, route_by_keywords
 
 logger = logging.getLogger(__name__)
@@ -157,7 +157,7 @@ def _extract_handoff_snippet(response: str, role_display: str) -> str:
                 break
             return "\n".join(snippet).strip()
     # Fallback: first few lines to keep context minimal.
-    return "\n".join(l.strip() for l in lines[:6] if l.strip())
+    return "\n".join(line.strip() for line in lines[:6] if line.strip())
 
 
 def _extract_sentry_urls(text: str) -> list[str]:

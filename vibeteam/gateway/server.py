@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from vibeteam.agents_config import resolve_framework
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,

@@ -16,8 +16,8 @@ from typing import Any
 
 from agent_service.config import RELEASE_ENGINEER_CONFIG, AgentConfig
 from agent_service.sessions import get_or_create_session, get_session_store
-from agent_service.shared.docs_tools import search_infra_docs
 from agent_service.shared.agents_md_loader import load_shared_instructions
+from agent_service.shared.docs_tools import search_infra_docs
 from agent_service.shared.slack_tools import (
     read_slack_channel,
     read_slack_thread,

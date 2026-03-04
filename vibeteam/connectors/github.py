@@ -159,14 +159,10 @@ class GitHubConnector:
 
         self.app_id = app_id or role_app_id or os.environ.get("GITHUB_APP_ID")
         self.private_key = (
-            private_key
-            or role_private_key
-            or os.environ.get("GITHUB_APP_PRIVATE_KEY")
+            private_key or role_private_key or os.environ.get("GITHUB_APP_PRIVATE_KEY")
         )
         self.installation_id = (
-            installation_id
-            or role_installation_id
-            or os.environ.get("GITHUB_APP_INSTALLATION_ID")
+            installation_id or role_installation_id or os.environ.get("GITHUB_APP_INSTALLATION_ID")
         )
 
         # Token management

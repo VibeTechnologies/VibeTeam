@@ -14,9 +14,9 @@ import os
 import subprocess
 import tempfile
 import time
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

@@ -27,13 +27,13 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from vibeteam.agents_config import get_slack_handle
 from agent_service.shared.role_resolver import (
     ROLE_MENTION_MAP as ROLE_MAP,
 )
 from agent_service.shared.role_resolver import (
     ROLE_PATTERN,
 )
+from vibeteam.agents_config import get_slack_handle
 
 # Import DeepEval if available
 DEEPEVAL_AVAILABLE = False

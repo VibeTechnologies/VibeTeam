@@ -10,9 +10,9 @@ import asyncio
 import contextlib
 import logging
 import os
+import threading
 import time
 import uuid
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -22,8 +22,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent_service.config import AgentConfig
-from agent_service.shared.integration_checks import validate_required_integrations
 from agent_service.shared.db import close_db, get_postgres_store, init_db
+from agent_service.shared.integration_checks import validate_required_integrations
 
 from .team import OpenHandsTeam, create_team
 from .utils import (
@@ -79,9 +79,7 @@ def _disable_prompt_cache_retention() -> None:
     if flag is not None:
         enabled = flag.lower() in {"1", "true", "yes"}
     else:
-        enabled = bool(
-            os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("AZURE_API_BASE")
-        )
+        enabled = bool(os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("AZURE_API_BASE"))
     if not enabled:
         return
 
@@ -135,6 +133,7 @@ def _resolve_token_role(team: OpenHandsTeam, request: RunRequest) -> str | None:
         return team.route_by_keywords(request.task)
     except Exception:
         return None
+
 
 # Concurrency control: limit the number of simultaneous agent executions
 # to prevent resource exhaustion when multiple jobs arrive concurrently.

@@ -229,17 +229,17 @@ class OpenHandsMarketingManager:
             "Access note: Reddit is blocked via CDP in this environment (block page).\n\n"
             "Subreddits, page titles, rules, and threads (best-effort while blocked):\n"
             "1) r/productivity\n"
-            "- Page title: \"You've been blocked\"\n"
+            '- Page title: "You\'ve been blocked"\n'
             "- Rules note: Avoid direct self-promo; contribute value first; disclose affiliation if mentioned.\n"
-            "- Thread: \"How do you turn messy web research into actionable notes?\"\n"
+            '- Thread: "How do you turn messy web research into actionable notes?"\n'
             "2) r/webdev\n"
-            "- Page title: \"You've been blocked\"\n"
+            '- Page title: "You\'ve been blocked"\n'
             "- Rules note: No spam or self-promo; keep comments technical and on-topic.\n"
-            "- Thread: \"Tips for automating repetitive web UI workflows?\"\n"
+            '- Thread: "Tips for automating repetitive web UI workflows?"\n'
             "3) r/automation\n"
-            "- Page title: \"You've been blocked\"\n"
+            '- Page title: "You\'ve been blocked"\n'
             "- Rules note: Tools are okay if framed as a workflow; avoid salesy language.\n"
-            "- Thread: \"What’s your lightest-weight setup for browser task automation?\"\n\n"
+            '- Thread: "What’s your lightest-weight setup for browser task automation?"\n\n'
             "Drafts (value-first; only ONE mentions vibebrowser.app):\n"
             "Comment draft #1 (r/productivity thread):\n"
             "“A pattern that helped me is separating capture from reading. When you find a page, "

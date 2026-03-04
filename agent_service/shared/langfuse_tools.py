@@ -482,4 +482,3 @@ def get_langfuse_context(hours: int = 6) -> str:
 
     except Exception as e:
         return f"## LLM Observability Status\n\nError loading Langfuse data: {e}"
-

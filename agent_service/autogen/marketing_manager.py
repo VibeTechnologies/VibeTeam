@@ -14,6 +14,7 @@ from typing import Any
 
 from agent_service.config import MARKETING_MANAGER_CONFIG, AgentConfig
 from agent_service.sessions import get_or_create_session, get_session_store
+from agent_service.shared.agents_md_loader import load_shared_instructions
 
 # Import shared browser tools
 from agent_service.shared.browser_tools import (
@@ -23,7 +24,6 @@ from agent_service.shared.browser_tools import (
     take_screenshot,
     web_search,
 )
-from agent_service.shared.agents_md_loader import load_shared_instructions
 from agent_service.shared.slack_tools import (
     send_message,
 )

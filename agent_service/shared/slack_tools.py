@@ -649,7 +649,7 @@ def get_slack_handoff_instructions() -> str:
         "## TEAM COLLABORATION\n\n"
         "When you need help from another team member, @mention them naturally in your response:\n"
         f"{handles_text}\n\n"
-        f"Example: \"I've analyzed the request. @{example_handle} please implement the login validation fix.\"\n\n"
+        f'Example: "I\'ve analyzed the request. @{example_handle} please implement the login validation fix."\n\n'
         "The mentioned agent will automatically pick up the conversation.\n"
         "Always provide clear context when handing off so the receiving agent\n"
         "can understand and work on the task effectively.\n"
