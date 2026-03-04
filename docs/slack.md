@@ -17,15 +17,11 @@ This guide covers how to configure the Slack app for VibeTeam, including event s
 
 Slack Event Subscriptions use one Request URL per app. This means one Slack app cannot directly send events to both dev and prod gateways at the same time.
 
-Recommended:
+Current deployment policy:
 
-- Primary app -> `vibeteam` gateway URL
-- Optional secondary app -> `vibeteam-openclaw-1` gateway URL
-
-Alternative (single app):
-
-- Keep app Request URL on `vibeteam`
-- Run isolated validation via `/slack/trigger` against `vibeteam-openclaw-1`
+- Use a single Slack app with Request URL pointing to the `vibeteam` gateway.
+- Run evaluation scenarios via `/slack/trigger` against that same gateway.
+- If you later add additional namespaces, you must add a routing proxy or separate Slack app.
 
 ## 1. Create the Slack App
 

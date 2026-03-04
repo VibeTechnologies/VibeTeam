@@ -4,18 +4,18 @@
 ```bash
 export $( < .env )
 unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY
-export SLACK_BOT_TOKEN="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam-openclaw-1 -o jsonpath='{.data.SLACK_BOT_TOKEN}' | base64 -d)"
-export SLACK_TRIGGER_SECRET="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam-openclaw-1 -o jsonpath='{.data.SLACK_TRIGGER_SECRET}' | base64 -d)"
-export AZURE_API_KEY="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam-openclaw-1 -o jsonpath='{.data.AZURE_API_KEY}' | base64 -d)"
-export AZURE_API_BASE="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam-openclaw-1 -o jsonpath='{.data.AZURE_API_BASE}' | base64 -d)"
-export AZURE_API_VERSION="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam-openclaw-1 -o jsonpath='{.data.AZURE_API_VERSION}' | base64 -d)"
+export SLACK_BOT_TOKEN="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam -o jsonpath='{.data.SLACK_BOT_TOKEN}' | base64 -d)"
+export SLACK_TRIGGER_SECRET="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam -o jsonpath='{.data.SLACK_TRIGGER_SECRET}' | base64 -d)"
+export AZURE_API_KEY="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam -o jsonpath='{.data.AZURE_API_KEY}' | base64 -d)"
+export AZURE_API_BASE="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam -o jsonpath='{.data.AZURE_API_BASE}' | base64 -d)"
+export AZURE_API_VERSION="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam -o jsonpath='{.data.AZURE_API_VERSION}' | base64 -d)"
 export AZURE_EVAL_API_VERSION="$AZURE_API_VERSION"
 export SLACK_DEFAULT_CHANNEL="C0AATPSADB8"
 ```
 
 ## Port-forward gateway
 ```bash
-KUBECONFIG=~/.kube/aks-1 kubectl port-forward -n vibeteam-openclaw-1 svc/vibeteam-gateway 18080:8080
+KUBECONFIG=~/.kube/aks-1 kubectl port-forward -n vibeteam svc/vibeteam-gateway 18080:8080
 ```
 
 ## Run eval (OpenClaw)

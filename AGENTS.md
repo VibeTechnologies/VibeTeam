@@ -5,7 +5,7 @@ You are working on AI agentic team. Agent are implemented on OpenHands that runs
 - Authoritative deploy/test guide: `docs/k8s.md`
 - Use AKS kubeconfig `~/.kube/aks-1` (context `openclaw-aks`) only.
 - Use the production namespace `vibeteam` for live Slack-driven traffic.
-- `vibeteam-openclaw-1` is for isolated OpenClaw validation when needed.
+- Use `vibeteam` as the only active namespace for deploys and Slack-triggered evals.
 - Do not deploy to any separate cluster.
 - One Slack app cannot fan out events to multiple namespaces simultaneously; use separate Slack apps/endpoints per environment or route through a dedicated ingress proxy.
 
@@ -88,7 +88,7 @@ uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribut
 uv run python scripts/eval_slack_e2e.py --list-scenarios
 ```
 
-**Note:** Slack evals run against the dev environment. Unless explicitly requested, it is acceptable to skip evals/E2E tests and report: “No. I did not run evals or E2E tests.” This should not be treated as an issue.
+**Note:** Slack evals run against the `vibeteam` deployment on `aks-1`. Unless explicitly requested, it is acceptable to skip evals/E2E tests and report: “No. I did not run evals or E2E tests.” This should not be treated as an issue.
 
 ## GitHub App Attribution
 
