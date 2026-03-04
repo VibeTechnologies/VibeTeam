@@ -49,11 +49,13 @@ except ImportError:
 from agent_service.shared.agents_md_loader import compose_agent_context
 from agent_service.shared.llm import LLM, AzureLLM
 
+PROGRESS_IMPORT_ERROR: Exception | None = None
 try:
     from .progress import create_heartbeat_callback, create_progress_callback
-except Exception:
+except Exception as exc:
     create_progress_callback = None  # type: ignore[assignment]
     create_heartbeat_callback = None  # type: ignore[assignment]
+    PROGRESS_IMPORT_ERROR = exc
 
 from .utils import build_condenser, get_prompt_path
 
@@ -420,14 +422,20 @@ class OpenHandsReleaseEngineer:
                     )
                     callbacks.append(progress_cb)
                 else:
-                    print("[ReleaseEngineer] Progress callback unavailable")
+                    print(
+                        "[ReleaseEngineer] Progress callback unavailable: "
+                        f"{PROGRESS_IMPORT_ERROR!r}"
+                    )
             elif kwargs.get("progress_heartbeat"):
                 if create_heartbeat_callback is not None:
                     callbacks.append(
                         create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
                     )
                 else:
-                    print("[ReleaseEngineer] Progress heartbeat unavailable")
+                    print(
+                        "[ReleaseEngineer] Progress heartbeat unavailable: "
+                        f"{PROGRESS_IMPORT_ERROR!r}"
+                    )
 
             # Create local conversation with required workspace
             # max_iterations caps the number of agent iterations (tool calls)

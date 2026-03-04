@@ -36,11 +36,13 @@ from agent_service.shared.kubectl_tools import (
 from agent_service.shared.langfuse_tools import get_langfuse_context
 from agent_service.shared.sentry_tools import SentryClient, get_sentry_context
 
+PROGRESS_IMPORT_ERROR: Exception | None = None
 try:
     from .progress import create_heartbeat_callback, create_progress_callback
-except Exception:
+except Exception as exc:
     create_progress_callback = None  # type: ignore[assignment]
     create_heartbeat_callback = None  # type: ignore[assignment]
+    PROGRESS_IMPORT_ERROR = exc
 
 
 def fetch_sentry_context(
@@ -803,14 +805,20 @@ class OpenHandsSupportEngineer:
                     )
                     callbacks.append(progress_cb)
                 else:
-                    print("[SupportEngineer] Progress callback unavailable")
+                    print(
+                        "[SupportEngineer] Progress callback unavailable: "
+                        f"{PROGRESS_IMPORT_ERROR!r}"
+                    )
             elif kwargs.get("progress_heartbeat"):
                 if create_heartbeat_callback is not None:
                     callbacks.append(
                         create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
                     )
                 else:
-                    print("[SupportEngineer] Progress heartbeat unavailable")
+                    print(
+                        "[SupportEngineer] Progress heartbeat unavailable: "
+                        f"{PROGRESS_IMPORT_ERROR!r}"
+                    )
 
             # max_iterations caps the number of agent iterations (tool calls)
             # to prevent runaway execution. Default is 30.
