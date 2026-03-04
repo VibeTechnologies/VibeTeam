@@ -4,5 +4,6 @@ metadata:
   name: agents-config
 spec:
   accessModes:
-    - ReadWriteOnce
-  storageClassName: local-path
+    - ReadWriteMany
+  # AKS: use Azure Files CSI for RWMany shared mounts across gateway/agent pods.
+  storageClassName: azurefile-csi
