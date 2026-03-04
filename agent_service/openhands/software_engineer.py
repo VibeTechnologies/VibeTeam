@@ -49,11 +49,13 @@ except ImportError:
 from agent_service.shared.agents_md_loader import compose_agent_context
 from agent_service.shared.llm import LLM, AzureLLM
 
+PROGRESS_IMPORT_ERROR: Exception | None = None
 try:
     from .progress import create_heartbeat_callback, create_progress_callback
-except Exception:
+except Exception as exc:
     create_progress_callback = None  # type: ignore[assignment]
     create_heartbeat_callback = None  # type: ignore[assignment]
+    PROGRESS_IMPORT_ERROR = exc
 
 from .utils import build_condenser, get_prompt_path
 
@@ -1102,7 +1104,10 @@ class OpenHandsSoftwareEngineer:
             progress_url = kwargs.get("progress_url")
             if progress_url:
                 if create_progress_callback is None:
-                    print("[SoftwareEngineer] Progress callback unavailable")
+                    print(
+                        "[SoftwareEngineer] Progress callback unavailable: "
+                        f"{PROGRESS_IMPORT_ERROR!r}"
+                    )
                 else:
                     progress_cb = create_progress_callback(
                         progress_url=progress_url,
@@ -1113,7 +1118,10 @@ class OpenHandsSoftwareEngineer:
                     agent_callbacks.append(progress_cb)
             elif kwargs.get("progress_heartbeat"):
                 if create_heartbeat_callback is None:
-                    print("[SoftwareEngineer] Progress heartbeat unavailable")
+                    print(
+                        "[SoftwareEngineer] Progress heartbeat unavailable: "
+                        f"{PROGRESS_IMPORT_ERROR!r}"
+                    )
                 else:
                     agent_callbacks.append(
                         create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
