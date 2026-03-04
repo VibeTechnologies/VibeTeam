@@ -158,6 +158,8 @@ spec:
                   name: vibeteam-secrets
                   key: LANGFUSE_BASE_URL
                   optional: true
+            - name: LANGFUSE_HOST
+              value: "$(LANGFUSE_BASE_URL)"
             - name: GMAIL_CREDENTIALS_PATH
               value: "/gmail/gmail-credentials.json"
             - name: GMAIL_TOKEN_PATH
