@@ -1,7 +1,7 @@
 """
 Tests for gateway task template routing logic.
 
-Verifies that the correct task template (deployment, notification, investigation)
+Verifies that the correct task template (deployment, configuration, notification, investigation)
 is selected based on message content and target role.
 """
 
@@ -88,6 +88,38 @@ class TestDeploymentNotTriggeredForOtherRoles:
             "@ProductManager when is the next release?",
         )
         assert result == "investigation"
+
+
+class TestConfigurationDetection:
+    """Configuration/secret requests for ReleaseEngineer should use configuration template."""
+
+    def test_kubeconfig_payload_routes_to_configuration(self):
+        result = classify_task_template(
+            "release_engineer",
+            "@ReleaseEngineer configure kubernetes access. kubeconfig_b64: ZXhhbXBsZQ==",
+        )
+        assert result == "configuration"
+
+    def test_secret_rotation_routes_to_configuration(self):
+        result = classify_task_template(
+            "release_engineer",
+            "@ReleaseEngineer rotate the kubeconfig secret for openhands-svc",
+        )
+        assert result == "configuration"
+
+    def test_support_secret_message_is_not_configuration(self):
+        result = classify_task_template(
+            "support_engineer",
+            "@SupportEngineer configure this secret for me",
+        )
+        assert result == "investigation"
+
+    def test_deployment_still_wins_over_configuration(self):
+        result = classify_task_template(
+            "release_engineer",
+            "@ReleaseEngineer deploy to staging and update the secret after deploy",
+        )
+        assert result == "deployment"
 
 
 class TestDeploymentExcludedByInvestigationKeywords:
@@ -464,3 +496,12 @@ class TestConversationalTemplate:
             is_thread_reply=True,
         )
         assert result == "notification"
+
+    def test_thread_configuration_for_release_engineer(self):
+        """Thread reply with secret/config intent for RE -> configuration."""
+        result = classify_task_template(
+            "release_engineer",
+            "please rotate kubeconfig_b64 for openhands-svc",
+            is_thread_reply=True,
+        )
+        assert result == "configuration"

@@ -31,8 +31,8 @@ FRAMEWORKS = ["autogen", "crewai", "openhands"]
 ROLES = ["software_engineer", "support_engineer", "release_engineer"]
 
 
-def get_agent_class(framework: str, role: str):
-    """Import and return the agent class for the given framework and role."""
+def get_agent_factory(framework: str, role: str):
+    """Import and return a zero-arg agent factory for framework/role."""
     if framework == "autogen":
         if role == "software_engineer":
             from agent_service.autogen.software_engineer import AutoGenSoftwareEngineer
@@ -60,18 +60,9 @@ def get_agent_class(framework: str, role: str):
 
             return CrewAIReleaseEngineer
     elif framework == "openhands":
-        if role == "software_engineer":
-            from agent_service.openhands.software_engineer import OpenHandsSoftwareEngineer
+        from agent_service.openhands import create_agent
 
-            return OpenHandsSoftwareEngineer
-        elif role == "support_engineer":
-            from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
-
-            return OpenHandsSupportEngineer
-        elif role == "release_engineer":
-            from agent_service.openhands.release_engineer import OpenHandsReleaseEngineer
-
-            return OpenHandsReleaseEngineer
+        return lambda: create_agent(role)
 
     raise ValueError(f"Unknown framework/role: {framework}/{role}")
 
@@ -81,8 +72,8 @@ async def run_agent(framework: str, role: str, task: str, timeout: float) -> dic
     start_time = time.perf_counter()
 
     try:
-        agent_class = get_agent_class(framework, role)
-        agent = agent_class()
+        agent_factory = get_agent_factory(framework, role)
+        agent = agent_factory()
 
         # Run with timeout
         result = await asyncio.wait_for(agent.run_async(task=task), timeout=timeout)

@@ -21,6 +21,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import create_async_engine
+from vibeteam.agents_config import resolve_framework
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,8 +38,10 @@ class ScheduleRequest(BaseModel):
     delay_minutes: int = Field(0, description="Minutes from now to run")
     cron: str | None = Field(None, description="Cron expression for recurring tasks")
     interval_minutes: int | None = Field(None, description="Interval in minutes for recurring")
-    agent_service: str = Field(
-        "autogen-svc", description="Target agent service (autogen-svc or crewai-svc)"
+    agent_service: str | None = Field(
+        None,
+        description="Target agent service (openhands-svc or openclaw-svc). "
+        "If role is provided, service is resolved from agents/agents.yaml.",
     )
     role: str | None = Field(None, description="Specific agent role")
     context_type: str = Field("scheduled", description="Context type")
@@ -95,15 +98,37 @@ def get_database_url() -> str:
 # Global scheduler instance
 _scheduler: AsyncScheduler | None = None
 _job_metadata: dict[str, dict[str, Any]] = {}  # Store job metadata (task, service, etc.)
+SUPPORTED_AGENT_SERVICES = {"openhands-svc", "openclaw-svc"}
 
 
 def get_agent_service_url(service: str) -> str:
     """Get URL for agent service."""
     urls = {
-        "autogen-svc": os.getenv("AUTOGEN_SERVICE_URL", "http://autogen-svc:8080"),
-        "crewai-svc": os.getenv("CREWAI_SERVICE_URL", "http://crewai-svc:8080"),
+        "openhands-svc": os.getenv("OPENHANDS_SERVICE_URL", "http://openhands-svc:8080"),
+        "openclaw-svc": os.getenv("OPENCLAW_SERVICE_URL", "http://openclaw-svc:8080"),
     }
-    return urls.get(service, urls["autogen-svc"])
+    return urls.get(service, urls["openhands-svc"])
+
+
+def resolve_agent_service(role: str | None, requested_service: str | None = None) -> str:
+    """Resolve target service from role mapping, falling back safely."""
+    if role:
+        framework = resolve_framework(role, os.getenv("DEFAULT_FRAMEWORK", "openhands"))
+        if framework == "openhands":
+            return "openhands-svc"
+        if framework == "openclaw":
+            return "openclaw-svc"
+        logger.warning(
+            "Role %s resolved to unsupported framework '%s'; falling back to openhands-svc",
+            role,
+            framework,
+        )
+        return "openhands-svc"
+
+    if requested_service in SUPPORTED_AGENT_SERVICES:
+        return requested_service
+
+    return "openhands-svc"
 
 
 async def execute_scheduled_task(job_id: str) -> None:
@@ -114,7 +139,7 @@ async def execute_scheduled_task(job_id: str) -> None:
         return
 
     task = metadata.get("task", "")
-    service = metadata.get("agent_service", "autogen-svc")
+    service = resolve_agent_service(metadata.get("role"), metadata.get("agent_service"))
     role = metadata.get("role")
     context_type = metadata.get("context_type", "scheduled")
     context_id = metadata.get("context_id") or job_id
@@ -179,7 +204,7 @@ async def register_default_tasks() -> None:
             "job_id": "support-emails",
             "task": "Process support emails from Gmail inbox and respond to customer inquiries",
             "cron": "*/15 * * * *",  # Every 15 minutes
-            "agent_service": "autogen-svc",
+            "agent_service": "openhands-svc",
             "role": "support_engineer",
             "context_type": "scheduled",
         },
@@ -187,7 +212,7 @@ async def register_default_tasks() -> None:
             "job_id": "product-analysis",
             "task": "Analyze customer feedback, feature requests, and prioritize backlog items",
             "cron": "0 */2 * * *",  # Every 2 hours
-            "agent_service": "autogen-svc",
+            "agent_service": "openhands-svc",
             "role": "support_engineer",  # PM role uses support tools
             "context_type": "scheduled",
         },
@@ -195,7 +220,7 @@ async def register_default_tasks() -> None:
             "job_id": "release-check",
             "task": "Check for pending releases, review changelogs, and prepare release notes",
             "cron": "0 9 * * *",  # Daily at 9am UTC
-            "agent_service": "autogen-svc",
+            "agent_service": "openhands-svc",
             "role": "release_engineer",
             "context_type": "scheduled",
         },
@@ -203,7 +228,7 @@ async def register_default_tasks() -> None:
             "job_id": "health-check",
             "task": "Check system health, Sentry errors, and Langfuse traces for anomalies",
             "cron": "*/5 * * * *",  # Every 5 minutes
-            "agent_service": "autogen-svc",
+            "agent_service": "openhands-svc",
             "role": "support_engineer",
             "context_type": "scheduled",
         },
@@ -211,7 +236,7 @@ async def register_default_tasks() -> None:
             "job_id": "issue-triage",
             "task": "Review and triage new GitHub issues, assign priorities and labels",
             "cron": "0 */4 * * *",  # Every 4 hours
-            "agent_service": "autogen-svc",
+            "agent_service": "openhands-svc",
             "role": "support_engineer",
             "context_type": "scheduled",
         },
@@ -299,10 +324,12 @@ async def schedule_task(request: ScheduleRequest):
         )
         trigger = DateTrigger(run_time=run_at)
 
+    agent_service = resolve_agent_service(request.role, request.agent_service)
+
     # Store metadata
     _job_metadata[job_id] = {
         "task": request.task,
-        "agent_service": request.agent_service,
+        "agent_service": agent_service,
         "role": request.role,
         "context_type": request.context_type,
         "context_id": request.context_id or job_id,
@@ -324,7 +351,7 @@ async def schedule_task(request: ScheduleRequest):
         task=request.task,
         run_at=run_at,
         schedule_type=schedule_type,
-        agent_service=request.agent_service,
+        agent_service=agent_service,
         status="scheduled",
     )
 
@@ -340,7 +367,7 @@ async def list_tasks():
                 task=metadata.get("task", ""),
                 next_run=None,  # Would need to query scheduler for this
                 schedule_type="unknown",
-                agent_service=metadata.get("agent_service", "autogen-svc"),
+                agent_service=metadata.get("agent_service", "openhands-svc"),
                 role=metadata.get("role"),
                 context_type=metadata.get("context_type", "scheduled"),
                 context_id=metadata.get("context_id"),
@@ -362,7 +389,7 @@ async def get_task(job_id: str):
         task=metadata.get("task", ""),
         next_run=None,
         schedule_type="unknown",
-        agent_service=metadata.get("agent_service", "autogen-svc"),
+        agent_service=metadata.get("agent_service", "openhands-svc"),
         role=metadata.get("role"),
         context_type=metadata.get("context_type", "scheduled"),
         context_id=metadata.get("context_id"),

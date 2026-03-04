@@ -2,7 +2,7 @@
 
 ## Overview
 
-VibeTeam routes work via `@RoleName` or `/RoleName` mentions across Slack, GitHub, and Sentry. The gateway resolves which agent framework to use from `agents/agents.yaml`. The canonical architecture lives in [design.md](design.md). For OpenClaw-specific context, see [openclaw-introduction.md](openclaw-introduction.md).
+VibeTeam routes work via role mentions across Slack, GitHub, and Sentry. The gateway resolves which agent framework to use from `agents/agents.yaml`. The canonical architecture lives in [design.md](design.md). For OpenClaw-specific context, see [openclaw-introduction.md](openclaw-introduction.md).
 
 ## Agents and Frameworks
 
@@ -13,8 +13,6 @@ VibeTeam routes work via `@RoleName` or `/RoleName` mentions across Slack, GitHu
 | **SupportEngineer** | `@SupportEngineer` | OpenHands | Customer support, incident analysis | Sentry, Gmail, GitHub, Chrome DevTools MCP |
 | **ProductManager** | `@ProductManager` | OpenClaw | PRDs, roadmap, backlog | GitHub, Chrome DevTools skill |
 | **MarketingManager** | `@MarketingManager` | OpenHands | Announcements, content | Chrome DevTools MCP |
-
-**Note:** AutoGen and CrewAI are currently disabled (deployments run with `replicas: 0`).
 
 Framework mapping is configured in `agents/agents.yaml` (override with `AGENTS_CONFIG_PATH`).
 
@@ -41,7 +39,7 @@ The gateway only routes messages; it does not prefetch or inject monitoring cont
 
 ## Browser Automation
 
-- **OpenHands / CrewAI / AutoGen**: use Chrome DevTools MCP via Browserless.
+- **OpenHands**: uses Chrome DevTools MCP via Browserless.
   - Requires `CHROME_DEVTOOLS_BROWSER_URL=http://browserless:3000`.
   - MCP tools are exposed as `mcp__chrome-devtools__*`.
 - **OpenClaw**: uses the Chrome DevTools *skill* (not MCP).
@@ -149,8 +147,6 @@ kubectl create secret generic gmail-oauth-secret -n vibeteam \
 
 ```bash
 OPENHANDS_SERVICE_URL=http://openhands-svc:8080
-CREWAI_SERVICE_URL=http://crewai-svc:8080
-AUTOGEN_SERVICE_URL=http://autogen-svc:8080
 OPENCLAW_SERVICE_URL=http://openclaw-svc:8080
 SCHEDULER_SERVICE_URL=http://scheduler-svc:8080
 DEFAULT_FRAMEWORK=openhands

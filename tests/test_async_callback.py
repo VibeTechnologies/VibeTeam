@@ -115,6 +115,29 @@ class TestBuildTaskPrompt:
         )
         assert template == "investigation"
 
+    def test_configuration_template_for_secret_payload(self):
+        """ReleaseEngineer secret/config requests should use configuration template."""
+        template = classify_task_template(
+            "release_engineer",
+            "@ReleaseEngineer configure access with kubeconfig_b64: ZXhhbXBsZQ==",
+        )
+        assert template == "configuration"
+
+    def test_configuration_prompt_contains_redaction_and_validation(self):
+        prompt = _build_task_prompt(
+            role="release_engineer",
+            user_message="@ReleaseEngineer rotate secret using kubeconfig_b64: ZXhhbXBsZQ==",
+            user_id="U123",
+            channel="C456",
+            thread_ts="ts_cfg",
+        )
+        assert "Slack Configuration Request" in prompt
+        assert "NEVER print raw secret content" in prompt
+        assert "kubeconfig_b64" in prompt
+        assert "kubectl config view --kubeconfig" in prompt
+        assert "authorized for in-band secret onboarding" in prompt
+        assert "APPROVED OPERATIONAL INPUT FOR THIS TASK" in prompt
+
 
 # ==============================================================================
 # Tests for remove_reaction helper

@@ -17,7 +17,7 @@ export $( < .env) && .venv/bin/python -m pytest tests/ -v
 | `test_task_routing.py` | Task template classification (`investigation`, `feature_request`, `conversational`), including thread reply behavior. Contains `TestConversationalTemplate` with 10 tests for thread follow-up handling. |
 | `test_async_callback.py` | Async agent callback flow, Slack reaction lifecycle (`thinking_face` → checkmark/X/hourglass), handoff chaining. |
 | `test_gateway_trigger.py` | `/slack/trigger` endpoint authentication and routing. |
-| `test_role_resolver.py` | `@RoleName` and `/RoleName` mention parsing and normalization. |
+| `test_role_resolver.py` | Role mention parsing and normalization. |
 | `test_message_splitting.py` | Splitting long agent responses to fit Slack's 4000-char limit. |
 
 ### Agent Tools

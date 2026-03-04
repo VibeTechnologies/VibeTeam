@@ -93,33 +93,28 @@ deploy_dev() {
     restart_if_exists "vibeteam-gateway"
     restart_if_exists "openhands-svc"
     restart_if_exists "openhands-agents"
-    restart_if_exists "autogen-svc"
-    restart_if_exists "crewai-svc"
+    restart_if_exists "openclaw-svc"
 }
 
 case "$TARGET" in
     openhands)
         build_and_push "openhands" "$PROJECT_DIR/agent_service/openhands/Dockerfile" "$PROJECT_DIR"
         ;;
-    autogen)
-        build_and_push "autogen" "$PROJECT_DIR/agent_service/autogen/Dockerfile" "$PROJECT_DIR"
-        ;;
-    crewai)
-        build_and_push "crewai" "$PROJECT_DIR/agent_service/crewai/Dockerfile" "$PROJECT_DIR"
+    openclaw)
+        build_and_push "openclaw" "$PROJECT_DIR/agent_service/openclaw/Dockerfile" "$PROJECT_DIR"
         ;;
     gateway)
         build_gateway
         ;;
     all)
         build_and_push "openhands" "$PROJECT_DIR/agent_service/openhands/Dockerfile" "$PROJECT_DIR"
-        build_and_push "autogen" "$PROJECT_DIR/agent_service/autogen/Dockerfile" "$PROJECT_DIR"
-        build_and_push "crewai" "$PROJECT_DIR/agent_service/crewai/Dockerfile" "$PROJECT_DIR"
+        build_and_push "openclaw" "$PROJECT_DIR/agent_service/openclaw/Dockerfile" "$PROJECT_DIR"
         ;;
     deploy)
         deploy_dev
         ;;
     *)
-        echo "Usage: $0 [openhands|autogen|crewai|gateway|all|deploy]"
+        echo "Usage: $0 [openhands|openclaw|gateway|all|deploy]"
         exit 1
         ;;
 esac

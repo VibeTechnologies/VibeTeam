@@ -107,9 +107,8 @@ def resolve_openclaw_agent_id(role: str | None) -> str | None:
     return entry.openclaw_agent_id
 
 
-def resolve_framework(role: str | None, framework_override: str | None, default: str) -> str:
-    if framework_override:
-        return framework_override
+def resolve_framework(role: str | None, default: str) -> str:
+    """Resolve framework strictly from agents/agents.yaml for the given role."""
     entry = get_agent_entry(role)
     if entry and entry.framework:
         return entry.framework

@@ -27,11 +27,10 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           AGENT SERVICES (FastAPI)                            │
 │                                                                              │
-│   openhands-svc   openclaw-svc   autogen-svc   crewai-svc   scheduler-svc     │
+│   openhands-svc   openclaw-svc   scheduler-svc                                 │
 │                                                                              │
 │   - openhands-svc: tool-enabled sessions, MCP, kubectl, Sentry, Gmail        │
 │   - openclaw-svc: proxy to OpenClaw gateway (WebSocket)                      │
-│   - autogen/crewai: optional frameworks (currently disabled)                │
 │   - scheduler-svc: background/cron tasks                                     │
 │                                                                              │
 └──────────┬───────────────────────────────────────────────────────────────────┘
@@ -52,7 +51,7 @@
 ### Role Resolution
 
 - Role mentions and keyword routing are centralized in `agent_service/shared/role_resolver.py`.
-- Slack, GitHub, and other sources parse `@RoleName` and `/RoleName` mentions.
+- Slack, GitHub, and other sources parse role mentions.
 - If no role is mentioned, a keyword-based fallback selects a default role.
 
 ### Framework Resolution
@@ -97,11 +96,10 @@ See [openclaw-introduction.md](openclaw-introduction.md) for a focused OpenClaw 
 - OpenHands maintains per-thread sessions and persists them in Postgres.
 - Session keys include framework + role + source + thread ID for isolation.
 - Async mode uses `/run/async → /callback/agent` for long-running tasks.
-- AutoGen and CrewAI deployments are disabled for now (replicas set to 0).
 
 ## Browser Automation
 
-- **OpenHands / CrewAI / AutoGen**: use Chrome DevTools MCP via Browserless.
+- **OpenHands**: uses Chrome DevTools MCP via Browserless.
   - `CHROME_DEVTOOLS_BROWSER_URL=http://browserless:3000`
 - **OpenClaw**: uses the Chrome DevTools *skill* (not MCP).
   - OpenClaw does not support MCP tools directly.

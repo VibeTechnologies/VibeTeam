@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from agent_service.config import AgentConfig
 from agent_service.shared.integration_checks import validate_required_integrations
 from agent_service.shared.db import close_db, get_postgres_store, init_db
+from vibeteam.agents_config import list_agents
 
 from .team import OpenHandsTeam, create_team
 from .utils import (
@@ -290,6 +291,10 @@ def get_team() -> OpenHandsTeam:
     if _team is None:
         config = AgentConfig()
         _team = create_team(config)
+        for entry in list_agents():
+            if entry.framework == "openhands":
+                _team._get_agent(entry.role)
+                logger.info("Preconfigured OpenHands agent instance for role=%s", entry.role)
     return _team
 
 

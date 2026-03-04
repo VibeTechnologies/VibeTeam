@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from vibeteam.agents_config import resolve_framework
 from vibeteam.gateway.server import (
     RunRequest,
     RunResponse,
@@ -40,7 +41,6 @@ class ScheduleRequest(BaseModel):
     task: str = Field(..., description="The task to execute")
     run_at: str | None = Field(None, description="ISO datetime to run (None for immediate)")
     role: str | None = Field(None, description="Agent role")
-    framework: str | None = Field(None, description="Agent framework (autogen, crewai)")
     context_type: str = Field("api", description="Context type")
     context_id: str | None = Field(None, description="Context ID")
 
@@ -77,14 +77,13 @@ async def run_task(request: RunRequest):
     """
     Execute a task with an agent microservice.
 
-    This endpoint routes the task to the appropriate agent service
-    (autogen-svc or crewai-svc) based on the framework parameter.
+    This endpoint routes the task to the appropriate agent service based on
+    role mapping from agents/agents.yaml.
     """
     try:
         result = await call_agent_service(
             task=request.task,
             role=request.role,
-            framework=request.framework,
             context_type=request.context_type,
             context_id=request.context_id,
             stream=request.stream,
@@ -96,7 +95,10 @@ async def run_task(request: RunRequest):
         return RunResponse(
             response=result.get("response", ""),
             session_id=result.get("session_id", ""),
-            framework=result.get("framework", request.framework or config.DEFAULT_FRAMEWORK),
+            framework=result.get(
+                "framework",
+                resolve_framework(request.role, config.DEFAULT_FRAMEWORK),
+            ),
             agents_used=result.get("agents_used", []),
             metadata=result.get("metadata", {}),
         )
@@ -120,7 +122,6 @@ async def schedule_task(request: ScheduleRequest):
             task=request.task,
             run_at=request.run_at,
             role=request.role,
-            framework=request.framework,
             context_type=request.context_type,
             context_id=request.context_id,
         )
@@ -145,7 +146,7 @@ async def schedule_task(request: ScheduleRequest):
 
 @router.get("/sessions", response_model=SessionListResponse)
 async def list_sessions(
-    framework: str | None = None,
+    role: str | None = None,
     prefix: str = "",
     limit: int = 100,
 ):
@@ -156,6 +157,7 @@ async def list_sessions(
     """
     try:
         client = get_http_client()
+        framework = resolve_framework(role, config.DEFAULT_FRAMEWORK)
         service_url = config.get_agent_service_url(framework)
 
         response = await client.get(

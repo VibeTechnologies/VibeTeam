@@ -8,7 +8,7 @@ This module provides a FastAPI gateway that handles:
 - REST API for manual task invocation
 
 Instead of running agents as subprocesses, it routes requests to
-the agent microservices (autogen-svc, crewai-svc) via HTTP.
+the agent microservices (openhands-svc, openclaw-svc) via HTTP.
 """
 
 from vibeteam.gateway.server import app
