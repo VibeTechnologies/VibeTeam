@@ -36,6 +36,12 @@ from agent_service.shared.kubectl_tools import (
 from agent_service.shared.langfuse_tools import get_langfuse_context
 from agent_service.shared.sentry_tools import SentryClient, get_sentry_context
 
+try:
+    from .progress import create_heartbeat_callback, create_progress_callback
+except Exception:
+    create_progress_callback = None  # type: ignore[assignment]
+    create_heartbeat_callback = None  # type: ignore[assignment]
+
 
 def fetch_sentry_context(
     hours: int = 24, limit: int = 10, include_top_issue_details: bool = False
@@ -788,21 +794,23 @@ class OpenHandsSupportEngineer:
             callbacks = []
             progress_url = kwargs.get("progress_url")
             if progress_url:
-                from .progress import create_progress_callback
-
-                progress_cb = create_progress_callback(
-                    progress_url=progress_url,
-                    job_id=kwargs.get("job_id", ""),
-                    callback_metadata=kwargs.get("callback_metadata", {}),
-                    on_progress=kwargs.get("progress_heartbeat"),
-                )
-                callbacks.append(progress_cb)
+                if create_progress_callback is not None:
+                    progress_cb = create_progress_callback(
+                        progress_url=progress_url,
+                        job_id=kwargs.get("job_id", ""),
+                        callback_metadata=kwargs.get("callback_metadata", {}),
+                        on_progress=kwargs.get("progress_heartbeat"),
+                    )
+                    callbacks.append(progress_cb)
+                else:
+                    print("[SupportEngineer] Progress callback unavailable")
             elif kwargs.get("progress_heartbeat"):
-                from .progress import create_heartbeat_callback
-
-                callbacks.append(
-                    create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
-                )
+                if create_heartbeat_callback is not None:
+                    callbacks.append(
+                        create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
+                    )
+                else:
+                    print("[SupportEngineer] Progress heartbeat unavailable")
 
             # max_iterations caps the number of agent iterations (tool calls)
             # to prevent runaway execution. Default is 30.

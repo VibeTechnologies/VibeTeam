@@ -49,6 +49,12 @@ except ImportError:
 from agent_service.shared.agents_md_loader import compose_agent_context
 from agent_service.shared.llm import LLM, AzureLLM
 
+try:
+    from .progress import create_heartbeat_callback, create_progress_callback
+except Exception:
+    create_progress_callback = None  # type: ignore[assignment]
+    create_heartbeat_callback = None  # type: ignore[assignment]
+
 from .utils import build_condenser, get_prompt_path
 
 # OpenHands uses Jinja2 templates for system prompts.
@@ -405,21 +411,23 @@ class OpenHandsReleaseEngineer:
             callbacks = []
             progress_url = kwargs.get("progress_url")
             if progress_url:
-                from .progress import create_progress_callback
-
-                progress_cb = create_progress_callback(
-                    progress_url=progress_url,
-                    job_id=kwargs.get("job_id", ""),
-                    callback_metadata=kwargs.get("callback_metadata", {}),
-                    on_progress=kwargs.get("progress_heartbeat"),
-                )
-                callbacks.append(progress_cb)
+                if create_progress_callback is not None:
+                    progress_cb = create_progress_callback(
+                        progress_url=progress_url,
+                        job_id=kwargs.get("job_id", ""),
+                        callback_metadata=kwargs.get("callback_metadata", {}),
+                        on_progress=kwargs.get("progress_heartbeat"),
+                    )
+                    callbacks.append(progress_cb)
+                else:
+                    print("[ReleaseEngineer] Progress callback unavailable")
             elif kwargs.get("progress_heartbeat"):
-                from .progress import create_heartbeat_callback
-
-                callbacks.append(
-                    create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
-                )
+                if create_heartbeat_callback is not None:
+                    callbacks.append(
+                        create_heartbeat_callback(on_progress=kwargs.get("progress_heartbeat"))
+                    )
+                else:
+                    print("[ReleaseEngineer] Progress heartbeat unavailable")
 
             # Create local conversation with required workspace
             # max_iterations caps the number of agent iterations (tool calls)

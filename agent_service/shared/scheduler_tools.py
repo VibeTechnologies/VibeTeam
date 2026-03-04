@@ -16,7 +16,7 @@ async def schedule_task(
     task: str,
     delay_hours: int = 0,
     delay_minutes: int = 0,
-    agent_service: str = "autogen-svc",
+    agent_service: str = "openhands-svc",
     role: str | None = None,
     context_type: str = "scheduled",
     context_id: str | None = None,
@@ -28,7 +28,7 @@ async def schedule_task(
         task: The task description
         delay_hours: Hours from now to execute
         delay_minutes: Minutes from now to execute
-        agent_service: Target service (autogen-svc or crewai-svc)
+        agent_service: Target service (openhands-svc or openclaw-svc)
         role: Specific agent role
         context_type: Context type for session tracking
         context_id: Context ID for session tracking
@@ -57,7 +57,7 @@ def schedule_task_sync(
     task: str,
     delay_hours: int = 0,
     delay_minutes: int = 0,
-    agent_service: str = "autogen-svc",
+    agent_service: str = "openhands-svc",
     role: str | None = None,
 ) -> dict[str, Any]:
     """Sync version of schedule_task for use as agent tool."""
