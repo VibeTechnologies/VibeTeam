@@ -115,6 +115,23 @@ class TestBuildTaskPrompt:
         )
         assert template == "investigation"
 
+    def test_non_ops_roles_default_to_conversational(self):
+        """Product/marketing/software roles should not get ops investigation templates."""
+        assert (
+            classify_task_template(
+                "product_manager",
+                "@ProductManager use Chrome DevTools and report console errors",
+            )
+            == "conversational"
+        )
+        assert (
+            classify_task_template(
+                "software_engineer",
+                "@SoftwareEngineer create a PR for this issue",
+            )
+            == "conversational"
+        )
+
 
 # ==============================================================================
 # Tests for remove_reaction helper

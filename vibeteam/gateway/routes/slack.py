@@ -730,6 +730,9 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         and not is_explicit_investigation
     )
 
+    investigation_roles = {"support_engineer", "release_engineer"}
+    uses_investigation_template = role in investigation_roles
+
     if is_deployment:
         return "deployment"
     elif is_health_check:
@@ -740,8 +743,12 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         # Thread follow-ups get a conversational template unless the user
         # is explicitly asking for a new investigation (e.g., "check the pods")
         return "conversational"
-    else:
+    elif uses_investigation_template:
         return "investigation"
+    else:
+        # Non-ops roles (e.g. product/marketing/software) should not be forced
+        # into the strict incident-investigation prompt by default.
+        return "conversational"
 
 
 def _build_task_prompt(

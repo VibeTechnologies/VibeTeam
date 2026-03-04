@@ -1,5 +1,12 @@
 You are working on AI agentic team. Agent are implemented on OpenHands that runs as a service that host all the agents sessions. Gateways is used for integration with Slack. DeepEval is used to evaluate agent sessions. Use
 
+## Kubernetes Targeting Policy
+
+- Authoritative deploy/test guide: `docs/k8s.md`
+- Use Kubernetes context `aks-1` only.
+- Use namespaces `vibeteam-dev` (dev) and `vibeteam-prod` (prod).
+- Do not deploy to any separate production cluster.
+
 ## Testing Expectations
 
 Run unit tests and at least one Slack eval when changes affect agent behavior, routing, tools, or evaluation criteria.
@@ -183,6 +190,7 @@ Before running VibeTeam agents or after infrastructure changes, verify system re
 
 - **[docs/requirements.md](docs/requirements.md)** - System requirements, agent roles, and responsibilities
 - **[docs/design.md](docs/design.md)** - Architecture, routing logic, and design decisions
+- **[docs/k8s.md](docs/k8s.md)** - Authoritative cluster, namespace, deploy, and test workflow
 
 ## Codebase Map
 

@@ -73,7 +73,7 @@ class TestDeploymentNotTriggeredForOtherRoles:
             "software_engineer",
             "@SoftwareEngineer we need to deploy the latest changes.",
         )
-        assert result == "investigation"
+        assert result == "conversational"
 
     def test_support_deploy_message(self):
         result = classify_task_template(
@@ -87,7 +87,7 @@ class TestDeploymentNotTriggeredForOtherRoles:
             "product_manager",
             "@ProductManager when is the next release?",
         )
-        assert result == "investigation"
+        assert result == "conversational"
 
 
 class TestDeploymentExcludedByInvestigationKeywords:
@@ -177,11 +177,11 @@ class TestNotificationExcludedByInvestigation:
             "marketing_manager",
             "@MarketingManager investigate and then announce the fix.",
         )
-        assert result == "investigation"
+        assert result == "conversational"
 
 
 class TestInvestigationFallback:
-    """Messages without deployment or notification keywords → investigation."""
+    """Fallback behavior when no deploy/notification template applies."""
 
     def test_support_400_errors(self):
         result = classify_task_template(
@@ -195,7 +195,7 @@ class TestInvestigationFallback:
             "software_engineer",
             "@SoftwareEngineer issue #449 reports browser extension crashes.",
         )
-        assert result == "investigation"
+        assert result == "conversational"
 
     def test_sentry_alert(self):
         result = classify_task_template(
@@ -209,7 +209,7 @@ class TestInvestigationFallback:
             "software_engineer",
             "@SoftwareEngineer can you help with this?",
         )
-        assert result == "investigation"
+        assert result == "conversational"
 
 
 class TestEdgeCases:
@@ -341,7 +341,7 @@ class TestHealthCheckDetection:
             "software_engineer",
             "@SoftwareEngineer what's the status of the API?",
         )
-        assert result == "investigation"
+        assert result == "conversational"
 
     def test_health_check_in_thread_still_health_check(self):
         """Thread follow-up with health keywords for RE → health_check, not conversational."""
@@ -360,13 +360,13 @@ class TestHandoffPassthrough:
     in the agent's system prompt (AGENTS.md / agent_service), not the gateway.
     """
 
-    def test_handoff_message_gets_investigation_template(self):
-        """Handoff messages go through the normal investigation template."""
+    def test_handoff_message_gets_conversational_template(self):
+        """Non-ops handoff messages keep a conversational template."""
         result = classify_task_template(
             "software_engineer",
             "[Handoff from SupportEngineer]\n\nOriginal request: ...\n\nPrevious response: ...",
         )
-        assert result == "investigation"
+        assert result == "conversational"
 
     def test_handoff_with_deploy_keywords_for_release_engineer(self):
         """Handoff to ReleaseEngineer with deploy keywords gets deployment template."""
