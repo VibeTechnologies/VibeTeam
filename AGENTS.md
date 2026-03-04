@@ -34,6 +34,20 @@ Agent configuration lives in `agents/agents.yaml` inside the shared agents direc
 
 Do not ask for tokens, evrything inside .env, just export it `export $( < .env )`
 
+## Kubernetes Context
+
+VibeTeam is deployed on the AKS cluster kubeconfig at:
+
+```bash
+~/.kube/aks-1
+```
+
+Always set kubeconfig explicitly before cluster operations:
+
+```bash
+export KUBECONFIG=~/.kube/aks-1
+```
+
 ### Merging to Master
 
 **Merging to master is safe and expected during development.** Do NOT ask for permission to merge.
