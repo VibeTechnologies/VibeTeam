@@ -29,6 +29,8 @@ Environment Variables:
     GATEWAY_URL: Gateway URL to trigger agents (default: https://webhook.team.vibebrowser.app)
     SLACK_TRIGGER_SECRET: Bearer token for /slack/trigger auth (must match gateway config)
     BENCHMARK_JUDGE_MODEL: Override the judge model for evaluation (default: gpt-5.2)
+    LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY: Optional Langfuse API credentials
+    LANGFUSE_BASE_URL / LANGFUSE_URL: Optional Langfuse base URL (default: https://langfuse.vibebrowser.app)
 """
 
 from __future__ import annotations
@@ -73,6 +75,81 @@ except ImportError:
         from deepeval.metrics import GEval as GEval
         from deepeval.test_case import LLMTestCase as LLMTestCase
         from deepeval.test_case import LLMTestCaseParams as LLMTestCaseParams
+
+LANGFUSE_AVAILABLE = False
+LangfuseClient: Any = None
+try:
+    from agent_service.shared.langfuse_tools import LangfuseClient as _LangfuseClient
+
+    LangfuseClient = _LangfuseClient
+    LANGFUSE_AVAILABLE = True
+except Exception:
+    LANGFUSE_AVAILABLE = False
+
+
+def collect_langfuse_snapshot(hours: int = 6) -> dict[str, Any]:
+    """Collect a lightweight Langfuse observability snapshot for eval reporting."""
+    host = (
+        os.environ.get("LANGFUSE_BASE_URL")
+        or os.environ.get("LANGFUSE_URL")
+        or "https://langfuse.vibebrowser.app"
+    )
+    snapshot: dict[str, Any] = {
+        "host": host.rstrip("/"),
+        "hours": hours,
+        "configured": False,
+        "available": LANGFUSE_AVAILABLE,
+        "healthy": False,
+        "project": os.environ.get("LANGFUSE_PROJECT"),
+        "stats": None,
+        "anomalies": [],
+        "error": None,
+    }
+
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
+    if not public_key or not secret_key:
+        snapshot["error"] = "LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY not set"
+        return snapshot
+
+    if not LANGFUSE_AVAILABLE or LangfuseClient is None:
+        snapshot["error"] = "Langfuse client module unavailable in runtime"
+        return snapshot
+
+    try:
+        client = LangfuseClient(base_url=snapshot["host"])
+        snapshot["configured"] = True
+        snapshot["healthy"] = bool(client.health_check())
+        stats = client.get_stats(hours=hours)
+        anomalies = client.detect_anomalies(hours=hours)
+        if not snapshot.get("project"):
+            try:
+                projects = client._request("GET", "/projects").get("data", [])  # type: ignore[attr-defined]
+                if projects:
+                    snapshot["project"] = projects[0].get("name")
+            except Exception:
+                # Non-fatal: project discovery is best-effort
+                pass
+        snapshot["stats"] = {
+            "total_traces": int(stats.total_traces),
+            "total_tokens": int(stats.total_tokens),
+            "avg_latency_ms": float(stats.avg_latency_ms),
+            "error_count": int(stats.error_count),
+            "error_rate": float(stats.error_rate),
+            "cost_usd": float(stats.cost_usd),
+        }
+        snapshot["anomalies"] = [
+            {
+                "type": a.type,
+                "severity": a.severity,
+                "message": a.message,
+            }
+            for a in anomalies
+        ]
+    except Exception as e:
+        snapshot["error"] = str(e)
+
+    return snapshot
 
 
 # ==============================================================================
@@ -823,6 +900,115 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "marketing_reddit_ai_agents_copilot_pr": {
+        "name": "Marketing Manager - Reddit AI/Agents Comment PR for Co-Pilot",
+        "message": (
+            "@MarketingManager use Chrome DevTools MCP (CDP) with Chrome to browse reddit.com and "
+            "read recent posts about AI and AI agents. Find 3 relevant posts across communities "
+            "like r/artificial, r/ChatGPT, r/LocalLLaMA, r/AI_Agents (or similar active subreddits). "
+            "For each post, capture: subreddit, post title, post URL, and one-sentence context summary. "
+            "Then draft 1 tailored comment reply per post (3 comments total) that is value-first and "
+            "softly PRs vibebrowser.com/co-pilot in a non-salesy way. At least 2 of the 3 comments must "
+            "mention vibebrowser.com/co-pilot explicitly and naturally. Do NOT actually post anything. "
+            "Report: post details, the 3 drafted comments, page title evidence, and confirmation that "
+            "Chrome DevTools MCP/CDP was used including at least one screenshot capture."
+        ),
+        "expected_agent": "marketing_manager",
+        "timeout": 900,
+        "evaluation_criteria": {
+            "ChromeDevToolsUsage": (
+                "Did the agent clearly use Chrome DevTools MCP (CDP) for Reddit research? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit statement of Chrome DevTools MCP/CDP usage; "
+                "(2) Page-title evidence from browsed Reddit pages; "
+                "(3) Confirmation of at least one screenshot capture; "
+                "(4) Research appears browser-derived, not generic/non-CDP assumptions. "
+                "SCORING: "
+                "Score 0.0-0.3: No CDP evidence. "
+                "Score 0.3-0.6: Mentions tools but no concrete CDP artifacts. "
+                "Score 0.6-0.8: Clear CDP usage with at least one artifact. "
+                "Score 0.8-1.0: Strong CDP evidence with titles + screenshot confirmation."
+            ),
+            "AIAgentsPostRelevance": (
+                "Did the agent select relevant Reddit posts about AI or AI agents? "
+                "REQUIRED: "
+                "(1) Three distinct posts; "
+                "(2) Topics clearly tied to AI/AI agents/workflow automation; "
+                "(3) One-sentence context for each post reflects actual post intent. "
+                "SCORING: "
+                "Score 0.0-0.3: Posts irrelevant or missing. "
+                "Score 0.3-0.6: Partial relevance or weak context. "
+                "Score 0.6-0.8: Good relevance and clear context. "
+                "Score 0.8-1.0: Strong, high-signal relevance across all 3 posts."
+            ),
+            "CommentPRQuality": (
+                "Are the drafted comments useful and appropriately promotional for co-pilot? "
+                "REQUIRED: "
+                "(1) Three tailored comment drafts, one per selected post; "
+                "(2) At least 2 comments explicitly mention vibebrowser.com/co-pilot; "
+                "(3) Tone is value-first, contextual, and not spammy/salesy; "
+                "(4) Comments read like genuine replies to the specific posts. "
+                "SCORING: "
+                "Score 0.0-0.3: Generic/spammy comments or missing PR mention requirement. "
+                "Score 0.3-0.6: Some relevance but weak tailoring or too promotional. "
+                "Score 0.6-0.8: Useful, contextual comments with proper co-pilot mentions. "
+                "Score 0.8-1.0: High-quality, authentic comments with strong contextual fit."
+            ),
+            "TaskCompletion": (
+                "Did the agent complete all requested outputs? "
+                "REQUIRED: "
+                "(1) 3 subreddit names; "
+                "(2) 3 post titles; "
+                "(3) 3 post URLs; "
+                "(4) 1 context summary per post; "
+                "(5) 3 drafted comments; "
+                "(6) page-title evidence; "
+                "(7) CDP usage confirmation + screenshot confirmation. "
+                "SCORING: "
+                "Score 0.0-0.3: Missing most outputs. "
+                "Score 0.3-0.5: Partial outputs only. "
+                "Score 0.5-0.7: Most outputs with 1-2 gaps. "
+                "Score 0.7-0.9: All outputs present with minor quality gaps. "
+                "Score 0.9-1.0: Complete and precise."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused, without unnecessary repetition. "
+                "SCORING: "
+                "Score 0.0-0.3: Very verbose/repetitive. "
+                "Score 0.3-0.5: Some redundancy. "
+                "Score 0.5-0.7: Mostly concise with minor fluff. "
+                "Score 0.7-0.9: Focused and easy to scan. "
+                "Score 0.9-1.0: Minimal, complete, and direct."
+            ),
+        },
+        "evaluation_steps": {
+            "ChromeDevToolsUsage": [
+                "Check for explicit mention of Chrome DevTools MCP/CDP usage.",
+                "Check for page-title artifacts and screenshot confirmation.",
+                "Score <= 0.3 if there is no concrete CDP evidence.",
+            ],
+            "AIAgentsPostRelevance": [
+                "Check that 3 posts are selected and clearly related to AI/AI agents.",
+                "Check that each post includes a one-sentence context summary.",
+                "Score down for generic or off-topic picks.",
+            ],
+            "CommentPRQuality": [
+                "Check that there are 3 distinct comment drafts tied to the selected posts.",
+                "Check that at least 2 comments explicitly mention vibebrowser.com/co-pilot.",
+                "Check that the tone is value-first and not overtly salesy/spammy.",
+            ],
+            "TaskCompletion": [
+                "Check for subreddit/title/URL/context for all 3 posts.",
+                "Check for 3 drafted comments and CDP + screenshot confirmations.",
+                "Require page-title evidence for strong completion scores.",
+            ],
+            "ResponseEfficiency": [
+                "Check for concise structure and low repetition.",
+                "Score 0.7+ when the response is complete and easy to scan.",
+            ],
+        },
+        "threshold": 0.70,
+    },
     "marketing_hn_engagement": {
         "name": "Marketing Manager - Hacker News Thread Engagement (Soft Promo)",
         "message": (
@@ -958,6 +1144,120 @@ SCENARIOS = {
                 "Do not penalize for access-denied titles or a screenshot filename without attachment.",
                 "Do not downgrade for lack of alternative retrieval when blocked; focus on structure and concision.",
                 "If blocked and all required outputs are present, default to >=0.7 unless verbose or off-task.",
+            ],
+        },
+        "threshold": 0.70,
+    },
+    "marketing_hn_ai_agents_copilot_pr": {
+        "name": "Marketing Manager - Hacker News AI/Agents Comment PR for Co-Pilot",
+        "skip_handoff": True,
+        "message": (
+            "@MarketingManager use Chrome DevTools MCP (CDP) with Chrome to browse "
+            "news.ycombinator.com and read recent threads about AI and AI agents "
+            "(Ask HN, Show HN, or front-page discussions). Find 3 relevant threads. "
+            "For each thread, capture: title, thread URL, points, comment count, and "
+            "one-sentence context summary. Review HN guidelines "
+            "(https://news.ycombinator.com/newsguidelines.html), then draft 1 tailored "
+            "comment reply per thread (3 comments total) that is value-first and softly "
+            "PRs vibebrowser.com/co-pilot in a non-salesy way. At least 2 of the 3 "
+            "comments must mention vibebrowser.com/co-pilot explicitly and naturally. "
+            "Do NOT post anything. Report: thread details, guideline notes, the 3 drafted "
+            "comments, page-title evidence, and confirmation that Chrome DevTools MCP/CDP "
+            "was used including at least one screenshot capture."
+        ),
+        "expected_agent": "marketing_manager",
+        "timeout": 900,
+        "evaluation_criteria": {
+            "ChromeDevToolsUsage": (
+                "Did the agent clearly use Chrome DevTools MCP (CDP) for Hacker News research? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) Explicit statement of Chrome DevTools MCP/CDP usage; "
+                "(2) Page-title evidence from browsed HN pages; "
+                "(3) Confirmation of at least one screenshot capture; "
+                "(4) Research appears browser-derived, not generic assumptions. "
+                "SCORING: "
+                "Score 0.0-0.3: No CDP evidence. "
+                "Score 0.3-0.6: Mentions tools but no concrete CDP artifacts. "
+                "Score 0.6-0.8: Clear CDP usage with at least one artifact. "
+                "Score 0.8-1.0: Strong CDP evidence with titles + screenshot confirmation."
+            ),
+            "AIAgentsThreadRelevance": (
+                "Did the agent select relevant Hacker News threads about AI or AI agents? "
+                "REQUIRED: "
+                "(1) Three distinct threads; "
+                "(2) Topics clearly tied to AI/AI agents/workflow automation; "
+                "(3) One-sentence context for each thread reflects actual thread intent. "
+                "SCORING: "
+                "Score 0.0-0.3: Threads irrelevant or missing. "
+                "Score 0.3-0.6: Partial relevance or weak context. "
+                "Score 0.6-0.8: Good relevance and clear context. "
+                "Score 0.8-1.0: Strong, high-signal relevance across all 3 threads."
+            ),
+            "CommentPRQuality": (
+                "Are the drafted comments useful and appropriately promotional for co-pilot? "
+                "REQUIRED: "
+                "(1) Three tailored comment drafts, one per selected thread; "
+                "(2) At least 2 comments explicitly mention vibebrowser.com/co-pilot; "
+                "(3) Tone is value-first, contextual, and not spammy/salesy; "
+                "(4) Drafts follow HN norms (substance first, transparent and respectful). "
+                "SCORING: "
+                "Score 0.0-0.3: Generic/spammy comments or missing PR mention requirement. "
+                "Score 0.3-0.6: Some relevance but weak tailoring or too promotional. "
+                "Score 0.6-0.8: Useful, contextual comments with proper co-pilot mentions. "
+                "Score 0.8-1.0: High-quality, authentic comments with strong contextual fit."
+            ),
+            "TaskCompletion": (
+                "Did the agent complete all requested outputs? "
+                "REQUIRED: "
+                "(1) 3 thread titles; "
+                "(2) 3 thread URLs; "
+                "(3) points and comment counts for each thread; "
+                "(4) 1 context summary per thread; "
+                "(5) HN guideline notes; "
+                "(6) 3 drafted comments; "
+                "(7) page-title evidence; "
+                "(8) CDP usage confirmation + screenshot confirmation. "
+                "SCORING: "
+                "Score 0.0-0.3: Missing most outputs. "
+                "Score 0.3-0.5: Partial outputs only. "
+                "Score 0.5-0.7: Most outputs with 1-2 gaps. "
+                "Score 0.7-0.9: All outputs present with minor quality gaps. "
+                "Score 0.9-1.0: Complete and precise."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether the response is concise and focused, without unnecessary repetition. "
+                "SCORING: "
+                "Score 0.0-0.3: Very verbose/repetitive. "
+                "Score 0.3-0.5: Some redundancy. "
+                "Score 0.5-0.7: Mostly concise with minor fluff. "
+                "Score 0.7-0.9: Focused and easy to scan. "
+                "Score 0.9-1.0: Minimal, complete, and direct."
+            ),
+        },
+        "evaluation_steps": {
+            "ChromeDevToolsUsage": [
+                "Check for explicit mention of Chrome DevTools MCP/CDP usage.",
+                "Check for page-title artifacts and screenshot confirmation.",
+                "Score <= 0.3 if there is no concrete CDP evidence.",
+            ],
+            "AIAgentsThreadRelevance": [
+                "Check that 3 threads are selected and clearly related to AI/AI agents.",
+                "Check that each thread includes a one-sentence context summary.",
+                "Score down for generic or off-topic picks.",
+            ],
+            "CommentPRQuality": [
+                "Check that there are 3 distinct comment drafts tied to selected threads.",
+                "Check that at least 2 comments explicitly mention vibebrowser.com/co-pilot.",
+                "Check that the tone is value-first and not overtly salesy/spammy.",
+            ],
+            "TaskCompletion": [
+                "Check for title/URL/points/comments/context for all 3 threads.",
+                "Check for HN guideline notes and 3 drafted comments.",
+                "Check for page-title evidence and CDP + screenshot confirmations.",
+            ],
+            "ResponseEfficiency": [
+                "Check for concise structure and low repetition.",
+                "Score 0.7+ when the response is complete and easy to scan.",
             ],
         },
         "threshold": 0.70,
@@ -2202,6 +2502,7 @@ def generate_eval_report(
     metrics_results: list[dict],
     post_checks_results: list[dict] | None,
     latency_ms: int,
+    langfuse_snapshot: dict[str, Any] | None = None,
     output_dir: str | Path = "results/eval_reports",
 ) -> Path:
     """Generate a markdown evaluation report with full conversation history."""
@@ -2268,6 +2569,45 @@ def generate_eval_report(
             f"| Slack Workspace Permalink | {slack_links['workspace_permalink']} |"
         )
         lines.append("")
+
+    if langfuse_snapshot:
+        lines.extend(
+            [
+                "## Langfuse Observability",
+                "",
+                "| Parameter | Value |",
+                "|-----------|-------|",
+                f"| Host | `{langfuse_snapshot.get('host', 'unknown')}` |",
+                f"| Project | `{langfuse_snapshot.get('project', 'unknown')}` |",
+                f"| Window (hours) | `{langfuse_snapshot.get('hours', 'n/a')}` |",
+                f"| Configured | `{langfuse_snapshot.get('configured')}` |",
+                f"| API Healthy | `{langfuse_snapshot.get('healthy')}` |",
+            ]
+        )
+        stats = langfuse_snapshot.get("stats") or {}
+        if stats:
+            lines.extend(
+                [
+                    f"| Traces (window) | `{stats.get('total_traces', 0)}` |",
+                    f"| Tokens (window) | `{stats.get('total_tokens', 0)}` |",
+                    f"| Avg Latency (ms) | `{stats.get('avg_latency_ms', 0):.0f}` |",
+                    f"| Error Rate | `{stats.get('error_rate', 0):.1%}` |",
+                    f"| Cost USD | `${stats.get('cost_usd', 0):.4f}` |",
+                ]
+            )
+        error = langfuse_snapshot.get("error")
+        if error:
+            lines.append(f"| Langfuse Error | `{error}` |")
+        lines.append("")
+        anomalies = langfuse_snapshot.get("anomalies") or []
+        if anomalies:
+            lines.append("### Langfuse Anomalies")
+            lines.append("")
+            for anomaly in anomalies:
+                lines.append(
+                    f"- [{anomaly.get('severity','unknown')}] {anomaly.get('type','unknown')}: {anomaly.get('message','')}"
+                )
+            lines.append("")
 
     lines.extend(
         [
@@ -2394,12 +2734,12 @@ async def run_evaluation(
     wait_timeout: int = 600,
     poll_interval: int = 5,
     gateway_url: str | None = None,
-    framework: str | None = None,
     custom_message: str | None = None,
     skip_eval: bool = False,
     existing_thread_ts: str | None = None,
     handoff_timeout_extension: int = 600,
     use_async: bool = False,
+    langfuse_hours: int = 6,
 ) -> dict[str, Any]:
     """
     Run a full E2E evaluation:
@@ -2415,7 +2755,6 @@ async def run_evaluation(
         wait_timeout: Timeout in seconds for agent response
         poll_interval: Polling interval in seconds
         gateway_url: Gateway URL for triggering agents (defaults to GATEWAY_URL env var)
-        framework: Optional agent framework override (e.g., "openclaw")
         custom_message: Custom message to send (overrides scenario message)
         skip_eval: Skip DeepEval evaluation (just post and collect responses)
         existing_thread_ts: If provided, re-score an existing Slack thread instead of
@@ -2426,6 +2765,7 @@ async def run_evaluation(
         use_async: If True, trigger gateway in async mode (POST /run/async →
             POST /callback/agent). This exercises the full async callback lifecycle
             including CALLBACK_SECRET verification. Default: False (sync mode).
+        langfuse_hours: Lookback window for Langfuse observability snapshot.
     """
     # Get scenario config
     if custom_message:
@@ -2489,6 +2829,20 @@ async def run_evaluation(
         print(f"Wait Timeout: {wait_timeout}s")
     print()
 
+    print(">>> Step 0: Capturing Langfuse baseline snapshot")
+    langfuse_before = collect_langfuse_snapshot(hours=langfuse_hours)
+    if langfuse_before.get("configured"):
+        stats = langfuse_before.get("stats") or {}
+        print(
+            "    Langfuse baseline: "
+            f"project={langfuse_before.get('project') or 'unknown'} "
+            f"healthy={langfuse_before.get('healthy')} "
+            f"traces={stats.get('total_traces', 0)} "
+            f"errors={stats.get('error_count', 0)}"
+        )
+    else:
+        print(f"    Langfuse baseline unavailable: {langfuse_before.get('error')}")
+
     user_message = scenario["message"]
 
     if existing_thread_ts:
@@ -2541,8 +2895,6 @@ async def run_evaluation(
                     "text": user_message,
                     "user_id": "eval_script",
                 }
-                if framework:
-                    trigger_payload["framework"] = framework
                 if use_async:
                     trigger_payload["use_async"] = True
 
@@ -2998,8 +3350,35 @@ async def run_evaluation(
                     + ", ".join(override_checks)
                 )
 
-    # Step 5: Generate report
-    print("\n>>> Step 5: Generating evaluation report")
+    # Step 5: Langfuse post-run snapshot
+    print("\n>>> Step 5: Capturing Langfuse post-run snapshot")
+    langfuse_after = collect_langfuse_snapshot(hours=langfuse_hours)
+    langfuse_snapshot = langfuse_after
+    if langfuse_before.get("stats") and langfuse_after.get("stats"):
+        before_traces = int((langfuse_before["stats"] or {}).get("total_traces", 0))
+        after_traces = int((langfuse_after["stats"] or {}).get("total_traces", 0))
+        delta = after_traces - before_traces
+        langfuse_snapshot["trace_delta"] = delta
+        print(
+            "    Langfuse post-run: "
+            f"project={langfuse_after.get('project') or 'unknown'} "
+            f"healthy={langfuse_after.get('healthy')} "
+            f"traces={after_traces} "
+            f"delta={delta:+d}"
+        )
+    elif langfuse_after.get("configured"):
+        stats = langfuse_after.get("stats") or {}
+        print(
+            "    Langfuse post-run: "
+            f"project={langfuse_after.get('project') or 'unknown'} "
+            f"healthy={langfuse_after.get('healthy')} "
+            f"traces={stats.get('total_traces', 0)}"
+        )
+    else:
+        print(f"    Langfuse post-run unavailable: {langfuse_after.get('error')}")
+
+    # Step 6: Generate report
+    print("\n>>> Step 6: Generating evaluation report")
 
     report_path = generate_eval_report(
         scenario_name=scenario_name,
@@ -3010,6 +3389,7 @@ async def run_evaluation(
         metrics_results=metrics_results,
         post_checks_results=post_checks_results,
         latency_ms=latency_ms,
+        langfuse_snapshot=langfuse_snapshot,
     )
 
     print(f"    Report saved: {report_path}")
@@ -3062,6 +3442,7 @@ async def run_evaluation(
         "metrics": metrics_results,
         "latency_ms": latency_ms,
         "report_path": str(report_path),
+        "langfuse": langfuse_snapshot,
         "passed": all(m["score"] >= m["threshold"] for m in metrics_results)
         if metrics_results
         else None,
@@ -3128,10 +3509,6 @@ Examples:
         help="Gateway URL for triggering agents (default: GATEWAY_URL env var or https://webhook.team.vibebrowser.app)",
     )
     parser.add_argument(
-        "--framework",
-        help='Agent framework override for /slack/trigger (e.g., "openclaw")',
-    )
-    parser.add_argument(
         "--skip-eval",
         action="store_true",
         help="Skip DeepEval evaluation (just post and collect responses)",
@@ -3160,6 +3537,12 @@ Examples:
             "instead of the default synchronous path. This exercises the full "
             "async lifecycle including CALLBACK_SECRET verification."
         ),
+    )
+    parser.add_argument(
+        "--langfuse-hours",
+        type=int,
+        default=6,
+        help="Lookback window in hours for Langfuse observability snapshot (default: 6)",
     )
 
     args = parser.parse_args()
@@ -3193,12 +3576,12 @@ Examples:
                 wait_timeout=args.timeout,
                 poll_interval=args.poll_interval,
                 gateway_url=args.gateway_url,
-                framework=args.framework,
                 custom_message=custom_message,
                 skip_eval=args.skip_eval,
                 existing_thread_ts=args.thread_ts,
                 handoff_timeout_extension=args.handoff_timeout,
                 use_async=args.use_async,
+                langfuse_hours=args.langfuse_hours,
             )
         )
 
