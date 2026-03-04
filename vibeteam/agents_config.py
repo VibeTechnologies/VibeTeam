@@ -32,11 +32,27 @@ class AgentEntry:
 AGENTS_CONFIG_PATH = os.environ.get("AGENTS_CONFIG_PATH", "agents/agents.yaml")
 
 
+def _repo_root() -> Path:
+    """Return repository root relative to this module, independent of process CWD."""
+    return Path(__file__).resolve().parent.parent
+
+
 def _get_agents_config_path() -> Path:
     path = Path(AGENTS_CONFIG_PATH)
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    return path
+    if path.is_absolute():
+        return path
+
+    # Prefer CWD-relative path when available (dev workflows), but git-sync based
+    # deployments can invalidate process CWD between revisions. Fall back to a
+    # stable module-relative repository root in that case.
+    try:
+        cwd_candidate = Path.cwd() / path
+        if cwd_candidate.exists():
+            return cwd_candidate
+    except FileNotFoundError:
+        pass
+
+    return _repo_root() / path
 
 
 def _get_agents_config_dir() -> Path:
