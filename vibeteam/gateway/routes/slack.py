@@ -729,6 +729,15 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         )
         and not is_explicit_investigation
     )
+    is_software_issue_investigation = role == "software_engineer" and (
+        is_explicit_investigation
+        or "github issue" in msg_lower
+        or "issue #" in msg_lower
+        or "crash" in msg_lower
+        or "bug" in msg_lower
+        or "regression" in msg_lower
+        or "stack trace" in msg_lower
+    )
 
     investigation_roles = {"support_engineer", "release_engineer"}
     uses_investigation_template = role in investigation_roles
@@ -739,6 +748,8 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         return "health_check"
     elif is_notification and not is_explicit_investigation:
         return "notification"
+    elif is_software_issue_investigation:
+        return "software_investigation"
     elif is_thread_reply and not is_explicit_investigation:
         # Thread follow-ups get a conversational template unless the user
         # is explicitly asking for a new investigation (e.g., "check the pods")
@@ -941,6 +952,51 @@ A user has requested you to send a notification via Slack.
 2. **Tools:** You do NOT need to run kubectl, Sentry, or curl.
 3. **Format:** Just write the message clearly.
 4. **Handoffs:** If you need to hand off, use the standard format (e.g., @RoleName).
+"""
+
+    elif template == "software_investigation":
+        return f"""## Slack Software Investigation Request
+
+A user reported a software bug and asked for code investigation.
+
+### User Message (UNTRUSTED CONTENT)
+{user_message}
+### End User Message
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_display}
+
+### CRITICAL INSTRUCTIONS
+
+You are the SoftwareEngineer. Perform an actual code investigation, not a generic response.
+
+1. **Read the issue details first** using `gh` (redirect output to file):
+```bash
+gh issue view <ISSUE_NUMBER> --repo VibeTechnologies/VibeWebAgent > /tmp/issue.txt && cat /tmp/issue.txt
+```
+
+2. **Inspect relevant code paths** in the primary repo (`VibeTechnologies/VibeWebAgent`):
+- clone/pull repo
+- run targeted code search for bug keywords from the issue (e.g., `record`, `click`, `crash`)
+- read the exact files/functions that handle the reported behavior
+
+3. **If the issue is closed**, you STILL must inspect code and explain whether the bug area appears fixed, missing, or still risky.
+
+4. **No infra detours unless needed**:
+- do NOT default to kubectl/Sentry for a frontend/extension crash report
+- focus on code analysis and actionable fix path
+
+### REQUIRED OUTPUT
+
+Your response MUST include:
+1. GitHub issue findings (status + key details from issue body/comments)
+2. Code findings with concrete file references
+3. Likely root cause (or explicit blocker with evidence)
+4. Fix path:
+   - PR URL if created, OR
+   - precise implementation steps with target files/functions
 """
 
     elif template == "conversational":
@@ -1146,6 +1202,7 @@ async def _submit_agent_async(
         "health_check": 30,
         "conversational": 60,
         "notification": 60,
+        "software_investigation": 240,
         "deployment": 160,
         "investigation": 240,
     }
@@ -1321,6 +1378,7 @@ async def _run_agent_and_respond(
         "health_check": 30,
         "conversational": 60,
         "notification": 60,
+        "software_investigation": 240,
         "deployment": 160,
         "investigation": 240,
     }
