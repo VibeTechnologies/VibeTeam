@@ -4,5 +4,5 @@ metadata:
   name: agents-config
 spec:
   accessModes:
-    - ReadWriteOnce
-  storageClassName: local-path
+    - ReadWriteMany
+  storageClassName: azurefile-csi
