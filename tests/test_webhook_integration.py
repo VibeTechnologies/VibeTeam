@@ -355,6 +355,85 @@ class TestGitHubWebhookRouting:
         finally:
             github.config.GITHUB_WEBHOOK_SECRET = original_secret
 
+    def test_unsigned_eval_repo_allowed_when_flag_enabled(self, test_client):
+        """Allow unsigned webhook only for explicitly allowlisted eval repo."""
+        from vibeteam.gateway.routes import github
+
+        original_secret = github.config.GITHUB_WEBHOOK_SECRET
+        original_allow = github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS
+        original_repos = github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS
+
+        github.config.GITHUB_WEBHOOK_SECRET = "test_secret"
+        github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = True
+        github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS = {
+            "vibetechnologies/vibeteam-eval-hello-world"
+        }
+
+        try:
+            payload = {
+                "action": "created",
+                "issue": {"number": 123},
+                "comment": {"body": "@SupportEngineer check this", "user": {"login": "testuser"}},
+                "repository": {"full_name": "VibeTechnologies/vibeteam-eval-hello-world"},
+            }
+            payload_str = json.dumps(payload)
+
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issue_comment",
+                    "X-Hub-Signature-256": "sha256=invalid_signature",
+                    "Content-Type": "application/json",
+                },
+            )
+
+            assert response.status_code == 200
+            assert response.json()["status"] == "accepted"
+        finally:
+            github.config.GITHUB_WEBHOOK_SECRET = original_secret
+            github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = original_allow
+            github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS = original_repos
+
+    def test_unsigned_non_allowlisted_repo_still_rejected(self, test_client):
+        """Unsigned webhook remains rejected for non-allowlisted repos."""
+        from vibeteam.gateway.routes import github
+
+        original_secret = github.config.GITHUB_WEBHOOK_SECRET
+        original_allow = github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS
+        original_repos = github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS
+
+        github.config.GITHUB_WEBHOOK_SECRET = "test_secret"
+        github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = True
+        github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS = {
+            "vibetechnologies/vibeteam-eval-hello-world"
+        }
+
+        try:
+            payload = {
+                "action": "opened",
+                "issue": {"number": 1},
+                "repository": {"full_name": "VibeTechnologies/other-repo"},
+            }
+            payload_str = json.dumps(payload)
+
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issues",
+                    "X-Hub-Signature-256": "sha256=invalid_signature",
+                    "Content-Type": "application/json",
+                },
+            )
+
+            assert response.status_code == 401
+            assert "Invalid signature" in response.text
+        finally:
+            github.config.GITHUB_WEBHOOK_SECRET = original_secret
+            github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = original_allow
+            github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS = original_repos
+
     def test_bot_own_comment_ignored(self, test_client, github_webhook_secret, monkeypatch):
         """issue_comment from vibeteam-bot[bot] → ignored with reason own_comment."""
         monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)

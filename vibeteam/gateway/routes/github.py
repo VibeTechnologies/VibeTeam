@@ -57,6 +57,15 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
+def _allow_unsigned_eval_webhook(repo_full_name: str) -> bool:
+    """Allow unsigned webhook payloads only for explicitly allowlisted eval repos."""
+    if not config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS:
+        return False
+    if not repo_full_name:
+        return False
+    return repo_full_name.lower() in config.GITHUB_UNSIGNED_WEBHOOK_REPOS
+
+
 def is_assigned_to_bot(assignee: dict[str, Any] | None) -> bool:
     """Check if the assignee is our bot."""
     if not assignee:
@@ -561,16 +570,25 @@ async def handle_github_webhook(
 ) -> dict[str, str]:
     """Handle incoming GitHub webhook events."""
     payload_bytes = await request.body()
+    try:
+        payload = json.loads(payload_bytes)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
-    # Verify signature
-    if not verify_signature(payload_bytes, x_hub_signature_256 or "", config.GITHUB_WEBHOOK_SECRET):
-        logger.warning("Invalid webhook signature")
-        raise HTTPException(status_code=401, detail="Invalid signature")
-
-    payload = json.loads(payload_bytes)
     action = payload.get("action", "")
     repo_data = payload.get("repository", {})
     repo_full_name = repo_data.get("full_name", "")
+
+    # Verify signature unless explicitly allowlisted for eval webhooks.
+    if not verify_signature(payload_bytes, x_hub_signature_256 or "", config.GITHUB_WEBHOOK_SECRET):
+        if _allow_unsigned_eval_webhook(repo_full_name):
+            logger.warning(
+                "Allowing unsigned GitHub webhook for allowlisted eval repo: %s",
+                repo_full_name,
+            )
+        else:
+            logger.warning("Invalid webhook signature")
+            raise HTTPException(status_code=401, detail="Invalid signature")
 
     logger.info(f"Received {x_github_event}.{action} for {repo_full_name}")
 
