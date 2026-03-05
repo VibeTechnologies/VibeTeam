@@ -16,6 +16,14 @@ def test_identifies_knowledgebase_ingestion_task() -> None:
     assert _is_knowledgebase_ingestion_task(task) is True
 
 
+def test_identifies_knowledgebase_task_with_knowledge_base_wording() -> None:
+    task = (
+        "Please update knowledge base entry at agents/shared/knowledgebase/inbox/kb_eval_123.md "
+        "with line KB_EVAL_FACT_123: cobalt-lotus-914 and confirm."
+    )
+    assert _is_knowledgebase_ingestion_task(task) is True
+
+
 def test_compacts_knowledgebase_ingestion_response() -> None:
     task = (
         "@SupportEngineer add a new knowledgebase markdown file at "

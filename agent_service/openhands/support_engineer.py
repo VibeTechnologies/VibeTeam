@@ -504,11 +504,12 @@ def fetch_docs_context_wrapper(query: str) -> str:
 
 def _is_knowledgebase_ingestion_task(task: str) -> bool:
     task_lower = task.lower()
-    return (
-        "knowledgebase" in task_lower
-        and "agents/shared/knowledgebase" in task_lower
-        and ("rebuild the docs index" in task_lower or "rebuild docs index" in task_lower)
+    has_fact_key = "kb_eval_fact_" in task_lower
+    has_kb_path = (
+        "agents/shared/knowledgebase" in task_lower
+        or "/app/agents/shared/knowledgebase" in task_lower
     )
+    return has_fact_key and has_kb_path
 
 
 def _compact_knowledgebase_ingestion_response(task: str, response: str) -> str:
