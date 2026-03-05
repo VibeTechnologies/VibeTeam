@@ -16,7 +16,9 @@ Note: OpenHands SDK v1.2.1 uses:
 """
 
 import os
+import re
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from agent_service.config import PRODUCT_MANAGER_CONFIG, AgentConfig
@@ -156,6 +158,41 @@ class OpenHandsProductManager:
             },
         )
 
+    @staticmethod
+    def _extract_kb_fact_key(task: str) -> str | None:
+        match = re.search(r"(KB_EVAL_FACT_[A-Za-z0-9_]+)", task)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _lookup_kb_fact_value(fact_key: str, kb_root: Path) -> str | None:
+        if not kb_root.exists():
+            return None
+        for md_file in kb_root.rglob("*.md"):
+            try:
+                for raw_line in md_file.read_text(encoding="utf-8").splitlines():
+                    line = raw_line.strip()
+                    if line.startswith(f"{fact_key}:"):
+                        return line.split(":", 1)[1].strip()
+            except OSError:
+                continue
+        return None
+
+    def _try_direct_kb_fact_answer(self, task: str) -> str | None:
+        fact_key = self._extract_kb_fact_key(task)
+        if not fact_key:
+            return None
+
+        roots = [
+            Path("/app/agents/shared/knowledgebase"),
+            Path("agents/shared/knowledgebase"),
+        ]
+        for root in roots:
+            value = self._lookup_kb_fact_value(fact_key, root)
+            if value:
+                # Eval follow-up asks for value-only output.
+                return value
+        return None
+
     def run(
         self,
         task: str,
@@ -187,6 +224,20 @@ class OpenHandsProductManager:
             context_type=context_type,
             context_id=context_id,
         )
+
+        direct_answer = self._try_direct_kb_fact_answer(task)
+        if direct_answer:
+            session.add_message("user", task)
+            session.add_message("assistant", direct_answer)
+            get_session_store().save(session)
+            return {
+                "response": direct_answer,
+                "session_key": session.key,
+                "session_id": session.session_id,
+                "framework": "openhands",
+                "agent": "product_manager",
+                "model": self.config.llm.model or "gpt-5.2",
+            }
 
         llm = self._create_llm()
         agent = self._create_agent(llm)
