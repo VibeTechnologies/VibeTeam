@@ -168,6 +168,12 @@ def _resolve_prompt_path(agent_name: str, agents_root: Path) -> Path:
     return agents_root / agent_dir / "AGENTS.md"
 
 
+def resolve_agent_root(agent_name: str) -> Path:
+    """Resolve the root directory for an agent (contains AGENTS.md/skills/config)."""
+    agents_root = get_agents_root()
+    return _resolve_prompt_path(agent_name, agents_root).parent
+
+
 def compose_agent_context(agent_name: str, fallback_context: str | None = None) -> str:
     """Load and compose hierarchical instructions for an agent.
 
