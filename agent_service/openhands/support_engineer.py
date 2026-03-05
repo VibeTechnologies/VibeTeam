@@ -520,14 +520,20 @@ def _compact_knowledgebase_ingestion_response(task: str, response: str) -> str:
     if not _is_knowledgebase_ingestion_task(task):
         return response
 
-    path_match = re.search(r"`(agents/shared/knowledgebase/[^`]+)`", task)
-    fact_match = re.search(r"`(KB_EVAL_FACT_[A-Za-z0-9_]+)\s*:\s*([^`]+)`", task)
+    # Prefer the first response line when the model already produced a concise
+    # KB confirmation and then appended unrelated diagnostics.
+    first_line = next((line.strip() for line in response.splitlines() if line.strip()), "")
+    if first_line and ("kb update" in first_line.lower() or "knowledgebase update" in first_line.lower()):
+        return first_line
+
+    path_match = re.search(r"`?(agents/shared/knowledgebase/\S+?)`?(?:\s|$)", task)
+    fact_match = re.search(r"`?(KB_EVAL_FACT_[A-Za-z0-9_]+)\s*:\s*([^`\n]+)`?", task)
     if not path_match or not fact_match:
-        return response
+        return first_line or response
 
     rel_path = path_match.group(1).strip()
     fact_key = fact_match.group(1).strip()
-    fact_value = fact_match.group(2).strip()
+    fact_value = fact_match.group(2).strip().rstrip(".")
     runtime_path = f"/app/{rel_path}" if not rel_path.startswith("/app/") else rel_path
 
     # If the agent clearly failed to perform the request, preserve the original response.

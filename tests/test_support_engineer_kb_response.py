@@ -24,13 +24,15 @@ def test_compacts_knowledgebase_ingestion_response() -> None:
         "the file path and fact key in your response."
     )
     noisy = (
-        "- Knowledgebase update done.\n"
-        "- Sentry findings: none.\n"
-        "- kubectl findings: unrelated details.\n"
+        "KB update: created `/app/agents/shared/knowledgebase/inbox/kb_eval_123.md` "
+        "with `KB_EVAL_FACT_123: cobalt-lotus-914` and rebuilt the docs index.\n\n"
+        "Sentry findings: none.\n"
+        "kubectl findings: unrelated details.\n"
     )
     compact = _compact_knowledgebase_ingestion_response(task, noisy)
 
-    assert "Knowledgebase update complete:" in compact
+    assert compact.startswith("KB update: created")
+    assert "\n" not in compact
     assert "`/app/agents/shared/knowledgebase/inbox/kb_eval_123.md`" in compact
     assert "`KB_EVAL_FACT_123: cobalt-lotus-914`" in compact
     assert "Sentry findings" not in compact
