@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import os
 import re
 import sys
@@ -845,6 +846,77 @@ SCENARIOS = {
                 "Check for redundant tool usage or repeated steps in the response.",
                 "Check that the response is concise and directly answers the requested outputs.",
                 "Score 0.7+ if the response is focused and complete.",
+            ],
+        },
+        "threshold": 0.70,
+    },
+    "knowledgebase_cross_agent_support_to_product": {
+        "name": "Knowledgebase Cross-Agent Retrieval (SupportEngineer -> ProductManager)",
+        "message": (
+            "@SupportEngineer add a new knowledgebase markdown file at "
+            "`agents/shared/knowledgebase/inbox/kb_eval_{KB_TOKEN}.md` with this exact line: "
+            "`KB_EVAL_FACT_{KB_TOKEN}: cobalt-lotus-914`. Then rebuild the docs index and confirm "
+            "the file path and fact key in your response."
+        ),
+        "follow_up_message": (
+            "@ProductManager do not guess. Read shared knowledgebase and answer this exactly: "
+            "what is the value for `KB_EVAL_FACT_{KB_TOKEN}`? Respond with only the value."
+        ),
+        "expected_agent": "support_engineer",
+        "timeout": 900,
+        "skip_handoff": True,
+        "post_checks": {
+            "knowledgebase_cross_agent_retrieval": {
+                "fact_key": "KB_EVAL_FACT_{KB_TOKEN}",
+                "fact_value": "cobalt-lotus-914",
+                "producer_agent": "support_engineer",
+                "consumer_agent": "product_manager",
+            }
+        },
+        "evaluation_criteria": {
+            "KnowledgebaseIngestionAndRetrieval": (
+                "Did the flow prove cross-agent knowledgebase usage end-to-end? "
+                "REQUIRED FOR HIGH SCORE: "
+                "(1) SupportEngineer confirms adding KB content with the requested fact key; "
+                "(2) ProductManager answers with the stored value; "
+                "(3) ProductManager response reflects retrieval, not guessing. "
+                "SCORING: "
+                "Score 0.0-0.3: No KB ingestion or no retrieval answer. "
+                "Score 0.3-0.6: Partial flow (one agent responds or value missing/wrong). "
+                "Score 0.6-0.8: Both agents respond and value appears but evidence is weak. "
+                "Score 0.8-1.0: Clear ingestion + accurate retrieval across agents."
+            ),
+            "CrossAgentExecution": (
+                "Did both required agents execute in sequence? "
+                "REQUIRED: SupportEngineer response first for ingestion, then ProductManager retrieval response. "
+                "SCORING: "
+                "Score 0.0-0.3: Only one agent responds. "
+                "Score 0.3-0.6: Both respond but sequence is unclear. "
+                "Score 0.6-0.8: Both respond with clear sequence. "
+                "Score 0.8-1.0: Both respond with clear sequence and task alignment."
+            ),
+            "ResponseEfficiency": (
+                "Evaluate whether responses are focused and directly answer the two tasks. "
+                "SCORING: "
+                "Score 0.0-0.3: Rambling/off-topic. "
+                "Score 0.3-0.5: Significant redundancy. "
+                "Score 0.5-0.7: Mostly focused with minor fluff. "
+                "Score 0.7-0.9: Focused and concise. "
+                "Score 0.9-1.0: Minimal and complete."
+            ),
+        },
+        "evaluation_steps": {
+            "KnowledgebaseIngestionAndRetrieval": [
+                "Check that SupportEngineer confirms writing KB content with the requested fact key.",
+                "Check that ProductManager provides the expected value for the fact key.",
+                "Penalize if ProductManager does not answer or answers with wrong value.",
+            ],
+            "CrossAgentExecution": [
+                "Check that both SupportEngineer and ProductManager posted substantive responses.",
+                "Check that ProductManager retrieval happens after SupportEngineer ingestion request.",
+            ],
+            "ResponseEfficiency": [
+                "Check that each response is concise and directly tied to ingestion/retrieval tasks.",
             ],
         },
         "threshold": 0.70,
@@ -2338,6 +2410,107 @@ def _check_sentry_issue_closed(transcript: str) -> dict[str, str | bool]:
     }
 
 
+def _check_knowledgebase_cross_agent_retrieval(
+    conversation: list[tuple[str, str]],
+    fact_key: str,
+    fact_value: str,
+    producer_agent: str,
+    consumer_agent: str,
+) -> dict[str, str | bool]:
+    """Verify one agent ingested KB content and another retrieved the expected value."""
+
+    def _normalize_role(role: str, text: str) -> str:
+        if role != "bot":
+            return role
+        # Fallback for unparsed prefixes like [ProductManager:model]
+        match = re.match(r"^\[([A-Za-z]+)", text.strip())
+        if not match:
+            return role
+        display = match.group(1).strip().lower()
+        for role_key, role_display in ROLE_DISPLAY.items():
+            if role_display.lower() == display:
+                return role_key
+        return role
+
+    producer_msgs: list[str] = []
+    consumer_msgs: list[str] = []
+
+    for role, text in conversation:
+        if role == "user":
+            continue
+        normalized_role = _normalize_role(role, text)
+        if normalized_role == producer_agent:
+            producer_msgs.append(text)
+        if normalized_role == consumer_agent:
+            consumer_msgs.append(text)
+
+    if not producer_msgs:
+        return {
+            "name": "Knowledgebase cross-agent retrieval",
+            "passed": False,
+            "required": True,
+            "details": f"No response from producer agent '{producer_agent}'.",
+        }
+
+    if not consumer_msgs:
+        return {
+            "name": "Knowledgebase cross-agent retrieval",
+            "passed": False,
+            "required": True,
+            "details": f"No response from consumer agent '{consumer_agent}'.",
+        }
+
+    producer_ok = any(fact_key in msg for msg in producer_msgs)
+    consumer_ok = any(fact_value in msg for msg in consumer_msgs)
+
+    if producer_ok and consumer_ok:
+        return {
+            "name": "Knowledgebase cross-agent retrieval",
+            "passed": True,
+            "required": True,
+            "details": (
+                f"Producer '{producer_agent}' referenced '{fact_key}' and consumer "
+                f"'{consumer_agent}' returned expected value '{fact_value}'."
+            ),
+        }
+
+    if not producer_ok:
+        return {
+            "name": "Knowledgebase cross-agent retrieval",
+            "passed": False,
+            "required": True,
+            "details": (
+                f"Producer '{producer_agent}' did not reference fact key '{fact_key}'."
+            ),
+        }
+
+    return {
+        "name": "Knowledgebase cross-agent retrieval",
+        "passed": False,
+        "required": True,
+        "details": (
+            f"Consumer '{consumer_agent}' did not return expected value '{fact_value}'."
+        ),
+    }
+
+
+def _apply_template_placeholders(value: Any, placeholders: dict[str, str]) -> Any:
+    """Recursively replace scenario placeholder tokens in nested config structures."""
+    if isinstance(value, str):
+        rendered = value
+        for key, replacement in placeholders.items():
+            rendered = rendered.replace(key, replacement)
+        return rendered
+    if isinstance(value, list):
+        return [_apply_template_placeholders(item, placeholders) for item in value]
+    if isinstance(value, dict):
+        return {
+            k: _apply_template_placeholders(v, placeholders)
+            for k, v in value.items()
+        }
+    return value
+
+
 def build_transcript(messages: list[tuple[str, str]]) -> str:
     """Build transcript from (role, text) pairs."""
     lines = []
@@ -2491,6 +2664,13 @@ def generate_eval_report(
             details = str(check.get("details", "")).replace("\n", " ")
             lines.append(f"| {check.get('name','')} | {required} | {status} | {details} |")
 
+    original_request = scenario_config["message"]
+    follow_up = scenario_config.get("follow_up_message")
+    if isinstance(follow_up, str) and follow_up.strip():
+        original_request = (
+            f"{original_request}\n\n[Follow-up request]\n{follow_up}"
+        )
+
     lines.extend(
         [
             "---",
@@ -2500,7 +2680,7 @@ def generate_eval_report(
             "### Original User Request",
             "",
             "```",
-            scenario_config["message"],
+            original_request,
             "```",
             "",
             "### Full Conversation",
@@ -2600,13 +2780,17 @@ async def run_evaluation(
         available = ", ".join(SCENARIOS.keys())
         raise ValueError(f"Unknown scenario: {scenario_name}. Available: {available}")
     else:
-        scenario = SCENARIOS[scenario_name]
+        scenario = copy.deepcopy(SCENARIOS[scenario_name])
 
     # Check if scenario is disabled
     if scenario.get("disabled"):
         print(f"\n>>> Scenario '{scenario_name}' is DISABLED: skipping.")
         print(f"    Reason: {scenario.get('disabled_reason', 'See scenario config')}")
         return
+
+    # Render dynamic placeholders (for example KB tokens) per run.
+    kb_token = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    scenario = _apply_template_placeholders(scenario, {"{KB_TOKEN}": kb_token})
 
     # Use per-scenario timeout if defined and CLI didn't explicitly override
     if "timeout" in scenario and wait_timeout == 600:
@@ -2644,6 +2828,7 @@ async def run_evaluation(
     print()
 
     user_message = scenario["message"]
+    follow_up_message = scenario.get("follow_up_message")
 
     if existing_thread_ts:
         # ── Re-score mode: skip Steps 1, 1b, 2 ──────────────────────────
@@ -2926,8 +3111,98 @@ async def run_evaluation(
 
         latency_ms = int((time.time() - start_time) * 1000)
 
+        # Optional follow-up step: ask a second agent in the same thread.
+        if follow_up_message:
+            print("\n>>> Step 2b: Triggering follow-up request in the same thread")
+            print(f"    Follow-up message: {follow_up_message[:80]}...")
+
+            # Baseline message count before follow-up trigger.
+            baseline_replies = await _slack_call(
+                slack.get_thread_replies, channel=channel, thread_ts=thread_ts, limit=50
+            )
+            baseline_count = len(baseline_replies)
+
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    follow_up_payload: dict[str, Any] = {
+                        "channel": channel,
+                        "thread_ts": thread_ts,
+                        "text": follow_up_message,
+                        "user_id": "eval_script_followup",
+                    }
+                    if framework:
+                        follow_up_payload["framework"] = framework
+                    if use_async:
+                        follow_up_payload["use_async"] = True
+
+                    response = await client.post(
+                        trigger_url,
+                        json=follow_up_payload,
+                        headers=headers,
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        mode = result.get("mode", "sync")
+                        print(
+                            f"    Follow-up accepted: routing to {result.get('roles', [])} (mode={mode})"
+                        )
+                    else:
+                        print(
+                            f"    WARNING: Follow-up trigger returned {response.status_code}: {response.text}"
+                        )
+            except Exception as e:
+                print(f"    WARNING: Failed to trigger follow-up message: {e}")
+
+            print(
+                f"\n>>> Step 2c: Waiting for follow-up response (idle timeout: {wait_timeout}s)"
+            )
+            follow_start = time.time()
+            last_message_count = baseline_count
+            last_change_time = follow_start
+            follow_has_substantive = False
+
+            while True:
+                await asyncio.sleep(poll_interval)
+                replies = await _slack_call(
+                    slack.get_thread_replies, channel=channel, thread_ts=thread_ts, limit=50
+                )
+                current_count = len(replies)
+                if current_count > last_message_count:
+                    print(f"    New messages detected: {current_count - last_message_count}")
+                    last_message_count = current_count
+                    last_change_time = time.time()
+
+                new_bot_messages = [
+                    r
+                    for r in replies[baseline_count:]
+                    if r.is_bot and r.ts != thread_ts and not _is_placeholder(r.text)
+                ]
+                if new_bot_messages and not follow_has_substantive:
+                    follow_has_substantive = True
+                    last_change_time = time.time()
+                    print("    Substantive follow-up response detected.")
+
+                idle_for = int(time.time() - last_change_time)
+                elapsed = int(time.time() - follow_start)
+                print(f"    Waiting... (idle {idle_for}s / {wait_timeout}s, total {elapsed}s)")
+
+                if follow_has_substantive and (time.time() - last_change_time) >= 30:
+                    print("    Follow-up conversation stable for 30s.")
+                    break
+
+                if idle_for >= wait_timeout:
+                    if not follow_has_substantive:
+                        print("    No substantive follow-up response before idle timeout.")
+                    else:
+                        print("    Follow-up idle timeout reached after response.")
+                    break
+
+            latency_ms += int((time.time() - follow_start) * 1000)
+
     # Track conversation
     conversation: list[tuple[str, str]] = [("user", user_message)]
+    if follow_up_message:
+        conversation.append(("user", follow_up_message))
 
     # Step 3: Collect conversation
     print("\n>>> Step 3: Collecting conversation")
@@ -3015,6 +3290,22 @@ async def run_evaluation(
         if post_checks_config.get("sentry_issue_closed"):
             result = _check_sentry_issue_closed(transcript)
             result["id"] = "sentry_issue_closed"
+            post_checks_results.append(result)
+            status = "✅" if result.get("passed") else "❌"
+            print(f"    {status} {result.get('name')}: {result.get('details')}")
+
+        if post_checks_config.get("knowledgebase_cross_agent_retrieval"):
+            kb_cfg = post_checks_config.get("knowledgebase_cross_agent_retrieval", {})
+            if not isinstance(kb_cfg, dict):
+                kb_cfg = {}
+            result = _check_knowledgebase_cross_agent_retrieval(
+                conversation=conversation,
+                fact_key=str(kb_cfg.get("fact_key", "")),
+                fact_value=str(kb_cfg.get("fact_value", "")),
+                producer_agent=str(kb_cfg.get("producer_agent", "support_engineer")),
+                consumer_agent=str(kb_cfg.get("consumer_agent", "product_manager")),
+            )
+            result["id"] = "knowledgebase_cross_agent_retrieval"
             post_checks_results.append(result)
             status = "✅" if result.get("passed") else "❌"
             print(f"    {status} {result.get('name')}: {result.get('details')}")
@@ -3186,10 +3477,13 @@ async def run_evaluation(
 
     if metrics_passed is None and post_checks_passed is None:
         print("Overall: ⚠️ NOT EVALUATED")
+        overall_passed: bool | None = None
     elif metrics_passed is None:
         print(f"Overall: {'✅ PASSED' if post_checks_passed else '❌ FAILED'} (post-checks only)")
+        overall_passed = bool(post_checks_passed)
     elif post_checks_passed is None:
         print(f"Overall: {'✅ PASSED' if metrics_passed else '❌ FAILED'}")
+        overall_passed = bool(metrics_passed)
     else:
         overall_passed = metrics_passed and post_checks_passed
         print(f"Overall: {'✅ PASSED' if overall_passed else '❌ FAILED'}")
@@ -3216,9 +3510,7 @@ async def run_evaluation(
         "metrics": metrics_results,
         "latency_ms": latency_ms,
         "report_path": str(report_path),
-        "passed": all(m["score"] >= m["threshold"] for m in metrics_results)
-        if metrics_results
-        else None,
+        "passed": overall_passed,
     }
 
 

@@ -137,6 +137,14 @@ spec:
               value: "/app/agents"
             - name: AGENTS_CONFIG_PATH
               value: "/app/agents/agents.yaml"
+            - name: OPENCLAW_DOCS_CONTEXT_ENABLED
+              value: "true"
+            - name: OPENCLAW_DOCS_CONTEXT_ROLES
+              value: "product_manager"
+            - name: OPENCLAW_DOCS_CONTEXT_MAX_RESULTS
+              value: "3"
+            - name: OPENCLAW_DOCS_CONTEXT_MAX_CHARS
+              value: "4000"
           volumeMounts:
             - name: kubectl-bin
               mountPath: /usr/local/bin/kubectl

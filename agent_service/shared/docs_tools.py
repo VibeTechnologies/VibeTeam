@@ -5,11 +5,12 @@ Shared Documentation Search tool functions for all agent frameworks.
 
 This module provides product documentation search capabilities using a hybrid approach:
 1. BM25 keyword search (via rank-bm25) - fast and effective for exact term matching
-2. Fallback to glob + grep if rank-bm25 is not available
+2. Fallback keyword scoring if rank-bm25 is not available
 3. Optional semantic search upgrade path via sentence-transformers + FAISS
 
-The tools search local markdown files in the repository and return relevant snippets
-with context, enabling agents to answer questions about product documentation.
+The tools search local markdown files in canonical documentation scopes
+(`docs/`, `readiness/`, `agents/shared/knowledgebase/`) plus repository markdown
+for backward-compatible discovery, and return relevant snippets with context.
 
 Usage:
     # AutoGen - use directly as FunctionTool
@@ -27,8 +28,8 @@ Usage:
 
 import os
 import re
+import logging
 from dataclasses import dataclass
-from glob import glob
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,8 @@ try:
 except ImportError:
     BM25_AVAILABLE = False
     BM25Okapi = None
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -62,21 +65,25 @@ class DocSearchResult:
         }
 
 
-# Default documentation directories to search
+# Default documentation directories to search. Keep this list explicit so search
+# quality is stable and does not unintentionally drift with unrelated markdown files.
 DEFAULT_DOCS_DIRS = [
     "docs",
     "readiness",
-    ".",  # Root level (README.md, AGENTS.md)
+    "agents/shared/knowledgebase",
 ]
 
-# Files to exclude from search
-EXCLUDED_PATTERNS = [
-    "*/.venv/*",
-    "*/.pytest_cache/*",
-    "*/.git/*",
-    "*/node_modules/*",
-    "*/__pycache__/*",
-]
+# Root-level markdown files to index (README.md, AGENTS.md, etc.)
+ROOT_MARKDOWN_GLOB = "*.md"
+
+# Path segments to exclude from search
+EXCLUDED_PATH_PARTS = {
+    ".venv",
+    ".pytest_cache",
+    ".git",
+    "node_modules",
+    "__pycache__",
+}
 
 # Stopwords for preprocessing
 STOPWORDS = {
@@ -134,38 +141,35 @@ def _get_docs_root() -> str:
     return os.getcwd()
 
 
+def _is_excluded_path(path: Path) -> bool:
+    """Check whether a path includes any excluded directory segments."""
+    return bool(set(path.parts) & EXCLUDED_PATH_PARTS)
+
+
 def _find_markdown_files(root_dir: str | None = None) -> list[str]:
-    """Find all markdown files in the documentation directories."""
+    """Find markdown files in canonical docs + knowledgebase locations."""
     if root_dir is None:
         root_dir = _get_docs_root()
 
-    all_files = []
+    root_path = Path(root_dir)
+    all_files: set[Path] = set()
 
     for docs_dir in DEFAULT_DOCS_DIRS:
-        search_path = os.path.join(root_dir, docs_dir)
-        if os.path.isdir(search_path):
-            # Search for .md files
-            pattern = os.path.join(search_path, "**", "*.md")
-            files = glob(pattern, recursive=True)
+        search_path = root_path / docs_dir
+        if not search_path.is_dir():
+            if docs_dir == "agents/shared/knowledgebase":
+                logger.warning("Knowledgebase directory not found at %s", search_path)
+            continue
+        for file_path in search_path.rglob("*.md"):
+            if file_path.is_file() and not _is_excluded_path(file_path):
+                all_files.add(file_path.resolve())
 
-            # Filter out excluded patterns
-            for f in files:
-                excluded = False
-                for exclude in EXCLUDED_PATTERNS:
-                    if glob(exclude) and f in glob(exclude):
-                        excluded = True
-                        break
-                    # Simple check for common exclusions
-                    if any(ex.strip("*/") in f for ex in EXCLUDED_PATTERNS):
-                        excluded = True
-                        break
+    # Include only root-level markdown files (non-recursive) for backward compatibility.
+    for file_path in root_path.glob(ROOT_MARKDOWN_GLOB):
+        if file_path.is_file() and not _is_excluded_path(file_path):
+            all_files.add(file_path.resolve())
 
-                if not excluded:
-                    all_files.append(f)
-
-    # Normalize paths and deduplicate
-    normalized = [os.path.normpath(f) for f in all_files]
-    return list(set(normalized))
+    return [str(path) for path in sorted(all_files)]
 
 
 def _preprocess_text(text: str) -> list[str]:
@@ -263,7 +267,7 @@ class DocsIndex:
                 self.tokenized_docs.append(_preprocess_text(content))
 
             except Exception as e:
-                print(f"Warning: Could not read {filepath}: {e}")
+                logger.warning("Could not read %s: %s", filepath, e)
                 continue
 
         if BM25_AVAILABLE and self.tokenized_docs:
@@ -303,8 +307,21 @@ class DocsIndex:
                             line_number=line_num,
                         )
                     )
+            # BM25 can return all-zero scores on tiny corpora. Fall back to
+            # deterministic keyword scoring to avoid empty KB retrieval.
+            if not results:
+                logger.debug(
+                    "BM25 returned no positive scores for query '%s'; using keyword fallback.",
+                    query,
+                )
+                results = self._simple_search(query, max_results)
         else:
             # Fallback to simple keyword search
+            if BM25_AVAILABLE:
+                logger.debug(
+                    "BM25 index unavailable for query '%s'; using keyword fallback.",
+                    query,
+                )
             results = self._simple_search(query, max_results)
 
         return results

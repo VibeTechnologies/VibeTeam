@@ -129,6 +129,9 @@ OpenClaw gateway uses `openclaw-config.json`, generated from:
 
 Prompt files are sourced from shared agents content under `/home/node/.openclaw/agents/<agent-id>/agent/AGENTS.md`.
 
+OpenClaw does not use MCP tool wiring for docs search. Knowledgebase retrieval is bridged in
+`openclaw-svc` by injecting `docs_tools` context into the task payload before sending it to OpenClaw Gateway.
+
 ## Knowledgebase Design
 
 VibeTeam uses a layered knowledge model instead of a single vector database.
@@ -146,7 +149,7 @@ This layer is shared into pods via the RWX `agents-config` PVC.
 ### Layer 2: Documentation retrieval (local indexed search)
 
 - Product docs search: `agent_service/shared/docs_tools.py`
-  - BM25 index over local markdown files (`docs/`, `readiness/`, root markdown)
+  - BM25 index over local markdown files (`docs/`, `readiness/`, `agents/shared/knowledgebase/`, and repository markdown paths excluding cache/vendor directories)
   - fallback keyword search when BM25 dependency is unavailable
 - Infra docs search: `docs/infra-llms.txt` via `search_infra_docs()`
 
@@ -186,6 +189,7 @@ There is no dedicated end-user KB upload/manage API in the gateway today.
 
 - End-user-visible endpoints are task/webhook/session APIs (`/api/run`, Slack/GitHub/Sentry webhooks).
 - Knowledge updates are currently done by repository changes (`agents/*`, `docs/*`) or by authorized runtime file edits in mounted agent paths.
+- Agent-mediated ingestion is supported via role skills (for example `agents/SoftwareEngineer/skills/knowledgebase-file-ingestion/SKILL.md`) that persist files under `agents/shared/knowledgebase`.
 
 So today, an end user cannot upload/manage a private KB directly through a product UI/API in this service.
 

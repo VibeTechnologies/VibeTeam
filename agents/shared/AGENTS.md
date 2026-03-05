@@ -29,6 +29,15 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 - For handoffs: include specific evidence, not just "check this thing"
 - For null findings: clearly state "No issues found" rather than staying silent
 
+## Knowledgebase First Rule
+- When you are unsure, search the shared knowledgebase before answering from memory.
+- Preferred retrieval path is `agent_service.shared.docs_tools`:
+  - `rebuild_index()` after KB/doc writes
+  - `search_docs(query, max_results=...)` for retrieval
+  - `get_doc_content(path)` for full context
+- Shared KB location: `agents/shared/knowledgebase` (runtime path `/app/agents/shared/knowledgebase`).
+- Use the indexed retrieval path above as the canonical source for KB answers.
+
 ## Agent Configuration & Skills (Source of Truth)
 - The agent configuration lives in `agents/agents.yaml` inside the shared agents directory (`/app/agents` in deployments).
 - You may update this configuration and add or modify skills under `agents/<AgentName>/skills/` if needed to solve the task.
@@ -43,6 +52,27 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 - For `kubectl`, always add `--request-timeout=20s` (or lower) and avoid `-w`/watch flags
 - For `curl`, always add `--max-time 20`
 - For other commands, prefix with `timeout 30s` when available
+
+### Knowledgebase Search (Required When You Are Unsure)
+- Before answering from memory, search the shared knowledgebase/doc index using `agent_service.shared.docs_tools`.
+- Canonical KB path: `agents/shared/knowledgebase`.
+- Shared KB skill reference: `agents/shared/skills/knowledgebase-search/SKILL.md`.
+- Primary retrieval commands:
+  ```bash
+  uv run python - <<'PY'
+  from agent_service.shared.docs_tools import rebuild_index, search_docs
+  print(rebuild_index())
+  print(search_docs("<query>", max_results=5))
+  PY
+  ```
+  ```bash
+  uv run python - <<'PY'
+  from agent_service.shared.docs_tools import get_doc_content
+  print(get_doc_content("agents/shared/knowledgebase/<domain>/<file>.md"))
+  PY
+  ```
+- Do not use `rg`/`grep` as the primary KB retrieval method. Use them only as debug fallback when indexed retrieval unexpectedly returns no matches.
+- If no relevant KB content exists, clearly state that and request/add KB content rather than guessing.
 
 ### Package Installation & Privileges
 - OpenHands containers run as non-root user `vibeteam`.

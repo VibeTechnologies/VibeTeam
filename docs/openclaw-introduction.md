@@ -36,6 +36,28 @@ cdpUrl: http://browserless:3000
 attachOnly: true
 ```
 
+## Knowledgebase Access in OpenClaw
+
+OpenClaw agents do not call `agent_service.shared.docs_tools` directly as an MCP tool.
+Instead, `openclaw-svc` can inject retrieved docs/knowledgebase context into the task before
+sending it to OpenClaw Gateway.
+
+- Retrieval source: `agent_service/shared/docs_tools.py`
+- Indexed KB path: `agents/shared/knowledgebase`
+- Shared KB skill source: `agents/shared/skills/knowledgebase-search/SKILL.md`
+- Injection wrapper: `agent_service/openclaw/server.py::_build_task_with_docs_context`
+
+At runtime, for KB/policy/procedure-oriented tasks, `openclaw-svc` prepends a
+`KNOWLEDGEBASE SEARCH SKILL` block (from shared/role skills) and then appends retrieved
+`KNOWLEDGEBASE CONTEXT` snippets when matches are found.
+
+Tunable env vars on `openclaw-svc`:
+
+- `OPENCLAW_DOCS_CONTEXT_ENABLED` (default `true`)
+- `OPENCLAW_DOCS_CONTEXT_ROLES` (default `product_manager`)
+- `OPENCLAW_DOCS_CONTEXT_MAX_RESULTS` (default `3`)
+- `OPENCLAW_DOCS_CONTEXT_MAX_CHARS` (default `4000`)
+
 ## Required Secrets
 
 - `vibeteam-secrets`: Azure OpenAI + LiteLLM keys
