@@ -62,7 +62,7 @@ COPY --from=builder /app/agent_service /app/agent_service
 # Create non-root user
 RUN useradd -m -u 1000 vibeteam \
     && usermod -aG sudo vibeteam \
-    && echo "vibeteam ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vibeteam \
+    && echo "vibeteam ALL=(root) NOPASSWD:/usr/bin/apt-get,/usr/bin/apt" > /etc/sudoers.d/vibeteam \
     && chmod 0440 /etc/sudoers.d/vibeteam
 USER vibeteam
 

@@ -446,6 +446,9 @@ SCENARIOS = {
                 "(1) Explicit tooling check step (versions or command outputs); "
                 "(2) jq availability confirmed (preinstalled or installed during run); "
                 "(3) No vague claims like 'tools are ready' without evidence. "
+                "EVIDENCE POLICY: concise, structured version lines in the final response "
+                "(for example 'jq 1.7' and 'kubectl client v1.31.4') count as valid evidence; "
+                "raw shell transcript formatting is NOT required. "
                 "SCORING: "
                 "Score 0.0-0.3: No tooling verification, or unsupported claims. "
                 "Score 0.3-0.6: Mentions tooling but no concrete evidence. "
@@ -491,6 +494,7 @@ SCENARIOS = {
         "evaluation_steps": {
             "ToolingBootstrap": [
                 "Check for explicit tooling verification steps and command evidence.",
+                "Accept concise version lines as valid evidence (raw command transcript not required).",
                 "Check that jq availability is explicitly confirmed (installed or present).",
                 "Score <= 0.3 if tooling claims have no concrete evidence.",
             ],

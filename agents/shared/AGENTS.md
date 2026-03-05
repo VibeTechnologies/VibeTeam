@@ -47,6 +47,7 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 ### Package Installation & Privileges
 - OpenHands containers run as non-root user `vibeteam`.
 - For apt/system package installs, use `sudo` explicitly (example: `sudo apt-get update && sudo apt-get install -y jq`).
+- `sudo` is limited to package-management commands (`apt`/`apt-get`), not general root shell access.
 - After install, always show proof with a version command (example: `jq --version`).
 - If apt install fails, fall back to user-local install and still show version output.
 
