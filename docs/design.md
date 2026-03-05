@@ -178,6 +178,66 @@ This is conversation memory, not semantic long-term document memory.
 - Role/framework mapping from `agents/agents.yaml` is cached in-process (`vibeteam/agents_config.py`, `agent_service/shared/role_resolver.py`), so routing-handle changes require process restart to take effect.
 - OpenHands per-role `config.json` is loaded when the role agent object is created; changes may require agent/service restart to fully apply.
 
+## End-User Knowledgebase Management
+
+### Current state
+
+There is no dedicated end-user KB upload/manage API in the gateway today.
+
+- End-user-visible endpoints are task/webhook/session APIs (`/api/run`, Slack/GitHub/Sentry webhooks).
+- Knowledge updates are currently done by repository changes (`agents/*`, `docs/*`) or by authorized runtime file edits in mounted agent paths.
+
+So today, an end user cannot upload/manage a private KB directly through a product UI/API in this service.
+
+### Recommended design (to add)
+
+Provide a tenant-scoped KB service with async indexing and retrieval.
+
+```text
+User/API Client
+   |
+   | 1) upload files / links
+   v
+Gateway -> KB API (authn/authz, tenant scope)
+   |
+   | 2) store raw docs + metadata
+   v
+Blob Storage + Postgres metadata
+   |
+   | 3) enqueue indexing job
+   v
+Indexer Worker (parse/chunk/embed)
+   |
+   | 4) upsert vectors/chunks
+   v
+Vector Store (or Azure AI Search)
+   |
+   | 5) retrieve top-k at run time
+   v
+Agent runtime context injection
+```
+
+### Minimal API surface
+
+- `POST /api/kb/documents` (multipart upload or URL ingestion)
+- `GET /api/kb/documents` (list by tenant/project)
+- `GET /api/kb/documents/{id}` (metadata/status)
+- `DELETE /api/kb/documents/{id}`
+- `POST /api/kb/reindex` (tenant/project)
+- `GET /api/kb/search?q=...` (debug/admin retrieval check)
+
+### Operational requirements
+
+- Tenant isolation: every document and retrieval query filtered by tenant/project.
+- Versioning: immutable document versions with active/inactive flags.
+- Async indexing: upload returns quickly; indexing status tracked (`pending`, `indexed`, `failed`).
+- Retrieval observability: log chunk IDs, scores, and source docs used per response.
+- Safety: file type allowlist, max size limits, malware scanning, signed URLs for downloads.
+
+### Integration point with existing runtime
+
+At agent-run time, inject retrieved KB context as an additional context block (similar to existing docs/tools context helpers), while preserving live-tool evidence precedence for incidents.
+
 ## Runtime Request Flow
 
 ### Slack path
