@@ -44,6 +44,12 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 - For `curl`, always add `--max-time 20`
 - For other commands, prefix with `timeout 30s` when available
 
+### Package Installation & Privileges
+- OpenHands containers run as non-root user `vibeteam`.
+- For apt/system package installs, use `sudo` explicitly (example: `sudo apt-get update && sudo apt-get install -y jq`).
+- After install, always show proof with a version command (example: `jq --version`).
+- If apt install fails, fall back to user-local install and still show version output.
+
 ### Investigation Workflow (For SupportEngineer)
 1. **Gather evidence with tools** - Use Sentry/kubectl/logs directly for this request
 2. **Report what you find** - State specific errors, pod statuses, timestamps

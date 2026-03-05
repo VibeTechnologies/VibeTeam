@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     tar \
     build-essential \
+    sudo \
+    jq \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
@@ -37,7 +39,10 @@ COPY agent_service/openhands/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Create non-root user
-RUN useradd -m -u 1000 vibeteam
+RUN useradd -m -u 1000 vibeteam \
+    && usermod -aG sudo vibeteam \
+    && echo "vibeteam ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vibeteam \
+    && chmod 0440 /etc/sudoers.d/vibeteam
 USER vibeteam
 
 # Environment variables

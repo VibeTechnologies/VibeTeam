@@ -39,6 +39,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     bash \
     tar \
+    sudo \
+    jq \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && KUBECTL_VERSION="v1.31.4" \
@@ -58,7 +60,10 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /app/agent_service /app/agent_service
 
 # Create non-root user
-RUN useradd -m -u 1000 vibeteam
+RUN useradd -m -u 1000 vibeteam \
+    && usermod -aG sudo vibeteam \
+    && echo "vibeteam ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vibeteam \
+    && chmod 0440 /etc/sudoers.d/vibeteam
 USER vibeteam
 
 # Configure Git for the agent
