@@ -38,6 +38,48 @@ spec:
           volumeMounts:
             - name: kubectl-bin
               mountPath: /kubectl
+        - name: agents-sync
+          image: alpine/git:2.45.2
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              LOCK_DIR="/app/agents/.init-lock"
+              WAIT_TIMEOUT="${AGENTS_SYNC_TIMEOUT_SECONDS:-180}"
+              SLEEP_SECONDS=2
+              ELAPSED=0
+              if [ -f /app/agents/agents.yaml ]; then
+                echo "Agents config already present."
+                exit 0
+              fi
+              mkdir -p /app/agents
+              if mkdir "$LOCK_DIR" 2>/dev/null; then
+                cleanup() {
+                  rmdir "$LOCK_DIR" 2>/dev/null || true
+                }
+                trap cleanup EXIT
+                git clone --depth 1 --branch "${AGENTS_REPO_REF}" "${AGENTS_REPO_URL}" /tmp/repo
+                cp -R /tmp/repo/agents/. /app/agents/
+                rm -rf /tmp/repo
+              else
+                echo "Waiting for agents config to be populated..."
+                while [ ! -f /app/agents/agents.yaml ]; do
+                  sleep "$SLEEP_SECONDS"
+                  ELAPSED=$((ELAPSED + SLEEP_SECONDS))
+                  if [ "$ELAPSED" -ge "$WAIT_TIMEOUT" ]; then
+                    echo "Timed out waiting for /app/agents/agents.yaml after ${WAIT_TIMEOUT}s"
+                    exit 1
+                  fi
+                done
+              fi
+          env:
+            - name: AGENTS_REPO_URL
+              value: "https://github.com/VibeTechnologies/VibeTeam.git"
+            - name: AGENTS_REPO_REF
+              value: "master"
+          volumeMounts:
+            - name: agents-config
+              mountPath: /app/agents
       containers:
         - name: openclaw
           image: ghcr.io/vibetechnologies/vibeteam:latest
@@ -91,12 +133,26 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: AGENTS_DIR
+              value: "/app/agents"
+            - name: AGENTS_CONFIG_PATH
+              value: "/app/agents/agents.yaml"
+            - name: OPENCLAW_DOCS_CONTEXT_ENABLED
+              value: "true"
+            - name: OPENCLAW_DOCS_CONTEXT_ROLES
+              value: "product_manager"
+            - name: OPENCLAW_DOCS_CONTEXT_MAX_RESULTS
+              value: "3"
+            - name: OPENCLAW_DOCS_CONTEXT_MAX_CHARS
+              value: "4000"
           volumeMounts:
             - name: kubectl-bin
               mountPath: /usr/local/bin/kubectl
               subPath: kubectl
             - name: gmail-oauth
               mountPath: /gmail
+            - name: agents-config
+              mountPath: /app/agents
           resources:
             requests:
               memory: "512Mi"
@@ -122,6 +178,9 @@ spec:
         - name: gmail-oauth
           secret:
             secretName: gmail-oauth-secret
+        - name: agents-config
+          persistentVolumeClaim:
+            claimName: agents-config
 ---
 apiVersion: v1
 kind: Service

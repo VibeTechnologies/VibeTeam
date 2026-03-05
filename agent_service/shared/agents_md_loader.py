@@ -16,6 +16,8 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+KNOWLEDGEBASE_SKILL_NAME = "knowledgebase-search"
+
 
 def get_agents_root() -> Path:
     """Get the root agents directory.
@@ -54,6 +56,57 @@ def load_shared_instructions() -> str:
     except Exception as e:
         logger.error(f"Error reading {shared_path}: {e}")
         return ""
+
+
+def _strip_skill_front_matter(content: str) -> str:
+    """Strip YAML front matter from SKILL.md content when present."""
+    if not content.startswith("---\n"):
+        return content.strip()
+    end = content.find("\n---\n", 4)
+    if end == -1:
+        return content.strip()
+    return content[end + len("\n---\n") :].strip()
+
+
+def _load_skill_file(path: Path) -> str:
+    """Load skill markdown content from disk and normalize it."""
+    if not path.exists():
+        return ""
+    try:
+        return _strip_skill_front_matter(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.error("Error reading %s: %s", path, e)
+        return ""
+
+
+def load_shared_skill_instructions(skill_name: str) -> str:
+    """Load skill instructions from agents/shared/skills/<skill_name>/SKILL.md."""
+    agents_root = get_agents_root()
+    skill_path = agents_root / "shared" / "skills" / skill_name / "SKILL.md"
+    return _load_skill_file(skill_path)
+
+
+def load_agent_skill_instructions(agent_name: str, skill_name: str) -> str:
+    """Load skill instructions from agents/<AgentName>/skills/<skill_name>/SKILL.md."""
+    agent_root = resolve_agent_root(agent_name)
+    skill_path = agent_root / "skills" / skill_name / "SKILL.md"
+    return _load_skill_file(skill_path)
+
+
+def load_knowledgebase_skill_instructions(agent_name: str | None = None) -> str:
+    """Load shared (and optionally role-specific) KB search skill instructions."""
+    sections: list[str] = []
+
+    shared_skill = load_shared_skill_instructions(KNOWLEDGEBASE_SKILL_NAME)
+    if shared_skill:
+        sections.append("## Shared Skill: knowledgebase-search\n" + shared_skill)
+
+    if agent_name:
+        role_skill = load_agent_skill_instructions(agent_name, KNOWLEDGEBASE_SKILL_NAME)
+        if role_skill and role_skill != shared_skill:
+            sections.append(f"## Role Skill: {agent_name}/knowledgebase-search\n" + role_skill)
+
+    return "\n\n".join(sections).strip()
 
 
 def load_agent_instructions(agent_name: str) -> str:
@@ -132,8 +185,9 @@ def compose_agent_context(agent_name: str, fallback_context: str | None = None) 
     """
     shared = load_shared_instructions()
     specific = load_agent_instructions(agent_name)
+    kb_skill = load_knowledgebase_skill_instructions(agent_name)
 
-    if shared or specific:
+    if shared or specific or kb_skill:
         # Compose: shared + specific
         # Both are markdown, so concat with clear separation
         parts = []
@@ -145,6 +199,10 @@ def compose_agent_context(agent_name: str, fallback_context: str | None = None) 
         if specific:
             parts.append("\n\n# AGENT-SPECIFIC INSTRUCTIONS\n")
             parts.append(specific)
+
+        if kb_skill:
+            parts.append("\n\n# REQUIRED SKILL: KNOWLEDGEBASE SEARCH\n")
+            parts.append(kb_skill)
 
         context = "\n".join(parts)
         logger.info(f"Loaded context for {agent_name} from AGENTS.md files ({len(context)} chars)")
