@@ -26,6 +26,7 @@ import httpx
 
 DEFAULT_REPO = os.environ.get("GITHUB_TEST_REPO", "VibeTechnologies/vibeteam-eval-hello-world")
 DEFAULT_PR = int(os.environ.get("GITHUB_TEST_PR", "1"))
+DEFAULT_ISSUE_ASSIGNEE = os.environ.get("GITHUB_ISSUE_ASSIGNEE", "").strip()
 NATIVE_GITHUB_HANDOFF_MENTIONS = "@SoftwareEngineer @SupportEngineer"
 
 SCENARIOS = {
@@ -98,6 +99,16 @@ def _collect_bot_logins(items: Iterable[dict]) -> set[str]:
             if login:
                 logins.add(login)
     return logins
+
+
+def _build_issue_trigger_comment() -> str:
+    """Build issue trigger text using role mentions only (never app handles)."""
+    return (
+        "Triggering issue handoff + assignment check.\n"
+        "Please triage this issue and assign it to the SoftwareEngineer role owner.\n"
+        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}\n"
+        "Do not @mention any GitHub App bot handle."
+    )
 
 
 def _wait_for_bot_authors(
@@ -208,6 +219,79 @@ def _fetch_issue_comments(
         response = client.get(url, headers=_headers(token), params=params)
         response.raise_for_status()
         return response.json()
+
+
+def _fetch_issue_assignees(owner: str, repo: str, number: int, token: str) -> list[str]:
+    url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}"
+    with httpx.Client(timeout=20.0) as client:
+        response = client.get(url, headers=_headers(token))
+        response.raise_for_status()
+        data = response.json()
+    assignees = data.get("assignees") or []
+    return [str(a.get("login")) for a in assignees if a.get("login")]
+
+
+def _pick_issue_assignee(bot_logins: set[str], preferred_assignee: str | None = None) -> str | None:
+    preferred = (preferred_assignee or "").strip()
+    if preferred:
+        return preferred
+    if not bot_logins:
+        return None
+    for login in sorted(bot_logins):
+        lowered = login.lower()
+        if "swe" in lowered or "software" in lowered:
+            return login
+    return sorted(bot_logins)[0]
+
+
+def _evaluate_issue_assignment(
+    owner: str,
+    repo: str,
+    token: str,
+    issue_number: int,
+    bot_logins: set[str],
+    preferred_assignee: str | None = None,
+    wait_seconds: int = 0,
+    poll_interval: int = 5,
+) -> dict:
+    target_assignee = _pick_issue_assignee(bot_logins, preferred_assignee)
+    issue_assignees: list[str] = []
+    assignment_error = ""
+    assignment_passed = False
+
+    if not target_assignee:
+        return {
+            "target_assignee": "n/a",
+            "issue_assignees": issue_assignees,
+            "assignment_passed": False,
+            "assignment_error": "No candidate assignee available (no bot author detected).",
+        }
+
+    deadline = time.time() + max(wait_seconds, 0)
+    try:
+        while True:
+            issue_assignees = _fetch_issue_assignees(owner, repo, issue_number, token)
+            assignment_passed = target_assignee in issue_assignees
+            if assignment_passed:
+                break
+            if time.time() >= deadline:
+                break
+            time.sleep(max(poll_interval, 1))
+
+        if not assignment_passed:
+            assignment_error = (
+                f"Expected assignee {target_assignee}, but current assignees are: "
+                f"{', '.join(issue_assignees) or 'n/a'}"
+            )
+    except Exception as exc:
+        assignment_error = str(exc)
+
+    return {
+        "target_assignee": target_assignee,
+        "issue_assignees": issue_assignees,
+        "assignment_passed": assignment_passed,
+        "assignment_error": assignment_error,
+    }
 
 
 def _create_discussion(owner: str, repo: str, token: str) -> tuple[int, str, str, datetime]:
@@ -331,43 +415,77 @@ def _create_pr_comment(owner: str, repo: str, token: str, pr_number: int, body: 
     return _parse_ts(data["created_at"])
 
 
-def _run_issue_handoff(owner: str, repo: str, token: str, timeout: int) -> dict:
+def _run_issue_handoff(
+    owner: str, repo: str, token: str, timeout: int, issue_assignee: str | None = None
+) -> dict:
     issue_number, issue_url, _ = _create_issue(owner, repo, token)
-    trigger_body = (
-        "Triggering handoff via issue comment.\n"
-        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
-    )
+    trigger_body = _build_issue_trigger_comment()
     trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
 
     def fetch() -> list[dict]:
         return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
 
     bot_logins = _wait_for_bot_authors(fetch, trigger_ts, 2, timeout)
+    assignment = _evaluate_issue_assignment(
+        owner,
+        repo,
+        token,
+        issue_number,
+        bot_logins,
+        issue_assignee,
+        wait_seconds=min(timeout, 60),
+    )
+
     return {
         "thread": issue_url,
         "bot_logins": sorted(bot_logins),
-        "passed": len(bot_logins) >= 2,
+        "target_assignee": assignment["target_assignee"],
+        "issue_assignees": assignment["issue_assignees"],
+        "assignment_passed": assignment["assignment_passed"],
+        "assignment_error": assignment["assignment_error"],
+        "passed": bool(bot_logins) and bool(assignment["assignment_passed"]),
     }
 
 
 def _run_issue_handoff_existing(
-    owner: str, repo: str, token: str, issue_number: int, timeout: int
+    owner: str,
+    repo: str,
+    token: str,
+    issue_number: int,
+    timeout: int,
+    issue_assignee: str | None = None,
+    post_trigger_comment: bool = False,
 ) -> dict:
     issue_url = f"https://github.com/{owner}/{repo}/issues/{issue_number}"
-    trigger_body = (
-        "Triggering handoff via issue comment.\n"
-        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
+    if post_trigger_comment:
+        trigger_body = _build_issue_trigger_comment()
+        trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
+
+        def fetch() -> list[dict]:
+            return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
+
+        bot_logins = _wait_for_bot_authors(fetch, trigger_ts, 2, timeout)
+    else:
+        comments = _fetch_issue_comments(owner, repo, issue_number, token, since=None)
+        bot_logins = _collect_bot_logins(comments)
+    assignment = _evaluate_issue_assignment(
+        owner,
+        repo,
+        token,
+        issue_number,
+        bot_logins,
+        issue_assignee,
+        wait_seconds=min(timeout, 60),
     )
-    trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
 
-    def fetch() -> list[dict]:
-        return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
-
-    bot_logins = _wait_for_bot_authors(fetch, trigger_ts, 2, timeout)
     return {
         "thread": issue_url,
         "bot_logins": sorted(bot_logins),
-        "passed": len(bot_logins) >= 2,
+        "target_assignee": assignment["target_assignee"],
+        "issue_assignees": assignment["issue_assignees"],
+        "assignment_passed": assignment["assignment_passed"],
+        "assignment_error": assignment["assignment_error"],
+        "passed": bool(bot_logins) and bool(assignment["assignment_passed"]),
     }
 
 
@@ -439,27 +557,50 @@ def _run_pr_comment_handoff(owner: str, repo: str, token: str, pr_number: int, t
 
 
 def _run_issue_handoff_presence(
-    owner: str, repo: str, token: str, issue_number: int, timeout: int
+    owner: str,
+    repo: str,
+    token: str,
+    issue_number: int,
+    timeout: int,
+    issue_assignee: str | None = None,
+    post_trigger_comment: bool = False,
 ) -> dict:
     issue_url = f"https://github.com/{owner}/{repo}/issues/{issue_number}"
-    trigger_body = (
-        "Triggering issue handoff presence check.\n"
-        f"{NATIVE_GITHUB_HANDOFF_MENTIONS}"
-    )
-    trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
+    if post_trigger_comment:
+        trigger_body = _build_issue_trigger_comment()
+        trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
 
-    def fetch_recent() -> list[dict]:
-        return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
+        def fetch_recent() -> list[dict]:
+            return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
 
-    recent_bot_logins = _wait_for_bot_authors(fetch_recent, trigger_ts, 1, timeout)
-    all_bot_logins = _collect_bot_logins(
-        _fetch_issue_comments(owner, repo, issue_number, token, since=None)
+        recent_bot_logins = _wait_for_bot_authors(fetch_recent, trigger_ts, 1, timeout)
+        all_bot_logins = _collect_bot_logins(
+            _fetch_issue_comments(owner, repo, issue_number, token, since=None)
+        )
+    else:
+        all_bot_logins = _collect_bot_logins(
+            _fetch_issue_comments(owner, repo, issue_number, token, since=None)
+        )
+        recent_bot_logins = set(all_bot_logins)
+    assignment = _evaluate_issue_assignment(
+        owner,
+        repo,
+        token,
+        issue_number,
+        all_bot_logins,
+        issue_assignee,
+        wait_seconds=min(timeout, 60),
     )
-    passed = bool(recent_bot_logins) and len(all_bot_logins) >= 2
+
+    passed = bool(recent_bot_logins) and bool(assignment["assignment_passed"])
     return {
         "thread": issue_url,
         "bot_logins": sorted(all_bot_logins),
         "recent_bot_logins": sorted(recent_bot_logins),
+        "target_assignee": assignment["target_assignee"],
+        "issue_assignees": assignment["issue_assignees"],
+        "assignment_passed": assignment["assignment_passed"],
+        "assignment_error": assignment["assignment_error"],
         "passed": passed,
     }
 
@@ -491,16 +632,35 @@ def _run_pr_handoff_presence(
 
 
 def _run_issue_pr_handoff(
-    owner: str, repo: str, token: str, issue_number: int, pr_number: int, timeout: int
+    owner: str,
+    repo: str,
+    token: str,
+    issue_number: int,
+    pr_number: int,
+    timeout: int,
+    issue_assignee: str | None = None,
+    post_issue_trigger_comment: bool = False,
 ) -> dict:
     if issue_number:
         issue_results = _run_issue_handoff_presence(
-            owner, repo, token, issue_number, timeout
+            owner,
+            repo,
+            token,
+            issue_number,
+            timeout,
+            issue_assignee,
+            post_issue_trigger_comment,
         )
     else:
         created_issue_number, issue_url, _ = _create_issue(owner, repo, token)
         issue_results = _run_issue_handoff_presence(
-            owner, repo, token, created_issue_number, timeout
+            owner,
+            repo,
+            token,
+            created_issue_number,
+            timeout,
+            issue_assignee,
+            True,
         )
         issue_results["thread"] = issue_url
 
@@ -513,6 +673,10 @@ def _run_issue_pr_handoff(
     return {
         "thread": f"{issue_results.get('thread')} | {pr_results.get('thread')}",
         "bot_logins": combined_logins,
+        "target_assignee": issue_results.get("target_assignee", "n/a"),
+        "issue_assignees": issue_results.get("issue_assignees", []),
+        "assignment_passed": issue_results.get("assignment_passed", False),
+        "assignment_error": issue_results.get("assignment_error", ""),
         "passed": passed,
         "threads": {
             "issue": issue_results,
@@ -559,8 +723,16 @@ def _write_report(scenario: str, results: dict) -> str:
         f"**Thread:** {results.get('thread', 'n/a')}",
         f"**Passed:** {'✅' if results.get('passed') else '❌'}",
         f"**Bot authors:** {', '.join(results.get('bot_logins', [])) or 'n/a'}",
-        "",
     ]
+    if "assignment_passed" in results:
+        lines.append(f"**Issue assigned:** {'✅' if results.get('assignment_passed') else '❌'}")
+        lines.append(f"**Target assignee:** {results.get('target_assignee', 'n/a')}")
+        lines.append(
+            f"**Current assignees:** {', '.join(results.get('issue_assignees', [])) or 'n/a'}"
+        )
+    if results.get("assignment_error"):
+        lines.append(f"**Assignment error:** {results.get('assignment_error')}")
+    lines.append("")
     links = _collect_thread_links(results)
     lines.extend(
         [
@@ -599,9 +771,18 @@ def _write_report(scenario: str, results: dict) -> str:
                         "- Recent bot authors after trigger: "
                         f"{', '.join(thread_result.get('recent_bot_logins', [])) or 'n/a'}"
                     ),
-                    "",
                 ]
             )
+            if "assignment_passed" in thread_result:
+                lines.append(f"- Issue assigned: {'✅' if thread_result.get('assignment_passed') else '❌'}")
+                lines.append(f"- Target assignee: {thread_result.get('target_assignee', 'n/a')}")
+                lines.append(
+                    "- Current assignees: "
+                    f"{', '.join(thread_result.get('issue_assignees', [])) or 'n/a'}"
+                )
+            if thread_result.get("assignment_error"):
+                lines.append(f"- Assignment error: {thread_result.get('assignment_error')}")
+            lines.append("")
 
     os.makedirs("results/eval_reports", exist_ok=True)
     with open(filename, "w", encoding="utf-8") as handle:
@@ -615,6 +796,12 @@ def main() -> int:
     parser.add_argument("--scenario", choices=SCENARIOS.keys(), default="github_issue_handoff")
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--pr", type=int, default=DEFAULT_PR)
+    parser.add_argument("--issue-assignee", default=DEFAULT_ISSUE_ASSIGNEE)
+    parser.add_argument(
+        "--post-trigger-comment",
+        action="store_true",
+        help="Post trigger mentions on existing issue threads (default: disabled for existing issues).",
+    )
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--issue", type=int, default=0, help="Existing issue number to use")
     parser.add_argument(
@@ -642,13 +829,28 @@ def main() -> int:
         if scenario == "github_issue_handoff":
             if args.issue:
                 results = _run_issue_handoff_existing(
-                    owner, repo, token, args.issue, args.timeout
+                    owner,
+                    repo,
+                    token,
+                    args.issue,
+                    args.timeout,
+                    args.issue_assignee,
+                    args.post_trigger_comment,
                 )
             else:
-                results = _run_issue_handoff(owner, repo, token, args.timeout)
+                results = _run_issue_handoff(
+                    owner, repo, token, args.timeout, args.issue_assignee
+                )
         elif scenario == "github_issue_pr_handoff_github":
             results = _run_issue_pr_handoff(
-                owner, repo, token, args.issue, args.pr, args.timeout
+                owner,
+                repo,
+                token,
+                args.issue,
+                args.pr,
+                args.timeout,
+                args.issue_assignee,
+                args.post_trigger_comment,
             )
         elif scenario == "github_discussion_handoff":
             if args.discussion:
@@ -665,7 +867,15 @@ def main() -> int:
         report_path = _write_report(scenario, results)
         status = "PASSED" if results.get("passed") else "FAILED"
         print(
-            f"Scenario {scenario}: {status} - thread {results.get('thread')} | bots: {', '.join(results.get('bot_logins', [])) or 'n/a'}"
+            f"Scenario {scenario}: {status} - thread {results.get('thread')} | "
+            f"bots: {', '.join(results.get('bot_logins', [])) or 'n/a'}"
+            + (
+                " | "
+                f"assigned: {results.get('target_assignee', 'n/a')} "
+                f"({'ok' if results.get('assignment_passed') else 'missing'})"
+                if "assignment_passed" in results
+                else ""
+            )
         )
         print(f"Report saved: {report_path}")
         overall_passed = overall_passed and bool(results.get("passed"))
