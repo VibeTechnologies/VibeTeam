@@ -32,6 +32,10 @@ spec:
           env:
             - name: PYTHONPATH
               value: "/code/current"
+            - name: GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS
+              value: "true"
+            - name: GITHUB_UNSIGNED_WEBHOOK_REPOS
+              value: "VibeTechnologies/vibeteam-eval-hello-world"
           volumeMounts:
             - name: code
               mountPath: /code

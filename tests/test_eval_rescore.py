@@ -597,6 +597,8 @@ class TestPerScenarioTimeout:
         """Scenarios without explicit timeout should not have the key."""
         allowed_overrides = {
             "release_deploy",
+            "knowledgebase_cross_agent_support_to_product",
+            "software_engineer_tooling_vibe_dev_health",
             "marketing_reddit_engagement",
             "marketing_reddit_ai_agents_copilot_pr",
             "marketing_hn_engagement",

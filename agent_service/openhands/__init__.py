@@ -16,6 +16,7 @@ from .marketing_manager import (
     OpenHandsMarketingManager,
     create_marketing_manager,
 )
+from .agent import Agent
 from .product_manager import (
     OpenHandsProductManager,
     create_product_manager,
@@ -35,6 +36,7 @@ from .support_engineer import (
 from .team import OpenHandsTeam, create_team
 
 __all__ = [
+    "Agent",
     "OpenHandsMarketingManager",
     "OpenHandsProductManager",
     "OpenHandsReleaseEngineer",

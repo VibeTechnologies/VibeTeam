@@ -31,7 +31,6 @@ OPENHANDS_DIR = os.path.join(
 ROLE_BASE_AGENTS = {
     "release_engineer.py",
     "software_engineer.py",
-    "support_engineer.py",
 }
 
 
@@ -694,12 +693,13 @@ class TestSoftwareEngineerIterationBudget:
             "max_iteration_per_run is the real safety net."
         )
 
-        with open(os.path.join(OPENHANDS_DIR, "support_engineer.py")) as f:
-            se_content = f.read()
         with open(os.path.join(OPENHANDS_DIR, "release_engineer.py")) as f:
             re_content = f.read()
-        assert "OpenHandsRoleAgent" in se_content
         assert "OpenHandsRoleAgent" in re_content
+
+        with open(os.path.join(OPENHANDS_DIR, "agent.py")) as f:
+            unified_agent_content = f.read()
+        assert "class Agent" in unified_agent_content
 
     def test_has_forbidden_actions_section(self):
         """Prompt must have a FORBIDDEN ACTIONS section to prevent sequential file reading."""
