@@ -48,20 +48,34 @@ spec:
             - -c
           args:
             - |
-              set -e
+              set -eu
+              LOCK_DIR="/app/agents/.init-lock"
+              WAIT_TIMEOUT="${AGENTS_SYNC_TIMEOUT_SECONDS:-180}"
+              SLEEP_SECONDS=2
+              ELAPSED=0
               if [ -f /app/agents/agents.yaml ]; then
                 echo "Agents config already present."
                 exit 0
               fi
               mkdir -p /app/agents
-              if mkdir /app/agents/.init-lock 2>/dev/null; then
+              if mkdir "$LOCK_DIR" 2>/dev/null; then
+                cleanup() {
+                  rmdir "$LOCK_DIR" 2>/dev/null || true
+                }
+                trap cleanup EXIT
                 git clone --depth 1 --branch "${AGENTS_REPO_REF}" "${AGENTS_REPO_URL}" /tmp/repo
                 cp -R /tmp/repo/agents/. /app/agents/
                 rm -rf /tmp/repo
-                rmdir /app/agents/.init-lock
               else
                 echo "Waiting for agents config to be populated..."
-                until [ -f /app/agents/agents.yaml ]; do sleep 2; done
+                while [ ! -f /app/agents/agents.yaml ]; do
+                  sleep "$SLEEP_SECONDS"
+                  ELAPSED=$((ELAPSED + SLEEP_SECONDS))
+                  if [ "$ELAPSED" -ge "$WAIT_TIMEOUT" ]; then
+                    echo "Timed out waiting for /app/agents/agents.yaml after ${WAIT_TIMEOUT}s"
+                    exit 1
+                  fi
+                done
               fi
           env:
             - name: AGENTS_REPO_URL
@@ -98,6 +112,10 @@ spec:
           env:
             - name: HOME
               value: /home/node
+            - name: AGENTS_DIR
+              value: /app/agents
+            - name: AGENTS_CONFIG_PATH
+              value: /app/agents/agents.yaml
             - name: OPENCLAW_GATEWAY_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -119,6 +137,8 @@ spec:
           volumeMounts:
             - name: openclaw-state
               mountPath: /home/node/.openclaw
+            - name: agents-config
+              mountPath: /app/agents
             - name: openclaw-config
               mountPath: /home/node/.openclaw/openclaw.json
               subPath: openclaw.json
