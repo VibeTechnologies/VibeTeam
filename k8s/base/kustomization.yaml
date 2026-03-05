@@ -38,7 +38,3 @@ configMapGenerator:
   - name: openclaw-config
     files:
       - openclaw.json=openclaw-config.json
-  - name: openclaw-agent-prompts
-    files:
-      - AGENTS.md=openclaw-prompts/ProductManager.AGENTS.md
-      - MarketingManager.AGENTS.md=openclaw-prompts/MarketingManager.AGENTS.md

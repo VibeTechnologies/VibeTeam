@@ -88,7 +88,7 @@ See [openclaw-introduction.md](openclaw-introduction.md) for a focused OpenClaw 
 2. `openclaw-svc` connects to the OpenClaw gateway over WebSocket.
 3. OpenClaw gateway loads:
    - `openclaw.json` (ConfigMap `openclaw-config`, generated from `agents/agents.yaml`)
-   - Agent prompts from `openclaw-agent-prompts` (ConfigMap)
+   - Agent prompts from the shared `agents-config` PVC (`agents/<AgentName>/AGENTS.md`)
 4. OpenClaw uses LiteLLM in-namespace (`litellm` service) to reach Azure OpenAI.
 
 ## Agent Services and Sessions
