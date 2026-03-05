@@ -11,11 +11,7 @@ from typing import Any
 from agent_service.config import AgentConfig
 from agent_service.shared.role_resolver import parse_first_role_mention, route_by_keywords
 
-from .marketing_manager import OpenHandsMarketingManager
-from .product_manager import OpenHandsProductManager
-from .release_engineer import OpenHandsReleaseEngineer
-from .software_engineer import OpenHandsSoftwareEngineer
-from .support_engineer import OpenHandsSupportEngineer
+from .agent import Agent
 
 
 class OpenHandsTeam:
@@ -40,18 +36,7 @@ class OpenHandsTeam:
         with an empty mcp_servers dict, breaking agents that rely on MCP.
         """
         if role not in self._agents:
-            if role == "release_engineer":
-                self._agents[role] = OpenHandsReleaseEngineer()
-            elif role == "marketing_manager":
-                self._agents[role] = OpenHandsMarketingManager()
-            elif role == "support_engineer":
-                self._agents[role] = OpenHandsSupportEngineer()
-            elif role == "product_manager":
-                self._agents[role] = OpenHandsProductManager()
-            elif role == "software_engineer":
-                self._agents[role] = OpenHandsSoftwareEngineer()
-            else:
-                raise ValueError(f"Unknown agent role: {role}")
+            self._agents[role] = Agent(role=role, config=self.config)
         return self._agents[role]
 
     def parse_mention(self, text: str) -> str | None:

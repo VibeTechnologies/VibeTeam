@@ -125,6 +125,15 @@ export GMAIL_TOKEN_PATH="/secrets/gmail-token.json"
 - **Orchestrator** (`vibeteam/orchestrator.py`): Routes tasks to appropriate agent
 - **CLI** (`vibeteam/cli.py`): Command-line interface
 
+### OpenHands Runtime Model
+
+- OpenHands role execution is unified behind `agent_service/openhands/agent.py` (`class Agent`).
+- Role/framework mapping is configured in `agents/agents.yaml`.
+- Role behavior and knowledgebase/search skills are loaded from:
+  - `agents/shared/AGENTS.md`
+  - `agents/<AgentDir>/AGENTS.md`
+  - `agents/<AgentDir>/skills/*/SKILL.md`
+
 ## Kubernetes Deployment
 
 Agents run as CronJobs in the `vibeteam` namespace:
