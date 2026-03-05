@@ -124,3 +124,33 @@ def test_chrome_devtools_skill_confirmation_noop_for_other_tasks() -> None:
         original,
     )
     assert normalized == original
+
+
+def test_try_direct_kb_fact_answer_prefers_inline_fact_value() -> None:
+    task = (
+        "@ProductManager do not guess. Read shared knowledgebase and answer this exactly: "
+        "what is the value for `KB_EVAL_FACT_20260305`? Respond with only the value.\n\n"
+        "SupportEngineer confirmation: `KB_EVAL_FACT_20260305: cobalt-lotus-914`"
+    )
+    value = openclaw_server._try_direct_kb_fact_answer(task, "product_manager")
+    assert value == "cobalt-lotus-914"
+
+
+def test_try_direct_kb_fact_answer_uses_file_lookup_when_inline_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        openclaw_server,
+        "_lookup_kb_fact_value_in_files",
+        lambda fact_key, roots: "cobalt-lotus-914",
+    )
+    task = (
+        "@ProductManager read shared knowledgebase and answer value for "
+        "`KB_EVAL_FACT_20260305`. Respond with only the value."
+    )
+    value = openclaw_server._try_direct_kb_fact_answer(task, "product_manager")
+    assert value == "cobalt-lotus-914"
+
+
+def test_try_direct_kb_fact_answer_disabled_for_other_roles() -> None:
+    task = "Answer value for `KB_EVAL_FACT_20260305`."
+    value = openclaw_server._try_direct_kb_fact_answer(task, "support_engineer")
+    assert value is None

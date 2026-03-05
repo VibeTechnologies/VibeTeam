@@ -99,6 +99,21 @@ class TestBuildTaskPrompt:
         )
         assert "new thread" in prompt
 
+    def test_knowledgebase_update_prompt_stays_focused(self):
+        prompt = _build_task_prompt(
+            role="support_engineer",
+            user_message=(
+                "@SupportEngineer add a new knowledgebase markdown file at "
+                "`agents/shared/knowledgebase/inbox/kb_eval_123.md` with this exact line: "
+                "`KB_EVAL_FACT_123: cobalt-lotus-914`."
+            ),
+            user_id="U123",
+            channel="C456",
+            thread_ts=None,
+        )
+        assert "Knowledgebase Update Request" in prompt
+        assert "Do NOT run unrelated Sentry, kubectl" in prompt
+
     def test_deployment_takes_priority_over_notification(self):
         """Deploy + notify = deployment for release_engineer."""
         template = classify_task_template(

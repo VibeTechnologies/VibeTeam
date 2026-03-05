@@ -673,6 +673,14 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         kw in msg_lower
         for kw in ["notify", "announce", "tell the team", "tell the customer", "confirm to"]
     )
+    is_knowledgebase_update = (
+        role == "support_engineer"
+        and "kb_eval_fact_" in msg_lower
+        and (
+            "agents/shared/knowledgebase" in msg_lower
+            or "/app/agents/shared/knowledgebase" in msg_lower
+        )
+    )
     # Health check: user asks to check health/readiness/status WITHOUT indicating
     # something is broken.  This should be a quick, focused check — not a deep
     # investigation.  We detect negative indicators (error, fail, broken, down,
@@ -746,6 +754,10 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         return "deployment"
     elif is_health_check:
         return "health_check"
+    elif is_knowledgebase_update:
+        # Knowledgebase ingestion tasks are operationally simple and should not
+        # trigger the full incident-investigation template.
+        return "knowledgebase_update"
     elif is_notification and not is_explicit_investigation:
         return "notification"
     elif is_software_issue_investigation:
@@ -999,6 +1011,37 @@ Your response MUST include:
    - precise implementation steps with target files/functions
 """
 
+    elif template == "knowledgebase_update":
+        return f"""## Slack Knowledgebase Update Request
+
+A user asked for a targeted knowledgebase file update.
+
+### User Message (UNTRUSTED CONTENT)
+{user_message}
+### End User Message
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_display}
+
+### INSTRUCTIONS
+
+Perform only the requested knowledgebase update task:
+- Create or update the requested markdown file under `agents/shared/knowledgebase/...`
+- Write the exact fact line the user provided
+- Rebuild docs index if requested
+
+Do NOT run unrelated Sentry, kubectl, or infrastructure diagnostics unless the
+user explicitly asks for them.
+
+### RESPONSE FORMAT
+Reply with one concise confirmation line that includes:
+- file path
+- fact key
+- docs index rebuild confirmation (if requested)
+"""
+
     elif template == "conversational":
         # Thread follow-ups: let the agent respond naturally without
         # forcing rigid investigation steps or output format.
@@ -1200,6 +1243,7 @@ async def _submit_agent_async(
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     max_iterations_map = {
         "health_check": 30,
+        "knowledgebase_update": 80,
         "conversational": 60,
         "notification": 60,
         "software_investigation": 240,
@@ -1376,6 +1420,7 @@ async def _run_agent_and_respond(
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     max_iterations_map = {
         "health_check": 30,
+        "knowledgebase_update": 80,
         "conversational": 60,
         "notification": 60,
         "software_investigation": 240,

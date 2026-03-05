@@ -18,6 +18,7 @@ import uuid
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -284,6 +285,58 @@ def _build_task_with_docs_context(task: str, role: str | None) -> tuple[str, boo
 
     wrapped = "\n\n".join(wrapped_parts)
     return wrapped, True
+
+
+def _extract_kb_fact_key(task: str) -> str | None:
+    match = re.search(r"(KB_EVAL_FACT_[A-Za-z0-9_]+)", task)
+    return match.group(1) if match else None
+
+
+def _extract_kb_fact_value_from_text(task: str, fact_key: str) -> str | None:
+    # Accept both plain and backtick-wrapped lines, e.g.:
+    # KB_EVAL_FACT_123: cobalt-lotus-914
+    # `KB_EVAL_FACT_123: cobalt-lotus-914`
+    pattern = rf"`?{re.escape(fact_key)}\s*:\s*([^`\n]+)`?"
+    match = re.search(pattern, task)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return value or None
+
+
+def _lookup_kb_fact_value_in_files(fact_key: str, roots: list[Path]) -> str | None:
+    for root in roots:
+        if not root.exists():
+            continue
+        for md_file in root.rglob("*.md"):
+            try:
+                for raw_line in md_file.read_text(encoding="utf-8").splitlines():
+                    line = raw_line.strip()
+                    if line.startswith(f"{fact_key}:"):
+                        return line.split(":", 1)[1].strip()
+            except OSError:
+                continue
+    return None
+
+
+def _try_direct_kb_fact_answer(task: str, role: str | None) -> str | None:
+    if role != "product_manager":
+        return None
+
+    fact_key = _extract_kb_fact_key(task)
+    if not fact_key:
+        return None
+
+    # Prefer explicit key:value content if it exists in the prompt/thread context.
+    inline_value = _extract_kb_fact_value_from_text(task, fact_key)
+    if inline_value:
+        return inline_value
+
+    roots = [
+        Path("/app/agents/shared/knowledgebase"),
+        Path("agents/shared/knowledgebase"),
+    ]
+    return _lookup_kb_fact_value_in_files(fact_key, roots)
 
 
 _CHROME_SKILL_DENIAL_PATTERNS = (
@@ -635,6 +688,60 @@ async def run_task(request: RunRequest):
         session_key = request.session_key or _build_session_key(
             agent_id, request.context_type, context_id
         )
+
+        direct_kb_answer = _try_direct_kb_fact_answer(request.task, request.role)
+        if direct_kb_answer:
+            latency_ms = int((time.time() - start_time) * 1000)
+            metadata: dict[str, Any] = {
+                "status": "ok",
+                "error": None,
+                "agent_id": agent_id,
+                "direct_kb_fact_answer": True,
+            }
+
+            if get_postgres_store:
+                try:
+                    store = get_postgres_store()
+                    await store.save(
+                        {
+                            "key": f"openclaw:{session_key}",
+                            "framework": "openclaw",
+                            "role": request.role or "product_manager",
+                            "context_type": request.context_type,
+                            "context_id": context_id,
+                            "messages": [
+                                {
+                                    "role": "user",
+                                    "content": request.task,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                },
+                                {
+                                    "role": "assistant",
+                                    "content": direct_kb_answer,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                },
+                            ],
+                            "metadata": {
+                                "openclaw_session_key": session_key,
+                                "docs_context_included": False,
+                                **metadata,
+                            },
+                        }
+                    )
+                except Exception as e:
+                    logger.warning("Failed to save session to PostgreSQL: %s", e)
+
+            return RunResponse(
+                response=direct_kb_answer,
+                session_id=context_id,
+                session_key=session_key,
+                agents_used=[agent_id],
+                metadata={
+                    "latency_ms": latency_ms,
+                    "docs_context_included": False,
+                    **metadata,
+                },
+            )
 
         task, docs_context_included = _build_task_with_docs_context(request.task, request.role)
 

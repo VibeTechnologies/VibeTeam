@@ -212,6 +212,31 @@ class TestInvestigationFallback:
         assert result == "conversational"
 
 
+class TestKnowledgebaseUpdateRouting:
+    """KB ingestion requests should bypass infra investigation template."""
+
+    def test_support_kb_ingestion_routes_to_knowledgebase_update(self):
+        result = classify_task_template(
+            "support_engineer",
+            (
+                "@SupportEngineer add a new knowledgebase markdown file at "
+                "`agents/shared/knowledgebase/inbox/kb_eval_123.md` with this exact line: "
+                "`KB_EVAL_FACT_123: cobalt-lotus-914`."
+            ),
+        )
+        assert result == "knowledgebase_update"
+
+    def test_other_roles_do_not_use_knowledgebase_update_template(self):
+        result = classify_task_template(
+            "product_manager",
+            (
+                "@ProductManager answer KB_EVAL_FACT_123 from "
+                "agents/shared/knowledgebase/inbox/kb_eval_123.md"
+            ),
+        )
+        assert result == "conversational"
+
+
 class TestEdgeCases:
     """Edge cases and boundary conditions."""
 
