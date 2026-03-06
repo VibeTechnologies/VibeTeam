@@ -61,15 +61,14 @@ Supported role suffixes:
 
 ### Development (.env)
 
-Shared app:
+Shared app (gateway webhook path):
 ```bash
 GITHUB_APP_ID=123456
 GITHUB_APP_INSTALLATION_ID=12345678
 GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
-
-# Optional PAT fallback
-GITHUB_TOKEN=ghp_your_pat_token
 ```
+
+Gateway webhook handlers use GitHub App installation tokens only. PAT fallback is intentionally disabled for webhook-triggered GitHub writes.
 
 Per‑agent apps (recommended):
 ```bash

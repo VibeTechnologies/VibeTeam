@@ -331,8 +331,8 @@ def verify_slack_signature(
 ) -> bool:
     """Verify Slack request signature."""
     if not secret:
-        logger.warning("SLACK_SIGNING_SECRET not set, skipping verification")
-        return True
+        logger.error("SLACK_SIGNING_SECRET is not configured")
+        return False
 
     if not signature or not timestamp:
         return False
@@ -2007,6 +2007,10 @@ async def handle_slack_events(
         logger.info("Responding to Slack URL verification challenge")
         return {"challenge": payload.get("challenge")}
 
+    if not config.SLACK_SIGNING_SECRET:
+        logger.error("SLACK_SIGNING_SECRET is required for Slack event handling")
+        raise HTTPException(status_code=503, detail="Slack signing secret not configured")
+
     # Verify signature for all other events
     if not verify_slack_signature(
         payload_bytes,
@@ -2067,7 +2071,7 @@ async def trigger_agent_for_slack(
 
     Authentication:
     - If SLACK_TRIGGER_SECRET is set, requires Bearer token in Authorization header.
-    - If SLACK_TRIGGER_SECRET is not set, logs a warning and allows unauthenticated access.
+    - If SLACK_TRIGGER_SECRET is not set, request is rejected (gateway misconfiguration).
 
     Request body:
     {
@@ -2109,10 +2113,8 @@ async def trigger_agent_for_slack(
             logger.warning("Invalid trigger secret in /slack/trigger request")
             raise HTTPException(status_code=403, detail="Invalid trigger secret")
     else:
-        logger.warning(
-            "SLACK_TRIGGER_SECRET not set - /slack/trigger endpoint is unauthenticated. "
-            "Set SLACK_TRIGGER_SECRET env var to secure this endpoint."
-        )
+        logger.error("SLACK_TRIGGER_SECRET is required for /slack/trigger")
+        raise HTTPException(status_code=503, detail="Slack trigger secret not configured")
     try:
         body = await request.json()
     except Exception:

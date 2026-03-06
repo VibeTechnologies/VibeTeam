@@ -19,9 +19,9 @@ This guide summarizes how external events reach agents. For the canonical routin
 
 ## Authentication
 
-- GitHub: HMAC signature verification.
+- GitHub: HMAC signature verification (required; unsigned webhooks are rejected).
 - Sentry: HMAC signature verification.
-- Slack: request signature + timestamp validation.
+- Slack: request signature + timestamp validation (required).
 
 ## Required Environment Variables
 

@@ -355,19 +355,12 @@ class TestGitHubWebhookRouting:
         finally:
             github.config.GITHUB_WEBHOOK_SECRET = original_secret
 
-    def test_unsigned_non_allowlisted_repo_still_rejected(self, test_client):
-        """Unsigned webhook remains rejected for non-allowlisted repos."""
+    def test_unsigned_webhook_rejected(self, test_client):
+        """Unsigned webhook remains rejected when signature is invalid."""
         from vibeteam.gateway.routes import github
 
         original_secret = github.config.GITHUB_WEBHOOK_SECRET
-        original_allow = github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS
-        original_repos = github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS
-
         github.config.GITHUB_WEBHOOK_SECRET = "test_secret"
-        github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = True
-        github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS = {
-            "vibetechnologies/vibeteam-eval-hello-world"
-        }
 
         try:
             payload = {
@@ -391,8 +384,6 @@ class TestGitHubWebhookRouting:
             assert "Invalid signature" in response.text
         finally:
             github.config.GITHUB_WEBHOOK_SECRET = original_secret
-            github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = original_allow
-            github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS = original_repos
 
     def test_bot_own_comment_ignored(self, test_client, github_webhook_secret, monkeypatch):
         """issue_comment from vibeteam-bot[bot] → ignored with reason own_comment."""
@@ -726,8 +717,8 @@ class TestGitHubWebhookRouting:
         assert data["status"] == "ignored"
         assert data["event"] == "issue_comment.created"
 
-    def test_no_secret_skips_verification(self, test_client, monkeypatch):
-        """When GITHUB_WEBHOOK_SECRET is empty, verification is skipped and request passes."""
+    def test_missing_secret_rejected(self, test_client, monkeypatch):
+        """When GITHUB_WEBHOOK_SECRET is empty, webhook request is rejected as misconfigured."""
         from vibeteam.gateway.routes import github
 
         original_secret = github.config.GITHUB_WEBHOOK_SECRET
@@ -743,7 +734,6 @@ class TestGitHubWebhookRouting:
             }
             payload_str = json.dumps(payload)
 
-            # No signature header sent — should still pass because secret is empty
             response = test_client.post(
                 "/webhook",
                 content=payload_str,
@@ -753,10 +743,8 @@ class TestGitHubWebhookRouting:
                 },
             )
 
-            # Request should NOT be rejected — it falls through to ignored (unhandled event)
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "ignored"
+            assert response.status_code == 503
+            assert "not configured" in response.json()["detail"].lower()
         finally:
             github.config.GITHUB_WEBHOOK_SECRET = original_secret
 
