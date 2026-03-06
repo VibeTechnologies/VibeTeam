@@ -123,12 +123,6 @@ spec:
                   name: github-app-secret
                   key: installation-id
                   optional: true
-            - name: GITHUB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: vibeteam-secrets
-                  key: GITHUB_TOKEN
-                  optional: true
             # Slack configuration
             - name: SLACK_SIGNING_SECRET
               valueFrom:

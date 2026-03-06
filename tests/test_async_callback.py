@@ -962,7 +962,7 @@ class TestSlackTriggerSyncPath:
             ) as mock_run,
             patch("vibeteam.gateway.routes.slack.config") as mock_config,
         ):
-            mock_config.SLACK_TRIGGER_SECRET = ""  # No auth for test
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
 
             response = test_client.post(
                 "/slack/trigger",
@@ -972,6 +972,7 @@ class TestSlackTriggerSyncPath:
                     "text": "@SupportEngineer investigate the issue",
                     "user_id": "eval_script",
                 },
+                headers={"Authorization": "Bearer test-secret"},
             )
 
             assert response.status_code == 200

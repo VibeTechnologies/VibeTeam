@@ -88,7 +88,7 @@ LITELLM_MASTER_KEY=
 ### GitHub + Sentry
 
 ```bash
-GITHUB_TOKEN=  # fallback PAT
+GITHUB_TOKEN=  # optional: local eval post-checks only (gateway webhook path uses GitHub App tokens)
 GITHUB_APP_ID_SOFTWARE_ENGINEER=
 GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER=
 GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER=

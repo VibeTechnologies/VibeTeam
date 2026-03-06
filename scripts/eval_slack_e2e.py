@@ -2585,10 +2585,11 @@ async def run_evaluation(
             print(f"    WARNING: Using default PRODUCTION gateway ({default_prod_url})")
             print("    Set GATEWAY_URL env var or --gateway-url to target a different environment")
 
-        trigger_secret = os.environ.get("SLACK_TRIGGER_SECRET", "")
-        headers: dict[str, str] = {}
-        if trigger_secret:
-            headers["Authorization"] = f"Bearer {trigger_secret}"
+        trigger_secret = os.environ.get("SLACK_TRIGGER_SECRET", "").strip()
+        if not trigger_secret:
+            raise RuntimeError("SLACK_TRIGGER_SECRET is required for /slack/trigger eval flow")
+
+        headers: dict[str, str] = {"Authorization": f"Bearer {trigger_secret}"}
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:

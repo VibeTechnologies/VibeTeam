@@ -110,7 +110,7 @@ The gateway requires these environment variables for Slack integration:
 | `SLACK_ASSISTANT_TOKEN` | Optional token with `assistant:write` for thread status | Same as bot token, or a separate token if you split scopes |
 | `SLACK_ASSISTANT_STATUS_TEXT` | Optional status text (default: `is thinking...`) | Local configuration |
 | `SLACK_SIGNING_SECRET` | Used to verify incoming Slack requests | **Basic Information** > **App Credentials** |
-| `SLACK_TRIGGER_SECRET` | Bearer token for the `/slack/trigger` endpoint (used by eval tests and manual triggering) | Self-generated; set in both `.env` and K8s secrets |
+| `SLACK_TRIGGER_SECRET` | Required bearer token for the `/slack/trigger` endpoint (used by eval tests and manual triggering) | Self-generated; set in both `.env` and K8s secrets |
 
 For Kubernetes deployments, these are stored in the `vibeteam-secrets` secret:
 

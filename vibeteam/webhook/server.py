@@ -73,8 +73,8 @@ class WebhookPayload(BaseModel):
 def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     """Verify GitHub webhook signature (HMAC-SHA256)."""
     if not secret:
-        logger.warning("GITHUB_WEBHOOK_SECRET not set, skipping verification")
-        return True
+        logger.error("GITHUB_WEBHOOK_SECRET is not configured")
+        return False
 
     if not signature or not signature.startswith("sha256="):
         return False
@@ -415,8 +415,8 @@ async def start_openhands_conversation(
 def verify_sentry_signature(payload: bytes, signature: str, secret: str) -> bool:
     """Verify Sentry webhook signature (HMAC-SHA256)."""
     if not secret:
-        logger.warning("SENTRY_CLIENT_SECRET not set, skipping verification")
-        return True
+        logger.error("SENTRY_CLIENT_SECRET is not configured")
+        return False
 
     if not signature:
         return False
@@ -548,8 +548,8 @@ async def handle_sentry_webhook(
 def verify_slack_signature(payload: bytes, timestamp: str, signature: str, secret: str) -> bool:
     """Verify Slack request signature."""
     if not secret:
-        logger.warning("SLACK_SIGNING_SECRET not set, skipping verification")
-        return True
+        logger.error("SLACK_SIGNING_SECRET is not configured")
+        return False
 
     if not signature or not timestamp:
         return False

@@ -3,7 +3,7 @@ Tests for /slack/trigger endpoint authentication and input validation.
 
 Tests cover:
 - Bearer token auth when SLACK_TRIGGER_SECRET is set
-- Passthrough when SLACK_TRIGGER_SECRET is not set
+- 503 misconfiguration when SLACK_TRIGGER_SECRET is not set
 - Input validation (missing channel, text, role mentions)
 - Rate limiting
 """
@@ -41,20 +41,20 @@ VALID_PAYLOAD = {
     "user_id": "test_user",
 }
 
+AUTH_HEADERS = {"Authorization": "Bearer test-secret"}
+
 
 class TestTriggerAuth:
     """Test /slack/trigger authentication."""
 
-    def test_no_auth_required_when_secret_unset(self, client: TestClient):
-        """When SLACK_TRIGGER_SECRET is empty, requests pass without auth."""
+    def test_503_when_secret_unset(self, client: TestClient):
+        """When SLACK_TRIGGER_SECRET is empty, endpoint rejects as misconfigured."""
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
             mock_config.SLACK_TRIGGER_SECRET = ""
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
             response = client.post("/slack/trigger", json=VALID_PAYLOAD)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "accepted"
-        assert "support_engineer" in data["roles"]
+        assert response.status_code == 503
+        assert "not configured" in response.json()["detail"].lower()
 
     def test_401_when_secret_set_and_no_header(self, client: TestClient):
         """When SLACK_TRIGGER_SECRET is set, missing Authorization returns 401."""
@@ -109,10 +109,11 @@ class TestTriggerValidation:
     def test_400_missing_channel(self, client: TestClient):
         """Missing channel returns 400."""
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             response = client.post(
                 "/slack/trigger",
                 json={"text": "@SupportEngineer check this"},
+                headers=AUTH_HEADERS,
             )
         assert response.status_code == 400
         assert "channel is required" in response.json()["detail"]
@@ -120,10 +121,11 @@ class TestTriggerValidation:
     def test_400_missing_text(self, client: TestClient):
         """Missing text returns 400."""
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             response = client.post(
                 "/slack/trigger",
                 json={"channel": "C0AATPSADB8"},
+                headers=AUTH_HEADERS,
             )
         assert response.status_code == 400
         assert "text is required" in response.json()["detail"]
@@ -131,13 +133,14 @@ class TestTriggerValidation:
     def test_400_no_role_mention(self, client: TestClient):
         """Text without @RoleName mention returns 400."""
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             response = client.post(
                 "/slack/trigger",
                 json={
                     "channel": "C0AATPSADB8",
                     "text": "just a regular message with no mention",
                 },
+                headers=AUTH_HEADERS,
             )
         assert response.status_code == 400
         assert "@RoleName mention" in response.json()["detail"]
@@ -145,7 +148,7 @@ class TestTriggerValidation:
     def test_short_form_mentions_accepted(self, client: TestClient):
         """Short-form mentions like @SWE and @PM are accepted."""
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
             response = client.post(
                 "/slack/trigger",
@@ -153,6 +156,7 @@ class TestTriggerValidation:
                     "channel": "C0AATPSADB8",
                     "text": "@SWE please review this code",
                 },
+                headers=AUTH_HEADERS,
             )
         assert response.status_code == 200
         assert "software_engineer" in response.json()["roles"]
@@ -160,7 +164,7 @@ class TestTriggerValidation:
     def test_multiple_role_mentions(self, client: TestClient):
         """Multiple @RoleName mentions are all returned."""
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
             response = client.post(
                 "/slack/trigger",
@@ -168,6 +172,7 @@ class TestTriggerValidation:
                     "channel": "C0AATPSADB8",
                     "text": "@SupportEngineer and @ReleaseEngineer investigate this",
                 },
+                headers=AUTH_HEADERS,
             )
         assert response.status_code == 200
         roles = response.json()["roles"]
@@ -181,7 +186,7 @@ class TestTriggerRateLimit:
     def test_rate_limit_exceeded(self, client: TestClient):
         """Exceeding rate limit returns 429."""
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
 
             # Reset both the per-endpoint trigger limiter and global middleware limiter
@@ -195,11 +200,11 @@ class TestTriggerRateLimit:
 
             # Fire requests up to the limit + 1
             for i in range(_trigger_rate_limiter.max_requests):
-                resp = client.post("/slack/trigger", json=VALID_PAYLOAD)
+                resp = client.post("/slack/trigger", json=VALID_PAYLOAD, headers=AUTH_HEADERS)
                 assert resp.status_code == 200, f"Request {i + 1} should succeed"
 
             # Next request should be rate limited
-            response = client.post("/slack/trigger", json=VALID_PAYLOAD)
+            response = client.post("/slack/trigger", json=VALID_PAYLOAD, headers=AUTH_HEADERS)
             assert response.status_code == 429
             assert "Rate limit exceeded" in response.json()["detail"]
 
@@ -222,9 +227,9 @@ class TestTriggerAsyncMode:
     def test_default_mode_is_sync(self, client: TestClient, _patch_run_agent):
         """Without use_async, mode should be 'sync' and run_agent called with use_async=False."""
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
-            response = client.post("/slack/trigger", json=VALID_PAYLOAD)
+            response = client.post("/slack/trigger", json=VALID_PAYLOAD, headers=AUTH_HEADERS)
         assert response.status_code == 200
         data = response.json()
         assert data["mode"] == "sync"
@@ -237,9 +242,9 @@ class TestTriggerAsyncMode:
         """With use_async=true, mode should be 'async' and run_agent called with use_async=True."""
         payload = {**VALID_PAYLOAD, "use_async": True}
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
-            response = client.post("/slack/trigger", json=payload)
+            response = client.post("/slack/trigger", json=payload, headers=AUTH_HEADERS)
         assert response.status_code == 200
         data = response.json()
         assert data["mode"] == "async"
@@ -252,9 +257,9 @@ class TestTriggerAsyncMode:
         """With use_async=false explicitly, mode should be 'sync'."""
         payload = {**VALID_PAYLOAD, "use_async": False}
         with patch("vibeteam.gateway.routes.slack.config") as mock_config:
-            mock_config.SLACK_TRIGGER_SECRET = ""
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
             mock_config.SLACK_BOT_TOKEN = "xoxb-test"
-            response = client.post("/slack/trigger", json=payload)
+            response = client.post("/slack/trigger", json=payload, headers=AUTH_HEADERS)
         assert response.status_code == 200
         data = response.json()
         assert data["mode"] == "sync"

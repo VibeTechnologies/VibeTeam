@@ -75,8 +75,8 @@ def get_message_router() -> Router:
 def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     """Verify GitHub webhook signature (HMAC-SHA256)."""
     if not secret:
-        logger.warning("GITHUB_WEBHOOK_SECRET not set, skipping verification")
-        return True
+        logger.error("GITHUB_WEBHOOK_SECRET is not configured")
+        return False
 
     if not signature or not signature.startswith("sha256="):
         return False
@@ -212,14 +212,26 @@ async def get_installation_token(role: str | None = None) -> str | None:
     return None
 
 
+async def get_required_installation_token(role: str | None, action: str) -> str | None:
+    """Return a GitHub App installation token or log a hard failure for webhook flows."""
+    token = await get_installation_token(role)
+    if token:
+        return token
+    logger.error(
+        "GitHub App token unavailable for action '%s' (role=%s). "
+        "Gateway webhook actions require GitHub App credentials.",
+        action,
+        role or "default",
+    )
+    return None
+
+
 async def post_acknowledgment(repo: str, issue_number: int, role: str = "software_engineer") -> None:
     """Post a comment acknowledging the assignment."""
-    token = await get_installation_token(role)
-    if not token:
-        token = os.environ.get("GITHUB_TOKEN")
+    token = await get_required_installation_token(role, "post_acknowledgment")
 
     if not token:
-        logger.warning("No GitHub token available, skipping acknowledgment")
+        logger.warning("No GitHub App token available, skipping acknowledgment")
         return
 
     try:
@@ -401,11 +413,9 @@ async def post_github_discussion_comment(
 ) -> None:
     """Post a comment on a GitHub discussion."""
     token = await get_installation_token(role)
-    if not token:
-        token = os.environ.get("GITHUB_TOKEN")
 
     if not token:
-        logger.warning("No GitHub token available, skipping discussion comment")
+        logger.warning("No GitHub App token available, skipping discussion comment")
         return
 
     try:
@@ -480,11 +490,9 @@ async def fetch_github_discussion(
 ) -> dict[str, Any] | None:
     """Fetch discussion details from GitHub."""
     token = await get_installation_token(role)
-    if not token:
-        token = os.environ.get("GITHUB_TOKEN")
 
     if not token:
-        logger.warning("No GitHub token available, skipping discussion fetch")
+        logger.warning("No GitHub App token available, skipping discussion fetch")
         return None
 
     try:
@@ -511,11 +519,9 @@ async def fetch_github_discussion_comment(
 ) -> dict[str, Any] | None:
     """Fetch discussion comment details via GraphQL node ID."""
     token = await get_installation_token(role)
-    if not token:
-        token = os.environ.get("GITHUB_TOKEN")
 
     if not token:
-        logger.warning("No GitHub token available, skipping discussion comment fetch")
+        logger.warning("No GitHub App token available, skipping discussion comment fetch")
         return None
 
     query = """
@@ -639,12 +645,10 @@ async def post_github_comment(
     role: str | None = None,
 ) -> None:
     """Post a comment on a GitHub issue."""
-    token = await get_installation_token(role)
-    if not token:
-        token = os.environ.get("GITHUB_TOKEN")
+    token = await get_required_installation_token(role, "post_github_comment")
 
     if not token:
-        logger.warning("No GitHub token available, skipping comment")
+        logger.warning("No GitHub App token available, skipping comment")
         return
 
     try:
@@ -673,9 +677,13 @@ async def handle_github_webhook(
 ) -> dict[str, str]:
     """Handle incoming GitHub webhook events."""
     payload_bytes = await request.body()
+    webhook_secret = config.GITHUB_WEBHOOK_SECRET or os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+    if not webhook_secret:
+        logger.error("GITHUB_WEBHOOK_SECRET is required for GitHub webhook handling")
+        raise HTTPException(status_code=503, detail="GitHub webhook secret not configured")
 
     # Verify signature
-    if not verify_signature(payload_bytes, x_hub_signature_256 or "", config.GITHUB_WEBHOOK_SECRET):
+    if not verify_signature(payload_bytes, x_hub_signature_256 or "", webhook_secret):
         logger.warning("Invalid webhook signature")
         raise HTTPException(status_code=401, detail="Invalid signature")
 

@@ -44,17 +44,6 @@ class GatewayConfig:
 
     # GitHub configuration
     GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
-    GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = os.environ.get(
-        "GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS", "false"
-    ).lower() in {"1", "true", "yes", "on"}
-    GITHUB_UNSIGNED_WEBHOOK_REPOS = {
-        repo.strip().lower()
-        for repo in os.environ.get(
-            "GITHUB_UNSIGNED_WEBHOOK_REPOS",
-            "VibeTechnologies/vibeteam-eval-hello-world",
-        ).split(",")
-        if repo.strip()
-    }
     BOT_USERNAME = os.environ.get("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
     GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "")
     GITHUB_APP_PRIVATE_KEY = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
