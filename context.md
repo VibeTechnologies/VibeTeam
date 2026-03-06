@@ -1,8 +1,8 @@
 # VibeTeam Context Document
 
-> **Last Updated:** 2026-03-05
-> **Current Focus:** Knowledgebase cross-agent retrieval + GitHub webhook eval stability
-> **Status:** IN PROGRESS - Slack evals green, GitHub standalone webhook evals being remediated
+> **Last Updated:** 2026-03-06
+> **Current Focus:** Real GitHub App + Slack App enforcement in gateway webhook/auth paths
+> **Status:** COMPLETED - strict signed/authenticated webhook flow merged to `master`
 
 ---
 
@@ -43,29 +43,20 @@
 - **Root cause identified in gateway logs:** repeated `Invalid webhook signature` (`401`) on `/webhook` for eval traffic, while non-eval repo webhooks were accepted.
 - **Important eval nuance:** `github_issue_pr_handoff_github` can pass with only one recent bot author if historical thread already contains multiple bot authors, so it is not sufficient alone for webhook-health confidence.
 
-### Changes in progress (2026-03-05)
-- Added strict-by-default GitHub webhook verification fallback for eval-only repos:
-  - New env guard: `GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS` (default `false`)
-  - Allowlist: `GITHUB_UNSIGNED_WEBHOOK_REPOS`
-  - Behavior: only if signature fails **and** repo is allowlisted **and** flag enabled, webhook is accepted with warning.
-- Added tests:
-  - unsigned allowlisted eval repo accepted when flag enabled
-  - unsigned non-allowlisted repo still rejected
-  - existing invalid/missing signature rejection remains intact
-- Dev overlay config now sets:
-  - `GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS=true`
-  - `GITHUB_UNSIGNED_WEBHOOK_REPOS=VibeTechnologies/vibeteam-eval-hello-world`
+### Completed hardening (2026-03-06)
+- Removed unsigned GitHub webhook bypass toggles from gateway config and dev overlay.
+- Enforced secret-required verification:
+  - `GITHUB_WEBHOOK_SECRET` missing => `503` on `/webhook`
+  - `SLACK_SIGNING_SECRET` missing => `503` on `/slack/events`
+  - `SLACK_TRIGGER_SECRET` missing => `503` on `/slack/trigger`
+- Enforced bearer auth on `/slack/trigger` when secret is configured.
+- Enforced GitHub App token path for gateway webhook-triggered GitHub writes (no PAT fallback).
+- Updated docs and tests to match strict real-app behavior.
 
 ### Next Steps
-1. Run full unit test suite and confirm green after unified runtime/docs alignment changes.
-2. Merge gateway webhook fallback patch to `master`.
-3. Restart/pause rollout for `vibeteam-gateway` to pick env+code update, run GitHub webhook eval scenarios again.
-4. Confirm standalone GitHub evals pass:
-   - `github_issue_handoff`
-   - `github_pr_comment_handoff`
-   - `github_discussion_handoff`
-5. Run `github_threads_all` and verify all sub-scenarios green.
-6. Record final results in issue `#328` and reopen/track a dedicated GitHub webhook-hardening issue if any failures remain.
+1. Keep Slack and GitHub app credentials rotated and valid in `vibeteam-secrets`/GitHub App secrets.
+2. Keep eval reports attached to issue/PR updates for regression tracking.
+3. Continue migrating any non-gateway PAT-only scripts to GitHub App where practical.
 
 ---
 
