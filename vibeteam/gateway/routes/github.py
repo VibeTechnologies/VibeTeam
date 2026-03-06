@@ -23,9 +23,9 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from vibeteam.agents_config import get_slack_handle
 from vibeteam.gateway.server import call_agent_service, config
 from vibeteam.router import Router
+from vibeteam.agents_config import get_slack_handle
 from vibeteam.router.models import AgentRole
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,34 @@ router = APIRouter(tags=["GitHub"])
 
 # Message router for /RoleName parsing
 _message_router: Router | None = None
+
+ROLE_ASSIGNEE_ENV_KEYS: dict[AgentRole, tuple[str, ...]] = {
+    "software_engineer": (
+        "GITHUB_SOFTWARE_ENGINEER_BOT_ASSIGNEE",
+        "GITHUB_APP_BOT_USERNAME_SOFTWARE_ENGINEER",
+        "GITHUB_BOT_USERNAME_SOFTWARE_ENGINEER",
+    ),
+    "support_engineer": (
+        "GITHUB_SUPPORT_ENGINEER_BOT_ASSIGNEE",
+        "GITHUB_APP_BOT_USERNAME_SUPPORT_ENGINEER",
+        "GITHUB_BOT_USERNAME_SUPPORT_ENGINEER",
+    ),
+    "release_engineer": (
+        "GITHUB_RELEASE_ENGINEER_BOT_ASSIGNEE",
+        "GITHUB_APP_BOT_USERNAME_RELEASE_ENGINEER",
+        "GITHUB_BOT_USERNAME_RELEASE_ENGINEER",
+    ),
+    "product_manager": (
+        "GITHUB_PRODUCT_MANAGER_BOT_ASSIGNEE",
+        "GITHUB_APP_BOT_USERNAME_PRODUCT_MANAGER",
+        "GITHUB_BOT_USERNAME_PRODUCT_MANAGER",
+    ),
+    "marketing_manager": (
+        "GITHUB_MARKETING_MANAGER_BOT_ASSIGNEE",
+        "GITHUB_APP_BOT_USERNAME_MARKETING_MANAGER",
+        "GITHUB_BOT_USERNAME_MARKETING_MANAGER",
+    ),
+}
 
 
 def get_message_router() -> Router:
@@ -57,13 +85,80 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-def _allow_unsigned_eval_webhook(repo_full_name: str) -> bool:
-    """Allow unsigned webhook payloads only for explicitly allowlisted eval repos."""
-    if not config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS:
-        return False
-    if not repo_full_name:
-        return False
-    return repo_full_name.lower() in config.GITHUB_UNSIGNED_WEBHOOK_REPOS
+def _normalize_login(login: str) -> str:
+    normalized = (login or "").strip().lower()
+    if normalized.startswith("@"):
+        normalized = normalized[1:]
+    if normalized.endswith("[bot]"):
+        normalized = normalized[:-5]
+    return normalized
+
+
+def _iter_assignment_bot_candidates() -> set[str]:
+    """Collect bot handles that should trigger assignment workflow."""
+    values: list[str] = []
+    for env_name in (
+        "GITHUB_BOT_USERNAME",
+        "GITHUB_ISSUE_ASSIGNEE",
+        "GITHUB_ASSIGNMENT_BOT_LOGINS",
+    ):
+        raw = os.environ.get(env_name, "")
+        if raw:
+            values.extend(raw.split(","))
+
+    if config.BOT_USERNAME:
+        values.append(config.BOT_USERNAME)
+
+    # Optional per-role bot usernames (e.g., GITHUB_BOT_USERNAME_SOFTWARE_ENGINEER).
+    for key, value in os.environ.items():
+        if not value:
+            continue
+        if key.startswith("GITHUB_BOT_USERNAME_") or key.startswith("GITHUB_APP_BOT_USERNAME_"):
+            values.extend(value.split(","))
+
+    return {_normalize_login(v) for v in values if _normalize_login(v)}
+
+
+def _iter_role_assignment_candidates() -> dict[AgentRole, set[str]]:
+    mapping: dict[AgentRole, set[str]] = {}
+    for role, env_names in ROLE_ASSIGNEE_ENV_KEYS.items():
+        candidates: set[str] = set()
+        for env_name in env_names:
+            raw = os.environ.get(env_name, "")
+            if not raw:
+                continue
+            for value in raw.split(","):
+                normalized = _normalize_login(value)
+                if normalized:
+                    candidates.add(normalized)
+        mapping[role] = candidates
+    return mapping
+
+
+def resolve_assignment_role(assignee: dict[str, Any] | None) -> AgentRole:
+    """Resolve role for an assigned issue from assignee login/env mapping."""
+    if not assignee:
+        return "software_engineer"
+
+    normalized_assignee_login = _normalize_login(assignee.get("login", ""))
+    role_candidates = _iter_role_assignment_candidates()
+    for role, candidates in role_candidates.items():
+        if normalized_assignee_login in candidates:
+            return role
+
+    # Fallback to naming conventions when explicit mapping is absent.
+    if "support" in normalized_assignee_login:
+        return "support_engineer"
+    if "release" in normalized_assignee_login:
+        return "release_engineer"
+    if "product" in normalized_assignee_login:
+        return "product_manager"
+    if "marketing" in normalized_assignee_login:
+        return "marketing_manager"
+    if "software" in normalized_assignee_login or "swe" in normalized_assignee_login:
+        return "software_engineer"
+
+    return "software_engineer"
 
 
 def is_assigned_to_bot(assignee: dict[str, Any] | None) -> bool:
@@ -72,14 +167,22 @@ def is_assigned_to_bot(assignee: dict[str, Any] | None) -> bool:
         return False
 
     assignee_login = assignee.get("login", "")
+    normalized_assignee_login = _normalize_login(assignee_login)
     bot_user_id = os.environ.get("GITHUB_BOT_USER_ID")
 
-    # Check by login name
-    if config.BOT_USERNAME.replace("[bot]", "") in assignee_login:
+    # Check by login name (supports single bot and role-specific bot handles).
+    candidates = _iter_assignment_bot_candidates()
+    if normalized_assignee_login in candidates:
+        return True
+    if any(normalized_assignee_login in role_candidates for role_candidates in _iter_role_assignment_candidates().values()):
         return True
 
     # Check by user ID if available
     if bot_user_id and str(assignee.get("id")) == bot_user_id:
+        return True
+
+    # Fallback for role bot naming convention (e.g. vibeteam-swe-bot-260301[bot]).
+    if re.fullmatch(r"vibeteam-[a-z0-9-]+-bot(?:-\d+)?", normalized_assignee_login):
         return True
 
     return False
@@ -109,9 +212,7 @@ async def get_installation_token(role: str | None = None) -> str | None:
     return None
 
 
-async def post_acknowledgment(
-    repo: str, issue_number: int, role: str = "software_engineer"
-) -> None:
+async def post_acknowledgment(repo: str, issue_number: int, role: str = "software_engineer") -> None:
     """Post a comment acknowledging the assignment."""
     token = await get_installation_token(role)
     if not token:
@@ -502,7 +603,9 @@ Discussion: #{discussion_number}
             response = result.get("response", "")
             if response:
                 formatted = f"[{display_name}] {response}"
-                await post_github_discussion_comment(repo, discussion_number, formatted, role=role)
+                await post_github_discussion_comment(
+                    repo, discussion_number, formatted, role=role
+                )
 
                 if handoff_depth < max_handoff_depth:
                     message_router = get_message_router()
@@ -570,25 +673,16 @@ async def handle_github_webhook(
 ) -> dict[str, str]:
     """Handle incoming GitHub webhook events."""
     payload_bytes = await request.body()
-    try:
-        payload = json.loads(payload_bytes)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
+    # Verify signature
+    if not verify_signature(payload_bytes, x_hub_signature_256 or "", config.GITHUB_WEBHOOK_SECRET):
+        logger.warning("Invalid webhook signature")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    payload = json.loads(payload_bytes)
     action = payload.get("action", "")
     repo_data = payload.get("repository", {})
     repo_full_name = repo_data.get("full_name", "")
-
-    # Verify signature unless explicitly allowlisted for eval webhooks.
-    if not verify_signature(payload_bytes, x_hub_signature_256 or "", config.GITHUB_WEBHOOK_SECRET):
-        if _allow_unsigned_eval_webhook(repo_full_name):
-            logger.warning(
-                "Allowing unsigned GitHub webhook for allowlisted eval repo: %s",
-                repo_full_name,
-            )
-        else:
-            logger.warning("Invalid webhook signature")
-            raise HTTPException(status_code=401, detail="Invalid signature")
 
     logger.info(f"Received {x_github_event}.{action} for {repo_full_name}")
 
@@ -601,18 +695,43 @@ async def handle_github_webhook(
             issue_number = issue.get("number")
             issue_title = issue.get("title", "")
             issue_body = issue.get("body", "")
+            assignee_login = (assignee or {}).get("login", "")
+            assigned_role = resolve_assignment_role(assignee)
 
-            logger.info(f"Issue #{issue_number} assigned to bot, triggering SWE agent")
+            logger.info(
+                "Issue #%s assigned to %s; triggering %s",
+                issue_number,
+                assignee_login,
+                assigned_role,
+            )
 
             # Post acknowledgment and run agent in background
             asyncio.create_task(
-                post_acknowledgment(repo_full_name, issue_number, role="software_engineer")
+                post_acknowledgment(repo_full_name, issue_number, role=assigned_role)
             )
-            asyncio.create_task(
-                run_swe_agent(repo_full_name, issue_number, issue_title, issue_body)
-            )
+            if assigned_role == "software_engineer":
+                asyncio.create_task(
+                    run_swe_agent(repo_full_name, issue_number, issue_title, issue_body)
+                )
+            else:
+                assignment_context = (
+                    f"Issue assigned to {get_slack_handle(assigned_role) or assigned_role}.\n\n"
+                    f"Issue title: {issue_title}\n\n"
+                    f"Issue body:\n{issue_body}"
+                )
+                asyncio.create_task(
+                    run_agent_for_github(
+                        repo=repo_full_name,
+                        issue_number=issue_number,
+                        role=assigned_role,
+                        context=assignment_context,
+                    )
+                )
 
-            return {"status": "accepted", "message": f"Processing issue #{issue_number}"}
+            return {
+                "status": "accepted",
+                "message": f"Processing issue #{issue_number} as {assigned_role}",
+            }
 
     # Handle @mention or /RoleName in issue comments
     if x_github_event == "issue_comment" and action == "created":
@@ -673,10 +792,7 @@ async def handle_github_webhook(
         discussion_user_type = discussion.get("user", {}).get("type", "")
 
         # Ignore bot discussions
-        if (
-            discussion_user_type == "Bot"
-            or config.BOT_USERNAME.replace("[bot]", "") in discussion_user
-        ):
+        if discussion_user_type == "Bot" or config.BOT_USERNAME.replace("[bot]", "") in discussion_user:
             return {"status": "ignored", "reason": "own_comment"}
 
         if discussion_number:
@@ -691,17 +807,9 @@ async def handle_github_webhook(
         role_mentions = message_router.parse_role_mentions(discussion_body)
         if not role_mentions and discussion_body:
             fallback_roles: list[AgentRole] = []
-            for role in (
-                "software_engineer",
-                "support_engineer",
-                "release_engineer",
-                "product_manager",
-                "marketing_manager",
-            ):
+            for role in ("software_engineer", "support_engineer", "release_engineer", "product_manager", "marketing_manager"):
                 handle = get_slack_handle(role) or role.replace("_", " ").title()
-                if handle and re.search(
-                    rf"\\b{re.escape(handle)}\\b", discussion_body, re.IGNORECASE
-                ):
+                if handle and re.search(rf"\\b{re.escape(handle)}\\b", discussion_body, re.IGNORECASE):
                     fallback_roles.append(role)
             if fallback_roles:
                 role_mentions = fallback_roles
@@ -804,7 +912,9 @@ async def handle_github_webhook(
                         discussion_title=discussion_title,
                         role=role,
                         context=(
-                            f"Discussion body:\n\n{discussion_body}\n\nNew comment:\n{comment_body}"
+                            "Discussion body:\n\n"
+                            f"{discussion_body}\n\n"
+                            f"New comment:\n{comment_body}"
                         ),
                     )
                 )
@@ -823,7 +933,9 @@ async def handle_github_webhook(
                     discussion_title=discussion_title,
                     role="software_engineer",
                     context=(
-                        f"Discussion body:\n\n{discussion_body}\n\nNew comment:\n{comment_body}"
+                        "Discussion body:\n\n"
+                        f"{discussion_body}\n\n"
+                        f"New comment:\n{comment_body}"
                     ),
                 )
             )
