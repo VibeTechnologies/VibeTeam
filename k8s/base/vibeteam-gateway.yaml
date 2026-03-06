@@ -70,8 +70,6 @@ spec:
               value: "http://crewai-svc:8080"
             - name: OPENHANDS_SERVICE_URL
               value: "http://openhands-svc:8080"
-            - name: OPENCLAW_SERVICE_URL
-              value: "http://openclaw-svc:8080"
             - name: SCHEDULER_SERVICE_URL
               value: "http://scheduler-svc:8080"
             - name: DEFAULT_FRAMEWORK
@@ -93,6 +91,20 @@ spec:
                   optional: true
             - name: GITHUB_BOT_USERNAME
               value: "vibeteam-bot[bot]"
+            - name: GITHUB_BOT_USERNAME_SOFTWARE_ENGINEER
+              value: "vibeteam-swe-bot-260301[bot]"
+            - name: GITHUB_BOT_USERNAME_SUPPORT_ENGINEER
+              value: "vibeteam-support-bot-260301[bot]"
+            - name: GITHUB_BOT_USERNAME_RELEASE_ENGINEER
+              value: "vibeteam-release-bot-260301[bot]"
+            - name: GITHUB_BOT_USERNAME_PRODUCT_MANAGER
+              value: "vibeteam-pm-bot-260301[bot]"
+            - name: GITHUB_BOT_USERNAME_MARKETING_MANAGER
+              value: "vibeteam-mktg-bot-260301[bot]"
+            - name: GITHUB_ISSUE_ASSIGNEE
+              value: "vibeteam-swe-bot-260301[bot]"
+            - name: GITHUB_ASSIGNMENT_BOT_LOGINS
+              value: "vibeteam-swe-bot-260301[bot],vibeteam-support-bot-260301[bot],vibeteam-release-bot-260301[bot],vibeteam-pm-bot-260301[bot],vibeteam-mktg-bot-260301[bot]"
             - name: GITHUB_APP_ID
               valueFrom:
                 secretKeyRef:
@@ -144,26 +156,6 @@ spec:
                   name: vibeteam-secrets
                   key: SENTRY_CLIENT_SECRET
                   optional: true
-            - name: LANGFUSE_PUBLIC_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: vibeteam-secrets
-                  key: LANGFUSE_PUBLIC_KEY
-                  optional: true
-            - name: LANGFUSE_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: vibeteam-secrets
-                  key: LANGFUSE_SECRET_KEY
-                  optional: true
-            - name: LANGFUSE_BASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: vibeteam-secrets
-                  key: LANGFUSE_BASE_URL
-                  optional: true
-            - name: LANGFUSE_HOST
-              value: "$(LANGFUSE_BASE_URL)"
             # Async callback configuration
             - name: GATEWAY_URL
               value: "http://vibeteam-gateway:8080"

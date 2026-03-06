@@ -20,6 +20,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import sys
 from typing import Any
 
@@ -87,20 +88,56 @@ def get_bot_user_id() -> str | None:
     return os.environ.get("GITHUB_BOT_USER_ID")
 
 
+def _normalize_login(login: str) -> str:
+    normalized = (login or "").strip().lower()
+    if normalized.startswith("@"):
+        normalized = normalized[1:]
+    if normalized.endswith("[bot]"):
+        normalized = normalized[:-5]
+    return normalized
+
+
+def _iter_assignment_bot_candidates() -> set[str]:
+    values: list[str] = []
+    for env_name in (
+        "GITHUB_BOT_USERNAME",
+        "GITHUB_ISSUE_ASSIGNEE",
+        "GITHUB_ASSIGNMENT_BOT_LOGINS",
+    ):
+        raw = os.environ.get(env_name, "")
+        if raw:
+            values.extend(raw.split(","))
+
+    if BOT_USERNAME:
+        values.append(BOT_USERNAME)
+
+    for key, value in os.environ.items():
+        if not value:
+            continue
+        if key.startswith("GITHUB_BOT_USERNAME_") or key.startswith("GITHUB_APP_BOT_USERNAME_"):
+            values.extend(value.split(","))
+
+    return {_normalize_login(v) for v in values if _normalize_login(v)}
+
+
 def is_assigned_to_bot(assignee: dict[str, Any] | None) -> bool:
     """Check if the assignee is our bot."""
     if not assignee:
         return False
 
     assignee_login = assignee.get("login", "")
+    normalized_assignee_login = _normalize_login(assignee_login)
     bot_user_id = get_bot_user_id()
 
-    # Check by login name
-    if BOT_USERNAME.replace("[bot]", "") in assignee_login:
+    candidates = _iter_assignment_bot_candidates()
+    if normalized_assignee_login in candidates:
         return True
 
     # Check by user ID if available
     if bot_user_id and str(assignee.get("id")) == bot_user_id:
+        return True
+
+    if re.fullmatch(r"vibeteam-[a-z0-9-]+-bot(?:-\d+)?", normalized_assignee_login):
         return True
 
     return False
