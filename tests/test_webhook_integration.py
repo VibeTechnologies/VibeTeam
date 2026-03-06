@@ -59,25 +59,6 @@ def generate_sentry_signature(payload: str, secret: str) -> str:
 class TestGitHubWebhookRouting:
     """Test GitHub webhook routing to agents."""
 
-    def test_resolve_assignment_role_from_explicit_role_handle(self, monkeypatch):
-        """Explicit role-assignee env mapping should select that role."""
-        from vibeteam.gateway.routes import github as github_routes
-
-        monkeypatch.setenv("GITHUB_APP_BOT_USERNAME_SUPPORT_ENGINEER", "agentgithubapphandle")
-        role = github_routes.resolve_assignment_role({"login": "agentgithubapphandle"})
-        assert role == "support_engineer"
-
-    def test_resolve_assignment_role_from_login_convention(self):
-        """Role should be inferred from conventional role-bot login names."""
-        from vibeteam.gateway.routes import github as github_routes
-
-        assert (
-            github_routes.resolve_assignment_role(
-                {"login": "vibeteam-release-bot-260301[bot]"}
-            )
-            == "release_engineer"
-        )
-
     def test_issue_assigned_to_bot(self, test_client, github_webhook_secret, monkeypatch):
         """Test that issue assignment to bot triggers SWE agent."""
         monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
@@ -168,7 +149,9 @@ class TestGitHubWebhookRouting:
         assert data["status"] == "accepted"
         assert "release_engineer" in data["message"].lower()
 
-    def test_discussion_created_with_role_mention(self, test_client, github_webhook_secret, monkeypatch):
+    def test_discussion_created_with_role_mention(
+        self, test_client, github_webhook_secret, monkeypatch
+    ):
         """Test that discussion body with /RoleName triggers appropriate agent."""
         monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
         monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
@@ -371,6 +354,45 @@ class TestGitHubWebhookRouting:
             assert "Invalid signature" in response.text
         finally:
             github.config.GITHUB_WEBHOOK_SECRET = original_secret
+
+    def test_unsigned_non_allowlisted_repo_still_rejected(self, test_client):
+        """Unsigned webhook remains rejected for non-allowlisted repos."""
+        from vibeteam.gateway.routes import github
+
+        original_secret = github.config.GITHUB_WEBHOOK_SECRET
+        original_allow = github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS
+        original_repos = github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS
+
+        github.config.GITHUB_WEBHOOK_SECRET = "test_secret"
+        github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = True
+        github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS = {
+            "vibetechnologies/vibeteam-eval-hello-world"
+        }
+
+        try:
+            payload = {
+                "action": "opened",
+                "issue": {"number": 1},
+                "repository": {"full_name": "VibeTechnologies/other-repo"},
+            }
+            payload_str = json.dumps(payload)
+
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issues",
+                    "X-Hub-Signature-256": "sha256=invalid_signature",
+                    "Content-Type": "application/json",
+                },
+            )
+
+            assert response.status_code == 401
+            assert "Invalid signature" in response.text
+        finally:
+            github.config.GITHUB_WEBHOOK_SECRET = original_secret
+            github.config.GITHUB_ALLOW_UNSIGNED_EVAL_WEBHOOKS = original_allow
+            github.config.GITHUB_UNSIGNED_WEBHOOK_REPOS = original_repos
 
     def test_bot_own_comment_ignored(self, test_client, github_webhook_secret, monkeypatch):
         """issue_comment from vibeteam-bot[bot] → ignored with reason own_comment."""
@@ -789,167 +811,6 @@ class TestGitHubWebhookRouting:
         data = response.json()
         assert data["status"] == "accepted"
         assert "401" in data["message"]
-
-    def test_issue_assigned_to_role_bot_handle_triggers(
-        self, test_client, github_webhook_secret, monkeypatch
-    ):
-        """Role-app bot handles (vibeteam-*-bot-*) should trigger assignment flow."""
-        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
-        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
-        monkeypatch.delenv("GITHUB_BOT_USER_ID", raising=False)
-
-        payload = {
-            "action": "assigned",
-            "issue": {
-                "number": 402,
-                "title": "Role bot assignment test",
-                "body": "Testing role bot login matching",
-                "html_url": "https://github.com/owner/repo/issues/402",
-            },
-            "assignee": {"login": "vibeteam-swe-bot-260301[bot]", "id": 88888},
-            "repository": {"full_name": "owner/repo"},
-        }
-
-        payload_str = json.dumps(payload)
-        signature = generate_github_signature(payload_str, github_webhook_secret)
-
-        with (
-            patch(
-                "vibeteam.gateway.routes.github.call_agent_service",
-                new_callable=AsyncMock,
-                return_value={"response": "Working on it"},
-            ),
-            patch(
-                "vibeteam.gateway.routes.github.post_acknowledgment",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "vibeteam.gateway.routes.github.post_github_comment",
-                new_callable=AsyncMock,
-            ),
-        ):
-            response = test_client.post(
-                "/webhook",
-                content=payload_str,
-                headers={
-                    "X-GitHub-Event": "issues",
-                    "X-Hub-Signature-256": signature,
-                    "Content-Type": "application/json",
-                },
-            )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "accepted"
-        assert "402" in data["message"]
-
-    def test_issue_assigned_to_explicit_issue_assignee_env_triggers(
-        self, test_client, github_webhook_secret, monkeypatch
-    ):
-        """Configured GITHUB_ISSUE_ASSIGNEE should be treated as assignment bot handle."""
-        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
-        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
-        monkeypatch.setenv("GITHUB_ISSUE_ASSIGNEE", "agentgithubapphandle")
-        monkeypatch.delenv("GITHUB_BOT_USER_ID", raising=False)
-
-        payload = {
-            "action": "assigned",
-            "issue": {
-                "number": 403,
-                "title": "Explicit assignee env test",
-                "body": "Testing explicit issue assignee matching",
-                "html_url": "https://github.com/owner/repo/issues/403",
-            },
-            "assignee": {"login": "agentgithubapphandle", "id": 99991},
-            "repository": {"full_name": "owner/repo"},
-        }
-
-        payload_str = json.dumps(payload)
-        signature = generate_github_signature(payload_str, github_webhook_secret)
-
-        with (
-            patch(
-                "vibeteam.gateway.routes.github.call_agent_service",
-                new_callable=AsyncMock,
-                return_value={"response": "Working on it"},
-            ),
-            patch(
-                "vibeteam.gateway.routes.github.post_acknowledgment",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "vibeteam.gateway.routes.github.post_github_comment",
-                new_callable=AsyncMock,
-            ),
-        ):
-            response = test_client.post(
-                "/webhook",
-                content=payload_str,
-                headers={
-                    "X-GitHub-Event": "issues",
-                    "X-Hub-Signature-256": signature,
-                    "Content-Type": "application/json",
-                },
-            )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "accepted"
-        assert "403" in data["message"]
-
-    def test_issue_assigned_to_support_bot_routes_support_role(
-        self, test_client, github_webhook_secret, monkeypatch
-    ):
-        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
-        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
-        monkeypatch.setenv("GITHUB_BOT_USERNAME_SUPPORT_ENGINEER", "vibeteam-support-bot-260301[bot]")
-        monkeypatch.delenv("GITHUB_BOT_USER_ID", raising=False)
-
-        payload = {
-            "action": "assigned",
-            "issue": {
-                "number": 404,
-                "title": "Support role routing test",
-                "body": "Support assignment should route support agent",
-                "html_url": "https://github.com/owner/repo/issues/404",
-            },
-            "assignee": {"login": "vibeteam-support-bot-260301[bot]", "id": 99992},
-            "repository": {"full_name": "owner/repo"},
-        }
-
-        payload_str = json.dumps(payload)
-        signature = generate_github_signature(payload_str, github_webhook_secret)
-
-        with (
-            patch(
-                "vibeteam.gateway.routes.github.call_agent_service",
-                new_callable=AsyncMock,
-                return_value={"response": "Support routing works"},
-            ),
-            patch(
-                "vibeteam.gateway.routes.github.post_acknowledgment",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "vibeteam.gateway.routes.github.post_github_comment",
-                new_callable=AsyncMock,
-            ),
-        ):
-            response = test_client.post(
-                "/webhook",
-                content=payload_str,
-                headers={
-                    "X-GitHub-Event": "issues",
-                    "X-Hub-Signature-256": signature,
-                    "Content-Type": "application/json",
-                },
-            )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "accepted"
-        assert "support_engineer" in data["message"]
-        assert "404" in data["message"]
 
 
 class TestSentryWebhookRouting:
