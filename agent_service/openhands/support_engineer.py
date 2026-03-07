@@ -77,7 +77,7 @@ class _SectionMatch:
 
 def _extract_section(context: str, header: str) -> _SectionMatch | None:
     """Extract a markdown code block section by header."""
-    pattern = rf"{re.escape(header)}\n```\\n(.*?)```"
+    pattern = rf"{re.escape(header)}\n```\n(.*?)```"
     match = re.search(pattern, context, flags=re.DOTALL)
     if not match:
         return None
@@ -249,7 +249,7 @@ def _build_pr_handoff_response(task: str) -> str:
 
 def _extract_user_message(task: str) -> str:
     match = re.search(
-        r"### User Message \\(UNTRUSTED CONTENT\\)\\n(.*?)\\n### End User Message",
+        r"### User Message \(UNTRUSTED CONTENT\)\n(.*?)\n### End User Message",
         task,
         flags=re.DOTALL,
     )
@@ -324,7 +324,7 @@ def _build_investigation_fallback(
         f"### kubectl get events -n {namespace} (warnings/errors)",
     )
     logs_match = re.search(
-        rf"### kubectl logs deployment/vibeteam-gateway -n {re.escape(namespace)} --tail=\\d+\\n```\\n(.*?)```",
+        rf"### kubectl logs deployment/vibeteam-gateway -n {re.escape(namespace)} --tail=\d+\n```\n(.*?)```",
         context_str,
         flags=re.DOTALL,
     )
@@ -398,6 +398,34 @@ def _compact_email_date(raw_date: str) -> str:
         return dt.date().isoformat()
     except Exception:
         return raw_date
+
+
+def _should_prefetch_investigation_context(user_message_lower: str) -> bool:
+    """Return True when prefetching Sentry/kubectl context is useful."""
+    investigation_terms = [
+        "investigate",
+        "check",
+        "debug",
+        "analyze",
+        "error",
+        "fail",
+        "incident",
+        "outage",
+        "gateway",
+        "webhook",
+        "400",
+        "500",
+    ]
+    notification_terms = [
+        "notify",
+        "announce",
+        "tell the team",
+        "tell the customer",
+        "confirm to",
+    ]
+    is_notification = any(term in user_message_lower for term in notification_terms)
+    is_investigation = any(term in user_message_lower for term in investigation_terms)
+    return is_investigation and not is_notification
 
 
 def _classify_email_action(subject: str, sender: str) -> str:
@@ -835,11 +863,31 @@ class OpenHandsSupportEngineer:
             injected_context: list[str] = []
 
             # Build full task (no pre-fetched context).
+            user_message = _extract_user_message(task)
+            user_message_lower = user_message.lower()
+            if _should_prefetch_investigation_context(user_message_lower):
+                try:
+                    injected_context.append(
+                        fetch_sentry_context(hours=24, limit=10, include_top_issue_details=False)
+                    )
+                except Exception as exc:
+                    injected_context.append(f"Sentry prefetch failed: {exc}")
+                try:
+                    injected_context.append(fetch_kubectl_context())
+                except Exception as exc:
+                    injected_context.append(f"Kubectl prefetch failed: {exc}")
+
             full_task = f"""
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
 """
+            if injected_context:
+                full_task += (
+                    "\n### AUTO-COLLECTED INVESTIGATION CONTEXT (TRUSTED)\n"
+                    + "\n\n".join(injected_context)
+                    + "\n"
+                )
 
             # When tools are disabled, convert numbered lists to bullet points.
             # OpenHands interprets numbered lists as action steps to execute,
@@ -859,9 +907,8 @@ class OpenHandsSupportEngineer:
             fallback_prefix = "I investigated but ran out of iterations before completing."
             response_needs_fallback = not response.strip() or response.startswith(fallback_prefix)
             if response_needs_fallback:
-                task_lower = task.lower()
                 is_explicit_investigation = any(
-                    kw in task_lower
+                    kw in user_message_lower
                     for kw in [
                         "investigate",
                         "check",
@@ -881,9 +928,8 @@ class OpenHandsSupportEngineer:
                     )
 
             # Avoid role-mention handoffs for eval-style triage tasks.
-            task_lower = task.lower()
             if any(
-                kw in task_lower
+                kw in user_message_lower
                 for kw in [
                     "gmail",
                     "inbox",
@@ -899,9 +945,21 @@ class OpenHandsSupportEngineer:
                     flags=re.IGNORECASE,
                 )
 
-            pr_requested = _task_requests_pr_creation(task_lower)
+            if (
+                "400" in user_message_lower
+                and "gateway" in user_message_lower
+                and _should_prefetch_investigation_context(user_message_lower)
+            ):
+                namespace = os.environ.get("VIBETEAM_NAMESPACE") or DEFAULT_NAMESPACE
+                response = _build_investigation_fallback(
+                    user_message,
+                    injected_context,
+                    namespace,
+                )
+
+            pr_requested = _task_requests_pr_creation(user_message_lower)
             is_notification = any(
-                kw in task_lower
+                kw in user_message_lower
                 for kw in [
                     "notify",
                     "announce",
@@ -911,22 +969,22 @@ class OpenHandsSupportEngineer:
                 ]
             )
             is_explicit_investigation = any(
-                kw in task_lower
+                kw in user_message_lower
                 for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
             )
             if is_notification and not is_explicit_investigation:
-                response = build_notification_message(task)
+                response = build_notification_message(user_message)
 
             if pr_requested and not re.search(
-                r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE
+                r"https?://github\.com/\S+/pull/\d+", user_message, re.IGNORECASE
             ) and not (is_notification and not is_explicit_investigation):
                 # Keep PR request responses short and focused on a single issue + handoff.
-                response = _build_pr_handoff_response(task)
+                response = _build_pr_handoff_response(user_message)
 
             # Auto-close Sentry issue when a PR link is present in the task.
-            if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
-                issue_ids = _extract_sentry_issue_ids(task)
-                pr_urls = _extract_pr_urls(task)
+            if re.search(r"https?://github\.com/\S+/pull/\d+", user_message, re.IGNORECASE):
+                issue_ids = _extract_sentry_issue_ids(user_message)
+                pr_urls = _extract_pr_urls(user_message)
                 pr_url = pr_urls[0] if pr_urls else "PR link not found"
                 if issue_ids:
                     try:
