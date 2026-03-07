@@ -154,8 +154,26 @@ def _summarize_sentry(context: str) -> str:
     return "Sentry status unavailable."
 
 
-def _task_mentions_pr(task_lower: str) -> bool:
-    return bool(re.search(r"\bpr\b", task_lower)) or "pull request" in task_lower
+def _task_requests_pr_creation(task_lower: str) -> bool:
+    """Return True only when the task explicitly asks to create/open a PR.
+
+    A plain reference like "deployment of PR #123 is complete" should NOT trigger
+    PR handoff behavior.
+    """
+    has_pr_token = bool(re.search(r"\bpr\b", task_lower)) or "pull request" in task_lower
+    if not has_pr_token:
+        return False
+
+    create_pattern = re.compile(
+        r"\b(create|open|submit|raise|draft|prepare|make)\b.{0,40}\b(pr|pull request)\b"
+    )
+    reverse_create_pattern = re.compile(
+        r"\b(pr|pull request)\b.{0,40}\b(create|open|submit|raise|draft|prepare|make)\b"
+    )
+    if create_pattern.search(task_lower) or reverse_create_pattern.search(task_lower):
+        return True
+
+    return bool(re.search(r"\bneeds?\s+(an?\s+)?(pr|pull request)\b", task_lower))
 
 
 def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
@@ -473,8 +491,8 @@ def build_gmail_summary() -> str:
 
 def build_notification_message(task: str) -> str:
     """Build a concise notification message from a notify-only task."""
-    pr_match = re.search(r"PR\\s*#?(\\d+)", task, re.IGNORECASE)
-    env_match = re.search(r"to\\s+(staging|production|prod|dev|qa)\\b", task, re.IGNORECASE)
+    pr_match = re.search(r"PR\s*#?(\d+)", task, re.IGNORECASE)
+    env_match = re.search(r"to\s+(staging|production|prod|dev|qa)\b", task, re.IGNORECASE)
     pr_part = f"PR #{pr_match.group(1)}" if pr_match else ""
     env = env_match.group(1).lower() if env_match else ""
     if env == "prod":
@@ -500,52 +518,6 @@ def fetch_calendar_context_wrapper(days: int = 3) -> str:
 def fetch_docs_context_wrapper(query: str) -> str:
     """Fetch documentation context using shared tools."""
     return get_docs_context(query=query, max_results=3)
-
-
-def _is_knowledgebase_ingestion_task(task: str) -> bool:
-    task_lower = task.lower()
-    has_fact_key = "kb_eval_fact_" in task_lower
-    has_kb_path = (
-        "agents/shared/knowledgebase" in task_lower
-        or "/app/agents/shared/knowledgebase" in task_lower
-    )
-    return has_fact_key and has_kb_path
-
-
-def _compact_knowledgebase_ingestion_response(task: str, response: str) -> str:
-    """Return a concise response for KB ingestion requests.
-
-    This keeps eval-oriented ingestion confirmations focused and avoids unrelated
-    investigation chatter that hurts response-efficiency scoring.
-    """
-    if not _is_knowledgebase_ingestion_task(task):
-        return response
-
-    # Prefer the first response line when the model already produced a concise
-    # KB confirmation and then appended unrelated diagnostics.
-    first_line = next((line.strip() for line in response.splitlines() if line.strip()), "")
-    if first_line and ("kb update" in first_line.lower() or "knowledgebase update" in first_line.lower()):
-        return first_line
-
-    path_match = re.search(r"`?(agents/shared/knowledgebase/\S+?)`?(?:\s|$)", task)
-    fact_match = re.search(r"`?(KB_EVAL_FACT_[A-Za-z0-9_]+)\s*:\s*([^`\n]+)`?", task)
-    if not path_match or not fact_match:
-        return first_line or response
-
-    rel_path = path_match.group(1).strip()
-    fact_key = fact_match.group(1).strip()
-    fact_value = fact_match.group(2).strip().rstrip(".")
-    runtime_path = f"/app/{rel_path}" if not rel_path.startswith("/app/") else rel_path
-
-    # If the agent clearly failed to perform the request, preserve the original response.
-    response_lower = response.lower()
-    if "error" in response_lower and "knowledgebase" in response_lower:
-        return response
-
-    return (
-        f"Knowledgebase update complete: created `{runtime_path}` with "
-        f"`{fact_key}: {fact_value}` and rebuilt the docs index."
-    )
 
 
 def convert_numbered_lists_to_bullets(text: str) -> str:
@@ -927,7 +899,7 @@ class OpenHandsSupportEngineer:
                     flags=re.IGNORECASE,
                 )
 
-            pr_requested = _task_mentions_pr(task_lower)
+            pr_requested = _task_requests_pr_creation(task_lower)
             is_notification = any(
                 kw in task_lower
                 for kw in [
@@ -947,12 +919,9 @@ class OpenHandsSupportEngineer:
 
             if pr_requested and not re.search(
                 r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE
-            ):
+            ) and not (is_notification and not is_explicit_investigation):
                 # Keep PR request responses short and focused on a single issue + handoff.
                 response = _build_pr_handoff_response(task)
-
-            # Keep KB ingestion confirmations concise and task-focused.
-            response = _compact_knowledgebase_ingestion_response(task, response)
 
             # Auto-close Sentry issue when a PR link is present in the task.
             if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
