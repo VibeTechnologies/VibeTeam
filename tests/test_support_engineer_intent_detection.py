@@ -96,3 +96,32 @@ POST /api/v1/ingest 400
     assert "Pod status counts: Running:1, CrashLoopBackOff:1." in response
     assert "Recent warnings/errors:" in response
     assert "4xx responses observed in recent logs." in response
+
+
+def test_build_investigation_fallback_flags_gateway_instability_when_signals_exist() -> None:
+    context = """
+### kubectl get pods -n vibeteam
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+vibeteam-gateway-abc               1/1     Running   0          10m
+```
+
+### kubectl get events -n vibeteam (warnings/errors)
+```
+LAST SEEN   TYPE      REASON                   OBJECT                         MESSAGE
+17s         Warning   Unhealthy                pod/vibeteam-gateway-abc       Readiness probe failed: connect: connection refused
+14s         Warning   FailedGetResourceMetric  horizontalpodautoscaler/vibeteam-gateway   failed to get cpu utilization
+```
+
+### kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
+```
+POST /api/v1/ingest 400
+```
+"""
+    response = _build_investigation_fallback(
+        "@SupportEngineer users report API gateway 400 errors after deployment",
+        [context],
+        "vibeteam",
+    )
+    assert "Gateway instability signals are present after deployment" in response
+    assert "Immediate mitigation: rollback vibeteam-gateway" in response

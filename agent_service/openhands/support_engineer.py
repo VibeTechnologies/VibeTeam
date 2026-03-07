@@ -331,17 +331,43 @@ def _build_investigation_fallback(
     pods_summary = _summarize_pods(pods_section.body if pods_section else "")
     events_summary = _summarize_events(events_section.body if events_section else "")
     logs_summary = _summarize_logs(logs_match.group(1).strip() if logs_match else "")
+    events_lower = (events_section.body if events_section else "").lower()
+    pods_lower = (pods_section.body if pods_section else "").lower()
+    logs_lower = (logs_match.group(1).strip() if logs_match else "").lower()
+    gateway_unstable = any(
+        signal in (events_lower + "\n" + pods_lower + "\n" + logs_lower)
+        for signal in [
+            "readiness probe failed",
+            "connect: connection refused",
+            "vibeteam-gateway",
+            "failedgetresourcemetric",
+            "crashloopbackoff",
+        ]
+    ) and ("4xx" in logs_summary.lower() or "400" in logs_lower or "gateway" in task.lower())
 
-    root_cause = (
-        "No clear infrastructure failure found in kubectl or Sentry context. "
-        "Likely client request/validation issues (400/422) unless customers can "
-        "provide failing request details."
-    )
-    recommendation = (
-        "Infrastructure appears healthy. Do not rollback. "
-        "Please request exact endpoint/path, method, timestamp, and response body "
-        "from affected customers to confirm whether it is a client contract issue."
-    )
+    if gateway_unstable:
+        root_cause = (
+            "Gateway instability signals are present after deployment: readiness probe "
+            "connection failures and/or HPA metrics gaps around vibeteam-gateway plus "
+            "4xx patterns in logs. This is consistent with deployment-related runtime "
+            "instability rather than purely client validation errors."
+        )
+        recommendation = (
+            "Immediate mitigation: rollback vibeteam-gateway to the previous revision "
+            "and verify pod readiness/4xx rate. Then compare deployment config/image "
+            "changes around 08:00 UTC and confirm error-rate recovery."
+        )
+    else:
+        root_cause = (
+            "No clear infrastructure failure found in kubectl or Sentry context. "
+            "Likely client request/validation issues (400/422) unless customers can "
+            "provide failing request details."
+        )
+        recommendation = (
+            "Infrastructure appears healthy. Do not rollback. "
+            "Please request exact endpoint/path, method, timestamp, and response body "
+            "from affected customers to confirm whether it is a client contract issue."
+        )
 
     return (
         "Sentry findings:\n"
