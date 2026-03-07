@@ -334,28 +334,49 @@ def _build_investigation_fallback(
     events_lower = (events_section.body if events_section else "").lower()
     pods_lower = (pods_section.body if pods_section else "").lower()
     logs_lower = (logs_match.group(1).strip() if logs_match else "").lower()
-    gateway_unstable = any(
-        signal in (events_lower + "\n" + pods_lower + "\n" + logs_lower)
-        for signal in [
-            "readiness probe failed",
-            "connect: connection refused",
-            "vibeteam-gateway",
-            "failedgetresourcemetric",
-            "crashloopbackoff",
-        ]
-    ) and ("4xx" in logs_summary.lower() or "400" in logs_lower or "gateway" in task.lower())
+    has_readiness_fail = "readiness probe failed" in events_lower or "connect: connection refused" in events_lower
+    has_hpa_metrics_fail = (
+        "failedgetresourcemetric" in events_lower
+        or "failedcomputemetricsreplicas" in events_lower
+    )
+    has_gateway_crashloop = "vibeteam-gateway" in pods_lower and "crashloopbackoff" in pods_lower
+    has_4xx_logs = "4xx responses observed" in logs_summary.lower() or " 400" in logs_lower
+    strong_gateway_failure = has_4xx_logs and (has_readiness_fail or has_gateway_crashloop)
+    partial_gateway_risk = has_hpa_metrics_fail or has_readiness_fail
 
-    if gateway_unstable:
+    if strong_gateway_failure:
+        evidence_parts: list[str] = []
+        if has_readiness_fail:
+            evidence_parts.append("gateway readiness probe connection failures")
+        if has_gateway_crashloop:
+            evidence_parts.append("gateway CrashLoopBackOff")
+        if has_4xx_logs:
+            evidence_parts.append("observed 4xx patterns in gateway logs")
         root_cause = (
-            "Gateway instability signals are present after deployment: readiness probe "
-            "connection failures and/or HPA metrics gaps around vibeteam-gateway plus "
-            "4xx patterns in logs. This is consistent with deployment-related runtime "
-            "instability rather than purely client validation errors."
+            "Deployment-timed gateway instability is likely based on: "
+            + ", ".join(evidence_parts)
+            + "."
         )
         recommendation = (
-            "Immediate mitigation: rollback vibeteam-gateway to the previous revision "
-            "and verify pod readiness/4xx rate. Then compare deployment config/image "
-            "changes around 08:00 UTC and confirm error-rate recovery."
+            "Immediate mitigation: rollback vibeteam-gateway to the previous revision and "
+            "verify readiness and 4xx/error-rate recovery. Then diff deployment config/image "
+            "changes around 08:00 UTC."
+        )
+    elif partial_gateway_risk:
+        evidence_parts: list[str] = []
+        if has_readiness_fail:
+            evidence_parts.append("readiness probe failures")
+        if has_hpa_metrics_fail:
+            evidence_parts.append("HPA metrics collection failures")
+        root_cause = (
+            "Infrastructure risk signals are present ("
+            + ", ".join(evidence_parts)
+            + "), but direct 400-error causality is not yet proven from current logs."
+        )
+        recommendation = (
+            "Do not rollback yet. Next actions: capture failing endpoint/request IDs around "
+            "08:00 UTC, run targeted curl reproduction, and compare gateway deployment "
+            "config/image changes. If 4xx spike correlates with gateway instability, then rollback."
         )
     else:
         root_cause = (

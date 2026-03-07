@@ -123,5 +123,33 @@ POST /api/v1/ingest 400
         [context],
         "vibeteam",
     )
-    assert "Gateway instability signals are present after deployment" in response
+    assert "Deployment-timed gateway instability is likely based on:" in response
     assert "Immediate mitigation: rollback vibeteam-gateway" in response
+
+
+def test_build_investigation_fallback_uses_conditional_rollback_for_partial_risk() -> None:
+    context = """
+### kubectl get pods -n vibeteam
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+vibeteam-gateway-abc               1/1     Running   0          10m
+```
+
+### kubectl get events -n vibeteam (warnings/errors)
+```
+LAST SEEN   TYPE      REASON                   OBJECT                         MESSAGE
+15s         Warning   FailedGetResourceMetric  horizontalpodautoscaler/vibeteam-gateway   failed to get memory utilization
+```
+
+### kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
+```
+GET /health 200
+```
+"""
+    response = _build_investigation_fallback(
+        "@SupportEngineer users report API gateway 400 errors after deployment",
+        [context],
+        "vibeteam",
+    )
+    assert "Infrastructure risk signals are present" in response
+    assert "Do not rollback yet." in response
