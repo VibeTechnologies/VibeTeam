@@ -4,24 +4,30 @@ This guide covers how to configure the Slack app for VibeTeam, including event s
 
 ## Quick Links
 
-- App settings: `https://api.slack.com/apps/A0AAZGWEAVA`
-- OAuth & permissions: `https://api.slack.com/apps/A0AAZGWEAVA/oauth`
-- App manifest: `https://api.slack.com/apps/A0AAZGWEAVA/app-manifest`
+- Slack apps dashboard: `https://api.slack.com/apps`
+- OAuth & permissions: `https://api.slack.com/apps/<app-id>/oauth`
+- App manifest: `https://api.slack.com/apps/<app-id>/app-manifest`
 
 ## Prerequisites
 
 - A Slack workspace where you have admin permissions
 - The VibeTeam gateway deployed and reachable via HTTPS (e.g. `https://webhook.team.vibebrowser.app`)
 
-## Multi-Environment Constraint
+## Multi-App and Environment Constraints
 
-Slack Event Subscriptions use one Request URL per app. This means one Slack app cannot directly send events to both dev and prod gateways at the same time.
+Slack Event Subscriptions use one Request URL per app. One app cannot send inbound
+events to multiple gateways at once (for example, dev and prod).
 
 Current deployment policy:
 
-- Use a single Slack app with Request URL pointing to the `vibeteam` gateway.
-- Run evaluation scenarios via `/slack/trigger` against that same gateway.
-- If you later add additional namespaces, you must add a routing proxy or separate Slack app.
+- Use one **ingress app** for inbound events to `/slack/events`.
+- Use role-specific **responder apps** for outbound identity:
+  `SoftwareEngineer`, `SupportEngineer`, `ReleaseEngineer`,
+  `ProductManager`, and `MarketingManager`.
+- Configure role-scoped tokens in gateway env vars:
+  `SLACK_BOT_TOKEN_<ROLE>` and `SLACK_ASSISTANT_TOKEN_<ROLE>`.
+- If a role-scoped token is missing, gateway falls back to global
+  `SLACK_BOT_TOKEN` / `SLACK_ASSISTANT_TOKEN`.
 
 ## 1. Create the Slack App
 
@@ -106,8 +112,18 @@ The gateway requires these environment variables for Slack integration:
 
 | Variable | Description | Where to find |
 |----------|-------------|---------------|
-| `SLACK_BOT_TOKEN` | Bot user OAuth token (`xoxb-...`) | **OAuth & Permissions** page after installing the app |
-| `SLACK_ASSISTANT_TOKEN` | Optional token with `assistant:write` for thread status | Same as bot token, or a separate token if you split scopes |
+| `SLACK_BOT_TOKEN` | Fallback bot token (`xoxb-...`) when role-scoped token is not configured | **OAuth & Permissions** page |
+| `SLACK_ASSISTANT_TOKEN` | Fallback token with `assistant:write` for thread status | **OAuth & Permissions** page |
+| `SLACK_BOT_TOKEN_SOFTWARE_ENGINEER` | Bot token for SoftwareEngineer app identity | SoftwareEngineer app OAuth page |
+| `SLACK_BOT_TOKEN_SUPPORT_ENGINEER` | Bot token for SupportEngineer app identity | SupportEngineer app OAuth page |
+| `SLACK_BOT_TOKEN_RELEASE_ENGINEER` | Bot token for ReleaseEngineer app identity | ReleaseEngineer app OAuth page |
+| `SLACK_BOT_TOKEN_PRODUCT_MANAGER` | Bot token for ProductManager app identity | ProductManager app OAuth page |
+| `SLACK_BOT_TOKEN_MARKETING_MANAGER` | Bot token for MarketingManager app identity | MarketingManager app OAuth page |
+| `SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER` | Optional assistant token for SoftwareEngineer status updates | SoftwareEngineer app OAuth page |
+| `SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER` | Optional assistant token for SupportEngineer status updates | SupportEngineer app OAuth page |
+| `SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER` | Optional assistant token for ReleaseEngineer status updates | ReleaseEngineer app OAuth page |
+| `SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER` | Optional assistant token for ProductManager status updates | ProductManager app OAuth page |
+| `SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER` | Optional assistant token for MarketingManager status updates | MarketingManager app OAuth page |
 | `SLACK_ASSISTANT_STATUS_TEXT` | Optional status text (default: `is thinking...`) | Local configuration |
 | `SLACK_SIGNING_SECRET` | Used to verify incoming Slack requests | **Basic Information** > **App Credentials** |
 | `SLACK_TRIGGER_SECRET` | Required bearer token for the `/slack/trigger` endpoint (used by eval tests and manual triggering) | Self-generated; set in both `.env` and K8s secrets |
@@ -116,7 +132,17 @@ For Kubernetes deployments, these are stored in the `vibeteam-secrets` secret:
 
 ```bash
 kubectl create secret generic vibeteam-secrets -n vibeteam \
-  --from-literal=SLACK_BOT_TOKEN="xoxb-..." \
+  --from-literal=SLACK_BOT_TOKEN="xoxb-fallback-..." \
+  --from-literal=SLACK_BOT_TOKEN_SOFTWARE_ENGINEER="xoxb-..." \
+  --from-literal=SLACK_BOT_TOKEN_SUPPORT_ENGINEER="xoxb-..." \
+  --from-literal=SLACK_BOT_TOKEN_RELEASE_ENGINEER="xoxb-..." \
+  --from-literal=SLACK_BOT_TOKEN_PRODUCT_MANAGER="xoxb-..." \
+  --from-literal=SLACK_BOT_TOKEN_MARKETING_MANAGER="xoxb-..." \
+  --from-literal=SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER="xapp-..." \
+  --from-literal=SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER="xapp-..." \
+  --from-literal=SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER="xapp-..." \
+  --from-literal=SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER="xapp-..." \
+  --from-literal=SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER="xapp-..." \
   --from-literal=SLACK_SIGNING_SECRET="..." \
   --from-literal=SLACK_TRIGGER_SECRET="..." \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -124,13 +150,20 @@ kubectl create secret generic vibeteam-secrets -n vibeteam \
 
 ## 6. Invite the Bot
 
-After installing the app, invite the bot to channels where you want it to operate:
+After installing the apps, invite the ingress bot and all responder bots to channels
+where they should post:
 
 ```
 /invite @VibeTeam
+/invite @SoftwareEngineer
+/invite @SupportEngineer
+/invite @ReleaseEngineer
+/invite @ProductManager
+/invite @MarketingManager
 ```
 
-The bot must be a member of a channel to receive `message.channels` events from it.
+The ingress app must receive channel events. Responder apps must be channel members to
+post role-attributed replies.
 
 ## Read Marker (👀)
 
@@ -142,7 +175,9 @@ When a message is routed to an agent, the gateway:
 
 - Adds a `:eyes:` reaction as a read marker (if it has not already been added).
 - Adds a `:thinking_face:` reaction immediately.
-- If the app has `assistant:write`, sets an assistant thread status (e.g. "is thinking...") and clears it when the response is posted.
+- Uses role-scoped assistant token when configured; otherwise fallback token.
+- If a usable app token has `assistant:write`, sets an assistant thread status
+  (e.g. "is thinking...") and clears it when the response is posted.
 
 This avoids noisy "thinking..." messages while still giving real-time feedback.
 
@@ -237,7 +272,8 @@ Common reasons:
 
 **Symptom:** No `:eyes:` reaction appears on the message.
 
-**Cause:** `SLACK_BOT_TOKEN` is not set or the bot is not a member of the channel.
+**Cause:** The role-scoped `SLACK_BOT_TOKEN_<ROLE>` (or fallback `SLACK_BOT_TOKEN`) is
+not set, or that role bot is not a member of the channel.
 
 ### "Invalid signature" errors
 

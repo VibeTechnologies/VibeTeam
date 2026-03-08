@@ -132,6 +132,19 @@ Prompt files are sourced from shared agents content under `/home/node/.openclaw/
 OpenClaw does not use MCP tool wiring for docs search. Knowledgebase retrieval is bridged in
 `openclaw-svc` by injecting `docs_tools` context into the task payload before sending it to OpenClaw Gateway.
 
+### 4. Slack identity routing
+
+Slack inbound events are handled by the gateway ingress app token, while outbound
+messages/reactions/status updates can use role-scoped app tokens:
+
+- `SLACK_BOT_TOKEN_<ROLE>` for `chat.postMessage` and reactions
+- `SLACK_ASSISTANT_TOKEN_<ROLE>` for `assistant.threads.setStatus`
+- fallback to global `SLACK_BOT_TOKEN` / `SLACK_ASSISTANT_TOKEN` if role-specific
+  values are not configured
+
+This preserves role attribution in Slack threads (`SoftwareEngineer` responses are
+posted by the SoftwareEngineer app, etc.) without changing inbound webhook routing.
+
 ## Knowledgebase Design
 
 VibeTeam uses a layered knowledge model instead of a single vector database.

@@ -351,17 +351,64 @@ def verify_slack_signature(
     return hmac.compare_digest(expected, signature)
 
 
+def _role_env_suffix(role: str | None) -> str | None:
+    """Convert a role key like support_engineer to env suffix SUPPORT_ENGINEER."""
+    if not role:
+        return None
+    normalized = re.sub(r"[^A-Z0-9]+", "_", role.upper()).strip("_")
+    return normalized or None
+
+
+def _get_role_scoped_env(prefix: str, role: str | None) -> str:
+    """Get role-scoped env var value (e.g., SLACK_BOT_TOKEN_SUPPORT_ENGINEER)."""
+    suffix = _role_env_suffix(role)
+    if not suffix:
+        return ""
+    return os.environ.get(f"{prefix}_{suffix}", "")
+
+
+def _resolve_slack_bot_token(role: str | None = None) -> str:
+    """Resolve Slack bot token for a specific role, with global fallback."""
+    return _get_role_scoped_env("SLACK_BOT_TOKEN", role) or config.SLACK_BOT_TOKEN
+
+
+def _resolve_slack_assistant_token(role: str | None = None) -> str:
+    """Resolve Assistant API token for a role with sensible fallback order."""
+    return (
+        _get_role_scoped_env("SLACK_ASSISTANT_TOKEN", role)
+        or config.SLACK_ASSISTANT_TOKEN
+        or _resolve_slack_bot_token(role)
+    )
+
+
+def _collect_slack_bot_tokens() -> list[str]:
+    """Collect all configured Slack bot tokens (default + role-scoped), deduplicated."""
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for token in [config.SLACK_BOT_TOKEN, *[
+        _get_role_scoped_env("SLACK_BOT_TOKEN", role)
+        for role in sorted(set(ROLE_MENTION_MAP.values()))
+    ]]:
+        if token and token not in seen:
+            seen.add(token)
+            ordered.append(token)
+    return ordered
+
+
 async def send_slack_message(
     channel: str,
     text: str,
     thread_ts: str | None = None,
+    *,
+    role: str | None = None,
 ) -> str | None:
     """Send a message to Slack.
 
     Returns:
         The message timestamp (ts) on success, None on failure.
     """
-    if not config.SLACK_BOT_TOKEN:
+    bot_token = _resolve_slack_bot_token(role)
+    if not bot_token:
         logger.warning("SLACK_BOT_TOKEN not set, cannot send message")
         return None
 
@@ -377,7 +424,7 @@ async def send_slack_message(
             response = await client.post(
                 "https://slack.com/api/chat.postMessage",
                 headers={
-                    "Authorization": f"Bearer {config.SLACK_BOT_TOKEN}",
+                    "Authorization": f"Bearer {bot_token}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
@@ -398,6 +445,8 @@ async def update_slack_message(
     channel: str,
     ts: str,
     text: str,
+    *,
+    role: str | None = None,
 ) -> bool:
     """Update an existing Slack message using chat.update.
 
@@ -406,7 +455,8 @@ async def update_slack_message(
     Returns:
         True if the update succeeded.
     """
-    if not config.SLACK_BOT_TOKEN:
+    bot_token = _resolve_slack_bot_token(role)
+    if not bot_token:
         logger.warning("SLACK_BOT_TOKEN not set, cannot update message")
         return False
 
@@ -427,7 +477,7 @@ async def update_slack_message(
             response = await client.post(
                 "https://slack.com/api/chat.update",
                 headers={
-                    "Authorization": f"Bearer {config.SLACK_BOT_TOKEN}",
+                    "Authorization": f"Bearer {bot_token}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
@@ -448,6 +498,8 @@ async def add_reaction(
     channel: str,
     timestamp: str,
     emoji: str = "eyes",
+    *,
+    role: str | None = None,
 ) -> bool:
     """Add an emoji reaction to a Slack message.
 
@@ -459,7 +511,8 @@ async def add_reaction(
     Returns:
         True if reaction was added successfully
     """
-    if not config.SLACK_BOT_TOKEN:
+    bot_token = _resolve_slack_bot_token(role)
+    if not bot_token:
         logger.warning("SLACK_BOT_TOKEN not set, cannot add reaction")
         return False
 
@@ -468,7 +521,7 @@ async def add_reaction(
             response = await client.post(
                 "https://slack.com/api/reactions.add",
                 headers={
-                    "Authorization": f"Bearer {config.SLACK_BOT_TOKEN}",
+                    "Authorization": f"Bearer {bot_token}",
                     "Content-Type": "application/json",
                 },
                 json={
@@ -505,9 +558,11 @@ async def set_thread_status(
     status: str | None,
     *,
     loading_messages: list[str] | None = None,
+    role: str | None = None,
 ) -> bool:
     """Set Slack Assistant thread status (typing-style indicator)."""
-    if not config.SLACK_ASSISTANT_TOKEN:
+    assistant_token = _resolve_slack_assistant_token(role)
+    if not assistant_token:
         logger.debug("SLACK_ASSISTANT_TOKEN not set, cannot set thread status")
         return False
     if not channel or not thread_ts or status is None:
@@ -526,7 +581,7 @@ async def set_thread_status(
             response = await client.post(
                 "https://slack.com/api/assistant.threads.setStatus",
                 headers={
-                    "Authorization": f"Bearer {config.SLACK_ASSISTANT_TOKEN}",
+                    "Authorization": f"Bearer {assistant_token}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
@@ -543,15 +598,19 @@ async def set_thread_status(
         return False
 
 
-async def clear_thread_status(channel: str, thread_ts: str | None) -> bool:
+async def clear_thread_status(
+    channel: str, thread_ts: str | None, *, role: str | None = None
+) -> bool:
     """Clear Slack Assistant thread status by sending an empty status string."""
-    return await set_thread_status(channel, thread_ts, "")
+    return await set_thread_status(channel, thread_ts, "", role=role)
 
 
 async def remove_reaction(
     channel: str,
     timestamp: str,
     emoji: str = "eyes",
+    *,
+    role: str | None = None,
 ) -> bool:
     """Remove an emoji reaction from a Slack message.
 
@@ -563,7 +622,8 @@ async def remove_reaction(
     Returns:
         True if reaction was removed successfully
     """
-    if not config.SLACK_BOT_TOKEN:
+    bot_token = _resolve_slack_bot_token(role)
+    if not bot_token:
         logger.warning("SLACK_BOT_TOKEN not set, cannot remove reaction")
         return False
 
@@ -572,7 +632,7 @@ async def remove_reaction(
             response = await client.post(
                 "https://slack.com/api/reactions.remove",
                 headers={
-                    "Authorization": f"Bearer {config.SLACK_BOT_TOKEN}",
+                    "Authorization": f"Bearer {bot_token}",
                     "Content-Type": "application/json",
                 },
                 json={
@@ -596,27 +656,32 @@ async def remove_reaction(
         return False
 
 
-# Cache the bot user ID after the first lookup
-_bot_user_id: str | None = None
+# Cache bot user IDs keyed by token fingerprint
+_bot_user_ids: dict[str, str] = {}
 
 
-async def get_bot_user_id() -> str | None:
+def _token_fingerprint(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+
+async def get_bot_user_id(*, role: str | None = None, token: str | None = None) -> str | None:
     """Get the bot's own Slack user ID via auth.test (cached)."""
-    global _bot_user_id
-    if _bot_user_id is not None:
-        return _bot_user_id
-    if not config.SLACK_BOT_TOKEN:
+    bot_token = token or _resolve_slack_bot_token(role)
+    if not bot_token:
         return None
+    key = _token_fingerprint(bot_token)
+    if key in _bot_user_ids:
+        return _bot_user_ids[key]
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://slack.com/api/auth.test",
-                headers={"Authorization": f"Bearer {config.SLACK_BOT_TOKEN}"},
+                headers={"Authorization": f"Bearer {bot_token}"},
             )
             data = resp.json()
             if data.get("ok"):
-                _bot_user_id = data["user_id"]
-                return _bot_user_id
+                _bot_user_ids[key] = data["user_id"]
+                return _bot_user_ids[key]
     except Exception as e:
         logger.warning(f"Failed to get bot user ID: {e}")
     return None
@@ -629,23 +694,36 @@ async def bot_participated_in_thread(channel: str, thread_ts: str) -> bool:
     user. This provides a stateless way to determine bot participation without
     relying on in-memory subscription state.
     """
-    bot_id = await get_bot_user_id()
-    if not bot_id or not config.SLACK_BOT_TOKEN:
+    tokens = _collect_slack_bot_tokens()
+    if not tokens:
         return False
+    bot_ids: set[str] = set()
+    for token in tokens:
+        bot_id = await get_bot_user_id(token=token)
+        if bot_id:
+            bot_ids.add(bot_id)
+    if not bot_ids:
+        return False
+
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://slack.com/api/conversations.replies",
-                headers={"Authorization": f"Bearer {config.SLACK_BOT_TOKEN}"},
-                params={"channel": channel, "ts": thread_ts, "limit": 50},
-            )
-            data = resp.json()
-            if not data.get("ok"):
-                logger.warning(f"conversations.replies error: {data.get('error')}")
+            for token in tokens:
+                resp = await client.get(
+                    "https://slack.com/api/conversations.replies",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"channel": channel, "ts": thread_ts, "limit": 50},
+                )
+                data = resp.json()
+                if not data.get("ok"):
+                    logger.debug(
+                        "conversations.replies failed for one token: %s", data.get("error")
+                    )
+                    continue
+                for msg in data.get("messages", []):
+                    if msg.get("user") in bot_ids:
+                        return True
+                # One successful fetch is enough for non-participation.
                 return False
-            for msg in data.get("messages", []):
-                if msg.get("user") == bot_id:
-                    return True
     except Exception as e:
         logger.warning(f"Failed to check thread participation: {e}")
     return False
@@ -1258,6 +1336,7 @@ async def _submit_agent_async(
         channel,
         status_thread_ts,
         config.SLACK_ASSISTANT_STATUS_TEXT,
+        role=role,
     )
 
     # Build callback URL
@@ -1298,13 +1377,13 @@ async def _submit_agent_async(
 
     if "error" in result:
         # Remove thinking face, add X
-        await remove_reaction(channel, message_ts, "thinking_face")
-        await clear_thread_status(channel, status_thread_ts)
-        await add_reaction(channel, message_ts, "x")
+        await remove_reaction(channel, message_ts, "thinking_face", role=role)
+        await clear_thread_status(channel, status_thread_ts, role=role)
+        await add_reaction(channel, message_ts, "x", role=role)
         error_text = (
             f"[{display_name}] Sorry, I couldn't reach the agent service: {result['error']}"
         )
-        await send_slack_message(channel, error_text, thread_ts)
+        await send_slack_message(channel, error_text, thread_ts, role=role)
         logger.error(f"[ASYNC] Failed to submit task for {role}: {result['error']}")
     else:
         job_id = result.get("job_id", "unknown")
@@ -1430,7 +1509,12 @@ async def _run_agent_and_respond(
     max_iterations = max_iterations_map.get(template, 240)
 
     status_thread_ts = thread_ts or message_ts
-    await set_thread_status(channel, status_thread_ts, config.SLACK_ASSISTANT_STATUS_TEXT)
+    await set_thread_status(
+        channel,
+        status_thread_ts,
+        config.SLACK_ASSISTANT_STATUS_TEXT,
+        role=role,
+    )
 
     agent_start_time = time.time()
     logger.info(f"[TIMING] Starting agent {role} (depth={current_depth})")
@@ -1456,16 +1540,16 @@ async def _run_agent_and_respond(
         if "error" in result:
             error_text = f"[{display_name}] Sorry, I encountered an error: {result['error']}"
             if message_ts:
-                await remove_reaction(channel, message_ts, "thinking_face")
-                await add_reaction(channel, message_ts, "x")
-            await send_slack_message(channel, error_text, thread_ts)
+                await remove_reaction(channel, message_ts, "thinking_face", role=role)
+                await add_reaction(channel, message_ts, "x", role=role)
+            await send_slack_message(channel, error_text, thread_ts, role=role)
         else:
             response = result.get("response", "I completed the task but have no output to share.")
 
             # Remove thinking face, add checkmark
             if message_ts:
-                await remove_reaction(channel, message_ts, "thinking_face")
-                await add_reaction(channel, message_ts, "white_check_mark")
+                await remove_reaction(channel, message_ts, "thinking_face", role=role)
+                await add_reaction(channel, message_ts, "white_check_mark", role=role)
 
             # Build display prefix with model info if available
             model_name = result.get("model", "")
@@ -1484,7 +1568,7 @@ async def _run_agent_and_respond(
                     formatted_chunk = f"{agent_prefix} {chunk}"
                 else:
                     formatted_chunk = f"{agent_prefix} (cont.) {chunk}"
-                await send_slack_message(channel, formatted_chunk, thread_ts)
+                await send_slack_message(channel, formatted_chunk, thread_ts, role=role)
 
             # Check for handoffs in the response and execute them synchronously
             handoff_roles = _parse_handoff_roles(response, role)
@@ -1553,11 +1637,11 @@ async def _run_agent_and_respond(
             f"[{display_name}] Sorry, I encountered an unexpected error. Please try again later."
         )
         if message_ts:
-            await remove_reaction(channel, message_ts, "thinking_face")
-            await add_reaction(channel, message_ts, "x")
-        await send_slack_message(channel, error_text, thread_ts)
+            await remove_reaction(channel, message_ts, "thinking_face", role=role)
+            await add_reaction(channel, message_ts, "x", role=role)
+        await send_slack_message(channel, error_text, thread_ts, role=role)
     finally:
-        await clear_thread_status(channel, status_thread_ts)
+        await clear_thread_status(channel, status_thread_ts, role=role)
 
 
 # ==============================================================================
@@ -1616,37 +1700,37 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
 
     # Clear assistant thread status when the job completes (success or failure).
     status_thread_ts = thread_ts or message_ts
-    await clear_thread_status(channel, status_thread_ts)
+    await clear_thread_status(channel, status_thread_ts, role=role)
 
     # Remove thinking_face reaction
     if message_ts:
-        await remove_reaction(channel, message_ts, "thinking_face")
+        await remove_reaction(channel, message_ts, "thinking_face", role=role)
 
     if status == "timeout":
         # Timeout path — agent ran out of time
         if message_ts:
-            await add_reaction(channel, message_ts, "hourglass")
+            await add_reaction(channel, message_ts, "hourglass", role=role)
         # Post partial response if available, otherwise generic timeout message
         timeout_response = response_text or (
             "Sorry, I ran out of time working on this task. "
             "Please try again or break the request into smaller steps."
         )
         timeout_text = f"[{display_name}] :hourglass: {timeout_response}"
-        await send_slack_message(channel, timeout_text, thread_ts)
+        await send_slack_message(channel, timeout_text, thread_ts, role=role)
         return {"status": "ok", "job_id": job_id, "outcome": "timeout_posted"}
 
     if status == "failed" or error:
         # Failure path
         if message_ts:
-            await add_reaction(channel, message_ts, "x")
+            await add_reaction(channel, message_ts, "x", role=role)
         error_msg = error or "Unknown error"
         error_text = f"[{display_name}] Sorry, I encountered an error: {error_msg}"
-        await send_slack_message(channel, error_text, thread_ts)
+        await send_slack_message(channel, error_text, thread_ts, role=role)
         return {"status": "ok", "job_id": job_id, "outcome": "error_posted"}
 
     # Success path
     if message_ts:
-        await add_reaction(channel, message_ts, "white_check_mark")
+        await add_reaction(channel, message_ts, "white_check_mark", role=role)
 
     response = response_text or "I completed the task but have no output to share."
 
@@ -1666,7 +1750,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
             formatted_chunk = f"{agent_prefix} {chunk}"
         else:
             formatted_chunk = f"{agent_prefix} (cont.) {chunk}"
-        await send_slack_message(channel, formatted_chunk, thread_ts)
+        await send_slack_message(channel, formatted_chunk, thread_ts, role=role)
 
     # Check for handoffs in the response
     message_router = get_message_router()
@@ -1750,6 +1834,7 @@ async def handle_agent_progress(request: Request) -> dict[str, Any]:
 
     channel = meta.get("channel", "")
     thread_ts = meta.get("thread_ts")
+    role = meta.get("role")
     display_name = meta.get("display_name", meta.get("role", "Agent"))
 
     if not channel or not step_summary:
@@ -1768,7 +1853,7 @@ async def handle_agent_progress(request: Request) -> dict[str, Any]:
 
     # Post progress as a subtle update
     progress_text = f"_[{display_name}] Step {step_number} ({time_str}): {step_summary}_"
-    await send_slack_message(channel, progress_text, thread_ts)
+    await send_slack_message(channel, progress_text, thread_ts, role=role)
 
     logger.info(
         f"[PROGRESS] job={job_id} step={step_number} elapsed={time_str}: {step_summary[:80]}"
