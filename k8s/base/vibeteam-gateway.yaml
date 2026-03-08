@@ -136,6 +136,72 @@ spec:
                   name: vibeteam-secrets
                   key: SLACK_BOT_TOKEN
                   optional: true
+            - name: SLACK_ASSISTANT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_ASSISTANT_TOKEN
+                  optional: true
+            - name: SLACK_BOT_TOKEN_SOFTWARE_ENGINEER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_BOT_TOKEN_SOFTWARE_ENGINEER
+                  optional: true
+            - name: SLACK_BOT_TOKEN_SUPPORT_ENGINEER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_BOT_TOKEN_SUPPORT_ENGINEER
+                  optional: true
+            - name: SLACK_BOT_TOKEN_RELEASE_ENGINEER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_BOT_TOKEN_RELEASE_ENGINEER
+                  optional: true
+            - name: SLACK_BOT_TOKEN_PRODUCT_MANAGER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_BOT_TOKEN_PRODUCT_MANAGER
+                  optional: true
+            - name: SLACK_BOT_TOKEN_MARKETING_MANAGER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_BOT_TOKEN_MARKETING_MANAGER
+                  optional: true
+            - name: SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER
+                  optional: true
+            - name: SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER
+                  optional: true
+            - name: SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER
+                  optional: true
+            - name: SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER
+                  optional: true
+            - name: SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER
+              valueFrom:
+                secretKeyRef:
+                  name: vibeteam-secrets
+                  key: SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER
+                  optional: true
             # Trigger endpoint authentication
             - name: SLACK_TRIGGER_SECRET
               valueFrom:

@@ -272,10 +272,14 @@ class TestCallbackEndpoint:
             assert result["outcome"] == "response_posted"
 
             # Verify thinking_face removed
-            mock_remove.assert_called_once_with("C_TEST", "ts_1234", "thinking_face")
+            mock_remove.assert_called_once_with(
+                "C_TEST", "ts_1234", "thinking_face", role="support_engineer"
+            )
 
             # Verify checkmark added
-            mock_add.assert_called_once_with("C_TEST", "ts_1234", "white_check_mark")
+            mock_add.assert_called_once_with(
+                "C_TEST", "ts_1234", "white_check_mark", role="support_engineer"
+            )
 
             # Verify message posted to thread
             mock_send.assert_called_once()
@@ -325,7 +329,9 @@ class TestCallbackEndpoint:
             assert result["outcome"] == "error_posted"
 
             # Verify X reaction (not checkmark)
-            mock_add.assert_called_once_with("C_TEST", "ts_1234", "x")
+            mock_add.assert_called_once_with(
+                "C_TEST", "ts_1234", "x", role="release_engineer"
+            )
 
             # Verify error message sent
             sent_text = mock_send.call_args[0][1]
@@ -1181,10 +1187,14 @@ class TestCallbackTimeout:
             assert result["outcome"] == "timeout_posted"
 
             # Verify thinking_face removed
-            mock_remove.assert_called_once_with("C_TEST", "ts_1234", "thinking_face")
+            mock_remove.assert_called_once_with(
+                "C_TEST", "ts_1234", "thinking_face", role="support_engineer"
+            )
 
             # Verify hourglass reaction added
-            mock_add.assert_called_once_with("C_TEST", "ts_1234", "hourglass")
+            mock_add.assert_called_once_with(
+                "C_TEST", "ts_1234", "hourglass", role="support_engineer"
+            )
 
             # Verify timeout message posted with partial response
             mock_send.assert_called_once()
