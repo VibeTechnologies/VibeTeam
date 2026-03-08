@@ -355,9 +355,13 @@ def _role_env_suffix(role: str | None) -> str | None:
     """Convert a role key like support_engineer to env suffix SUPPORT_ENGINEER."""
     if not role:
         return None
-    normalized = re.sub(r"[^A-Z0-9]+", "_", role.upper()).strip("_")
+    role_text = role.strip()
+    if role_text.startswith("@") or role_text.startswith("/"):
+        role_text = role_text[1:]
+    # Support CamelCase handles (e.g. SoftwareEngineer) and snake/kebab/space variants.
+    role_text = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", role_text)
+    normalized = re.sub(r"[^A-Z0-9]+", "_", role_text.upper()).strip("_")
     return normalized or None
-
 
 def _get_role_scoped_env(prefix: str, role: str | None) -> str:
     """Get role-scoped env var value (e.g., SLACK_BOT_TOKEN_SUPPORT_ENGINEER)."""

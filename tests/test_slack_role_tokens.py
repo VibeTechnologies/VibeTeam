@@ -22,6 +22,22 @@ class TestRoleScopedTokenResolution:
             mock_config.SLACK_BOT_TOKEN = "xoxb-default"
             assert _resolve_slack_bot_token("support_engineer") == "xoxb-support"
 
+    def test_resolve_slack_bot_token_supports_camel_case_and_prefixed_handles(self):
+        from vibeteam.gateway.routes.slack import _resolve_slack_bot_token
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"SLACK_BOT_TOKEN_SOFTWARE_ENGINEER": "xoxb-swe"},
+                clear=False,
+            ),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-default"
+            assert _resolve_slack_bot_token("SoftwareEngineer") == "xoxb-swe"
+            assert _resolve_slack_bot_token("@SoftwareEngineer") == "xoxb-swe"
+            assert _resolve_slack_bot_token("software-engineer") == "xoxb-swe"
+
     def test_resolve_slack_bot_token_falls_back_to_default(self):
         from vibeteam.gateway.routes.slack import _resolve_slack_bot_token
 
