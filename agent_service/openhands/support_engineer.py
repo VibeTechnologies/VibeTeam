@@ -127,9 +127,9 @@ def _summarize_logs(logs_output: str) -> str:
     lowered = logs_output.lower()
     if "error" in lowered or "exception" in lowered or "traceback" in lowered:
         return "Errors found in recent logs. See logs for details."
-    if " 5" in logs_output or " 500" in logs_output or " 502" in logs_output:
+    if re.search(r"\b5\d\d\b", logs_output):
         return "5xx responses observed in recent logs."
-    if " 4" in logs_output or " 400" in logs_output or " 404" in logs_output:
+    if re.search(r"\b4\d\d\b", logs_output):
         return "4xx responses observed in recent logs."
     return "Recent logs show routine health checks; no obvious error patterns."
 
@@ -303,6 +303,27 @@ def _extract_pr_urls(text: str) -> list[str]:
     return unique
 
 
+def _has_gateway_crashloop(pods_output: str) -> bool:
+    for line in pods_output.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        pod_name = parts[0].lower()
+        status = parts[2].lower()
+        if "vibeteam-gateway" in pod_name and status == "crashloopbackoff":
+            return True
+    return False
+
+
+def _event_lines_for_gateway(events_output: str) -> list[str]:
+    lines = []
+    for line in events_output.splitlines():
+        lower = line.lower()
+        if "vibeteam-gateway" in lower:
+            lines.append(lower)
+    return lines
+
+
 def _build_investigation_fallback(
     task: str,
     injected_context: list[str],
@@ -331,16 +352,22 @@ def _build_investigation_fallback(
     pods_summary = _summarize_pods(pods_section.body if pods_section else "")
     events_summary = _summarize_events(events_section.body if events_section else "")
     logs_summary = _summarize_logs(logs_match.group(1).strip() if logs_match else "")
-    events_lower = (events_section.body if events_section else "").lower()
-    pods_lower = (pods_section.body if pods_section else "").lower()
-    logs_lower = (logs_match.group(1).strip() if logs_match else "").lower()
-    has_readiness_fail = "readiness probe failed" in events_lower or "connect: connection refused" in events_lower
-    has_hpa_metrics_fail = (
-        "failedgetresourcemetric" in events_lower
-        or "failedcomputemetricsreplicas" in events_lower
+    events_output = events_section.body if events_section else ""
+    pods_output = pods_section.body if pods_section else ""
+    logs_output = logs_match.group(1).strip() if logs_match else ""
+    gateway_event_lines = _event_lines_for_gateway(events_output)
+    has_readiness_fail = any(
+        "readiness probe failed" in line or "connect: connection refused" in line
+        for line in gateway_event_lines
     )
-    has_gateway_crashloop = "vibeteam-gateway" in pods_lower and "crashloopbackoff" in pods_lower
-    has_4xx_logs = "4xx responses observed" in logs_summary.lower() or " 400" in logs_lower
+    has_hpa_metrics_fail = (
+        any("failedgetresourcemetric" in line for line in gateway_event_lines)
+        or any("failedcomputemetricsreplicas" in line for line in gateway_event_lines)
+    )
+    has_gateway_crashloop = _has_gateway_crashloop(pods_output)
+    has_4xx_logs = "4xx responses observed" in logs_summary.lower() or bool(
+        re.search(r"\b4\d\d\b", logs_output)
+    )
     strong_gateway_failure = has_4xx_logs and (has_readiness_fail or has_gateway_crashloop)
     partial_gateway_risk = has_hpa_metrics_fail or has_readiness_fail
 

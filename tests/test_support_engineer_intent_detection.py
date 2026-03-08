@@ -153,3 +153,33 @@ GET /health 200
     )
     assert "Infrastructure risk signals are present" in response
     assert "Do not rollback yet." in response
+
+
+def test_build_investigation_fallback_ignores_non_gateway_crashloop_evidence() -> None:
+    context = """
+### kubectl get pods -n vibeteam
+```
+NAME                                READY   STATUS             RESTARTS   AGE
+vibeteam-gateway-abc               1/1     Running            0          10m
+gmail-processor-def                0/1     CrashLoopBackOff   3          10m
+```
+
+### kubectl get events -n vibeteam (warnings/errors)
+```
+LAST SEEN   TYPE      REASON   OBJECT                         MESSAGE
+1m          Warning   BackOff  pod/gmail-processor-def        Back-off restarting failed container
+```
+
+### kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
+```
+POST /api/v1/ingest 400
+```
+"""
+    response = _build_investigation_fallback(
+        "@SupportEngineer users report API gateway 400 errors after deployment",
+        [context],
+        "vibeteam",
+    )
+    assert "gateway CrashLoopBackOff" not in response
+    assert "Immediate mitigation: rollback vibeteam-gateway" not in response
+    assert "Infrastructure appears healthy. Do not rollback." in response
