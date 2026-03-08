@@ -121,6 +121,20 @@ def _summarize_events(events_output: str) -> str:
     return "Recent warnings/errors: " + " | ".join(tail)
 
 
+def _summarize_gateway_events(events_output: str) -> str:
+    """Prefer gateway-specific events when available for gateway incident triage."""
+    if not events_output:
+        return _summarize_events(events_output)
+    lines = [line for line in events_output.splitlines() if line.strip()]
+    if lines and (lines[0].startswith("LAST SEEN") or lines[0].startswith("TYPE")):
+        lines = lines[1:]
+    gateway_lines = [line for line in lines if "vibeteam-gateway" in line.lower()]
+    if not gateway_lines:
+        return _summarize_events(events_output)
+    tail = gateway_lines[-2:] if len(gateway_lines) > 2 else gateway_lines
+    return "Recent gateway warnings/errors: " + " | ".join(tail)
+
+
 def _summarize_logs(logs_output: str) -> str:
     if not logs_output:
         return "No logs captured."
@@ -350,7 +364,7 @@ def _build_investigation_fallback(
         flags=re.DOTALL,
     )
     pods_summary = _summarize_pods(pods_section.body if pods_section else "")
-    events_summary = _summarize_events(events_section.body if events_section else "")
+    events_summary = _summarize_gateway_events(events_section.body if events_section else "")
     logs_summary = _summarize_logs(logs_match.group(1).strip() if logs_match else "")
     events_output = events_section.body if events_section else ""
     pods_output = pods_section.body if pods_section else ""

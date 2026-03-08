@@ -155,6 +155,36 @@ GET /health 200
     assert "Do not rollback yet." in response
 
 
+def test_build_investigation_fallback_prefers_gateway_event_summary() -> None:
+    context = """
+### kubectl get pods -n vibeteam
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+vibeteam-gateway-abc               1/1     Running   0          10m
+```
+
+### kubectl get events -n vibeteam (warnings/errors)
+```
+LAST SEEN   TYPE      REASON     OBJECT                           MESSAGE
+30s         Warning   BackOff    pod/gmail-processor-def          Back-off restarting failed container
+20s         Warning   Unhealthy  pod/vibeteam-gateway-abc         Readiness probe failed: connect: connection refused
+```
+
+### kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
+```
+POST /api/v1/ingest 400
+```
+"""
+    response = _build_investigation_fallback(
+        "@SupportEngineer users report API gateway 400 errors after deployment",
+        [context],
+        "vibeteam",
+    )
+    assert "Recent gateway warnings/errors:" in response
+    assert "pod/vibeteam-gateway-abc" in response
+    assert "pod/gmail-processor-def" not in response
+
+
 def test_build_investigation_fallback_ignores_non_gateway_crashloop_evidence() -> None:
     context = """
 ### kubectl get pods -n vibeteam
