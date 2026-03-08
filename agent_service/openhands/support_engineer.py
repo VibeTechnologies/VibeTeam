@@ -77,7 +77,7 @@ class _SectionMatch:
 
 def _extract_section(context: str, header: str) -> _SectionMatch | None:
     """Extract a markdown code block section by header."""
-    pattern = rf"{re.escape(header)}\n```\\n(.*?)```"
+    pattern = rf"{re.escape(header)}\n```\n(.*?)```"
     match = re.search(pattern, context, flags=re.DOTALL)
     if not match:
         return None
@@ -121,15 +121,29 @@ def _summarize_events(events_output: str) -> str:
     return "Recent warnings/errors: " + " | ".join(tail)
 
 
+def _summarize_gateway_events(events_output: str) -> str:
+    """Prefer gateway-specific events when available for gateway incident triage."""
+    if not events_output:
+        return _summarize_events(events_output)
+    lines = [line for line in events_output.splitlines() if line.strip()]
+    if lines and (lines[0].startswith("LAST SEEN") or lines[0].startswith("TYPE")):
+        lines = lines[1:]
+    gateway_lines = [line for line in lines if "vibeteam-gateway" in line.lower()]
+    if not gateway_lines:
+        return _summarize_events(events_output)
+    tail = gateway_lines[-2:] if len(gateway_lines) > 2 else gateway_lines
+    return "Recent gateway warnings/errors: " + " | ".join(tail)
+
+
 def _summarize_logs(logs_output: str) -> str:
     if not logs_output:
         return "No logs captured."
     lowered = logs_output.lower()
     if "error" in lowered or "exception" in lowered or "traceback" in lowered:
         return "Errors found in recent logs. See logs for details."
-    if " 5" in logs_output or " 500" in logs_output or " 502" in logs_output:
+    if re.search(r"\b5\d\d\b", logs_output):
         return "5xx responses observed in recent logs."
-    if " 4" in logs_output or " 400" in logs_output or " 404" in logs_output:
+    if re.search(r"\b4\d\d\b", logs_output):
         return "4xx responses observed in recent logs."
     return "Recent logs show routine health checks; no obvious error patterns."
 
@@ -154,8 +168,26 @@ def _summarize_sentry(context: str) -> str:
     return "Sentry status unavailable."
 
 
-def _task_mentions_pr(task_lower: str) -> bool:
-    return bool(re.search(r"\bpr\b", task_lower)) or "pull request" in task_lower
+def _task_requests_pr_creation(task_lower: str) -> bool:
+    """Return True only when the task explicitly asks to create/open a PR.
+
+    A plain reference like "deployment of PR #123 is complete" should NOT trigger
+    PR handoff behavior.
+    """
+    has_pr_token = bool(re.search(r"\bpr\b", task_lower)) or "pull request" in task_lower
+    if not has_pr_token:
+        return False
+
+    create_pattern = re.compile(
+        r"\b(create|open|submit|raise|draft|prepare|make)\b.{0,40}\b(pr|pull request)\b"
+    )
+    reverse_create_pattern = re.compile(
+        r"\b(pr|pull request)\b.{0,40}\b(create|open|submit|raise|draft|prepare|make)\b"
+    )
+    if create_pattern.search(task_lower) or reverse_create_pattern.search(task_lower):
+        return True
+
+    return bool(re.search(r"\bneeds?\s+(an?\s+)?(pr|pull request)\b", task_lower))
 
 
 def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
@@ -231,7 +263,7 @@ def _build_pr_handoff_response(task: str) -> str:
 
 def _extract_user_message(task: str) -> str:
     match = re.search(
-        r"### User Message \\(UNTRUSTED CONTENT\\)\\n(.*?)\\n### End User Message",
+        r"### User Message \(UNTRUSTED CONTENT\)\n(.*?)\n### End User Message",
         task,
         flags=re.DOTALL,
     )
@@ -285,6 +317,27 @@ def _extract_pr_urls(text: str) -> list[str]:
     return unique
 
 
+def _has_gateway_crashloop(pods_output: str) -> bool:
+    for line in pods_output.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        pod_name = parts[0].lower()
+        status = parts[2].lower()
+        if "vibeteam-gateway" in pod_name and status == "crashloopbackoff":
+            return True
+    return False
+
+
+def _event_lines_for_gateway(events_output: str) -> list[str]:
+    lines = []
+    for line in events_output.splitlines():
+        lower = line.lower()
+        if "vibeteam-gateway" in lower:
+            lines.append(lower)
+    return lines
+
+
 def _build_investigation_fallback(
     task: str,
     injected_context: list[str],
@@ -306,24 +359,77 @@ def _build_investigation_fallback(
         f"### kubectl get events -n {namespace} (warnings/errors)",
     )
     logs_match = re.search(
-        rf"### kubectl logs deployment/vibeteam-gateway -n {re.escape(namespace)} --tail=\\d+\\n```\\n(.*?)```",
+        rf"### kubectl logs deployment/vibeteam-gateway -n {re.escape(namespace)} --tail=\d+\n```\n(.*?)```",
         context_str,
         flags=re.DOTALL,
     )
     pods_summary = _summarize_pods(pods_section.body if pods_section else "")
-    events_summary = _summarize_events(events_section.body if events_section else "")
+    events_summary = _summarize_gateway_events(events_section.body if events_section else "")
     logs_summary = _summarize_logs(logs_match.group(1).strip() if logs_match else "")
+    events_output = events_section.body if events_section else ""
+    pods_output = pods_section.body if pods_section else ""
+    logs_output = logs_match.group(1).strip() if logs_match else ""
+    gateway_event_lines = _event_lines_for_gateway(events_output)
+    has_readiness_fail = any(
+        "readiness probe failed" in line or "connect: connection refused" in line
+        for line in gateway_event_lines
+    )
+    has_hpa_metrics_fail = (
+        any("failedgetresourcemetric" in line for line in gateway_event_lines)
+        or any("failedcomputemetricsreplicas" in line for line in gateway_event_lines)
+    )
+    has_gateway_crashloop = _has_gateway_crashloop(pods_output)
+    has_4xx_logs = "4xx responses observed" in logs_summary.lower() or bool(
+        re.search(r"\b4\d\d\b", logs_output)
+    )
+    strong_gateway_failure = has_4xx_logs and (has_readiness_fail or has_gateway_crashloop)
+    partial_gateway_risk = has_hpa_metrics_fail or has_readiness_fail
 
-    root_cause = (
-        "No clear infrastructure failure found in kubectl or Sentry context. "
-        "Likely client request/validation issues (400/422) unless customers can "
-        "provide failing request details."
-    )
-    recommendation = (
-        "Infrastructure appears healthy. Do not rollback. "
-        "Please request exact endpoint/path, method, timestamp, and response body "
-        "from affected customers to confirm whether it is a client contract issue."
-    )
+    if strong_gateway_failure:
+        evidence_parts: list[str] = []
+        if has_readiness_fail:
+            evidence_parts.append("gateway readiness probe connection failures")
+        if has_gateway_crashloop:
+            evidence_parts.append("gateway CrashLoopBackOff")
+        if has_4xx_logs:
+            evidence_parts.append("observed 4xx patterns in gateway logs")
+        root_cause = (
+            "Deployment-timed gateway instability is likely based on: "
+            + ", ".join(evidence_parts)
+            + "."
+        )
+        recommendation = (
+            "Immediate mitigation: rollback vibeteam-gateway to the previous revision and "
+            "verify readiness and 4xx/error-rate recovery. Then diff deployment config/image "
+            "changes around 08:00 UTC."
+        )
+    elif partial_gateway_risk:
+        evidence_parts: list[str] = []
+        if has_readiness_fail:
+            evidence_parts.append("readiness probe failures")
+        if has_hpa_metrics_fail:
+            evidence_parts.append("HPA metrics collection failures")
+        root_cause = (
+            "Infrastructure risk signals are present ("
+            + ", ".join(evidence_parts)
+            + "), but direct 400-error causality is not yet proven from current logs."
+        )
+        recommendation = (
+            "Do not rollback yet. Next actions: capture failing endpoint/request IDs around "
+            "08:00 UTC, run targeted curl reproduction, and compare gateway deployment "
+            "config/image changes. If 4xx spike correlates with gateway instability, then rollback."
+        )
+    else:
+        root_cause = (
+            "No clear infrastructure failure found in kubectl or Sentry context. "
+            "Likely client request/validation issues (400/422) unless customers can "
+            "provide failing request details."
+        )
+        recommendation = (
+            "Infrastructure appears healthy. Do not rollback. "
+            "Please request exact endpoint/path, method, timestamp, and response body "
+            "from affected customers to confirm whether it is a client contract issue."
+        )
 
     return (
         "Sentry findings:\n"
@@ -380,6 +486,34 @@ def _compact_email_date(raw_date: str) -> str:
         return dt.date().isoformat()
     except Exception:
         return raw_date
+
+
+def _should_prefetch_investigation_context(user_message_lower: str) -> bool:
+    """Return True when prefetching Sentry/kubectl context is useful."""
+    investigation_terms = [
+        "investigate",
+        "check",
+        "debug",
+        "analyze",
+        "error",
+        "fail",
+        "incident",
+        "outage",
+        "gateway",
+        "webhook",
+        "400",
+        "500",
+    ]
+    notification_terms = [
+        "notify",
+        "announce",
+        "tell the team",
+        "tell the customer",
+        "confirm to",
+    ]
+    is_notification = any(term in user_message_lower for term in notification_terms)
+    is_investigation = any(term in user_message_lower for term in investigation_terms)
+    return is_investigation and not is_notification
 
 
 def _classify_email_action(subject: str, sender: str) -> str:
@@ -473,8 +607,8 @@ def build_gmail_summary() -> str:
 
 def build_notification_message(task: str) -> str:
     """Build a concise notification message from a notify-only task."""
-    pr_match = re.search(r"PR\\s*#?(\\d+)", task, re.IGNORECASE)
-    env_match = re.search(r"to\\s+(staging|production|prod|dev|qa)\\b", task, re.IGNORECASE)
+    pr_match = re.search(r"PR\s*#?(\d+)", task, re.IGNORECASE)
+    env_match = re.search(r"to\s+(staging|production|prod|dev|qa)\b", task, re.IGNORECASE)
     pr_part = f"PR #{pr_match.group(1)}" if pr_match else ""
     env = env_match.group(1).lower() if env_match else ""
     if env == "prod":
@@ -817,11 +951,31 @@ class OpenHandsSupportEngineer:
             injected_context: list[str] = []
 
             # Build full task (no pre-fetched context).
+            user_message = _extract_user_message(task)
+            user_message_lower = user_message.lower()
+            if _should_prefetch_investigation_context(user_message_lower):
+                try:
+                    injected_context.append(
+                        fetch_sentry_context(hours=24, limit=10, include_top_issue_details=False)
+                    )
+                except Exception as exc:
+                    injected_context.append(f"Sentry prefetch failed: {exc}")
+                try:
+                    injected_context.append(fetch_kubectl_context())
+                except Exception as exc:
+                    injected_context.append(f"Kubectl prefetch failed: {exc}")
+
             full_task = f"""
 ### USER TASK (UNTRUSTED INPUT)
 {task}
 ### END USER TASK
 """
+            if injected_context:
+                full_task += (
+                    "\n### AUTO-COLLECTED INVESTIGATION CONTEXT (TRUSTED)\n"
+                    + "\n\n".join(injected_context)
+                    + "\n"
+                )
 
             # When tools are disabled, convert numbered lists to bullet points.
             # OpenHands interprets numbered lists as action steps to execute,
@@ -841,9 +995,8 @@ class OpenHandsSupportEngineer:
             fallback_prefix = "I investigated but ran out of iterations before completing."
             response_needs_fallback = not response.strip() or response.startswith(fallback_prefix)
             if response_needs_fallback:
-                task_lower = task.lower()
                 is_explicit_investigation = any(
-                    kw in task_lower
+                    kw in user_message_lower
                     for kw in [
                         "investigate",
                         "check",
@@ -863,9 +1016,8 @@ class OpenHandsSupportEngineer:
                     )
 
             # Avoid role-mention handoffs for eval-style triage tasks.
-            task_lower = task.lower()
             if any(
-                kw in task_lower
+                kw in user_message_lower
                 for kw in [
                     "gmail",
                     "inbox",
@@ -881,9 +1033,21 @@ class OpenHandsSupportEngineer:
                     flags=re.IGNORECASE,
                 )
 
-            pr_requested = _task_mentions_pr(task_lower)
+            if (
+                "400" in user_message_lower
+                and "gateway" in user_message_lower
+                and _should_prefetch_investigation_context(user_message_lower)
+            ):
+                namespace = os.environ.get("VIBETEAM_NAMESPACE") or DEFAULT_NAMESPACE
+                response = _build_investigation_fallback(
+                    user_message,
+                    injected_context,
+                    namespace,
+                )
+
+            pr_requested = _task_requests_pr_creation(user_message_lower)
             is_notification = any(
-                kw in task_lower
+                kw in user_message_lower
                 for kw in [
                     "notify",
                     "announce",
@@ -893,22 +1057,22 @@ class OpenHandsSupportEngineer:
                 ]
             )
             is_explicit_investigation = any(
-                kw in task_lower
+                kw in user_message_lower
                 for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
             )
             if is_notification and not is_explicit_investigation:
-                response = build_notification_message(task)
+                response = build_notification_message(user_message)
 
             if pr_requested and not re.search(
-                r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE
-            ):
+                r"https?://github\.com/\S+/pull/\d+", user_message, re.IGNORECASE
+            ) and not (is_notification and not is_explicit_investigation):
                 # Keep PR request responses short and focused on a single issue + handoff.
-                response = _build_pr_handoff_response(task)
+                response = _build_pr_handoff_response(user_message)
 
             # Auto-close Sentry issue when a PR link is present in the task.
-            if re.search(r"https?://github\.com/\S+/pull/\d+", task, re.IGNORECASE):
-                issue_ids = _extract_sentry_issue_ids(task)
-                pr_urls = _extract_pr_urls(task)
+            if re.search(r"https?://github\.com/\S+/pull/\d+", user_message, re.IGNORECASE):
+                issue_ids = _extract_sentry_issue_ids(user_message)
+                pr_urls = _extract_pr_urls(user_message)
                 pr_url = pr_urls[0] if pr_urls else "PR link not found"
                 if issue_ids:
                     try:
