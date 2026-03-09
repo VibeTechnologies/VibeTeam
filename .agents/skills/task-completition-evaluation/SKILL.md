@@ -38,6 +38,7 @@ Use this skill only at the end of a task, after implementation is complete and b
      - different GitHub App identities participated as different agents
      - correct existing `@githubapphandle` mentions were used
      - agents communicated/handoff occurred across thread(s)
+     - if assignment is non-assignable for role bots, report `Assignment fallback mode` evidence and bot replies after trigger
 6. Run Slack evaluation tests for agent collaboration.
    - Use `scripts/eval_slack_e2e.py` scenarios relevant to the task.
    - Verify and report:
@@ -45,6 +46,10 @@ Use this skill only at the end of a task, after implementation is complete and b
      - correct existing `@slackapphandle` mentions were used
      - agents communicated/handoff occurred
      - Slack thread URL is included and manually reviewed against requirements
+     - transcript evidence is copied from the generated eval report `Conversation History` section (real run only)
+   - For `github_issue_pr_handoff_slack`, require post-check pass for:
+     - `Slack required roles responded`
+     - `Slack distinct role app identities`
 7. Create PR and verify checks.
    - Create a PR linked to the issue (`Fixes #<issue>`).
    - Confirm required GitHub checks pass before completion claim.
@@ -83,4 +88,5 @@ uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_gith
   - Slack thread URL(s) and transcript summary.
   - GitHub thread URL(s).
   - Report file paths in `results/eval_reports/`.
+  - At least one quoted message per required role from the report transcript (no placeholders).
 - Clear verdict: `COMPLETED` only when every checklist item is satisfied.

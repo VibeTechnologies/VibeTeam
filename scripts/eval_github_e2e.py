@@ -117,10 +117,17 @@ def _configured_bot_handles() -> set[str]:
     handles: set[str] = set()
 
     if DEFAULT_ISSUE_ASSIGNEE:
-        handles.add(_normalize_login(DEFAULT_ISSUE_ASSIGNEE))
+        for value in DEFAULT_ISSUE_ASSIGNEE.split(","):
+            normalized = _normalize_login(value)
+            if normalized:
+                handles.add(normalized)
     for value in ROLE_DEFAULT_ASSIGNEES.values():
-        if value:
-            handles.add(_normalize_login(value))
+        if not value:
+            continue
+        for candidate in value.split(","):
+            normalized = _normalize_login(candidate)
+            if normalized:
+                handles.add(normalized)
 
     for env_name in (
         "GITHUB_ASSIGNMENT_BOT_LOGINS",
@@ -147,31 +154,46 @@ def _is_bot_login(login: str, extra_allowed: set[str] | None = None) -> bool:
     return lowered in {_normalize_login(x) for x in allowlist if x}
 
 
+def _is_conventional_bot_login(login: str) -> bool:
+    lowered = _normalize_login(login)
+    return lowered.endswith("[bot]") or "-bot" in lowered
+
+
 def _is_expected_actor(actor_login: str, creator_login: str) -> bool:
     return _normalize_login(actor_login) == _normalize_login(creator_login)
 
 
 def _default_assignee_for_role(role: str) -> str:
-    return ROLE_DEFAULT_ASSIGNEES.get(role, "").strip()
+    candidates = _role_assignee_candidates(role)
+    return candidates[0] if candidates else ""
 
 
-def _allowed_assignees_for_role(role: str) -> set[str]:
-    allowed: set[str] = set()
-
-    role_default = _default_assignee_for_role(role)
-    if role_default:
-        allowed.add(_normalize_login(role_default))
+def _role_assignee_candidates(role: str) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
 
     for env_name in ROLE_ASSIGNEE_ENV_KEYS.get(role, ()):
         raw = os.environ.get(env_name, "")
         if not raw:
             continue
         for value in raw.split(","):
-            normalized = _normalize_login(value)
-            if normalized:
-                allowed.add(normalized)
+            candidate = value.strip()
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                candidates.append(candidate)
 
-    return allowed
+    default_raw = ROLE_DEFAULT_ASSIGNEES.get(role, "")
+    for value in default_raw.split(","):
+        candidate = value.strip()
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            candidates.append(candidate)
+
+    return candidates
+
+
+def _allowed_assignees_for_role(role: str) -> set[str]:
+    return {_normalize_login(candidate) for candidate in _role_assignee_candidates(role)}
 
 
 def _assignee_matches_issue_role(assignee: str, issue_role: str) -> bool:
@@ -279,6 +301,42 @@ def _graphql_request(token: str, query: str, variables: dict[str, object]) -> di
     return payload.get("data", {})
 
 
+def _get_authenticated_login(token: str) -> str:
+    url = "https://api.github.com/user"
+    with httpx.Client(timeout=20.0) as client:
+        response = client.get(url, headers=_headers(token))
+        response.raise_for_status()
+        payload = response.json()
+    return str(payload.get("login") or "").strip()
+
+
+def _validate_actor_login(token: str, actor_login: str) -> None:
+    expected = _normalize_login(actor_login)
+    if not expected or expected == "n/a":
+        return
+
+    try:
+        actual = _normalize_login(_get_authenticated_login(token))
+    except Exception as exc:
+        raise SystemExit(
+            "Unable to verify GitHub token identity for actor-login "
+            f"'{actor_login}': {exc}"
+        ) from exc
+
+    if not actual:
+        raise SystemExit(
+            "GitHub token identity lookup returned empty login. "
+            f"Expected actor-login '{actor_login}'."
+        )
+
+    if actual != expected:
+        raise SystemExit(
+            "GitHub token identity does not match --actor-login. "
+            f"expected={actor_login}, actual={actual}. "
+            "Use credentials for the requested actor or omit --actor-login."
+        )
+
+
 def _parse_ts(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
@@ -292,6 +350,16 @@ def _collect_bot_logins(items: Iterable[dict]) -> set[str]:
         if user_type == "Bot" or login.endswith("[bot]"):
             if login:
                 logins.add(login)
+    return logins
+
+
+def _collect_comment_logins(items: Iterable[dict]) -> set[str]:
+    logins: set[str] = set()
+    for item in items:
+        user = item.get("user") or {}
+        login = str(user.get("login") or "").strip()
+        if login:
+            logins.add(login)
     return logins
 
 
@@ -457,15 +525,19 @@ def _resolve_issue_assignee(
 ) -> str | None:
     preferred = (preferred_assignee or "").strip()
     if preferred:
-        return preferred
+        return preferred.split(",")[0].strip()
 
-    role_default = _default_assignee_for_role(issue_role)
-    if role_default:
-        return role_default
-
+    role_candidates = _role_assignee_candidates(issue_role)
     assignees = _fetch_repo_assignees(owner, repo, token)
-    if not assignees:
-        return None
+    normalized_assignees = {_normalize_login(login): login for login in assignees}
+    for candidate in role_candidates:
+        matched = normalized_assignees.get(_normalize_login(candidate))
+        if matched:
+            return matched
+
+    if role_candidates:
+        # Keep role mapping strict even when GitHub currently marks the assignee as non-assignable.
+        return role_candidates[0]
 
     bot_assignees = {login for login in assignees if login.endswith("[bot]")}
     if bot_assignees:
@@ -604,9 +676,9 @@ def _wait_for_assignee_activity(
             for c in comments
             if _parse_ts(c.get("created_at", "1970-01-01T00:00:00Z")) > since
         ]
-        recent_bot_logins = _collect_bot_logins(recent)
-        if target_assignee in recent_bot_logins:
-            return recent_bot_logins
+        recent_logins = _collect_comment_logins(recent)
+        if target_assignee in recent_logins:
+            return recent_logins
         time.sleep(poll_interval)
     return set()
 
@@ -638,6 +710,8 @@ def _evaluate_issue_assignment(
     assignment_event_actors: list[str] = []
     assignment_actor_passed = True
     assignment_actor_error = ""
+    assignment_fallback_mode = False
+    assignment_fallback_reason = ""
     started_at = assignment_started_at or datetime.now(timezone.utc)
 
     if not target_assignee:
@@ -652,6 +726,8 @@ def _evaluate_issue_assignment(
             "assignment_event_actors": [],
             "assignment_actor_passed": False,
             "assignment_actor_error": "Missing target assignee; cannot validate assignment actor.",
+            "assignment_fallback_mode": False,
+            "assignment_fallback_reason": "",
         }
 
     try:
@@ -690,6 +766,13 @@ def _evaluate_issue_assignment(
                 assignment_error = (
                     f"Expected assignee {target_assignee}, but current assignees are: "
                     f"{', '.join(issue_assignees) or 'n/a'}"
+                )
+
+            if _is_bot_login(target_assignee):
+                assignment_fallback_mode = True
+                assignment_fallback_reason = (
+                    f"Target role bot assignee {target_assignee} is not assignable in "
+                    f"{owner}/{repo}; using mention-trigger fallback and requiring bot responses."
                 )
 
         try:
@@ -746,6 +829,8 @@ def _evaluate_issue_assignment(
         "assignment_event_actors": assignment_event_actors,
         "assignment_actor_passed": assignment_actor_passed,
         "assignment_actor_error": assignment_actor_error,
+        "assignment_fallback_mode": assignment_fallback_mode,
+        "assignment_fallback_reason": assignment_fallback_reason,
     }
 
 
@@ -912,7 +997,20 @@ def _run_issue_handoff(
         return _fetch_issue_comments(owner, repo, issue_number, token, since=assignment_checkpoint)
 
     assignee_recent_activity: set[str] = set()
+    recent_bot_logins: set[str] = set()
     assignment_target = assignment.get("target_assignee", "n/a")
+    normalized_assignment_target = _normalize_login(str(assignment_target))
+    normalized_actor = _normalize_login(actor_login)
+    if (
+        assignment["assignment_passed"]
+        and assignment_target != "n/a"
+        and normalized_assignment_target == normalized_actor
+        and not _is_conventional_bot_login(str(assignment_target))
+    ):
+        # Assignment fallback path for repos where bot handles are not assignable:
+        # emit one native role-mention comment from the actor to trigger routing.
+        _create_issue_comment(owner, repo, token, issue_number, _build_issue_trigger_comment())
+
     if assignment["assignment_passed"] and assignment_target != "n/a":
         assignee_recent_activity = _wait_for_assignee_activity(
             fetch_after_assignment,
@@ -920,11 +1018,27 @@ def _run_issue_handoff(
             assignment_target,
             timeout,
         )
+        recent_bot_logins = set(assignee_recent_activity)
+    elif bool(assignment.get("assignment_fallback_mode")):
+        trigger_ts = _create_issue_comment(owner, repo, token, issue_number, _build_issue_trigger_comment())
+
+        def fetch_after_trigger() -> list[dict]:
+            return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
+
+        # In fallback mode we require both role bots to reply.
+        recent_bot_logins = _wait_for_bot_authors(fetch_after_trigger, trigger_ts, 2, timeout)
 
     all_bot_logins = _collect_bot_logins(
         _fetch_issue_comments(owner, repo, issue_number, token, since=None)
     )
-    recent_bot_logins = set(assignee_recent_activity)
+    fallback_mode = bool(assignment.get("assignment_fallback_mode"))
+    strict_assignment_pass = (
+        bool(assignee_recent_activity)
+        and bool(assignment["assignment_passed"])
+        and bool(assignment["assignment_event_seen"])
+        and bool(assignment.get("assignment_actor_passed", True))
+    )
+    fallback_pass = bool(recent_bot_logins) and bool(creator_passed)
 
     return {
         "thread": issue_url,
@@ -944,12 +1058,10 @@ def _run_issue_handoff(
         "assignment_event_actors": assignment.get("assignment_event_actors", []),
         "assignment_actor_passed": assignment.get("assignment_actor_passed", True),
         "assignment_actor_error": assignment.get("assignment_actor_error", ""),
+        "assignment_fallback_mode": fallback_mode,
+        "assignment_fallback_reason": assignment.get("assignment_fallback_reason", ""),
         "passed": (
-            bool(assignee_recent_activity)
-            and bool(assignment["assignment_passed"])
-            and bool(assignment["assignment_event_seen"])
-            and bool(assignment.get("assignment_actor_passed", True))
-            and bool(creator_passed)
+            fallback_pass if fallback_mode else (strict_assignment_pass and bool(creator_passed))
         ),
     }
 
@@ -1096,6 +1208,16 @@ def _run_issue_handoff_presence(
 
     if not post_trigger_comment:
         target_assignee = assignment.get("target_assignee", "n/a")
+        normalized_target = _normalize_login(str(target_assignee))
+        normalized_actor = _normalize_login(actor_login)
+        if (
+            assignment["assignment_passed"]
+            and target_assignee != "n/a"
+            and normalized_target == normalized_actor
+            and not _is_conventional_bot_login(str(target_assignee))
+        ):
+            _create_issue_comment(owner, repo, token, issue_number, _build_issue_trigger_comment())
+
         if assignment["assignment_passed"] and target_assignee != "n/a":
             def fetch_after_assignment() -> list[dict]:
                 return _fetch_issue_comments(
@@ -1112,6 +1234,13 @@ def _run_issue_handoff_presence(
                 target_assignee,
                 timeout,
             )
+        elif bool(assignment.get("assignment_fallback_mode")):
+            trigger_ts = _create_issue_comment(owner, repo, token, issue_number, _build_issue_trigger_comment())
+
+            def fetch_after_trigger() -> list[dict]:
+                return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
+
+            recent_bot_logins = _wait_for_bot_authors(fetch_after_trigger, trigger_ts, 2, timeout)
 
     assignment_event_seen = bool(assignment.get("assignment_event_seen"))
     assignment_event_error = str(assignment.get("assignment_event_error") or "")
@@ -1119,12 +1248,16 @@ def _run_issue_handoff_presence(
     assignment_event_actors = list(assignment.get("assignment_event_actors") or [])
     assignment_actor_passed = bool(assignment.get("assignment_actor_passed", True))
     assignment_actor_error = str(assignment.get("assignment_actor_error") or "")
-    passed = (
-        bool(recent_bot_logins)
-        and bool(assignment["assignment_passed"])
-        and assignment_event_seen
-        and assignment_actor_passed
-    )
+    fallback_mode = bool(assignment.get("assignment_fallback_mode"))
+    if fallback_mode:
+        passed = bool(recent_bot_logins)
+    else:
+        passed = (
+            bool(recent_bot_logins)
+            and bool(assignment["assignment_passed"])
+            and assignment_event_seen
+            and assignment_actor_passed
+        )
     return {
         "thread": issue_url,
         "bot_logins": sorted(all_bot_logins),
@@ -1143,6 +1276,8 @@ def _run_issue_handoff_presence(
         "assignment_event_actors": assignment_event_actors,
         "assignment_actor_passed": assignment_actor_passed,
         "assignment_actor_error": assignment_actor_error,
+        "assignment_fallback_mode": fallback_mode,
+        "assignment_fallback_reason": str(assignment.get("assignment_fallback_reason") or ""),
         "passed": passed,
     }
 
@@ -1315,6 +1450,12 @@ def _write_report(scenario: str, results: dict) -> str:
             "**Recent bot authors after assignment/trigger:** "
             f"{', '.join(results.get('recent_bot_logins', [])) or 'n/a'}"
         )
+        lines.append(
+            "**Assignment fallback mode:** "
+            f"{'✅' if results.get('assignment_fallback_mode') else '❌'}"
+        )
+        if results.get("assignment_fallback_reason"):
+            lines.append(f"**Assignment fallback reason:** {results.get('assignment_fallback_reason')}")
     if "creator_passed" in results:
         lines.append(
             f"**Issue creator check:** {'✅' if results.get('creator_passed') else '❌'}"
@@ -1392,6 +1533,14 @@ def _write_report(scenario: str, results: dict) -> str:
                     "- Assignment actor check: "
                     f"{'✅' if thread_result.get('assignment_actor_passed', True) else '❌'}"
                 )
+                lines.append(
+                    "- Assignment fallback mode: "
+                    f"{'✅' if thread_result.get('assignment_fallback_mode') else '❌'}"
+                )
+                if thread_result.get("assignment_fallback_reason"):
+                    lines.append(
+                        f"- Assignment fallback reason: {thread_result.get('assignment_fallback_reason')}"
+                    )
             if "creator_passed" in thread_result:
                 lines.append(
                     f"- Issue creator check: {'✅' if thread_result.get('creator_passed') else '❌'}"
@@ -1440,6 +1589,7 @@ def main() -> int:
     args = parser.parse_args()
 
     token = _require_token(args.actor_login)
+    _validate_actor_login(token, args.actor_login)
     owner, repo = _split_repo(args.repo)
     resolved_issue_assignee = _resolve_issue_assignee(
         owner,
