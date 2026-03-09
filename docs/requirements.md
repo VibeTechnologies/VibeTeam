@@ -88,7 +88,7 @@ LITELLM_MASTER_KEY=
 ### GitHub + Sentry
 
 ```bash
-GITHUB_TOKEN=  # optional: local eval post-checks only (gateway webhook path uses GitHub App tokens)
+GITHUB_TOKEN=  # fallback PAT
 GITHUB_APP_ID_SOFTWARE_ENGINEER=
 GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER=
 GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER=
@@ -118,30 +118,31 @@ with `export $( < .env )`, replace spaces with underscores:
 ### Slack
 
 ```bash
-SLACK_BOT_TOKEN=
-SLACK_ASSISTANT_TOKEN=
-SLACK_ASSISTANT_STATUS_TEXT=
-SLACK_SIGNING_SECRET=
-SLACK_TRIGGER_SECRET=
-
-# Optional role-scoped Slack app tokens (preferred for multi-agent identity)
+SLACK_BOT_TOKEN=  # optional default/fallback
 SLACK_BOT_TOKEN_SOFTWARE_ENGINEER=
 SLACK_BOT_TOKEN_SUPPORT_ENGINEER=
 SLACK_BOT_TOKEN_RELEASE_ENGINEER=
 SLACK_BOT_TOKEN_PRODUCT_MANAGER=
 SLACK_BOT_TOKEN_MARKETING_MANAGER=
-
-# Optional role-scoped assistant tokens
+SLACK_ASSISTANT_TOKEN=
 SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER=
 SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER=
 SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER=
 SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER=
 SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER=
+SLACK_ASSISTANT_STATUS_TEXT=
+SLACK_SIGNING_SECRET=
+SLACK_SIGNING_SECRET_SOFTWARE_ENGINEER=
+SLACK_SIGNING_SECRET_SUPPORT_ENGINEER=
+SLACK_SIGNING_SECRET_RELEASE_ENGINEER=
+SLACK_SIGNING_SECRET_PRODUCT_MANAGER=
+SLACK_SIGNING_SECRET_MARKETING_MANAGER=
+SLACK_TRIGGER_SECRET=
 ```
 
-Gateway token resolution for outbound Slack actions:
-1. `SLACK_BOT_TOKEN_<ROLE>` / `SLACK_ASSISTANT_TOKEN_<ROLE>`
-2. global `SLACK_BOT_TOKEN` / `SLACK_ASSISTANT_TOKEN`
+Gateway Slack API calls resolve bot tokens per role (`software_engineer`, `support_engineer`,
+`release_engineer`, `product_manager`, `marketing_manager`). If a role-specific token is not set,
+the gateway falls back to `SLACK_BOT_TOKEN`. Incoming Slack signatures are accepted when they match any configured signing secret (default or role-scoped).
 
 ### Gmail (File-Based Secrets)
 
@@ -198,6 +199,9 @@ Post-checks also require `GITHUB_TOKEN` (or `GH_TOKEN`) to verify PR metadata.
 The `github_issue_pr_handoff_slack` scenario validates issue + PR handoff comments in
 the same eval repo. Use `github_issue_pr_handoff_github` in `eval_github_e2e.py`
 to validate the same issue+PR handoff semantics from GitHub webhooks.
+For `github_issue_pr_handoff_slack`, required Slack roles must post from distinct
+role-scoped Slack app identities (verified against role token `auth.test` user IDs).
+Shared Slack bot identities across required roles are a hard failure.
 Discussion handoffs remain covered via `github_threads_all`.
 
 Use `scripts/eval_github_e2e.py` to validate GitHub webhook routing and multi-agent
@@ -208,6 +212,9 @@ handoffs over issues, discussions, and PR comments. This requires:
 - Role GitHub Apps granted Discussions read/write permission (otherwise discussion
   comments fail with `Resource not accessible by integration`).
 - `GITHUB_TOKEN` (or `GH_TOKEN`) with issue/discussion write permissions.
+- Issue-assignment scenarios keep role-bot assignee targets; if GitHub rejects
+  assignment for app-bot identities, eval may use mention-trigger fallback mode
+  and must still prove role-bot responses in the same issue thread.
 
 ## Gmail Processor
 
