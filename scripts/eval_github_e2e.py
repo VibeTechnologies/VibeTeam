@@ -1414,6 +1414,11 @@ def _collect_thread_links(results: dict) -> list[str]:
     return links
 
 
+def _assignment_requirement_passed(result: dict) -> bool:
+    """Return True when assignment requirement is satisfied directly or via fallback."""
+    return bool(result.get("assignment_passed") or result.get("assignment_fallback_mode"))
+
+
 def _write_report(scenario: str, results: dict) -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"results/eval_reports/eval_github_{scenario}_{timestamp}.md"
@@ -1427,7 +1432,15 @@ def _write_report(scenario: str, results: dict) -> str:
         f"**Bot authors:** {', '.join(results.get('bot_logins', [])) or 'n/a'}",
     ]
     if "assignment_passed" in results:
-        lines.append(f"**Issue assigned:** {'✅' if results.get('assignment_passed') else '❌'}")
+        assignment_effective = _assignment_requirement_passed(results)
+        assignment_suffix = (
+            " (fallback satisfied)"
+            if (not results.get("assignment_passed") and results.get("assignment_fallback_mode"))
+            else ""
+        )
+        lines.append(
+            f"**Issue assigned:** {'✅' if assignment_effective else '❌'}{assignment_suffix}"
+        )
         lines.append(f"**Target assignee:** {results.get('target_assignee', 'n/a')}")
         lines.append(
             f"**Current assignees:** {', '.join(results.get('issue_assignees', [])) or 'n/a'}"
@@ -1512,7 +1525,19 @@ def _write_report(scenario: str, results: dict) -> str:
                 ]
             )
             if "assignment_passed" in thread_result:
-                lines.append(f"- Issue assigned: {'✅' if thread_result.get('assignment_passed') else '❌'}")
+                thread_assignment_effective = _assignment_requirement_passed(thread_result)
+                thread_assignment_suffix = (
+                    " (fallback satisfied)"
+                    if (
+                        not thread_result.get("assignment_passed")
+                        and thread_result.get("assignment_fallback_mode")
+                    )
+                    else ""
+                )
+                lines.append(
+                    f"- Issue assigned: {'✅' if thread_assignment_effective else '❌'}"
+                    f"{thread_assignment_suffix}"
+                )
                 lines.append(f"- Target assignee: {thread_result.get('target_assignee', 'n/a')}")
                 lines.append(
                     "- Current assignees: "
@@ -1689,7 +1714,7 @@ def main() -> int:
             + (
                 " | "
                 f"assigned: {results.get('target_assignee', 'n/a')} "
-                f"({'ok' if results.get('assignment_passed') else 'missing'})"
+                f"({'ok' if results.get('assignment_passed') else ('ok-via-fallback' if results.get('assignment_fallback_mode') else 'missing')})"
                 if "assignment_passed" in results
                 else ""
             )

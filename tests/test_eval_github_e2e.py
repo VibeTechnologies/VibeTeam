@@ -1219,3 +1219,58 @@ def test_write_report_with_thread_details_and_assignment(tmp_path, monkeypatch):
     assert "- Issue creator check: ✅" in report
     assert "- Expected actor: OpenCodeEngineer" in report
     assert "- Issue creator: OpenCodeEngineer" in report
+
+
+def test_write_report_marks_assignment_passed_in_fallback_mode(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    issue_url = "https://github.com/org/repo/issues/99"
+    assignee = "vibeteam-swe-bot-260301[bot]"
+    results = {
+        "thread": issue_url,
+        "passed": True,
+        "bot_logins": ["vibesoftwareengineer[bot]", "vibesupportengineer[bot]"],
+        "recent_bot_logins": ["vibesoftwareengineer[bot]", "vibesupportengineer[bot]"],
+        "assignment_passed": False,
+        "assignment_fallback_mode": True,
+        "assignment_fallback_reason": "Target role bot is not assignable.",
+        "target_assignee": assignee,
+        "issue_assignees": [],
+        "assignment_event_seen": False,
+        "assignment_event_count": 0,
+        "assignment_event_error": "",
+        "assignment_event_actors": [],
+        "assignment_actor_passed": False,
+        "assignment_actor_error": "",
+        "actor_login": "OpenCodeEngineer",
+        "issue_creator": "OpenCodeEngineer",
+        "creator_passed": True,
+        "creator_error": "",
+        "threads": {
+            "issue": {
+                "thread": issue_url,
+                "passed": True,
+                "bot_logins": ["vibesoftwareengineer[bot]", "vibesupportengineer[bot]"],
+                "recent_bot_logins": ["vibesoftwareengineer[bot]", "vibesupportengineer[bot]"],
+                "assignment_passed": False,
+                "assignment_fallback_mode": True,
+                "assignment_fallback_reason": "Target role bot is not assignable.",
+                "target_assignee": assignee,
+                "issue_assignees": [],
+                "assignment_event_seen": False,
+                "assignment_event_count": 0,
+                "assignment_event_error": "",
+                "assignment_event_actors": [],
+                "assignment_actor_passed": False,
+                "assignment_actor_error": "",
+                "actor_login": "OpenCodeEngineer",
+                "issue_creator": "OpenCodeEngineer",
+                "creator_passed": True,
+                "creator_error": "",
+            }
+        },
+    }
+
+    report_path = eval_github_e2e._write_report("github_issue_handoff", results)
+    report = Path(report_path).read_text(encoding="utf-8")
+    assert "**Issue assigned:** ✅ (fallback satisfied)" in report
+    assert "- Issue assigned: ✅ (fallback satisfied)" in report
