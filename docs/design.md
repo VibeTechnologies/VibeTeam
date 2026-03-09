@@ -127,6 +127,29 @@ Gateway supports GitHub webhooks for:
 - `pull_request_review_comment`
 - `discussion` and `discussion_comment`
 
+Assignment trigger decision:
+- `issues.assigned` is treated as the primary start signal for GitHub issue work.
+- Gateway assignment matching supports:
+  - `GITHUB_BOT_USERNAME`
+  - `GITHUB_ISSUE_ASSIGNEE` / `GITHUB_ASSIGNMENT_BOT_LOGINS`
+  - per-role bot handle envs (`GITHUB_BOT_USERNAME_*`, `GITHUB_APP_BOT_USERNAME_*`)
+  - role-bot naming pattern (`vibeteam-*-bot[-suffix]`)
+- Gateway resolves assignment role from assignee handle:
+  - explicit per-role bot env mapping first
+  - naming-convention fallback (`support`, `release`, `product`, `marketing`, `swe/software`)
+- Different task categories must map to different role bots at assignment time.
+  - code-writing -> `software_engineer`
+  - support/incident -> `support_engineer`
+  - release/deploy -> `release_engineer`
+  - product/triage -> `product_manager`
+  - marketing/content -> `marketing_manager`
+- Eval requirement: assignee target remains the role bot handle for the task.
+- Issue creator/assigner actor may be a human/service account (for example `OpenCodeEngineer`).
+- If GitHub API refuses role-bot assignment (non-assignable app bot), eval enters
+  mention-trigger fallback mode and requires real role-bot responses in-thread.
+- Fallback mode is explicit in reports (`Assignment fallback mode` + reason) and
+  does not pass without bot activity after trigger.
+
 Discussion comments are posted via GraphQL and require GitHub App discussions
 permissions to avoid `Resource not accessible by integration` failures.
 

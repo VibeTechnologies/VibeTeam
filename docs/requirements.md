@@ -118,12 +118,31 @@ with `export $( < .env )`, replace spaces with underscores:
 ### Slack
 
 ```bash
-SLACK_BOT_TOKEN=
+SLACK_BOT_TOKEN=  # optional default/fallback
+SLACK_BOT_TOKEN_SOFTWARE_ENGINEER=
+SLACK_BOT_TOKEN_SUPPORT_ENGINEER=
+SLACK_BOT_TOKEN_RELEASE_ENGINEER=
+SLACK_BOT_TOKEN_PRODUCT_MANAGER=
+SLACK_BOT_TOKEN_MARKETING_MANAGER=
 SLACK_ASSISTANT_TOKEN=
+SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER=
+SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER=
+SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER=
+SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER=
+SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER=
 SLACK_ASSISTANT_STATUS_TEXT=
 SLACK_SIGNING_SECRET=
+SLACK_SIGNING_SECRET_SOFTWARE_ENGINEER=
+SLACK_SIGNING_SECRET_SUPPORT_ENGINEER=
+SLACK_SIGNING_SECRET_RELEASE_ENGINEER=
+SLACK_SIGNING_SECRET_PRODUCT_MANAGER=
+SLACK_SIGNING_SECRET_MARKETING_MANAGER=
 SLACK_TRIGGER_SECRET=
 ```
+
+Gateway Slack API calls resolve bot tokens per role (`software_engineer`, `support_engineer`,
+`release_engineer`, `product_manager`, `marketing_manager`). If a role-specific token is not set,
+the gateway falls back to `SLACK_BOT_TOKEN`. Incoming Slack signatures are accepted when they match any configured signing secret (default or role-scoped).
 
 ### Gmail (File-Based Secrets)
 
@@ -180,6 +199,9 @@ Post-checks also require `GITHUB_TOKEN` (or `GH_TOKEN`) to verify PR metadata.
 The `github_issue_pr_handoff_slack` scenario validates issue + PR handoff comments in
 the same eval repo. Use `github_issue_pr_handoff_github` in `eval_github_e2e.py`
 to validate the same issue+PR handoff semantics from GitHub webhooks.
+For `github_issue_pr_handoff_slack`, required Slack roles must post from distinct
+role-scoped Slack app identities (verified against role token `auth.test` user IDs).
+Shared Slack bot identities across required roles are a hard failure.
 Discussion handoffs remain covered via `github_threads_all`.
 
 Use `scripts/eval_github_e2e.py` to validate GitHub webhook routing and multi-agent
@@ -190,6 +212,9 @@ handoffs over issues, discussions, and PR comments. This requires:
 - Role GitHub Apps granted Discussions read/write permission (otherwise discussion
   comments fail with `Resource not accessible by integration`).
 - `GITHUB_TOKEN` (or `GH_TOKEN`) with issue/discussion write permissions.
+- Issue-assignment scenarios keep role-bot assignee targets; if GitHub rejects
+  assignment for app-bot identities, eval may use mention-trigger fallback mode
+  and must still prove role-bot responses in the same issue thread.
 
 ## Gmail Processor
 
