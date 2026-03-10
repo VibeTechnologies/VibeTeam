@@ -1379,6 +1379,8 @@ def _run_issue_pr_handoff(
         "assignment_event_actors": issue_results.get("assignment_event_actors", []),
         "assignment_actor_passed": issue_results.get("assignment_actor_passed", True),
         "assignment_actor_error": issue_results.get("assignment_actor_error", ""),
+        "assignment_fallback_mode": issue_results.get("assignment_fallback_mode", False),
+        "assignment_fallback_reason": issue_results.get("assignment_fallback_reason", ""),
         "passed": passed,
         "threads": {
             "issue": issue_results,
