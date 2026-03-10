@@ -34,6 +34,27 @@ ROLE_ALIASES: dict[str, str] = {
 }
 
 
+def _resolve_role_maps(
+    role_suffixes: Mapping[str, str] | None,
+) -> tuple[dict[str, str], dict[str, str]]:
+    suffixes = dict(ROLE_SUFFIXES)
+    if role_suffixes:
+        for role, suffix in role_suffixes.items():
+            if not isinstance(role, str) or not isinstance(suffix, str):
+                continue
+            role_key = re.sub(r"[^a-z0-9]+", "_", role.strip().lower()).strip("_")
+            suffix_value = suffix.strip().upper()
+            if role_key and suffix_value:
+                suffixes[role_key] = suffix_value
+
+    aliases = dict(ROLE_ALIASES)
+    for role in suffixes:
+        compact = role.replace("_", "")
+        aliases.setdefault(role, role)
+        aliases.setdefault(compact, role)
+    return suffixes, aliases
+
+
 def parse_json_payload(raw: str | None, *, source_name: str) -> dict[str, Any]:
     """Parse an optional JSON object payload from a secret value."""
     if not raw or not raw.strip():
@@ -47,11 +68,16 @@ def parse_json_payload(raw: str | None, *, source_name: str) -> dict[str, Any]:
     return payload
 
 
-def _normalize_role(role: str) -> str | None:
+def _normalize_role(
+    role: str,
+    *,
+    suffixes: Mapping[str, str],
+    aliases: Mapping[str, str],
+) -> str | None:
     normalized = re.sub(r"[^a-z0-9]+", "_", role.strip().lower()).strip("_")
     if not normalized:
         return None
-    return ROLE_ALIASES.get(normalized, normalized if normalized in ROLE_SUFFIXES else None)
+    return aliases.get(normalized, normalized if normalized in suffixes else None)
 
 
 def _string_value(value: Any) -> str | None:
@@ -87,8 +113,13 @@ def _roles_object(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     return payload
 
 
-def flatten_github_role_payload(payload: Mapping[str, Any]) -> dict[str, str]:
+def flatten_github_role_payload(
+    payload: Mapping[str, Any],
+    *,
+    role_suffixes: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Flatten GitHub role payload JSON into env-style key/value pairs."""
+    suffixes, aliases = _resolve_role_maps(role_suffixes)
     direct = _env_keys(payload, "GITHUB_")
     if direct:
         return direct
@@ -97,10 +128,10 @@ def flatten_github_role_payload(payload: Mapping[str, Any]) -> dict[str, str]:
     for role_name, role_data in _roles_object(payload).items():
         if not isinstance(role_name, str) or not isinstance(role_data, Mapping):
             continue
-        role = _normalize_role(role_name)
+        role = _normalize_role(role_name, suffixes=suffixes, aliases=aliases)
         if role is None:
             continue
-        suffix = ROLE_SUFFIXES[role]
+        suffix = suffixes[role]
         app_id = _first_value(
             role_data,
             ["app_id", "appId", "github_app_id", "githubAppId", "id"],
@@ -136,8 +167,13 @@ def flatten_github_role_payload(payload: Mapping[str, Any]) -> dict[str, str]:
     return env
 
 
-def flatten_slack_role_payload(payload: Mapping[str, Any]) -> dict[str, str]:
+def flatten_slack_role_payload(
+    payload: Mapping[str, Any],
+    *,
+    role_suffixes: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Flatten Slack role payload JSON into env-style key/value pairs."""
+    suffixes, aliases = _resolve_role_maps(role_suffixes)
     direct = _env_keys(payload, "SLACK_")
     if direct:
         return direct
@@ -150,10 +186,10 @@ def flatten_slack_role_payload(payload: Mapping[str, Any]) -> dict[str, str]:
         role_key = role_name.strip().lower()
         suffix = None
         if role_key not in {"default", "global", "fallback"}:
-            normalized_role = _normalize_role(role_name)
+            normalized_role = _normalize_role(role_name, suffixes=suffixes, aliases=aliases)
             if normalized_role is None:
                 continue
-            suffix = ROLE_SUFFIXES[normalized_role]
+            suffix = suffixes[normalized_role]
 
         bot_token = _first_value(role_data, ["bot_token", "botToken", "token"])
         assistant_token = _first_value(

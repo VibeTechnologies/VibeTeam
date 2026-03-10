@@ -151,6 +151,8 @@ kubectl create secret generic vibeteam-secrets -n vibeteam \
 For GitHub Actions-based deployment, you can store role-scoped Slack credentials as a single
 repository secret (`SLACK_ROLE_SECRETS_JSON`) instead of managing many individual secrets.
 The deploy workflows flatten that JSON into the `vibeteam-secrets` keys above at deploy time.
+Role-scoped key names are derived from `agents/agents.yaml` credential placeholders so the
+mapping is maintained in one place.
 
 Use the template at `config/secrets/slack_role_secrets.template.json`, fill in real values
 locally, then upload it as a GitHub repository secret:

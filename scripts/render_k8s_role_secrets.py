@@ -7,6 +7,7 @@ import argparse
 import os
 from pathlib import Path
 
+from vibeteam.agents_config import get_role_secret_suffixes, list_role_secret_env_vars
 from vibeteam.utils.secret_payloads import (
     collect_prefixed_env,
     flatten_github_role_payload,
@@ -97,43 +98,74 @@ def main() -> int:
     args = parser.parse_args()
 
     env = dict(os.environ)
+    role_scoped_env_keys = list_role_secret_env_vars()
+    role_suffixes = get_role_secret_suffixes()
+    for suffix in role_suffixes.values():
+        role_scoped_env_keys.add(f"GITHUB_BOT_USERNAME_{suffix}")
 
     base_vibeteam = {
         key: env[key]
         for key in VIBETEAM_BASE_KEYS
         if key in env and env[key] != ""
     }
-    legacy_slack = collect_prefixed_env(
-        env,
-        (
-            "SLACK_BOT_TOKEN_",
-            "SLACK_ASSISTANT_TOKEN_",
-            "SLACK_SIGNING_SECRET_",
-        ),
-    )
+    if role_scoped_env_keys:
+        legacy_slack = {
+            key: env[key]
+            for key in role_scoped_env_keys
+            if key.startswith(("SLACK_BOT_TOKEN_", "SLACK_ASSISTANT_TOKEN_", "SLACK_SIGNING_SECRET_"))
+            and key in env
+            and env[key] != ""
+        }
+    else:
+        legacy_slack = collect_prefixed_env(
+            env,
+            (
+                "SLACK_BOT_TOKEN_",
+                "SLACK_ASSISTANT_TOKEN_",
+                "SLACK_SIGNING_SECRET_",
+            ),
+        )
     slack_payload = parse_json_payload(
         env.get("SLACK_ROLE_SECRETS_JSON"),
         source_name="SLACK_ROLE_SECRETS_JSON",
     )
-    json_slack = flatten_slack_role_payload(slack_payload)
+    json_slack = flatten_slack_role_payload(slack_payload, role_suffixes=role_suffixes)
     vibeteam_env = merge_env(base_vibeteam, legacy_slack, json_slack)
 
-    legacy_github = collect_prefixed_env(
-        env,
-        (
-            "GITHUB_APP_ID_",
-            "GITHUB_APP_INSTALLATION_ID_",
-            "GITHUB_APP_PRIVATE_KEY_",
-            "GITHUB_WEBHOOK_SECRET_",
-            "GITHUB_BOT_USERNAME_",
-            "GITHUB_APP_BOT_USERNAME_",
-        ),
-    )
+    if role_scoped_env_keys:
+        legacy_github = {
+            key: env[key]
+            for key in role_scoped_env_keys
+            if key.startswith(
+                (
+                    "GITHUB_APP_ID_",
+                    "GITHUB_APP_INSTALLATION_ID_",
+                    "GITHUB_APP_PRIVATE_KEY_",
+                    "GITHUB_WEBHOOK_SECRET_",
+                    "GITHUB_BOT_USERNAME_",
+                    "GITHUB_APP_BOT_USERNAME_",
+                )
+            )
+            and key in env
+            and env[key] != ""
+        }
+    else:
+        legacy_github = collect_prefixed_env(
+            env,
+            (
+                "GITHUB_APP_ID_",
+                "GITHUB_APP_INSTALLATION_ID_",
+                "GITHUB_APP_PRIVATE_KEY_",
+                "GITHUB_WEBHOOK_SECRET_",
+                "GITHUB_BOT_USERNAME_",
+                "GITHUB_APP_BOT_USERNAME_",
+            ),
+        )
     github_payload = parse_json_payload(
         env.get("GITHUB_APP_ROLE_SECRETS_JSON"),
         source_name="GITHUB_APP_ROLE_SECRETS_JSON",
     )
-    json_github = flatten_github_role_payload(github_payload)
+    json_github = flatten_github_role_payload(github_payload, role_suffixes=role_suffixes)
     github_role_data = merge_env(legacy_github, json_github)
 
     _render_env_file(vibeteam_env, Path(args.vibeteam_env_output))

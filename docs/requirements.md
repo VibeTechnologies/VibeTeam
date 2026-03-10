@@ -35,9 +35,20 @@ agents:
     framework: openhands
     slack_handle: SoftwareEngineer
     agent_dir: agents/SoftwareEngineer
+    credentials:
+      github_app:
+        app_id: "${GITHUB_APP_ID_SOFTWARE_ENGINEER}"
+        installation_id: "${GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER}"
+        private_key: "${GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER}"
+        webhook_secret: "${GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER}"
+      slack:
+        bot_token: "${SLACK_BOT_TOKEN_SOFTWARE_ENGINEER}"
+        assistant_token: "${SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER}"
+        signing_secret: "${SLACK_SIGNING_SECRET_SOFTWARE_ENGINEER}"
 ```
 
 The gateway only routes messages; it does not prefetch or inject monitoring context.
+`agents/agents.yaml` stores only placeholder references for role credentials, never secret values.
 
 ## Browser Automation
 
@@ -150,6 +161,8 @@ or a direct env-key map:
 
 If both JSON and individual vars are provided, JSON values take precedence for deployment
 artifact generation.
+Deployment rendering resolves role-scoped env keys from the placeholders defined in
+`agents/agents.yaml`, keeping role credential key naming in one place.
 
 Template payload: `config/secrets/github_app_role_secrets.template.json`
 
@@ -228,6 +241,8 @@ or a direct env-key map:
 
 If both JSON and individual vars are provided, JSON values take precedence for deployment
 artifact generation.
+Deployment rendering resolves role-scoped env keys from the placeholders defined in
+`agents/agents.yaml`, keeping role credential key naming in one place.
 
 Template payload: `config/secrets/slack_role_secrets.template.json`
 

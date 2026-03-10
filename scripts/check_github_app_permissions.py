@@ -10,32 +10,38 @@ from urllib.parse import quote
 
 import requests
 
+from vibeteam.agents_config import get_role_secret_suffixes
 from vibeteam.utils.github_app import get_app_info, get_installation_token, list_installations
-from vibeteam.utils.secret_payloads import flatten_github_role_payload, parse_json_payload
-
-ROLE_SUFFIXES = {
-    "software_engineer": "SOFTWARE_ENGINEER",
-    "support_engineer": "SUPPORT_ENGINEER",
-    "release_engineer": "RELEASE_ENGINEER",
-    "product_manager": "PRODUCT_MANAGER",
-    "marketing_manager": "MARKETING_MANAGER",
-}
+from vibeteam.utils.secret_payloads import (
+    ROLE_SUFFIXES as DEFAULT_ROLE_SUFFIXES,
+    flatten_github_role_payload,
+    parse_json_payload,
+)
 DEFAULT_REPO = os.environ.get("GITHUB_TEST_REPO", "VibeTechnologies/vibeteam-eval-hello-world")
 
 
+def _role_suffixes() -> dict[str, str]:
+    configured = get_role_secret_suffixes()
+    if configured:
+        return configured
+    return dict(DEFAULT_ROLE_SUFFIXES)
+
+
 def _iter_roles(requested: Iterable[str] | None) -> list[str]:
+    role_suffixes = _role_suffixes()
     if not requested:
-        return list(ROLE_SUFFIXES.keys())
+        return list(role_suffixes.keys())
     normalized = []
     for role in requested:
         role_key = role.strip().lower()
-        if role_key in ROLE_SUFFIXES:
+        if role_key in role_suffixes:
             normalized.append(role_key)
     return normalized
 
 
 def _load_credentials(role: str) -> tuple[str | None, str | None, str | None]:
-    suffix = ROLE_SUFFIXES[role]
+    role_suffixes = _role_suffixes()
+    suffix = role_suffixes[role]
     env_credentials = (
         os.environ.get(f"GITHUB_APP_ID_{suffix}"),
         os.environ.get(f"GITHUB_APP_PRIVATE_KEY_{suffix}"),
@@ -51,7 +57,7 @@ def _load_credentials(role: str) -> tuple[str | None, str | None, str | None]:
         )
     except ValueError:
         payload = {}
-    json_values = flatten_github_role_payload(payload)
+    json_values = flatten_github_role_payload(payload, role_suffixes=role_suffixes)
     return (
         env_credentials[0] or json_values.get(f"GITHUB_APP_ID_{suffix}"),
         env_credentials[1] or json_values.get(f"GITHUB_APP_PRIVATE_KEY_{suffix}"),
@@ -72,7 +78,8 @@ def _repo_headers(token: str) -> dict[str, str]:
 
 
 def _resolve_role_assignee(role: str) -> str:
-    suffix = ROLE_SUFFIXES[role]
+    role_suffixes = _role_suffixes()
+    suffix = role_suffixes[role]
     env_assignee = (
         os.environ.get(f"GITHUB_{suffix}_BOT_ASSIGNEE")
         or os.environ.get(f"GITHUB_APP_BOT_USERNAME_{suffix}")
@@ -88,7 +95,12 @@ def _resolve_role_assignee(role: str) -> str:
         )
     except ValueError:
         return ""
-    return (flatten_github_role_payload(payload).get(f"GITHUB_APP_BOT_USERNAME_{suffix}") or "").strip()
+    return (
+        flatten_github_role_payload(payload, role_suffixes=role_suffixes).get(
+            f"GITHUB_APP_BOT_USERNAME_{suffix}"
+        )
+        or ""
+    ).strip()
 
 
 def _check_assignee_assignable(repo: str, token: str, assignee: str) -> tuple[bool, str]:

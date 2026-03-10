@@ -4,19 +4,74 @@ agents:
     openclaw_agent_id: product-manager
     slack_handle: ProductManager
     agent_dir: ProductManager
+    credentials:
+      github_app:
+        app_id: "${GITHUB_APP_ID_PRODUCT_MANAGER}"
+        installation_id: "${GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER}"
+        private_key: "${GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER}"
+        webhook_secret: "${GITHUB_WEBHOOK_SECRET_PRODUCT_MANAGER}"
+        bot_username: "${GITHUB_APP_BOT_USERNAME_PRODUCT_MANAGER}"
+      slack:
+        bot_token: "${SLACK_BOT_TOKEN_PRODUCT_MANAGER}"
+        assistant_token: "${SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER}"
+        signing_secret: "${SLACK_SIGNING_SECRET_PRODUCT_MANAGER}"
   support_engineer:
     framework: openhands
     slack_handle: SupportEngineer
     agent_dir: SupportEngineer
+    credentials:
+      github_app:
+        app_id: "${GITHUB_APP_ID_SUPPORT_ENGINEER}"
+        installation_id: "${GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER}"
+        private_key: "${GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER}"
+        webhook_secret: "${GITHUB_WEBHOOK_SECRET_SUPPORT_ENGINEER}"
+        bot_username: "${GITHUB_APP_BOT_USERNAME_SUPPORT_ENGINEER}"
+      slack:
+        bot_token: "${SLACK_BOT_TOKEN_SUPPORT_ENGINEER}"
+        assistant_token: "${SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER}"
+        signing_secret: "${SLACK_SIGNING_SECRET_SUPPORT_ENGINEER}"
   release_engineer:
     framework: openhands
     slack_handle: ReleaseEngineer
     agent_dir: ReleaseEngineer
+    credentials:
+      github_app:
+        app_id: "${GITHUB_APP_ID_RELEASE_ENGINEER}"
+        installation_id: "${GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER}"
+        private_key: "${GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER}"
+        webhook_secret: "${GITHUB_WEBHOOK_SECRET_RELEASE_ENGINEER}"
+        bot_username: "${GITHUB_APP_BOT_USERNAME_RELEASE_ENGINEER}"
+      slack:
+        bot_token: "${SLACK_BOT_TOKEN_RELEASE_ENGINEER}"
+        assistant_token: "${SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER}"
+        signing_secret: "${SLACK_SIGNING_SECRET_RELEASE_ENGINEER}"
   software_engineer:
     framework: openhands
     slack_handle: SoftwareEngineer
     agent_dir: SoftwareEngineer
+    credentials:
+      github_app:
+        app_id: "${GITHUB_APP_ID_SOFTWARE_ENGINEER}"
+        installation_id: "${GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER}"
+        private_key: "${GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER}"
+        webhook_secret: "${GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER}"
+        bot_username: "${GITHUB_APP_BOT_USERNAME_SOFTWARE_ENGINEER}"
+      slack:
+        bot_token: "${SLACK_BOT_TOKEN_SOFTWARE_ENGINEER}"
+        assistant_token: "${SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER}"
+        signing_secret: "${SLACK_SIGNING_SECRET_SOFTWARE_ENGINEER}"
   marketing_manager:
     framework: openhands
     slack_handle: MarketingManager
     agent_dir: MarketingManager
+    credentials:
+      github_app:
+        app_id: "${GITHUB_APP_ID_MARKETING_MANAGER}"
+        installation_id: "${GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER}"
+        private_key: "${GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER}"
+        webhook_secret: "${GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER}"
+        bot_username: "${GITHUB_APP_BOT_USERNAME_MARKETING_MANAGER}"
+      slack:
+        bot_token: "${SLACK_BOT_TOKEN_MARKETING_MANAGER}"
+        assistant_token: "${SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER}"
+        signing_secret: "${SLACK_SIGNING_SECRET_MARKETING_MANAGER}"

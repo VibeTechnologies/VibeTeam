@@ -135,6 +135,9 @@ GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER
 GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER
 ```
 
+Role-scoped key names are derived from `agents/agents.yaml` credential placeholders so the
+mapping is maintained in one place.
+
 ### Private Key Formatting
 
 For local `.env` usage with `export $( < .env )`, replace spaces with underscores:
