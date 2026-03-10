@@ -59,7 +59,8 @@
 
 - The gateway resolves which framework to use per role using `agents/agents.yaml`.
 - `agents/agents.yaml` is the single source of truth for role → framework mapping, Slack handle,
-  and agent directory references (AGENTS.md resolves from the directory).
+  agent directory references (AGENTS.md resolves from the directory), and role credential
+  placeholder references for Slack and GitHub App env keys.
 - Example:
 
 The gateway does not prefetch or inject monitoring context; it only routes messages.

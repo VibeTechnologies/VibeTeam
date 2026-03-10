@@ -8,6 +8,7 @@ resolution for services that need to respect agents/agents.yaml configuration.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -33,6 +34,21 @@ AGENTS_CONFIG_PATH = os.environ.get("AGENTS_CONFIG_PATH", "agents/agents.yaml")
 FRAMEWORK_ALIASES = {
     "autogen": "openhands",
     "crewai": "openhands",
+}
+PLACEHOLDER_PATTERN = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+
+GITHUB_PLACEHOLDER_KEYS = {
+    "app_id": "GITHUB_APP_ID",
+    "installation_id": "GITHUB_APP_INSTALLATION_ID",
+    "private_key": "GITHUB_APP_PRIVATE_KEY",
+    "webhook_secret": "GITHUB_WEBHOOK_SECRET",
+    "bot_username": "GITHUB_APP_BOT_USERNAME",
+}
+
+SLACK_PLACEHOLDER_KEYS = {
+    "bot_token": "SLACK_BOT_TOKEN",
+    "assistant_token": "SLACK_ASSISTANT_TOKEN",
+    "signing_secret": "SLACK_SIGNING_SECRET",
 }
 
 
@@ -61,6 +77,17 @@ def _get_agents_config_path() -> Path:
 
 def _get_agents_config_dir() -> Path:
     return _get_agents_config_path().parent
+
+
+def _placeholder_env_name(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    match = PLACEHOLDER_PATTERN.match(value.strip())
+    return match.group(1) if match else None
+
+
+def _default_role_suffix(role: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "_", role.strip().upper()).strip("_")
 
 
 def _load_agents_config() -> dict[str, Any]:
@@ -192,6 +219,71 @@ def list_agents() -> list[AgentEntry]:
     return entries
 
 
+def get_role_secret_placeholders(role: str | None) -> dict[str, str]:
+    """Return env-var names referenced by role credential placeholders in agents.yaml.
+
+    Placeholders are expected as strings in `${ENV_VAR_NAME}` form under:
+      agents.<role>.credentials.github_app.<field>
+      agents.<role>.credentials.slack.<field>
+
+    Missing placeholders are filled with conventional defaults derived from role name.
+    """
+    if not role:
+        return {}
+
+    agents = _get_agents_map()
+    raw = agents.get(role, {})
+    if not isinstance(raw, dict):
+        raw = {}
+
+    credentials = raw.get("credentials", {})
+    if not isinstance(credentials, dict):
+        credentials = {}
+    github = credentials.get("github_app", {})
+    slack = credentials.get("slack", {})
+    if not isinstance(github, dict):
+        github = {}
+    if not isinstance(slack, dict):
+        slack = {}
+
+    suffix = _default_role_suffix(role)
+    resolved: dict[str, str] = {}
+
+    for key, prefix in GITHUB_PLACEHOLDER_KEYS.items():
+        env_name = _placeholder_env_name(github.get(key)) or f"{prefix}_{suffix}"
+        resolved[f"github.{key}"] = env_name
+
+    for key, prefix in SLACK_PLACEHOLDER_KEYS.items():
+        env_name = _placeholder_env_name(slack.get(key)) or f"{prefix}_{suffix}"
+        resolved[f"slack.{key}"] = env_name
+
+    return resolved
+
+
+def get_role_secret_suffixes() -> dict[str, str]:
+    """Return role -> env suffix inferred from agents.yaml github app placeholders."""
+    suffixes: dict[str, str] = {}
+    for role in _get_agents_map().keys():
+        placeholders = get_role_secret_placeholders(role)
+        app_id_key = placeholders.get("github.app_id", "")
+        prefix = "GITHUB_APP_ID_"
+        if app_id_key.startswith(prefix):
+            suffix = app_id_key[len(prefix) :]
+            if suffix:
+                suffixes[role] = suffix
+                continue
+        suffixes[role] = _default_role_suffix(role)
+    return suffixes
+
+
+def list_role_secret_env_vars() -> set[str]:
+    """Return all role-scoped env var names referenced by agents.yaml placeholders."""
+    env_vars: set[str] = set()
+    for role in _get_agents_map().keys():
+        env_vars.update(get_role_secret_placeholders(role).values())
+    return env_vars
+
+
 __all__ = [
     "AgentEntry",
     "get_agent_entry",
@@ -202,4 +294,7 @@ __all__ = [
     "get_agent_dir",
     "get_prompt_path",
     "list_agents",
+    "get_role_secret_placeholders",
+    "get_role_secret_suffixes",
+    "list_role_secret_env_vars",
 ]
