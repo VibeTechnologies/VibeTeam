@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
+from collections.abc import Iterable
 from urllib.parse import quote
-from typing import Iterable
 
 import requests
 
 from vibeteam.utils.github_app import get_app_info, get_installation_token, list_installations
+from vibeteam.utils.secret_payloads import flatten_github_role_payload, parse_json_payload
 
 ROLE_SUFFIXES = {
     "software_engineer": "SOFTWARE_ENGINEER",
@@ -36,10 +36,26 @@ def _iter_roles(requested: Iterable[str] | None) -> list[str]:
 
 def _load_credentials(role: str) -> tuple[str | None, str | None, str | None]:
     suffix = ROLE_SUFFIXES[role]
-    return (
+    env_credentials = (
         os.environ.get(f"GITHUB_APP_ID_{suffix}"),
         os.environ.get(f"GITHUB_APP_PRIVATE_KEY_{suffix}"),
         os.environ.get(f"GITHUB_APP_INSTALLATION_ID_{suffix}"),
+    )
+    if all(env_credentials):
+        return env_credentials
+
+    try:
+        payload = parse_json_payload(
+            os.environ.get("GITHUB_APP_ROLE_SECRETS_JSON"),
+            source_name="GITHUB_APP_ROLE_SECRETS_JSON",
+        )
+    except ValueError:
+        payload = {}
+    json_values = flatten_github_role_payload(payload)
+    return (
+        env_credentials[0] or json_values.get(f"GITHUB_APP_ID_{suffix}"),
+        env_credentials[1] or json_values.get(f"GITHUB_APP_PRIVATE_KEY_{suffix}"),
+        env_credentials[2] or json_values.get(f"GITHUB_APP_INSTALLATION_ID_{suffix}"),
     )
 
 
@@ -57,12 +73,22 @@ def _repo_headers(token: str) -> dict[str, str]:
 
 def _resolve_role_assignee(role: str) -> str:
     suffix = ROLE_SUFFIXES[role]
-    return (
+    env_assignee = (
         os.environ.get(f"GITHUB_{suffix}_BOT_ASSIGNEE")
         or os.environ.get(f"GITHUB_APP_BOT_USERNAME_{suffix}")
         or os.environ.get(f"GITHUB_BOT_USERNAME_{suffix}")
         or ""
     ).strip()
+    if env_assignee:
+        return env_assignee
+    try:
+        payload = parse_json_payload(
+            os.environ.get("GITHUB_APP_ROLE_SECRETS_JSON"),
+            source_name="GITHUB_APP_ROLE_SECRETS_JSON",
+        )
+    except ValueError:
+        return ""
+    return (flatten_github_role_payload(payload).get(f"GITHUB_APP_BOT_USERNAME_{suffix}") or "").strip()
 
 
 def _check_assignee_assignable(repo: str, token: str, assignee: str) -> tuple[bool, str]:

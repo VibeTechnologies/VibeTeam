@@ -148,6 +148,10 @@ kubectl create secret generic vibeteam-secrets -n vibeteam \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
+For GitHub Actions-based deployment, you can store role-scoped Slack credentials as a single
+repository secret (`SLACK_ROLE_SECRETS_JSON`) instead of managing many individual secrets.
+The deploy workflows flatten that JSON into the `vibeteam-secrets` keys above at deploy time.
+
 ## 6. Invite the Bot
 
 After installing the apps, invite the ingress bot and all responder bots to channels
