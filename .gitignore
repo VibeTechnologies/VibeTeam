@@ -68,3 +68,11 @@ tmp/
 .kube/
 .deepeval/
 results/
+
+# Local automation/browser artifacts
+.codex/
+.tmp-pr*/
+chrome/
+.metrics/
+*.hocr
+tmp-*.png
