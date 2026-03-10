@@ -38,7 +38,7 @@ Use this skill only at the end of a task, after implementation is complete and b
      - different GitHub App identities participated as different agents
      - correct existing `@githubapphandle` mentions were used
      - agents communicated/handoff occurred across thread(s)
-     - if assignment is non-assignable for role bots, report `Assignment fallback mode` evidence and bot replies after trigger
+     - mention-trigger mode was used and bot replies appeared after the trigger comment
 6. Run Slack evaluation tests for agent collaboration.
    - Use `scripts/eval_slack_e2e.py` scenarios relevant to the task.
    - Verify and report:
@@ -73,7 +73,7 @@ uv run python -m pytest tests/ -v
 uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600
 
 # Example GitHub eval
-uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --actor-login OpenCodeEngineer --issue-role software_engineer --issue-assignee 'vibeteam-swe-bot-260301[bot]' --timeout 600
+uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --actor-login OpenCodeEngineer --timeout 600
 ```
 
 ## Evidence Required In Final Report

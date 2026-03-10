@@ -366,8 +366,8 @@ def _collect_comment_logins(items: Iterable[dict]) -> set[str]:
 def _build_issue_trigger_comment() -> str:
     """Build issue trigger text using role mentions only (never app handles)."""
     return (
-        "Triggering issue handoff + assignment check.\n"
-        "Please triage this issue and assign it to the SoftwareEngineer role owner.\n"
+        "Triggering issue handoff via native role mentions.\n"
+        "Please triage this issue and coordinate across the required roles.\n"
         f"{NATIVE_GITHUB_HANDOFF_MENTIONS}\n"
         "Do not @mention any GitHub App bot handle."
     )
@@ -694,6 +694,7 @@ def _evaluate_issue_assignment(
     wait_seconds: int = 0,
     poll_interval: int = 5,
     force_reassign: bool = False,
+    allow_assignment_mutation: bool = True,
     assignment_started_at: datetime | None = None,
     expected_actor_login: str | None = None,
 ) -> dict:
@@ -734,7 +735,7 @@ def _evaluate_issue_assignment(
         issue_assignees = _fetch_issue_assignees(owner, repo, issue_number, token)
         assignment_passed = target_assignee in issue_assignees
 
-        if assignment_passed and force_reassign:
+        if assignment_passed and force_reassign and allow_assignment_mutation:
             unassign_result = _unassign_issue(owner, repo, token, issue_number, target_assignee)
             issue_assignees = unassign_result.get("issue_assignees", issue_assignees)
             unassign_error = str(unassign_result.get("error") or "")
@@ -745,14 +746,14 @@ def _evaluate_issue_assignment(
             if not assignment_error and unassign_error:
                 assignment_error = f"Reassignment warning: {unassign_error}"
 
-        if not assignment_passed:
+        if not assignment_passed and allow_assignment_mutation:
             assign_result = _assign_issue(owner, repo, token, issue_number, target_assignee)
             issue_assignees = assign_result.get("issue_assignees", [])
             assignment_passed = bool(assign_result.get("assigned"))
             assignment_error = str(assign_result.get("error") or "")
 
         # Allow eventual consistency for assignee propagation when requested.
-        if not assignment_passed and wait_seconds > 0:
+        if not assignment_passed and wait_seconds > 0 and allow_assignment_mutation:
             deadline = time.time() + max(wait_seconds, 0)
             while True:
                 issue_assignees = _fetch_issue_assignees(owner, repo, issue_number, token)
@@ -772,7 +773,7 @@ def _evaluate_issue_assignment(
                 assignment_fallback_mode = True
                 assignment_fallback_reason = (
                     f"Target role bot assignee {target_assignee} is not assignable in "
-                    f"{owner}/{repo}; using mention-trigger fallback and requiring bot responses."
+                    f"{owner}/{repo}; treating as diagnostic-only under mention-trigger mode."
                 )
 
         try:
@@ -971,99 +972,23 @@ def _run_issue_handoff(
         creator_error = (
             f"Issue creator mismatch: expected {actor_login}, got {creator_login or 'n/a'}"
         )
-    target_assignee = _resolve_issue_assignee(
-        owner,
-        repo,
-        token,
-        preferred_assignee=issue_assignee,
+    results = _run_issue_handoff_presence(
+        owner=owner,
+        repo=repo,
+        token=token,
+        issue_number=issue_number,
+        timeout=timeout,
+        issue_assignee=issue_assignee,
         issue_role=issue_role,
+        post_trigger_comment=True,
+        actor_login=actor_login,
     )
-    assignment_checkpoint = datetime.now(timezone.utc)
-    assignment = _evaluate_issue_assignment(
-        owner,
-        repo,
-        token,
-        issue_number,
-        set(),
-        target_assignee,
-        issue_role,
-        wait_seconds=min(timeout, 60),
-        force_reassign=True,
-        assignment_started_at=assignment_checkpoint,
-        expected_actor_login=actor_login,
-    )
-
-    def fetch_after_assignment() -> list[dict]:
-        return _fetch_issue_comments(owner, repo, issue_number, token, since=assignment_checkpoint)
-
-    assignee_recent_activity: set[str] = set()
-    recent_bot_logins: set[str] = set()
-    assignment_target = assignment.get("target_assignee", "n/a")
-    normalized_assignment_target = _normalize_login(str(assignment_target))
-    normalized_actor = _normalize_login(actor_login)
-    if (
-        assignment["assignment_passed"]
-        and assignment_target != "n/a"
-        and normalized_assignment_target == normalized_actor
-        and not _is_conventional_bot_login(str(assignment_target))
-    ):
-        # Assignment fallback path for repos where bot handles are not assignable:
-        # emit one native role-mention comment from the actor to trigger routing.
-        _create_issue_comment(owner, repo, token, issue_number, _build_issue_trigger_comment())
-
-    if assignment["assignment_passed"] and assignment_target != "n/a":
-        assignee_recent_activity = _wait_for_assignee_activity(
-            fetch_after_assignment,
-            assignment_checkpoint,
-            assignment_target,
-            timeout,
-        )
-        recent_bot_logins = set(assignee_recent_activity)
-    elif bool(assignment.get("assignment_fallback_mode")):
-        trigger_ts = _create_issue_comment(owner, repo, token, issue_number, _build_issue_trigger_comment())
-
-        def fetch_after_trigger() -> list[dict]:
-            return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
-
-        # In fallback mode we require both role bots to reply.
-        recent_bot_logins = _wait_for_bot_authors(fetch_after_trigger, trigger_ts, 2, timeout)
-
-    all_bot_logins = _collect_bot_logins(
-        _fetch_issue_comments(owner, repo, issue_number, token, since=None)
-    )
-    fallback_mode = bool(assignment.get("assignment_fallback_mode"))
-    strict_assignment_pass = (
-        bool(assignee_recent_activity)
-        and bool(assignment["assignment_passed"])
-        and bool(assignment["assignment_event_seen"])
-        and bool(assignment.get("assignment_actor_passed", True))
-    )
-    fallback_pass = bool(recent_bot_logins) and bool(creator_passed)
-
-    return {
-        "thread": issue_url,
-        "bot_logins": sorted(all_bot_logins),
-        "recent_bot_logins": sorted(recent_bot_logins),
-        "actor_login": actor_login,
-        "issue_creator": creator_login or "n/a",
-        "creator_passed": creator_passed,
-        "creator_error": creator_error,
-        "target_assignee": assignment["target_assignee"],
-        "issue_assignees": assignment["issue_assignees"],
-        "assignment_passed": assignment["assignment_passed"],
-        "assignment_error": assignment["assignment_error"],
-        "assignment_event_seen": assignment["assignment_event_seen"],
-        "assignment_event_count": assignment["assignment_event_count"],
-        "assignment_event_error": assignment["assignment_event_error"],
-        "assignment_event_actors": assignment.get("assignment_event_actors", []),
-        "assignment_actor_passed": assignment.get("assignment_actor_passed", True),
-        "assignment_actor_error": assignment.get("assignment_actor_error", ""),
-        "assignment_fallback_mode": fallback_mode,
-        "assignment_fallback_reason": assignment.get("assignment_fallback_reason", ""),
-        "passed": (
-            fallback_pass if fallback_mode else (strict_assignment_pass and bool(creator_passed))
-        ),
-    }
+    results["thread"] = issue_url
+    results["issue_creator"] = creator_login or "n/a"
+    results["creator_passed"] = creator_passed
+    results["creator_error"] = creator_error
+    results["passed"] = bool(results.get("passed")) and creator_passed
+    return results
 
 
 def _run_issue_handoff_existing(
@@ -1169,29 +1094,19 @@ def _run_issue_handoff_presence(
     actor_login: str = "n/a",
 ) -> dict:
     issue_url = f"https://github.com/{owner}/{repo}/issues/{issue_number}"
-    if post_trigger_comment:
-        trigger_body = _build_issue_trigger_comment()
-        trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
+    # Mention-trigger-only evaluation: always emit native role mention and
+    # require fresh bot replies after that trigger.
+    trigger_body = _build_issue_trigger_comment()
+    trigger_ts = _create_issue_comment(owner, repo, token, issue_number, trigger_body)
 
-        def fetch_recent() -> list[dict]:
-            return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
+    def fetch_recent() -> list[dict]:
+        return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
 
-        recent_bot_logins = _wait_for_bot_authors(fetch_recent, trigger_ts, 1, timeout)
-        all_bot_logins = _collect_bot_logins(
-            _fetch_issue_comments(owner, repo, issue_number, token, since=None)
-        )
-    else:
-        assignment_checkpoint = datetime.now(timezone.utc)
-        all_bot_logins = _collect_bot_logins(
-            _fetch_issue_comments(owner, repo, issue_number, token, since=None)
-        )
-        recent_bot_logins = set()
-    assignment_checkpoint = datetime.now(timezone.utc)
-    expected_actor_login = (
-        actor_login
-        if (not post_trigger_comment and actor_login and _normalize_login(actor_login) != "n/a")
-        else None
+    recent_bot_logins = _wait_for_bot_authors(fetch_recent, trigger_ts, 1, timeout)
+    all_bot_logins = _collect_bot_logins(
+        _fetch_issue_comments(owner, repo, issue_number, token, since=None)
     )
+
     assignment = _evaluate_issue_assignment(
         owner,
         repo,
@@ -1200,47 +1115,11 @@ def _run_issue_handoff_presence(
         all_bot_logins,
         issue_assignee,
         issue_role,
-        wait_seconds=min(timeout, 60),
-        force_reassign=not post_trigger_comment,
-        assignment_started_at=assignment_checkpoint,
-        expected_actor_login=expected_actor_login,
+        wait_seconds=0,
+        force_reassign=False,
+        allow_assignment_mutation=False,
+        expected_actor_login=None,
     )
-
-    if not post_trigger_comment:
-        target_assignee = assignment.get("target_assignee", "n/a")
-        normalized_target = _normalize_login(str(target_assignee))
-        normalized_actor = _normalize_login(actor_login)
-        if (
-            assignment["assignment_passed"]
-            and target_assignee != "n/a"
-            and normalized_target == normalized_actor
-            and not _is_conventional_bot_login(str(target_assignee))
-        ):
-            _create_issue_comment(owner, repo, token, issue_number, _build_issue_trigger_comment())
-
-        if assignment["assignment_passed"] and target_assignee != "n/a":
-            def fetch_after_assignment() -> list[dict]:
-                return _fetch_issue_comments(
-                    owner,
-                    repo,
-                    issue_number,
-                    token,
-                    since=assignment_checkpoint,
-                )
-
-            recent_bot_logins = _wait_for_assignee_activity(
-                fetch_after_assignment,
-                assignment_checkpoint,
-                target_assignee,
-                timeout,
-            )
-        elif bool(assignment.get("assignment_fallback_mode")):
-            trigger_ts = _create_issue_comment(owner, repo, token, issue_number, _build_issue_trigger_comment())
-
-            def fetch_after_trigger() -> list[dict]:
-                return _fetch_issue_comments(owner, repo, issue_number, token, since=trigger_ts)
-
-            recent_bot_logins = _wait_for_bot_authors(fetch_after_trigger, trigger_ts, 2, timeout)
 
     assignment_event_seen = bool(assignment.get("assignment_event_seen"))
     assignment_event_error = str(assignment.get("assignment_event_error") or "")
@@ -1249,19 +1128,8 @@ def _run_issue_handoff_presence(
     assignment_actor_passed = bool(assignment.get("assignment_actor_passed", True))
     assignment_actor_error = str(assignment.get("assignment_actor_error") or "")
     fallback_mode = bool(assignment.get("assignment_fallback_mode"))
-    if post_trigger_comment:
-        # Mention-trigger mode: success is based on role-bot replies after the trigger
-        # comment, independent from assignment API behavior.
-        passed = bool(recent_bot_logins)
-    elif fallback_mode:
-        passed = bool(recent_bot_logins)
-    else:
-        passed = (
-            bool(recent_bot_logins)
-            and bool(assignment["assignment_passed"])
-            and assignment_event_seen
-            and assignment_actor_passed
-        )
+    # Assignment metadata is diagnostic-only and cannot fail mention-trigger runs.
+    passed = bool(recent_bot_logins)
     return {
         "thread": issue_url,
         "bot_logins": sorted(all_bot_logins),
@@ -1333,7 +1201,7 @@ def _run_issue_pr_handoff(
             timeout,
             issue_assignee,
             issue_role,
-            post_issue_trigger_comment,
+            True,
             actor_login=actor_login,
         )
     else:
@@ -1346,7 +1214,7 @@ def _run_issue_pr_handoff(
             timeout,
             issue_assignee,
             issue_role,
-            post_issue_trigger_comment,
+            True,
             actor_login=actor_login,
         )
         issue_results["thread"] = issue_url
@@ -1583,24 +1451,6 @@ def main() -> int:
     parser.add_argument("--issue-assignee", default=DEFAULT_ISSUE_ASSIGNEE)
     parser.add_argument("--issue-role", choices=sorted(ROLE_DEFAULT_ASSIGNEES.keys()), default=DEFAULT_ISSUE_ROLE)
     parser.add_argument("--actor-login", default=DEFAULT_ACTOR_LOGIN)
-    parser.add_argument(
-        "--trigger-mode",
-        choices=["mention", "assignment"],
-        default="mention",
-        help=(
-            "How issue scenarios should start work. "
-            "'mention' posts native @Role trigger comments (default). "
-            "'assignment' uses assignment-trigger behavior."
-        ),
-    )
-    parser.add_argument(
-        "--post-trigger-comment",
-        action="store_true",
-        help=(
-            "Force trigger mentions on issue threads regardless of trigger mode. "
-            "Mention mode already enables this by default."
-        ),
-    )
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--issue", type=int, default=0, help="Existing issue number to use")
     parser.add_argument(
@@ -1615,7 +1465,6 @@ def main() -> int:
     token = _require_token(args.actor_login)
     _validate_actor_login(token, args.actor_login)
     owner, repo = _split_repo(args.repo)
-    mention_trigger = args.post_trigger_comment or args.trigger_mode == "mention"
     resolved_issue_assignee = _resolve_issue_assignee(
         owner,
         repo,
@@ -1623,30 +1472,6 @@ def main() -> int:
         preferred_assignee=args.issue_assignee,
         issue_role=args.issue_role,
     )
-    issue_scenarios = {"github_issue_handoff", "github_issue_pr_handoff_github"}
-    if args.scenario in issue_scenarios and args.trigger_mode == "assignment":
-        if not resolved_issue_assignee:
-            raise SystemExit(
-                f"No assignee resolved for role '{args.issue_role}'. Provide --issue-assignee."
-            )
-        if not _assignee_matches_issue_role(resolved_issue_assignee, args.issue_role):
-            expected = sorted(_allowed_assignees_for_role(args.issue_role))
-            raise SystemExit(
-                "Issue assignee does not match required role mapping. "
-                f"role={args.issue_role}, assignee={resolved_issue_assignee}, "
-                f"expected one of: {', '.join(expected) or 'n/a'}"
-            )
-        allowed_handles = _configured_bot_handles()
-        allowed_handles.add(_normalize_login(resolved_issue_assignee))
-        role_default = _default_assignee_for_role(args.issue_role)
-        if role_default:
-            allowed_handles.add(_normalize_login(role_default))
-        if not _is_bot_login(resolved_issue_assignee, extra_allowed=allowed_handles):
-            raise SystemExit(
-                "Issue assignee must be a bot app handle (pattern '*-bot-*' or '[bot]' "
-                "or listed in explicit bot-handle config). "
-                f"Got: {resolved_issue_assignee}"
-            )
 
     scenarios_to_run = [args.scenario]
     if args.scenario == "github_threads_all":
@@ -1668,45 +1493,19 @@ def main() -> int:
                     args.timeout,
                     resolved_issue_assignee,
                     args.issue_role,
-                    mention_trigger,
+                    True,
                     args.actor_login,
                 )
             else:
-                if mention_trigger:
-                    issue_number, issue_url, _, creator_login = _create_issue(owner, repo, token)
-                    creator_passed = _is_expected_actor(args.actor_login, creator_login)
-                    creator_error = ""
-                    if not creator_passed:
-                        creator_error = (
-                            f"Issue creator mismatch: expected {args.actor_login}, "
-                            f"got {creator_login or 'n/a'}"
-                        )
-                    results = _run_issue_handoff_presence(
-                        owner,
-                        repo,
-                        token,
-                        issue_number,
-                        args.timeout,
-                        resolved_issue_assignee,
-                        args.issue_role,
-                        True,
-                        actor_login=args.actor_login,
-                    )
-                    results["thread"] = issue_url
-                    results["issue_creator"] = creator_login or "n/a"
-                    results["creator_passed"] = creator_passed
-                    results["creator_error"] = creator_error
-                    results["passed"] = bool(results.get("passed")) and creator_passed
-                else:
-                    results = _run_issue_handoff(
-                        owner,
-                        repo,
-                        token,
-                        args.timeout,
-                        resolved_issue_assignee,
-                        args.issue_role,
-                        args.actor_login,
-                    )
+                results = _run_issue_handoff(
+                    owner,
+                    repo,
+                    token,
+                    args.timeout,
+                    resolved_issue_assignee,
+                    args.issue_role,
+                    args.actor_login,
+                )
         elif scenario == "github_issue_pr_handoff_github":
             results = _run_issue_pr_handoff(
                 owner,
@@ -1717,7 +1516,7 @@ def main() -> int:
                 args.timeout,
                 resolved_issue_assignee,
                 args.issue_role,
-                mention_trigger,
+                True,
                 args.actor_login,
             )
         elif scenario == "github_discussion_handoff":

@@ -63,7 +63,7 @@ uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel 
 uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600
 
 # GitHub webhook eval examples
-uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --issue 3 --pr 1 --trigger-mode mention --timeout 600
+uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --issue 3 --pr 1 --timeout 600
 uv run python scripts/eval_github_e2e.py --scenario github_threads_all --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --timeout 600
 
 # GitHub App permission preflight (recommended)
@@ -198,7 +198,6 @@ uv run python scripts/eval_github_e2e.py \
   --repo VibeTechnologies/vibeteam-eval-hello-world \
   --issue <EXISTING_ISSUE_NUMBER> \
   --actor-login 'OpenCodeEngineer' \
-  --trigger-mode mention \
   --timeout 600
 ```
 
@@ -211,7 +210,6 @@ Notes:
 - `--actor-login` is the account creating trigger comments during eval (for this repo: `OpenCodeEngineer`).
 - Assignment fields in reports are diagnostic only in mention-trigger mode.
 - `Issue assigned`/assignment-event lines in reports are explicitly labeled diagnostic; they are non-blocking.
-- `--trigger-mode assignment` remains available when you explicitly need assignment-path diagnostics.
 - See `docs/github.md` for the true-fix checklist.
 
 ## Scoring Rubric

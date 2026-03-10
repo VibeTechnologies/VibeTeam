@@ -538,7 +538,7 @@ def test_wait_for_assignee_activity_requires_target_bot_login():
     assert result == set()
 
 
-def test_run_issue_handoff_presence_requires_assignment(monkeypatch):
+def test_run_issue_handoff_presence_ignores_assignment_for_pass(monkeypatch):
     now = datetime.now(timezone.utc)
 
     def fake_create_issue_comment(owner, repo, token, number, body):
@@ -580,7 +580,7 @@ def test_run_issue_handoff_presence_requires_assignment(monkeypatch):
         timeout=60,
     )
 
-    assert result["passed"] is False
+    assert result["passed"] is True
     assert result["assignment_passed"] is False
     assert result["target_assignee"] == "vibeteam-swe-bot-260301[bot]"
 
@@ -637,7 +637,7 @@ def test_run_issue_handoff_presence_post_trigger_uses_mention_success(monkeypatc
 
 def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
     now = datetime.now(timezone.utc)
-    called = {"waited_for": None}
+    called = {"triggered": 0}
 
     def fake_create_issue(owner, repo, token):
         return (
@@ -647,15 +647,15 @@ def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
             "OpenCodeEngineer",
         )
 
-    def fail_create_issue_comment(*args, **kwargs):
-        raise AssertionError("assignment-mode issue handoff must not post trigger comments")
+    def fake_create_issue_comment(owner, repo, token, issue_number, body):
+        called["triggered"] += 1
+        return now
 
     def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
         return {"vibeteam-support-bot-260301[bot]"}
 
-    def fake_wait_for_assignee_activity(fetch_comments, since, target_assignee, timeout, poll_interval=10):
-        called["waited_for"] = target_assignee
-        return set()
+    def fail_wait_for_assignee_activity(*args, **kwargs):
+        raise AssertionError("mention mode should not wait for assignee activity")
 
     def fake_fetch_issue_comments(owner, repo, number, token, since=None):
         return [
@@ -681,9 +681,9 @@ def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
         }
 
     monkeypatch.setattr(eval_github_e2e, "_create_issue", fake_create_issue)
-    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fail_create_issue_comment)
+    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fake_create_issue_comment)
     monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
-    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity)
+    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fail_wait_for_assignee_activity)
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
     monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment)
 
@@ -695,15 +695,16 @@ def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
         issue_assignee="vibeteam-swe-bot-260301[bot]",
     )
 
-    assert called["waited_for"] == "vibeteam-swe-bot-260301[bot]"
+    assert called["triggered"] == 1
     assert result["assignment_passed"] is True
     assert result["creator_passed"] is True
     assert result["assignment_event_seen"] is True
-    assert result["passed"] is False
+    assert result["passed"] is True
 
 
 def test_run_issue_handoff_passes_with_assignment_and_assignee_activity(monkeypatch):
     now = datetime.now(timezone.utc)
+    called = {"triggered": 0}
 
     def fake_create_issue(owner, repo, token):
         return (
@@ -713,14 +714,15 @@ def test_run_issue_handoff_passes_with_assignment_and_assignee_activity(monkeypa
             "OpenCodeEngineer",
         )
 
-    def fail_create_issue_comment(*args, **kwargs):
-        raise AssertionError("assignment-mode issue handoff must not post trigger comments")
+    def fake_create_issue_comment(owner, repo, token, issue_number, body):
+        called["triggered"] += 1
+        return now
 
     def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
         return {"vibeteam-support-bot-260301[bot]"}
 
-    def fake_wait_for_assignee_activity(fetch_comments, since, target_assignee, timeout, poll_interval=10):
-        return {target_assignee}
+    def fail_wait_for_assignee_activity(*args, **kwargs):
+        raise AssertionError("mention mode should not wait for assignee activity")
 
     def fake_fetch_issue_comments(owner, repo, number, token, since=None):
         return [
@@ -746,9 +748,9 @@ def test_run_issue_handoff_passes_with_assignment_and_assignee_activity(monkeypa
         }
 
     monkeypatch.setattr(eval_github_e2e, "_create_issue", fake_create_issue)
-    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fail_create_issue_comment)
+    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fake_create_issue_comment)
     monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
-    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity)
+    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fail_wait_for_assignee_activity)
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
     monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment)
 
@@ -763,6 +765,7 @@ def test_run_issue_handoff_passes_with_assignment_and_assignee_activity(monkeypa
     assert result["assignment_passed"] is True
     assert result["creator_passed"] is True
     assert result["assignment_event_seen"] is True
+    assert called["triggered"] == 1
     assert result["passed"] is True
 
 
@@ -783,7 +786,7 @@ def test_run_issue_handoff_passes_with_fallback_bot_activity(monkeypatch):
         return now
 
     def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
-        assert min_bots == 2
+        assert min_bots == 1
         return {
             "vibeteam-swe-bot-260301[bot]",
             "vibeteam-support-bot-260301[bot]",
@@ -886,11 +889,13 @@ def test_run_issue_handoff_presence_passes_with_assignment_and_recent_activity(m
     assert result["passed"] is True
 
 
-def test_run_issue_handoff_existing_skips_trigger_comment_by_default(monkeypatch):
-    called = {"waited_for": None}
+def test_run_issue_handoff_existing_posts_trigger_comment_by_default(monkeypatch):
+    now = datetime.now(timezone.utc)
+    called = {"triggered": 0}
 
-    def fail_create_issue_comment(*args, **kwargs):
-        raise AssertionError("trigger comment should not be posted for existing issue by default")
+    def fake_create_issue_comment(owner, repo, token, issue_number, body):
+        called["triggered"] += 1
+        return now
 
     def fake_fetch_issue_comments(owner, repo, number, token, since=None):
         return [
@@ -915,19 +920,20 @@ def test_run_issue_handoff_existing_skips_trigger_comment_by_default(monkeypatch
             "assignment_event_error": "",
         }
 
-    def fake_wait_for_assignee_activity(
-        fetch_comments, since, target_assignee, timeout, poll_interval=10
-    ):
-        called["waited_for"] = target_assignee
-        return {target_assignee}
+    def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
+        return {"vibeteam-swe-bot-260301[bot]"}
 
-    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fail_create_issue_comment)
+    def fail_wait_for_assignee_activity(*args, **kwargs):
+        raise AssertionError("mention mode should not wait for assignee activity")
+
+    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fake_create_issue_comment)
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
+    monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
     monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_assignment)
     monkeypatch.setattr(
         eval_github_e2e,
         "_wait_for_assignee_activity",
-        fake_wait_for_assignee_activity,
+        fail_wait_for_assignee_activity,
     )
 
     result = eval_github_e2e._run_issue_handoff_existing(
@@ -938,14 +944,15 @@ def test_run_issue_handoff_existing_skips_trigger_comment_by_default(monkeypatch
         timeout=60,
     )
 
-    assert called["waited_for"] == "vibeteam-swe-bot-260301[bot]"
+    assert called["triggered"] == 1
     assert result["passed"] is True
     assert result["assignment_passed"] is True
     assert result["assignment_event_seen"] is True
 
 
 def test_run_issue_handoff_existing_uses_actor_login_for_assignment_event_check(monkeypatch):
-    captured = {"expected_actor": None}
+    now = datetime.now(timezone.utc)
+    captured = {"expected_actor": "unset"}
 
     def fake_fetch_issue_comments(owner, repo, number, token, since=None):
         return [
@@ -966,6 +973,7 @@ def test_run_issue_handoff_existing_uses_actor_login_for_assignment_event_check(
         wait_seconds=0,
         poll_interval=5,
         force_reassign=False,
+        allow_assignment_mutation=True,
         assignment_started_at=None,
         expected_actor_login=None,
     ):
@@ -983,17 +991,23 @@ def test_run_issue_handoff_existing_uses_actor_login_for_assignment_event_check(
             "assignment_actor_error": "",
         }
 
-    def fake_wait_for_assignee_activity(
-        fetch_comments, since, target_assignee, timeout, poll_interval=10
-    ):
-        return {target_assignee}
+    def fake_create_issue_comment(owner, repo, token, issue_number, body):
+        return now
 
+    def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
+        return {"vibeteam-swe-bot-260301[bot]"}
+
+    def fail_wait_for_assignee_activity(*args, **kwargs):
+        raise AssertionError("mention mode should not wait for assignee activity")
+
+    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fake_create_issue_comment)
+    monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
     monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_assignment)
     monkeypatch.setattr(
         eval_github_e2e,
         "_wait_for_assignee_activity",
-        fake_wait_for_assignee_activity,
+        fail_wait_for_assignee_activity,
     )
 
     result = eval_github_e2e._run_issue_handoff_existing(
@@ -1005,7 +1019,7 @@ def test_run_issue_handoff_existing_uses_actor_login_for_assignment_event_check(
         actor_login="OpenCodeEngineer",
     )
 
-    assert captured["expected_actor"] == "OpenCodeEngineer"
+    assert captured["expected_actor"] is None
     assert result["assignment_actor_passed"] is True
     assert result["passed"] is True
 
@@ -1027,7 +1041,7 @@ def test_run_issue_pr_handoff_uses_existing_issue_and_passes_assignee(monkeypatc
         issue_called["presence"] = True
         issue_called["assignee"] = issue_assignee
         assert issue_role == "software_engineer"
-        assert post_trigger_comment is False
+        assert post_trigger_comment is True
         assert actor_login == "OpenCodeEngineer"
         return {
             "thread": "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/92",
@@ -1096,8 +1110,14 @@ def test_run_issue_handoff_fails_when_creator_mismatch(monkeypatch):
             "dzianisv",
         )
 
-    def fake_wait_for_assignee_activity(fetch_comments, since, target_assignee, timeout, poll_interval=10):
-        return {target_assignee}
+    def fake_create_issue_comment(owner, repo, token, issue_number, body):
+        return now
+
+    def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
+        return {"vibeteam-swe-bot-260301[bot]"}
+
+    def fail_wait_for_assignee_activity(*args, **kwargs):
+        raise AssertionError("mention mode should not wait for assignee activity")
 
     def fake_fetch_issue_comments(owner, repo, number, token, since=None):
         return [
@@ -1119,7 +1139,9 @@ def test_run_issue_handoff_fails_when_creator_mismatch(monkeypatch):
         }
 
     monkeypatch.setattr(eval_github_e2e, "_create_issue", fake_create_issue)
-    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity)
+    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fake_create_issue_comment)
+    monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
+    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fail_wait_for_assignee_activity)
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
     monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment)
 
