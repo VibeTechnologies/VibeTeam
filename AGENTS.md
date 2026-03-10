@@ -1,5 +1,31 @@
 You are working on AI agentic team. Agent are implemented on OpenHands that runs as a service that host all the agents sessions. Gateways is used for integration with Slack. DeepEval is used to evaluate agent sessions. Use
 
+## Documentation and Design Decisions (Mandatory)
+
+Before changing code, read and reference documentation.
+
+Always read:
+- `docs/testing.md` - canonical testing/eval requirements, scenarios, expected outcomes, scoring.
+- `docs/design.md` - architecture and routing design decisions.
+- `docs/requirements.md` - product/system requirements and constraints.
+
+Read area-specific docs when touching that area:
+- Slack/gateway routing: `docs/slack.md`, `docs/webhook-routing.md`
+- GitHub/webhooks/app flows: `docs/github.md`, `docs/webhook-routing.md`
+- OpenClaw/browser flows: `docs/openclaw-introduction.md`, `docs/OpenClawEval.md`
+- Product/user behavior: `docs/product.md`, `docs/user.md`
+- Architecture visuals: `docs/system-diagram.mmd` and `docs/system-diagram.png`
+
+In every implementation/eval update, include:
+1. **Docs referenced** (explicit file paths).
+2. **Design decisions applied** (what decision, why, impact).
+
+Do not invent behavior that conflicts with the docs above. If docs conflict, follow this precedence:
+1. `docs/requirements.md`
+2. `docs/design.md`
+3. `docs/testing.md`
+4. area-specific docs
+
 ## Testing Expectations
 
 Run unit tests and at least one Slack eval when changes affect agent behavior, routing, tools, or evaluation criteria.
@@ -70,6 +96,28 @@ Report action taken
 ```
 
 ## Analyzing Evaluation Tests
+
+### Evaluation Docs (Read First)
+
+- `docs/testing.md` - canonical testing and evaluation guide (unit/integration/E2E evals, scenarios, expected outcomes, scoring, troubleshooting).
+- `docs/design.md` - canonical architecture/routing design decisions.
+- `docs/requirements.md` - canonical requirements and constraints.
+
+### Mandatory Eval Reporting Links
+
+When running evals or reporting eval results, always include the conversation URLs:
+- Slack evals: include the Slack thread URL (`https://slack.com/app_redirect?...`).
+- GitHub evals: include the GitHub issue/discussion/PR URL(s) used by the eval.
+- Cross-channel evals: include both Slack and GitHub URLs in the same report/update.
+
+Do not report eval status without links.
+
+### GitHub Mention Trigger Rule (Hard Requirement)
+
+- For GitHub handoff evals, use native role mentions as the trigger (`@SoftwareEngineer`, `@SupportEngineer`, etc.).
+- Success criteria are based on real role-bot activity in the same issue/PR/discussion thread after the mention.
+- Assignment checks are optional diagnostics and are not a hard completion gate.
+- The actor creating trigger comments may be `OpenCodeEngineer`.
 
 ### Running Evaluations
 
