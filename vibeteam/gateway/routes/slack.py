@@ -399,6 +399,49 @@ def _collect_slack_bot_tokens() -> list[str]:
     return ordered
 
 
+async def _role_bot_user_ids() -> dict[str, str]:
+    """Map Slack user IDs to roles for role-scoped bot tokens.
+
+    Uses only role-scoped bot tokens to avoid conflating ingress token identity
+    with role bot identities when global fallback is configured.
+    """
+    user_id_to_role: dict[str, str] = {}
+    for role in sorted(set(ROLE_MENTION_MAP.values())):
+        token = _get_role_scoped_env("SLACK_BOT_TOKEN", role)
+        if not token:
+            continue
+        user_id = await get_bot_user_id(token=token)
+        if user_id:
+            user_id_to_role[user_id] = role
+    return user_id_to_role
+
+
+async def _extract_roles_from_slack_user_mentions(text: str) -> list[str]:
+    """Extract roles referenced via Slack user mention syntax (<@U...>)."""
+    if not text:
+        return []
+
+    user_mentions = re.findall(r"<@([A-Z0-9]+)>", text)
+    if not user_mentions:
+        return []
+
+    user_id_to_role = await _role_bot_user_ids()
+    roles: list[str] = []
+    for user_id in user_mentions:
+        role = user_id_to_role.get(user_id)
+        if role and role not in roles:
+            roles.append(role)
+    return roles
+
+
+async def _mentions_ingress_bot(text: str) -> bool:
+    """Return True when message explicitly mentions ingress bot (<@U...>)."""
+    ingress_user_id = await get_bot_user_id()
+    if not ingress_user_id:
+        return False
+    return f"<@{ingress_user_id}>" in (text or "")
+
+
 async def send_slack_message(
     channel: str,
     text: str,
@@ -1957,6 +2000,48 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
 
             return {"status": "accepted", "event": "message.im"}
+
+        # Handle direct role mentions in channel messages even without ingress
+        # app mention (e.g., "<@U_SUPPORT_BOT> please investigate").
+        if event_type == "message" and not is_bot_message and event.get("channel_type") != "im":
+            user_id = event.get("user", "")
+            channel = event.get("channel", "")
+            text = event.get("text", "")
+            message_ts = event.get("ts", "")
+            thread_ts = event.get("thread_ts") or message_ts
+
+            message_router = get_message_router()
+            parsed_role_mentions = message_router.parse_role_mentions(text)
+            user_mention_roles = await _extract_roles_from_slack_user_mentions(text)
+            explicit_roles: list[str] = []
+            for role in [*parsed_role_mentions, *user_mention_roles]:
+                if role not in explicit_roles:
+                    explicit_roles.append(role)
+
+            # If ingress app is explicitly mentioned, app_mention flow already handles
+            # the message and this branch would duplicate processing.
+            ingress_mentioned = await _mentions_ingress_bot(text)
+
+            if explicit_roles and not ingress_mentioned:
+                if message_ts:
+                    await add_reaction(channel, message_ts, "thinking_face")
+
+                routed_text = text
+                for role in explicit_roles:
+                    display_name = get_slack_handle(role) or get_display_name(cast(AgentRole, role))
+                    token = f"@{display_name}"
+                    if token.lower() not in routed_text.lower():
+                        routed_text = f"{token} {routed_text}".strip()
+
+                await run_agent_for_slack(
+                    routed_text,
+                    channel,
+                    thread_ts,
+                    user_id,
+                    message_ts=message_ts,
+                )
+
+                return {"status": "accepted", "event": "message.channel_role_mention"}
 
         # Handle thread replies in threads where the bot has participated.
         # When VibeTeam participates in a thread (via app_mention or trigger),
