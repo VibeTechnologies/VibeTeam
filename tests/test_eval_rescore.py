@@ -411,6 +411,10 @@ class TestHandoffTimeoutExtension:
         with (
             patch("scripts.eval_slack_e2e.SlackConnector", return_value=mock_slack),
             patch("scripts.eval_slack_e2e.httpx.AsyncClient") as mock_httpx_cls,
+            patch(
+                "scripts.eval_slack_e2e._build_service_account_eval_kubeconfig",
+                return_value=None,
+            ),
             patch("scripts.eval_slack_e2e.asyncio.sleep", new_callable=AsyncMock),
         ):
             # Set up httpx mock to return 200
