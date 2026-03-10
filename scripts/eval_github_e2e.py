@@ -1590,7 +1590,7 @@ def main() -> int:
         help=(
             "How issue scenarios should start work. "
             "'mention' posts native @Role trigger comments (default). "
-            "'assignment' requires assignment-first behavior."
+            "'assignment' uses assignment-trigger behavior."
         ),
     )
     parser.add_argument(

@@ -648,7 +648,7 @@ def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
         )
 
     def fail_create_issue_comment(*args, **kwargs):
-        raise AssertionError("assignment-first issue handoff must not post trigger comments")
+        raise AssertionError("assignment-mode issue handoff must not post trigger comments")
 
     def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
         return {"vibeteam-support-bot-260301[bot]"}
@@ -714,7 +714,7 @@ def test_run_issue_handoff_passes_with_assignment_and_assignee_activity(monkeypa
         )
 
     def fail_create_issue_comment(*args, **kwargs):
-        raise AssertionError("assignment-first issue handoff must not post trigger comments")
+        raise AssertionError("assignment-mode issue handoff must not post trigger comments")
 
     def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
         return {"vibeteam-support-bot-260301[bot]"}
