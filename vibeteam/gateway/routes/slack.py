@@ -2672,6 +2672,10 @@ async def trigger_agent_for_slack(
             detail="text must contain @RoleName mention (e.g., @SupportEngineer)",
         )
 
+    routed_text = _inject_thread_kubeconfig_context(text, channel, thread_ts)
+    if not routed_text:
+        raise HTTPException(status_code=400, detail="text is required")
+
     mode = "async" if use_async else "sync"
     logger.info(f"Trigger API: routing to {role_mentions} in {channel} (mode={mode})")
 
@@ -2680,7 +2684,7 @@ async def trigger_agent_for_slack(
     # use_async=False (default) uses the synchronous path
     asyncio.create_task(
         run_agent_for_slack(
-            text,
+            routed_text,
             channel,
             thread_ts,
             user_id,
