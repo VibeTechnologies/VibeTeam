@@ -585,6 +585,56 @@ def test_run_issue_handoff_presence_requires_assignment(monkeypatch):
     assert result["target_assignee"] == "vibeteam-swe-bot-260301[bot]"
 
 
+def test_run_issue_handoff_presence_post_trigger_uses_mention_success(monkeypatch):
+    now = datetime.now(timezone.utc)
+
+    def fake_create_issue_comment(owner, repo, token, number, body):
+        return now
+
+    def fake_fetch_issue_comments(owner, repo, number, token, since=None):
+        return [
+            {
+                "created_at": now.isoformat().replace("+00:00", "Z"),
+                "user": {"login": "vibeteam-support-bot-260301[bot]", "type": "Bot"},
+            }
+        ]
+
+    def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
+        return {"vibeteam-support-bot-260301[bot]"}
+
+    def fake_assignment(*args, **kwargs):
+        return {
+            "target_assignee": "vibeteam-swe-bot-260301[bot]",
+            "issue_assignees": [],
+            "assignment_passed": False,
+            "assignment_error": "assignment failed",
+            "assignment_event_seen": False,
+            "assignment_event_count": 0,
+            "assignment_event_error": "",
+            "assignment_actor_passed": False,
+            "assignment_actor_error": "mismatch",
+            "assignment_fallback_mode": False,
+            "assignment_fallback_reason": "",
+        }
+
+    monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fake_create_issue_comment)
+    monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
+    monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
+    monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_assignment)
+
+    result = eval_github_e2e._run_issue_handoff_presence(
+        owner="VibeTechnologies",
+        repo="vibeteam-eval-hello-world",
+        token="token",
+        issue_number=92,
+        timeout=60,
+        post_trigger_comment=True,
+    )
+
+    assert result["assignment_passed"] is False
+    assert result["passed"] is True
+
+
 def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
     now = datetime.now(timezone.utc)
     called = {"waited_for": None}
@@ -1160,6 +1210,81 @@ def test_run_issue_pr_handoff_new_issue_enforces_creator(monkeypatch):
     assert result["passed"] is True
 
 
+def test_run_issue_pr_handoff_new_issue_honors_post_trigger_comment(monkeypatch):
+    now = datetime.now(timezone.utc)
+    seen = {"post_trigger_comment": None}
+
+    def fake_create_issue(owner, repo, token):
+        return (
+            113,
+            "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/113",
+            now,
+            "OpenCodeEngineer",
+        )
+
+    def fake_issue_presence(
+        owner,
+        repo,
+        token,
+        issue_number,
+        timeout,
+        issue_assignee,
+        issue_role,
+        post_trigger_comment,
+        actor_login="n/a",
+    ):
+        seen["post_trigger_comment"] = post_trigger_comment
+        return {
+            "thread": "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/113",
+            "bot_logins": ["vibeteam-swe-bot-260301[bot]"],
+            "recent_bot_logins": ["vibeteam-swe-bot-260301[bot]"],
+            "target_assignee": issue_assignee,
+            "issue_assignees": [issue_assignee],
+            "assignment_passed": False,
+            "assignment_error": "assignment failed",
+            "assignment_event_seen": False,
+            "assignment_event_count": 0,
+            "assignment_event_error": "",
+            "assignment_actor_passed": False,
+            "assignment_actor_error": "",
+            "assignment_fallback_mode": True,
+            "assignment_fallback_reason": "not assignable",
+            "actor_login": actor_login,
+            "issue_creator": "n/a",
+            "creator_passed": True,
+            "creator_error": "",
+            "passed": True,
+        }
+
+    def fake_pr_presence(owner, repo, token, pr_number, timeout):
+        return {
+            "thread": "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/pull/1",
+            "bot_logins": ["vibeteam-support-bot-260301[bot]"],
+            "recent_bot_logins": ["vibeteam-support-bot-260301[bot]"],
+            "passed": True,
+        }
+
+    monkeypatch.setattr(eval_github_e2e, "_create_issue", fake_create_issue)
+    monkeypatch.setattr(eval_github_e2e, "_run_issue_handoff_presence", fake_issue_presence)
+    monkeypatch.setattr(eval_github_e2e, "_run_pr_handoff_presence", fake_pr_presence)
+
+    result = eval_github_e2e._run_issue_pr_handoff(
+        "VibeTechnologies",
+        "vibeteam-eval-hello-world",
+        "token",
+        0,
+        1,
+        60,
+        "vibeteam-swe-bot-260301[bot]",
+        "software_engineer",
+        True,
+        "OpenCodeEngineer",
+    )
+
+    assert seen["post_trigger_comment"] is True
+    assert result["passed"] is True
+
+
 def test_write_report_with_thread_details_and_assignment(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     issue_url = "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/92"
@@ -1210,12 +1335,12 @@ def test_write_report_with_thread_details_and_assignment(tmp_path, monkeypatch):
     assert f"- Thread: {issue_url}" in report
     assert f"- Thread: {pr_url}" in report
     assert "- Recent bot authors after assignment/trigger: bot-a" in report
-    assert "- Issue assigned: ✅" in report
+    assert "- Issue assigned (diagnostic): ✅" in report
     assert f"- Target assignee: {assignee}" in report
-    assert "- Assignment event observed: ✅" in report
+    assert "- Assignment event observed (diagnostic): ✅" in report
     assert "- Assignment event count: 1" in report
     assert "- Assignment event actors: OpenCodeEngineer" in report
-    assert "- Assignment actor check: ✅" in report
+    assert "- Assignment actor check (diagnostic): ✅" in report
     assert "- Issue creator check: ✅" in report
     assert "- Expected actor: OpenCodeEngineer" in report
     assert "- Issue creator: OpenCodeEngineer" in report

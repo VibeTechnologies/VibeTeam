@@ -212,9 +212,13 @@ handoffs over issues, discussions, and PR comments. This requires:
 - Role GitHub Apps granted Discussions read/write permission (otherwise discussion
   comments fail with `Resource not accessible by integration`).
 - `GITHUB_TOKEN` (or `GH_TOKEN`) with issue/discussion write permissions.
-- Issue-assignment scenarios keep role-bot assignee targets; if GitHub rejects
-  assignment for app-bot identities, eval may use mention-trigger fallback mode
-  and must still prove role-bot responses in the same issue thread.
+- Mention-trigger mode is the default for GitHub handoff evals. The eval posts a
+  native role-mention trigger comment (for example `@SoftwareEngineer @SupportEngineer`)
+  and passes only when real role-bot responses appear in that same thread.
+- Assignment checks are optional diagnostics and must not be used as a hard
+  completion gate for handoff scenarios.
+- Eval reports may still show assignment fields (for example `Issue assigned`) but
+  those lines are diagnostic-only in mention-trigger mode and cannot fail the run by themselves.
 
 ## Gmail Processor
 

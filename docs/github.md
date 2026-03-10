@@ -159,6 +159,48 @@ export $( < .env ) && uv run python scripts/check_github_app_permissions.py --re
 - 404 when getting installation token: wrong Installation ID
 - 401 unauthorized: app missing permissions or not installed on repo
 
+## Mention-Trigger Handoff (Default) and Assignment Diagnostics
+
+### Current Behavior
+
+GitHub handoff evals use native role mentions as the primary trigger.
+The eval posts a comment containing role mentions (for example
+`@SoftwareEngineer @SupportEngineer`) and passes only when role bots
+reply in that same thread.
+
+Assignment checks are retained as diagnostics, not hard pass/fail gates.
+
+### Why
+
+In `vibeteam-eval-hello-world`, role bot handles may be non-assignable via GitHub API:
+- assigning `vibeteam-swe-bot-260301[bot]` can return success but leave `assignees` empty
+- `PUT /collaborators/vibeteam-swe-bot-260301[bot]` can return `"... is not a user"`
+
+Because assignability depends on GitHub-side identity constraints, mention-trigger
+handoff is the reliable completion path.
+
+### Diagnostic Commands
+
+```bash
+# Role-app permission check (recommended)
+uv run python scripts/check_github_app_permissions.py \
+  --repo VibeTechnologies/vibeteam-eval-hello-world \
+  --require-discussions
+
+# Optional assignability diagnostics
+gh api repos/VibeTechnologies/vibeteam-eval-hello-world/assignees --jq '.[].login'
+gh api graphql -f query='query { repository(owner:"VibeTechnologies", name:"vibeteam-eval-hello-world") { assignableUsers(first:100) { nodes { login } } } }' \
+  --jq '.data.repository.assignableUsers.nodes[].login'
+```
+
+### Eval Rules
+
+- Use native role mentions in trigger comments.
+- Require real role-bot responses in-thread after the trigger.
+- Include thread URLs and bot author evidence in reports.
+- If assignment metadata is present in a report (for example `Issue assigned (diagnostic)`),
+  treat it as diagnostic context only.
+
 ## Webhook Events (Gateway)
 
 Ensure the GitHub webhook includes these events so agent handoffs work in GitHub threads:

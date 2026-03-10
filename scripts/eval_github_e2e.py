@@ -1249,7 +1249,11 @@ def _run_issue_handoff_presence(
     assignment_actor_passed = bool(assignment.get("assignment_actor_passed", True))
     assignment_actor_error = str(assignment.get("assignment_actor_error") or "")
     fallback_mode = bool(assignment.get("assignment_fallback_mode"))
-    if fallback_mode:
+    if post_trigger_comment:
+        # Mention-trigger mode: success is based on role-bot replies after the trigger
+        # comment, independent from assignment API behavior.
+        passed = bool(recent_bot_logins)
+    elif fallback_mode:
         passed = bool(recent_bot_logins)
     else:
         passed = (
@@ -1342,7 +1346,7 @@ def _run_issue_pr_handoff(
             timeout,
             issue_assignee,
             issue_role,
-            False,
+            post_issue_trigger_comment,
             actor_login=actor_login,
         )
         issue_results["thread"] = issue_url
@@ -1429,13 +1433,15 @@ def _write_report(scenario: str, results: dict) -> str:
         f"**Bot authors:** {', '.join(results.get('bot_logins', [])) or 'n/a'}",
     ]
     if "assignment_passed" in results:
-        lines.append(f"**Issue assigned:** {'✅' if results.get('assignment_passed') else '❌'}")
+        lines.append(
+            f"**Issue assigned (diagnostic):** {'✅' if results.get('assignment_passed') else '❌'}"
+        )
         lines.append(f"**Target assignee:** {results.get('target_assignee', 'n/a')}")
         lines.append(
             f"**Current assignees:** {', '.join(results.get('issue_assignees', [])) or 'n/a'}"
         )
         lines.append(
-            "**Assignment event observed:** "
+            "**Assignment event observed (diagnostic):** "
             f"{'✅' if results.get('assignment_event_seen') else '❌'}"
         )
         lines.append(
@@ -1445,7 +1451,7 @@ def _write_report(scenario: str, results: dict) -> str:
             f"**Assignment event actors:** {', '.join(results.get('assignment_event_actors', [])) or 'n/a'}"
         )
         lines.append(
-            "**Assignment actor check:** "
+            "**Assignment actor check (diagnostic):** "
             f"{'✅' if results.get('assignment_actor_passed', True) else '❌'}"
         )
         lines.append(
@@ -1453,7 +1459,7 @@ def _write_report(scenario: str, results: dict) -> str:
             f"{', '.join(results.get('recent_bot_logins', [])) or 'n/a'}"
         )
         lines.append(
-            "**Assignment fallback mode:** "
+            "**Assignment fallback mode (diagnostic):** "
             f"{'✅' if results.get('assignment_fallback_mode') else '❌'}"
         )
         if results.get("assignment_fallback_reason"):
@@ -1514,14 +1520,17 @@ def _write_report(scenario: str, results: dict) -> str:
                 ]
             )
             if "assignment_passed" in thread_result:
-                lines.append(f"- Issue assigned: {'✅' if thread_result.get('assignment_passed') else '❌'}")
+                lines.append(
+                    "- Issue assigned (diagnostic): "
+                    f"{'✅' if thread_result.get('assignment_passed') else '❌'}"
+                )
                 lines.append(f"- Target assignee: {thread_result.get('target_assignee', 'n/a')}")
                 lines.append(
                     "- Current assignees: "
                     f"{', '.join(thread_result.get('issue_assignees', [])) or 'n/a'}"
                 )
                 lines.append(
-                    "- Assignment event observed: "
+                    "- Assignment event observed (diagnostic): "
                     f"{'✅' if thread_result.get('assignment_event_seen') else '❌'}"
                 )
                 lines.append(
@@ -1532,11 +1541,11 @@ def _write_report(scenario: str, results: dict) -> str:
                     f"{', '.join(thread_result.get('assignment_event_actors', [])) or 'n/a'}"
                 )
                 lines.append(
-                    "- Assignment actor check: "
+                    "- Assignment actor check (diagnostic): "
                     f"{'✅' if thread_result.get('assignment_actor_passed', True) else '❌'}"
                 )
                 lines.append(
-                    "- Assignment fallback mode: "
+                    "- Assignment fallback mode (diagnostic): "
                     f"{'✅' if thread_result.get('assignment_fallback_mode') else '❌'}"
                 )
                 if thread_result.get("assignment_fallback_reason"):
@@ -1575,9 +1584,22 @@ def main() -> int:
     parser.add_argument("--issue-role", choices=sorted(ROLE_DEFAULT_ASSIGNEES.keys()), default=DEFAULT_ISSUE_ROLE)
     parser.add_argument("--actor-login", default=DEFAULT_ACTOR_LOGIN)
     parser.add_argument(
+        "--trigger-mode",
+        choices=["mention", "assignment"],
+        default="mention",
+        help=(
+            "How issue scenarios should start work. "
+            "'mention' posts native @Role trigger comments (default). "
+            "'assignment' requires assignment-first behavior."
+        ),
+    )
+    parser.add_argument(
         "--post-trigger-comment",
         action="store_true",
-        help="Post trigger mentions on existing issue threads (default: disabled for existing issues).",
+        help=(
+            "Force trigger mentions on issue threads regardless of trigger mode. "
+            "Mention mode already enables this by default."
+        ),
     )
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--issue", type=int, default=0, help="Existing issue number to use")
@@ -1593,6 +1615,7 @@ def main() -> int:
     token = _require_token(args.actor_login)
     _validate_actor_login(token, args.actor_login)
     owner, repo = _split_repo(args.repo)
+    mention_trigger = args.post_trigger_comment or args.trigger_mode == "mention"
     resolved_issue_assignee = _resolve_issue_assignee(
         owner,
         repo,
@@ -1601,7 +1624,7 @@ def main() -> int:
         issue_role=args.issue_role,
     )
     issue_scenarios = {"github_issue_handoff", "github_issue_pr_handoff_github"}
-    if args.scenario in issue_scenarios:
+    if args.scenario in issue_scenarios and args.trigger_mode == "assignment":
         if not resolved_issue_assignee:
             raise SystemExit(
                 f"No assignee resolved for role '{args.issue_role}'. Provide --issue-assignee."
@@ -1645,19 +1668,45 @@ def main() -> int:
                     args.timeout,
                     resolved_issue_assignee,
                     args.issue_role,
-                    args.post_trigger_comment,
+                    mention_trigger,
                     args.actor_login,
                 )
             else:
-                results = _run_issue_handoff(
-                    owner,
-                    repo,
-                    token,
-                    args.timeout,
-                    resolved_issue_assignee,
-                    args.issue_role,
-                    args.actor_login,
-                )
+                if mention_trigger:
+                    issue_number, issue_url, _, creator_login = _create_issue(owner, repo, token)
+                    creator_passed = _is_expected_actor(args.actor_login, creator_login)
+                    creator_error = ""
+                    if not creator_passed:
+                        creator_error = (
+                            f"Issue creator mismatch: expected {args.actor_login}, "
+                            f"got {creator_login or 'n/a'}"
+                        )
+                    results = _run_issue_handoff_presence(
+                        owner,
+                        repo,
+                        token,
+                        issue_number,
+                        args.timeout,
+                        resolved_issue_assignee,
+                        args.issue_role,
+                        True,
+                        actor_login=args.actor_login,
+                    )
+                    results["thread"] = issue_url
+                    results["issue_creator"] = creator_login or "n/a"
+                    results["creator_passed"] = creator_passed
+                    results["creator_error"] = creator_error
+                    results["passed"] = bool(results.get("passed")) and creator_passed
+                else:
+                    results = _run_issue_handoff(
+                        owner,
+                        repo,
+                        token,
+                        args.timeout,
+                        resolved_issue_assignee,
+                        args.issue_role,
+                        args.actor_login,
+                    )
         elif scenario == "github_issue_pr_handoff_github":
             results = _run_issue_pr_handoff(
                 owner,
@@ -1668,7 +1717,7 @@ def main() -> int:
                 args.timeout,
                 resolved_issue_assignee,
                 args.issue_role,
-                args.post_trigger_comment,
+                mention_trigger,
                 args.actor_login,
             )
         elif scenario == "github_discussion_handoff":

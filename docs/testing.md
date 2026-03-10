@@ -63,11 +63,11 @@ uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel 
 uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600
 
 # GitHub webhook eval examples
-uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --issue 3 --pr 1 --timeout 600
+uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --issue 3 --pr 1 --trigger-mode mention --timeout 600
 uv run python scripts/eval_github_e2e.py --scenario github_threads_all --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --timeout 600
 
-# GitHub App/assignee preflight (required before assignment-first evals)
-uv run python scripts/check_github_app_permissions.py --repo VibeTechnologies/vibeteam-eval-hello-world --require-discussions --require-assignable-assignee
+# GitHub App permission preflight (recommended)
+uv run python scripts/check_github_app_permissions.py --repo VibeTechnologies/vibeteam-eval-hello-world --require-discussions
 ```
 
 ## Test Suite Map
@@ -182,15 +182,15 @@ GitHub scenarios are defined in `scripts/eval_github_e2e.py` (`SCENARIOS`).
 
 | Scenario ID | Expected Outcome |
 |---|---|
-| `github_issue_handoff` | Issue thread shows bot activity and assignment check passes for target assignee. |
-| `github_issue_pr_handoff_github` | Issue and PR threads both pass bot activity checks; issue assignment check passes. |
+| `github_issue_handoff` | Issue thread receives mention-triggered role-bot activity. |
+| `github_issue_pr_handoff_github` | Issue and PR threads both receive mention-triggered multi-bot activity. |
 | `github_discussion_handoff` | Discussion thread receives expected multi-bot handoff responses. |
 | `github_pr_comment_handoff` | PR thread receives expected multi-bot handoff responses. |
 | `github_threads_all` | Issue + discussion + PR sub-scenarios all pass in one run. |
 
-## Assignment-Immediate Validation (No Eval Trigger Comment)
+## Mention-Trigger Validation (Default)
 
-Use this mode to validate that assignment alone triggers immediate work without eval-authored trigger comment.
+Use this mode to validate that role mentions trigger immediate work.
 
 ```bash
 uv run python scripts/eval_github_e2e.py \
@@ -198,67 +198,21 @@ uv run python scripts/eval_github_e2e.py \
   --repo VibeTechnologies/vibeteam-eval-hello-world \
   --issue <EXISTING_ISSUE_NUMBER> \
   --actor-login 'OpenCodeEngineer' \
-  --issue-role software_engineer \
-  --issue-assignee 'vibeteam-swe-bot-260301[bot]' \
+  --trigger-mode mention \
   --timeout 600
 ```
 
 Expected outcome:
-- no new eval-authored trigger comment on the issue
-- assignment to configured role bot handle is verified
-- bot activity appears after assignment event processing
-- for existing issues already assigned to target bot, eval forces a reassignment (remove+add) to emit a fresh `issues.assigned` event
-
-Fallback mode (for repos where GitHub App bot assignees are not assignable via API):
-- eval keeps the role-bot assignee target unchanged and records assignment failure
-- eval posts a native role-mention trigger comment
-- pass requires bot responses from required role bots after that trigger (no placeholder-only pass)
-
-Task-to-agent rule (hard requirement):
-- Different tasks must be assigned to different role bot handles.
-- Code-writing task -> SoftwareEngineer bot assignee.
-- Support task -> SupportEngineer bot assignee.
-- Release/deploy task -> ReleaseEngineer bot assignee.
-- Product triage task -> ProductManager bot assignee.
-- Marketing task -> MarketingManager bot assignee.
-
-Role-to-assignee defaults used by `scripts/eval_github_e2e.py`:
-
-| `--issue-role` | Default assignee env (fallback chain) |
-|---|---|
-| `software_engineer` | `GITHUB_SOFTWARE_ENGINEER_BOT_ASSIGNEE` -> `GITHUB_APP_BOT_USERNAME_SOFTWARE_ENGINEER` -> `vibeteam-swe-bot-260301[bot]` |
-| `support_engineer` | `GITHUB_SUPPORT_ENGINEER_BOT_ASSIGNEE` -> `GITHUB_APP_BOT_USERNAME_SUPPORT_ENGINEER` -> `vibeteam-support-bot-260301[bot]` |
-| `release_engineer` | `GITHUB_RELEASE_ENGINEER_BOT_ASSIGNEE` -> `GITHUB_APP_BOT_USERNAME_RELEASE_ENGINEER` -> `vibeteam-release-bot-260301[bot]` |
-| `product_manager` | `GITHUB_PRODUCT_MANAGER_BOT_ASSIGNEE` -> `GITHUB_APP_BOT_USERNAME_PRODUCT_MANAGER` -> `vibeteam-pm-bot-260301[bot]` |
-| `marketing_manager` | `GITHUB_MARKETING_MANAGER_BOT_ASSIGNEE` -> `GITHUB_APP_BOT_USERNAME_MARKETING_MANAGER` -> `vibeteam-mktg-bot-260301[bot]` |
-
-Role-specific assignment eval examples:
-
-```bash
-# Support assignment scenario (existing issue)
-uv run python scripts/eval_github_e2e.py \
-  --scenario github_issue_handoff \
-  --repo VibeTechnologies/vibeteam-eval-hello-world \
-  --issue <EXISTING_ISSUE_NUMBER> \
-  --actor-login 'OpenCodeEngineer' \
-  --issue-role support_engineer \
-  --issue-assignee 'vibeteam-support-bot-260301[bot]' \
-  --timeout 600
-```
+- eval posts native role-mention trigger text on the issue thread
+- required role bots respond after that trigger
+- issue/PR/discussion thread links are included in the report with bot authors
 
 Notes:
-- `--actor-login` is the account creating and assigning issues during eval (for this repo: `OpenCodeEngineer`).
-- `--issue-assignee` must be a bot app handle. Handles with `-bot`/`[bot]` pass automatically; explicit configured bot handles also pass.
-- Reports now include `Assignment fallback mode` and `Assignment fallback reason` when assignment cannot be applied to the role bot.
-- Role-assignee compatibility is enforced by the eval runner. If `--issue-role` and
-  `--issue-assignee` do not match the configured role mapping, eval exits immediately with
-  `Issue assignee does not match required role mapping`.
-- If bot assignment fails on fresh issues, treat it as GitHub/repo operational misconfiguration and fix assignability;
-  do not replace assignee with a human account.
+- `--actor-login` is the account creating trigger comments during eval (for this repo: `OpenCodeEngineer`).
+- Assignment fields in reports are diagnostic only in mention-trigger mode.
+- `Issue assigned`/assignment-event lines in reports are explicitly labeled diagnostic; they are non-blocking.
+- `--trigger-mode assignment` remains available when you explicitly need assignment-path diagnostics.
 - See `docs/github.md` for the true-fix checklist.
-- If `/repos/{owner}/{repo}/assignees/{handle}` returns `404`, that handle is not assignable in this repo.
-- GitHub App `[bot]` identities may fail assignability checks; use a repo-assignable role identity and map it via
-  `GITHUB_<ROLE>_BOT_ASSIGNEE` / `GITHUB_ASSIGNMENT_BOT_LOGINS` when required by repo policy.
 
 ## Scoring Rubric
 
