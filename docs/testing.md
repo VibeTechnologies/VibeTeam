@@ -170,6 +170,10 @@ Slack scenarios are defined in `scripts/eval_slack_e2e.py` (`SCENARIOS`).
 | `release_health_check` | `release_engineer` | Perform production health/readiness checks with evidence-based conclusion. |
 | `release_k3s_configure_then_health` | `release_engineer` | Two-step flow: configure k3s access context first, then investigate `vibe` cluster health in the same thread. |
 
+Implementation note for trigger-driven evals:
+- `release_k3s_configure_then_health` runs through `/slack/trigger` and seeds a validated kubeconfig context via trigger payload (`kubeconfig_yaml`) so the agent receives thread-scoped cluster context without relying on bot-generated Slack file events.
+- Real user flow remains Slack attachment-based (`/slack/events` with uploaded kubeconfig file), as documented in `docs/slack.md`.
+
 Collaboration identity requirement (hard check for `github_issue_pr_handoff_slack`):
 - Required Slack roles must respond (`software_engineer`, `support_engineer`).
 - Each required role must post using its own role-scoped Slack app identity.

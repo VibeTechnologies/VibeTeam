@@ -9,7 +9,7 @@ This guide summarizes how external events reach agents. For the canonical routin
 | `/webhook` | GitHub | Issues and PR comments route to SoftwareEngineer by default; role mentions trigger handoffs. |
 | `/webhook/sentry` | Sentry | Routes to SupportEngineer (handoff as needed). |
 | `/slack/events` | Slack | `@VibeTeam` activates a thread; thread replies are auto-routed. See [slack.md](slack.md). |
-| `/slack/trigger` | Slack (eval/tests) | Requires `Authorization: Bearer $SLACK_TRIGGER_SECRET`. |
+| `/slack/trigger` | Slack (eval/tests) | Requires `Authorization: Bearer $SLACK_TRIGGER_SECRET`; supports optional `kubeconfig_yaml` + `kubeconfig_file_name` to seed thread-scoped cluster context for trigger-driven evals. |
 
 ## Routing Rules (Short)
 

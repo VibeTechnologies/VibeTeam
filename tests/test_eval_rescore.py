@@ -575,6 +575,66 @@ class TestScenarios:
         expected_roles = {"user", *{entry.role for entry in list_agents()}}
         assert set(ROLE_DISPLAY.keys()) == expected_roles
 
+    def test_release_k3s_scenario_has_inline_kubeconfig_context(self):
+        """release_k3s scenario should provide trigger kubeconfig context for eval flow."""
+        scenario = SCENARIOS["release_k3s_configure_then_health"]
+        assert isinstance(scenario.get("trigger_kubeconfig_yaml"), str)
+        assert scenario["trigger_kubeconfig_yaml"].strip()
+        assert scenario.get("trigger_kubeconfig_file_name") == "eval-k3s-kubeconfig.yaml"
+        assert scenario.get("post_follow_up_messages") is False
+
+    @pytest.mark.asyncio
+    async def test_release_k3s_trigger_payload_and_followup_posting(self, monkeypatch):
+        """Initial trigger should include kubeconfig; follow-up trigger should not."""
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token")
+        monkeypatch.setenv("SLACK_TRIGGER_SECRET", "test-secret")
+
+        mock_slack = MagicMock()
+        mock_slack.post_message.return_value = make_slack_message(
+            ts="100.000", text="configure k3s", is_bot=False
+        )
+        mock_slack.get_thread_replies.return_value = [
+            make_slack_message(
+                ts="100.000",
+                text="configure k3s",
+                is_bot=False,
+                thread_ts="100.000",
+                channel="C_TEST",
+            )
+        ]
+
+        with (
+            patch("scripts.eval_slack_e2e.SlackConnector", return_value=mock_slack),
+            patch("scripts.eval_slack_e2e.httpx.AsyncClient") as mock_httpx_cls,
+            patch("scripts.eval_slack_e2e.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"roles": ["release_engineer"], "mode": "sync"}
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_httpx_cls.return_value = mock_client
+
+            await run_evaluation(
+                scenario_name="release_k3s_configure_then_health",
+                channel="C_TEST",
+                wait_timeout=0,
+                poll_interval=1,
+                skip_eval=True,
+            )
+
+        # Initial user message only; follow-up should be trigger-only for this scenario.
+        mock_slack.post_message.assert_called_once()
+        assert mock_client.post.call_count == 2
+
+        initial_trigger_payload = mock_client.post.call_args_list[0].kwargs["json"]
+        follow_up_trigger_payload = mock_client.post.call_args_list[1].kwargs["json"]
+        assert "kubeconfig_yaml" in initial_trigger_payload
+        assert initial_trigger_payload["kubeconfig_file_name"] == "eval-k3s-kubeconfig.yaml"
+        assert "kubeconfig_yaml" not in follow_up_trigger_payload
+
 
 class TestPerScenarioTimeout:
     """Tests for per-scenario timeout override functionality."""

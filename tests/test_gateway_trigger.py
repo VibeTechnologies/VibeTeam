@@ -43,6 +43,26 @@ VALID_PAYLOAD = {
 
 AUTH_HEADERS = {"Authorization": "Bearer test-secret"}
 
+VALID_KUBECONFIG = """\
+apiVersion: v1
+kind: Config
+clusters:
+  - name: eval
+    cluster:
+      server: https://127.0.0.1:6443
+      insecure-skip-tls-verify: true
+contexts:
+  - name: eval-context
+    context:
+      cluster: eval
+      user: eval-user
+current-context: eval-context
+users:
+  - name: eval-user
+    user:
+      token: eval-token
+"""
+
 
 class TestTriggerAuth:
     """Test /slack/trigger authentication."""
@@ -178,6 +198,50 @@ class TestTriggerValidation:
         roles = response.json()["roles"]
         assert "support_engineer" in roles
         assert "release_engineer" in roles
+
+    def test_inline_kubeconfig_requires_thread_ts(self, client: TestClient):
+        """Inline kubeconfig payload requires thread_ts for thread-scoped storage."""
+        payload = {
+            "channel": "C0AATPSADB8",
+            "text": "@ReleaseEngineer configure cluster access",
+            "kubeconfig_yaml": VALID_KUBECONFIG,
+        }
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
+            response = client.post("/slack/trigger", json=payload, headers=AUTH_HEADERS)
+        assert response.status_code == 400
+        assert "thread_ts is required" in response.json()["detail"]
+
+    def test_inline_kubeconfig_rejects_invalid_yaml(self, client: TestClient):
+        """Inline kubeconfig payload must be valid kubeconfig YAML."""
+        payload = {
+            "channel": "C0AATPSADB8",
+            "thread_ts": "1234567890.123456",
+            "text": "@ReleaseEngineer configure cluster access",
+            "kubeconfig_yaml": "not-a-kubeconfig",
+        }
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
+            response = client.post("/slack/trigger", json=payload, headers=AUTH_HEADERS)
+        assert response.status_code == 400
+        assert "invalid kubeconfig_yaml" in response.json()["detail"]
+
+    def test_inline_kubeconfig_sets_thread_context(self, client: TestClient):
+        """Valid inline kubeconfig payload stores trigger thread context."""
+        payload = {
+            "channel": "C0AATPSADB8",
+            "thread_ts": "1234567890.123456",
+            "text": "@ReleaseEngineer configure cluster access",
+            "kubeconfig_yaml": VALID_KUBECONFIG,
+            "kubeconfig_file_name": "eval-kubeconfig.yaml",
+        }
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
+            mock_config.SLACK_BOT_TOKEN = "xoxb-test"
+            response = client.post("/slack/trigger", json=payload, headers=AUTH_HEADERS)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["kubeconfig_context_stored"] is True
 
 
 class TestTriggerRateLimit:
