@@ -859,6 +859,7 @@ class TestSlackEventsPassMessageTs:
         text: str = "help me",
         channel_type: str | None = None,
         is_bot: bool = False,
+        include_thread: bool = True,
     ) -> dict[str, Any]:
         """Build a minimal Slack event payload."""
         event: dict[str, Any] = {
@@ -867,8 +868,9 @@ class TestSlackEventsPassMessageTs:
             "user": "U_TEST",
             "channel": "C_TEST",
             "ts": "1234567890.123456",
-            "thread_ts": "1234567890.000000",
         }
+        if include_thread:
+            event["thread_ts"] = "1234567890.000000"
         if channel_type:
             event["channel_type"] = channel_type
         if is_bot:
@@ -949,6 +951,80 @@ class TestSlackEventsPassMessageTs:
 
             mock_run.assert_called_once()
             assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"
+
+    def test_channel_role_bot_mention_routes_without_ingress_mention(self, test_client):
+        """Direct role-bot user mention in channel should route even without @VibeTeam."""
+        payload = self._make_slack_event(
+            "message",
+            text="<@U_SUPPORT_BOT> please investigate sentry issue",
+            channel_type="channel",
+            include_thread=False,
+        )
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ) as mock_add,
+            patch(
+                "vibeteam.gateway.routes.slack._extract_roles_from_slack_user_mentions",
+                new_callable=AsyncMock,
+                return_value=["support_engineer"],
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._mentions_ingress_bot",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ) as mock_run,
+        ):
+            asyncio.run(_process_slack_event(payload))
+
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "thinking_face")
+            mock_run.assert_called_once()
+            routed_text = mock_run.call_args.args[0]
+            assert "@SupportEngineer" in routed_text
+            assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"
+
+    def test_channel_role_bot_mention_skips_when_ingress_mentioned(self, test_client):
+        """If ingress bot is mentioned, app_mention path should handle to avoid duplicates."""
+        payload = self._make_slack_event(
+            "message",
+            text="<@U_INGRESS> <@U_SUPPORT_BOT> please investigate sentry issue",
+            channel_type="channel",
+            include_thread=False,
+        )
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ) as mock_add,
+            patch(
+                "vibeteam.gateway.routes.slack._extract_roles_from_slack_user_mentions",
+                new_callable=AsyncMock,
+                return_value=["support_engineer"],
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._mentions_ingress_bot",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ) as mock_run,
+        ):
+            asyncio.run(_process_slack_event(payload))
+
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
+            thinking_calls = [c for c in mock_add.call_args_list if c.args[2] == "thinking_face"]
+            assert not thinking_calls
+            mock_run.assert_not_called()
 
 
 # ==============================================================================
