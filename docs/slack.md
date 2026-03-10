@@ -28,67 +28,115 @@ Current deployment policy:
   `SLACK_BOT_TOKEN_<ROLE>` and `SLACK_ASSISTANT_TOKEN_<ROLE>`.
 - If a role-scoped token is missing, gateway falls back to global
   `SLACK_BOT_TOKEN` / `SLACK_ASSISTANT_TOKEN`.
+- Response attribution is by Slack app identity, not text prefixing.
+  Gateway responses should be plain text (no legacy `[Role]` message prefix).
 
-## 1. Create the Slack App
+## 1. App Inventory (Ingress + Role Apps)
 
-1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app
-2. Choose **From a manifest** and paste the contents of [`templates/slack-app/manifest.yaml`](../templates/slack-app/manifest.yaml)
-3. Update the `request_url` values to point to your gateway's public URL
+Create **six** Slack apps total for one workspace:
 
-Alternatively, create the app manually following the sections below.
+| App Type | Slack Display Name | Purpose | Inbound Events |
+|---------|---------------------|---------|----------------|
+| Ingress | `VibeTeam` | Receives Slack events and routes work | **Required** (`/slack/events`) |
+| Role responder | `SoftwareEngineer` | Posts as SWE role identity | Not required |
+| Role responder | `SupportEngineer` | Posts as Support role identity | Not required |
+| Role responder | `ReleaseEngineer` | Posts as Release role identity | Not required |
+| Role responder | `ProductManager` | Posts as PM role identity | Not required |
+| Role responder | `MarketingManager` | Posts as Marketing role identity | Not required |
 
-If the app already exists, open the app directly:
+Use the same role handles as `agents/agents.yaml` (`slack_handle`) so mention parsing and identity mapping stay consistent.
+
+## 2. Create and Configure the Apps
+
+### 2.1 Create the ingress app (`VibeTeam`)
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps).
+2. Create app **From a manifest**.
+3. Use [`templates/slack-app/manifest.yaml`](../templates/slack-app/manifest.yaml).
+4. Set request URLs to your gateway host (typically `https://webhook.team.vibebrowser.app`).
+5. Install/Reinstall the app to workspace after any scope/event change.
+
+If already created, open directly:
 
 ```
 https://api.slack.com/apps/A0AAZGWEAVA
 ```
 
-## 2. OAuth Scopes
+### 2.2 Create the five role responder apps
 
-Under **OAuth & Permissions**, add these **Bot Token Scopes**:
+For each role app (`SoftwareEngineer`, `SupportEngineer`, `ReleaseEngineer`, `ProductManager`, `MarketingManager`):
+
+1. Create app **From scratch**.
+2. App name and bot display name: exactly the role handle (for example `SupportEngineer`).
+3. Add OAuth bot scopes from the responder scope set in section 3.
+4. Keep **Event Subscriptions disabled** (responder apps do not receive inbound webhooks).
+5. Install app to workspace and copy:
+   - bot token (`xoxb-...`)
+   - assistant token (`xapp-...`) if `assistant:write` is enabled
+   - signing secret (only needed if you choose to validate with role-specific secrets)
+6. Invite each role app to channels where it should post responses.
+
+## 3. OAuth Scopes
+
+### 3.1 Ingress app (`VibeTeam`) scopes
+
+Under **OAuth & Permissions**, configure these **Bot Token Scopes**:
 
 | Scope | Required For |
 |-------|-------------|
-| `assistant:write` | Showing assistant thread status (typing indicator) |
+| `assistant:write` | Assistant thread status (typing indicator) |
 | `app_mentions:read` | Receiving `@VibeTeam` mentions |
-| `channels:history` | Reading messages in public channels (needed for `message.channels` event + `conversations.replies` API for thread participation check) |
-| `channels:read` | Listing public channels |
-| `chat:write` | Posting agent responses |
-| `groups:history` | Reading messages in private channels (needed for `message.groups` event) |
-| `groups:read` | Listing private channels |
+| `channels:history` | Thread follow-up handling in public channels |
+| `channels:read` | Listing/reading public channel metadata |
+| `chat:write` | Posting responses |
+| `groups:history` | Thread follow-up handling in private channels |
+| `groups:read` | Listing/reading private channel metadata |
 | `im:history` | Reading direct messages |
 | `im:read` | Listing DM conversations |
-| `im:write` | Sending DMs to users |
-| `users:read` | Resolving user IDs to display names |
+| `im:write` | Sending DMs |
+| `reactions:write` | Adding/removing `:eyes:` and `:thinking_face:` reactions |
+| `users:read` | Resolving user IDs/mentions |
 
-After adding scopes, install or reinstall the app to the workspace to generate the bot token.
+### 3.2 Role responder app scopes
 
-Quick path to the scopes page:
+Use this responder scope baseline:
 
-```
-https://api.slack.com/apps/A0AAZGWEAVA/oauth
-```
+| Scope | Why |
+|-------|-----|
+| `assistant:write` | Optional per-role assistant status |
+| `chat:write` | Posting role-attributed responses |
+| `reactions:write` | Role-attributed reaction lifecycle |
+| `channels:history` | Thread participation and replies |
+| `groups:history` | Thread participation in private channels |
+| `im:history` | DM thread participation checks |
+| `users:read` | Mention/user mapping support |
 
-If `assistant:write` does not appear, enable **Agents & AI Apps** for the app and refresh the scopes list, then reinstall the app.
+`channels:read`, `groups:read`, `im:read`, and `im:write` are optional unless you need role apps to perform those operations directly.
 
-## 3. Event Subscriptions
+After scope updates, always **Reinstall to Workspace** so tokens include new permissions.
+If `assistant:write` is missing, enable **Agents & AI Apps**, refresh, then reinstall.
 
-Under **Event Subscriptions**, enable events and set the request URL to:
+## 4. Event Subscriptions
+
+Configure inbound events on the **ingress app only**:
+
+1. Enable Event Subscriptions.
+2. Request URL:
 
 ```
 https://<your-gateway-host>/slack/events
 ```
 
-Slack will send a verification challenge to this URL. The gateway responds to it automatically.
+Slack will send a verification challenge to this URL. The gateway responds automatically.
 
-Subscribe to these **bot events**:
+Subscribe to these ingress bot events:
 
 | Event | Purpose |
 |-------|---------|
-| `app_mention` | Triggers when a user mentions `@VibeTeam` in a channel. This is the primary entry point for agent interactions. |
-| `message.channels` | Delivers all messages in public channels the bot is in. Required for thread follow-ups -- without this, the gateway cannot receive thread replies that don't explicitly `@VibeTeam`. |
-| `message.groups` | Same as above but for private channels. |
-| `message.im` | Delivers direct messages to the bot. |
+| `app_mention` | Primary entry point (`@VibeTeam ...`) |
+| `message.channels` | Thread follow-ups in public channels |
+| `message.groups` | Thread follow-ups in private channels |
+| `message.im` | Direct messages to ingress app |
 
 ### Why `message.channels` is required
 
@@ -98,7 +146,7 @@ For follow-up messages like `@SupportEngineer what did you find?`, the user does
 
 With `message.channels` enabled, the gateway receives all channel messages and uses the thread participation handler to detect whether the bot previously replied in the thread. If it did, the message is routed to the appropriate agent.
 
-## 4. Interactivity (Optional)
+## 5. Interactivity (Optional)
 
 If you want interactive components (buttons, modals), enable interactivity and set the request URL to:
 
@@ -106,7 +154,7 @@ If you want interactive components (buttons, modals), enable interactivity and s
 https://<your-gateway-host>/slack/interactive
 ```
 
-## 5. Environment Variables
+## 6. Environment Variables
 
 The gateway requires these environment variables for Slack integration:
 
@@ -163,7 +211,7 @@ cp config/secrets/slack_role_secrets.template.json /tmp/slack_role_secrets.json
 gh secret set SLACK_ROLE_SECRETS_JSON < /tmp/slack_role_secrets.json
 ```
 
-## 6. Invite the Bot
+## 7. Invite the Bot
 
 After installing the apps, invite the ingress bot and all responder bots to channels
 where they should post:
