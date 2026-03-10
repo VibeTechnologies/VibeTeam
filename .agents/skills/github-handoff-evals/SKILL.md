@@ -20,12 +20,11 @@ description: Run VibeTeam GitHub/Slack handoff validation with unit tests, Slack
    - Preferred: `.venv/bin/python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600`
    - Fallback: `.venv/bin/python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600`
 6. Run GitHub webhook evals (mention-trigger first):
-   - Code-writing task (native mention trigger):
-     - `.venv/bin/python scripts/eval_github_e2e.py --scenario github_issue_handoff --repo VibeTechnologies/vibeteam-eval-hello-world --actor-login OpenCodeEngineer --timeout 600`
-   - Support task (native mention trigger):
-     - `.venv/bin/python scripts/eval_github_e2e.py --scenario github_issue_handoff --repo VibeTechnologies/vibeteam-eval-hello-world --actor-login OpenCodeEngineer --issue-role support_engineer --timeout 600`
-   - Matched issue+PR handoff:
+   - Required gate (stable):
      - `.venv/bin/python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --actor-login OpenCodeEngineer --timeout 600`
+   - Optional diagnostics (issue-only path; currently flaky, tracked in VibeTeam#358):
+     - `.venv/bin/python scripts/eval_github_e2e.py --scenario github_issue_handoff --repo VibeTechnologies/vibeteam-eval-hello-world --actor-login OpenCodeEngineer --timeout 600`
+     - `.venv/bin/python scripts/eval_github_e2e.py --scenario github_issue_handoff --repo VibeTechnologies/vibeteam-eval-hello-world --actor-login OpenCodeEngineer --issue-role support_engineer --timeout 600`
    - Full thread coverage (issue + discussion + PR):
      - `.venv/bin/python scripts/eval_github_e2e.py --scenario github_threads_all --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --actor-login OpenCodeEngineer --timeout 600`
 7. Verify role app permissions:

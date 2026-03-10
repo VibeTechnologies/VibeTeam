@@ -182,21 +182,21 @@ GitHub scenarios are defined in `scripts/eval_github_e2e.py` (`SCENARIOS`).
 
 | Scenario ID | Expected Outcome |
 |---|---|
-| `github_issue_handoff` | Issue thread receives mention-triggered role-bot activity. |
+| `github_issue_handoff` | Issue-only mention trigger check (diagnostic while issue #358 is open). |
 | `github_issue_pr_handoff_github` | Issue and PR threads both receive mention-triggered multi-bot activity. |
 | `github_discussion_handoff` | Discussion thread receives expected multi-bot handoff responses. |
 | `github_pr_comment_handoff` | PR thread receives expected multi-bot handoff responses. |
 | `github_threads_all` | Issue + discussion + PR sub-scenarios all pass in one run. |
 
-## Mention-Trigger Validation (Default)
+## Mention-Trigger Validation (Default Gate)
 
 Use this mode to validate that role mentions trigger immediate work.
 
 ```bash
 uv run python scripts/eval_github_e2e.py \
-  --scenario github_issue_handoff \
+  --scenario github_issue_pr_handoff_github \
   --repo VibeTechnologies/vibeteam-eval-hello-world \
-  --issue <EXISTING_ISSUE_NUMBER> \
+  --pr 1 \
   --actor-login 'OpenCodeEngineer' \
   --timeout 600
 ```
@@ -210,6 +210,7 @@ Notes:
 - `--actor-login` is the account creating trigger comments during eval (for this repo: `OpenCodeEngineer`).
 - Assignment fields in reports are diagnostic only in mention-trigger mode.
 - `Issue assigned`/assignment-event lines in reports are explicitly labeled diagnostic; they are non-blocking.
+- `github_issue_handoff` is currently diagnostic-only while [VibeTeam#358](https://github.com/VibeTechnologies/VibeTeam/issues/358) is open; do not use it as a release gate.
 - See `docs/github.md` for the true-fix checklist.
 
 ## Scoring Rubric
