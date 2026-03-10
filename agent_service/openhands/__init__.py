@@ -12,11 +12,11 @@ Azure OpenAI Configuration:
 - Set max_output_tokens=4096 (default exceeds Azure limits)
 """
 
+from .agent import Agent
 from .marketing_manager import (
     OpenHandsMarketingManager,
     create_marketing_manager,
 )
-from .agent import Agent
 from .product_manager import (
     OpenHandsProductManager,
     create_product_manager,

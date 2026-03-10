@@ -23,9 +23,9 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
+from vibeteam.agents_config import get_slack_handle
 from vibeteam.gateway.server import call_agent_service, config
 from vibeteam.router import Router
-from vibeteam.agents_config import get_slack_handle
 from vibeteam.router.models import AgentRole
 
 logger = logging.getLogger(__name__)

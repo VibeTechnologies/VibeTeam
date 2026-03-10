@@ -13,9 +13,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import uuid
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +27,7 @@ import websockets
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
 from agent_service.shared.agents_md_loader import load_knowledgebase_skill_instructions
 from agent_service.shared.docs_tools import get_docs_context
 
