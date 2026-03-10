@@ -78,6 +78,9 @@ spec:
           volumeMounts:
             - name: gmail-writable
               mountPath: /gmail
+            # Keep script fallback paths writable even when ESCALATION_DIR is not resolved.
+            - name: app-secrets-writable
+              mountPath: /app/.secrets
           resources:
             requests:
               cpu: 50m
@@ -91,5 +94,7 @@ spec:
             secretName: gmail-oauth-secret
             optional: false
         - name: gmail-writable
+          emptyDir: {}
+        - name: app-secrets-writable
           emptyDir: {}
       restartPolicy: Always
