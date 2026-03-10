@@ -89,6 +89,7 @@ Under **OAuth & Permissions**, configure these **Bot Token Scopes**:
 | `channels:history` | Thread follow-up handling in public channels |
 | `channels:read` | Listing/reading public channel metadata |
 | `chat:write` | Posting responses |
+| `files:read` | Reading attached kubeconfig files for cluster onboarding |
 | `groups:history` | Thread follow-up handling in private channels |
 | `groups:read` | Listing/reading private channel metadata |
 | `im:history` | Reading direct messages |
@@ -115,6 +116,17 @@ Use this responder scope baseline:
 
 After scope updates, always **Reinstall to Workspace** so tokens include new permissions.
 If `assistant:write` is missing, enable **Agents & AI Apps**, refresh, then reinstall.
+
+### 3.3 Kubeconfig attachment flow requirements
+
+To support non-technical users onboarding a cluster from Slack attachments:
+
+1. Keep `files:read` on the ingress app.
+2. Users can upload a kubeconfig file in the same thread as the request.
+3. Gateway validates the attachment as kubeconfig YAML and stores it thread-scoped.
+4. Gateway rejects unsafe kubeconfigs with `users[].user.exec` plugins.
+5. Release/Support requests mentioning cluster health/config in that thread receive
+   the validated kubeconfig context automatically.
 
 ## 4. Event Subscriptions
 
@@ -145,6 +157,22 @@ When a user starts a conversation with `@VibeTeam @SupportEngineer please invest
 For follow-up messages like `@SupportEngineer what did you find?`, the user does **not** re-mention `@VibeTeam`. `@SupportEngineer` is just plain text to Slack (not a real Slack user). Without `message.channels` subscribed, Slack will **not deliver** these thread replies to the gateway at all.
 
 With `message.channels` enabled, the gateway receives all channel messages and uses the thread participation handler to detect whether the bot previously replied in the thread. If it did, the message is routed to the appropriate agent.
+
+## 4.1 User-friendly k3s onboarding flow (attachment-based)
+
+Use this flow for users who do not have shell/kubeconfig access in the runtime:
+
+1. In Slack, post in a thread:
+   - `@VibeTeam @ReleaseEngineer configure this k3s cluster`
+   - attach a kubeconfig file (`.yaml`, `.yml`, `.kubeconfig`, `.config`)
+2. Gateway responds with confirmation that the kubeconfig was received and stored.
+3. In the same thread, ask:
+   - `@ReleaseEngineer investigate vibe cluster health`
+4. Gateway injects validated kubeconfig context into the agent task so the agent can
+   run `kubectl` against that uploaded cluster config.
+
+If the attachment is invalid, gateway responds with a warning and asks for a valid
+kubeconfig YAML.
 
 ## 5. Interactivity (Optional)
 

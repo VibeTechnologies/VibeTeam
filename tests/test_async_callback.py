@@ -1060,6 +1060,292 @@ class TestSlackEventsPassMessageTs:
             mock_run.assert_not_called()
 
 
+class TestSlackKubeconfigAttachmentFlow:
+    """Validate Slack kubeconfig attachment ingestion and thread reuse."""
+
+    def test_app_mention_with_kubeconfig_attachment_injects_context(self, test_client):
+        payload = {
+            "type": "event_callback",
+            "event_id": f"Ev_{uuid.uuid4().hex}",
+            "event": {
+                "type": "app_mention",
+                "text": "<@U_INGRESS> @ReleaseEngineer configure this k3s cluster",
+                "user": "U_TEST",
+                "channel": "C_TEST",
+                "channel_type": "channel",
+                "ts": "1234567890.123456",
+                "thread_ts": "1234567890.123456",
+                "files": [{"id": "F_TEST", "name": "vibe-k3s.yaml"}],
+            },
+        }
+        kubeconfig_context = {
+            "file_name": "vibe-k3s.yaml",
+            "kubeconfig_yaml": (
+                "apiVersion: v1\n"
+                "kind: Config\n"
+                "clusters:\n"
+                "- name: my-k3s\n"
+                "  cluster:\n"
+                "    server: https://example.local\n"
+                "users:\n"
+                "- name: dev\n"
+                "  user:\n"
+                "    token: fake-token\n"
+                "contexts:\n"
+                "- name: dev@my-k3s\n"
+                "  context:\n"
+                "    cluster: my-k3s\n"
+                "    user: dev\n"
+                "current-context: dev@my-k3s"
+            ),
+            "cluster_names": ["my-k3s"],
+            "context_names": ["dev@my-k3s"],
+            "current_context": "dev@my-k3s",
+            "source": "slack_file",
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+            patch(
+                "vibeteam.gateway.routes.slack._extract_kubeconfig_context_from_event",
+                new_callable=AsyncMock,
+                return_value=(kubeconfig_context, None),
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ) as mock_run,
+        ):
+            asyncio.run(_process_slack_event(payload))
+
+            mock_send.assert_called_once()
+            routed_text = mock_run.call_args.args[0]
+            assert "Attached Kubeconfig Context" in routed_text
+            assert "KUBECONFIG_YAML_START" in routed_text
+            assert "my-k3s" in routed_text
+
+    def test_thread_reply_reuses_stored_kubeconfig_context(self, test_client):
+        from vibeteam.gateway.routes.slack import (
+            _store_thread_kubeconfig_context,
+            _thread_kubeconfig_contexts,
+            _thread_kubeconfig_lock,
+        )
+
+        with _thread_kubeconfig_lock:
+            _thread_kubeconfig_contexts.clear()
+
+        _store_thread_kubeconfig_context(
+            "C_TEST",
+            "1234567890.000000",
+            {
+                "file_name": "vibe-k3s.yaml",
+                "kubeconfig_yaml": (
+                    "apiVersion: v1\n"
+                    "kind: Config\n"
+                    "clusters:\n"
+                    "- name: my-k3s\n"
+                    "  cluster:\n"
+                    "    server: https://example.local\n"
+                    "users:\n"
+                    "- name: dev\n"
+                    "  user:\n"
+                    "    token: fake-token\n"
+                    "contexts:\n"
+                    "- name: dev@my-k3s\n"
+                    "  context:\n"
+                    "    cluster: my-k3s\n"
+                    "    user: dev\n"
+                    "current-context: dev@my-k3s"
+                ),
+                "cluster_names": ["my-k3s"],
+                "context_names": ["dev@my-k3s"],
+                "current_context": "dev@my-k3s",
+                "source": "slack_file",
+            },
+        )
+
+        payload = {
+            "type": "event_callback",
+            "event_id": f"Ev_{uuid.uuid4().hex}",
+            "event": {
+                "type": "message",
+                "text": "Please investigate vibe cluster health now.",
+                "user": "U_TEST",
+                "channel": "C_TEST",
+                "channel_type": "channel",
+                "ts": "1234567891.123456",
+                "thread_ts": "1234567890.000000",
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._extract_kubeconfig_context_from_event",
+                new_callable=AsyncMock,
+                return_value=(None, None),
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.get_message_router",
+            ) as mock_router_fn,
+            patch(
+                "vibeteam.gateway.routes.slack.bot_participated_in_thread",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ) as mock_run,
+        ):
+            mock_router = mock_router_fn.return_value
+            mock_router.parse_role_mentions.return_value = []
+            mock_router.get_subscriptions = AsyncMock(return_value=[])
+
+            asyncio.run(_process_slack_event(payload))
+
+            routed_text = mock_run.call_args.args[0]
+            assert "Attached Kubeconfig Context" in routed_text
+            assert "KUBECONFIG_YAML_START" in routed_text
+
+    def test_validate_kubeconfig_rejects_exec_auth(self):
+        from vibeteam.gateway.routes.slack import _validate_and_normalize_kubeconfig
+
+        kubeconfig_with_exec = """\
+apiVersion: v1
+kind: Config
+clusters:
+  - name: my-k3s
+    cluster:
+      server: https://example.local
+users:
+  - name: exec-user
+    user:
+      exec:
+        apiVersion: client.authentication.k8s.io/v1beta1
+        command: evil
+contexts:
+  - name: exec@my-k3s
+    context:
+      cluster: my-k3s
+      user: exec-user
+current-context: exec@my-k3s
+"""
+        with pytest.raises(ValueError, match="exec auth plugins are not supported"):
+            _validate_and_normalize_kubeconfig(kubeconfig_with_exec)
+
+    def test_configure_then_health_check_reuses_uploaded_kubeconfig(self, test_client):
+        import vibeteam.gateway.routes.slack as slack_route
+
+        with slack_route._thread_kubeconfig_lock:
+            slack_route._thread_kubeconfig_contexts.clear()
+
+        kubeconfig_context = {
+            "file_name": "vibe-k3s.yaml",
+            "kubeconfig_yaml": (
+                "apiVersion: v1\n"
+                "kind: Config\n"
+                "clusters:\n"
+                "- name: my-k3s\n"
+                "  cluster:\n"
+                "    server: https://example.local\n"
+                "users:\n"
+                "- name: dev\n"
+                "  user:\n"
+                "    token: fake-token\n"
+                "contexts:\n"
+                "- name: dev@my-k3s\n"
+                "  context:\n"
+                "    cluster: my-k3s\n"
+                "    user: dev\n"
+                "current-context: dev@my-k3s"
+            ),
+            "cluster_names": ["my-k3s"],
+            "context_names": ["dev@my-k3s"],
+            "current_context": "dev@my-k3s",
+            "source": "slack_file",
+        }
+
+        configure_payload = {
+            "type": "event_callback",
+            "event_id": f"Ev_{uuid.uuid4().hex}",
+            "event": {
+                "type": "app_mention",
+                "text": "<@U_INGRESS> @ReleaseEngineer configure this k3s cluster",
+                "user": "U_TEST",
+                "channel": "C_TEST",
+                "channel_type": "channel",
+                "ts": "1234567890.100000",
+                "thread_ts": "1234567890.100000",
+                "files": [{"id": "F_TEST", "name": "vibe-k3s.yaml"}],
+            },
+        }
+        health_payload = {
+            "type": "event_callback",
+            "event_id": f"Ev_{uuid.uuid4().hex}",
+            "event": {
+                "type": "message",
+                "text": "Please investigate vibe cluster health.",
+                "user": "U_TEST",
+                "channel": "C_TEST",
+                "channel_type": "channel",
+                "ts": "1234567891.200000",
+                "thread_ts": "1234567890.100000",
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._extract_kubeconfig_context_from_event",
+                new_callable=AsyncMock,
+                side_effect=[(kubeconfig_context, None), (None, None)],
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.get_message_router",
+            ) as mock_router_fn,
+            patch(
+                "vibeteam.gateway.routes.slack.bot_participated_in_thread",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ) as mock_run,
+        ):
+            mock_router = mock_router_fn.return_value
+            mock_router.parse_role_mentions.return_value = []
+            mock_router.get_subscriptions = AsyncMock(return_value=[])
+
+            asyncio.run(_process_slack_event(configure_payload))
+            asyncio.run(_process_slack_event(health_payload))
+
+            assert mock_run.call_count == 2
+            configure_text = mock_run.call_args_list[0].args[0]
+            health_text = mock_run.call_args_list[1].args[0]
+            assert "KUBECONFIG_YAML_START" in configure_text
+            assert "KUBECONFIG_YAML_START" in health_text
+            assert "my-k3s" in health_text
+
+
 # ==============================================================================
 # Tests for /slack/trigger sync behavior
 # ==============================================================================

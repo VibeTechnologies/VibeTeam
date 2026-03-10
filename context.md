@@ -1,8 +1,91 @@
 # VibeTeam Context Document
 
-> **Last Updated:** 2026-03-06
-> **Current Focus:** Real GitHub App + Slack App enforcement in gateway webhook/auth paths
-> **Status:** COMPLETED - strict signed/authenticated webhook flow merged to `master`
+> **Last Updated:** 2026-03-10
+> **Current Focus:** Slack/GitHub app provisioning docs + k3s cluster onboarding flow via Slack/GitHub
+> **Status:** IN PROGRESS - defining and implementing user-friendly kubeconfig file onboarding flow
+
+---
+
+## Checkpoint 2026-03-10
+
+### Completed Since Last Update
+
+- Merged Slack app provisioning documentation and skills to `master`:
+  - Commit: `db3667993ab3fb71945e8ede5b35bd928c3b7e9a`
+  - Files:
+    - `docs/slack.md` (full ingress + role app creation/configuration runbook)
+    - `.agents/skills/slack-app/SKILL.md` (operational Slack app provisioning workflow)
+    - `.agents/skills/github-apps/SKILL.md` (operational GitHub app provisioning workflow)
+    - `templates/slack-app/manifest.yaml` (`reactions:write` scope alignment)
+- Verified targeted secret-payload test suite:
+  - `uv run python -m pytest tests/test_secret_payloads.py -v`
+  - Result: `6 passed`
+- Verified workspace and worktree state:
+  - Main worktree clean/synced to `origin/master`
+  - Secondary worktree branch `feat/json-role-secrets` confirmed pushed/up-to-date
+  - No pending uncommitted changes found in existing active worktrees
+
+### Cluster/Slack Investigation Findings (Today)
+
+- Reviewed live Slack threads for `@Vibe DevOps` in `#all-vibetechnologies`.
+- Observed behavior in thread:
+  - Bot step text showed checks against namespace `vibe`
+  - Bot reported "No resources found in vibe namespace"
+- Determined root issue is target mismatch, not generic kubectl connectivity failure:
+  - AKS profile `~/.kube/aks-1` (`openclaw-aks`) serves `vibeteam` namespace workloads
+  - Separate kubeconfig profiles (`~/.kube/vibe-k3s.config` / `~/.kube/k3s-config`) serve `vibe` namespace
+- Config drift identified:
+  - `docs/k8s.md` currently treats `vibeteam` as authoritative runtime namespace
+  - Slack health-check routing prompt in `vibeteam/gateway/routes/slack.py` still defaults production to `vibe`
+
+### Current In-Progress Task
+
+- User request: support user-friendly flow where user can ask via Slack/GitHub to add k3s config (as an attached file), then ask agents to investigate `vibe` cluster health.
+- Status: implementation analysis in progress.
+
+#### What is confirmed now
+
+- Current Slack event pipeline primarily routes on message text and role mentions.
+- No dedicated file-ingestion path has been confirmed in `/slack/events` processing for kubeconfig attachment onboarding workflow.
+- Existing instructions already allow ReleaseEngineer to handle explicit config payloads (for example `kubeconfig_b64`) in routed messages.
+
+#### Planned implementation direction
+
+1. Add Slack attachment-aware ingestion in gateway for kubeconfig onboarding requests.
+2. Normalize secure handoff format to agent runtime (metadata + validated source).
+3. Add E2E evaluation scenario:
+   - Step A: provide k3s config (attachment flow)
+   - Step B: ask agent to investigate `vibe` cluster health
+   - Assert successful namespace/cluster targeting and actionable health summary.
+
+### Progress Update (2026-03-10, later)
+
+- Implemented Slack kubeconfig attachment ingestion in gateway:
+  - File metadata/download support from Slack API (`files.info`, private download URL).
+  - Kubeconfig validation and normalization (`kind: Config`, required clusters/users/contexts).
+  - Security gate: reject kubeconfigs with `users[].user.exec` auth plugin.
+  - Thread-scoped context cache with TTL for follow-up messages.
+  - Automatic context injection for cluster-related Release/Support requests.
+- Updated Slack docs and manifest:
+  - `docs/slack.md` now documents attachment-based k3s onboarding flow.
+  - `templates/slack-app/manifest.yaml` now includes `files:read` scope.
+- Added evaluation coverage:
+  - Unit flow tests in `tests/test_async_callback.py` for:
+    - attachment ingestion + context injection
+    - configure-then-health follow-up flow in same thread
+    - kubeconfig exec-auth rejection path
+  - Added Slack eval scenario `release_k3s_configure_then_health` in `scripts/eval_slack_e2e.py`.
+- Verification completed:
+  - `uv run ruff check vibeteam/gateway/routes/slack.py tests/test_async_callback.py scripts/eval_slack_e2e.py` ✅
+  - `pytest tests/test_async_callback.py` ✅ (52 passed)
+  - `pytest tests/test_eval_rescore.py` ✅ (53 passed)
+  - Live Slack eval `support_notify_check` ✅
+    - Thread: `https://slack.com/app_redirect?channel=C0AATPSADB8&thread_ts=1773177215.361379`
+
+### Open Risks
+
+- Namespace policy is currently split across docs and prompt templates (`vibeteam` vs `vibe` defaults).
+- Without explicit attachment handling, non-technical users cannot reliably provide k3s kubeconfig through Slack-only UX.
 
 ---
 
