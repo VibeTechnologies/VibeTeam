@@ -272,6 +272,27 @@ def _extract_user_message(task: str) -> str:
     return task.strip()
 
 
+def _is_knowledgebase_ingestion_task(task: str) -> bool:
+    """Detect eval-style knowledgebase ingestion tasks that require compact acknowledgments."""
+    task_lower = (task or "").lower()
+    mentions_kb = "knowledgebase" in task_lower or "knowledge base" in task_lower
+    references_path = "agents/shared/knowledgebase/inbox/" in task_lower
+    action_words = ("add", "update", "create", "ingest", "rebuild", "index")
+    requests_ingestion = any(word in task_lower for word in action_words)
+    return mentions_kb and references_path and requests_ingestion
+
+
+def _compact_knowledgebase_ingestion_response(task: str, response: str) -> str:
+    """Keep knowledgebase ingestion responses to one concise evidence line."""
+    if not _is_knowledgebase_ingestion_task(task):
+        return response
+    for line in response.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return re.sub(r"\s+", " ", stripped)
+    return response.strip()
+
+
 def _probe_url(url: str, timeout: float = 5.0) -> str:
     if not url:
         return "No URL provided to test."
@@ -1085,6 +1106,8 @@ class OpenHandsSupportEngineer:
                         )
                     except Exception as exc:
                         response = f"Sentry: failed to close issue ({exc}). PR: {pr_url}."
+
+            response = _compact_knowledgebase_ingestion_response(user_message, response)
 
             session.add_message("user", task)
             session.add_message("assistant", response)

@@ -109,63 +109,97 @@ jobs:
         run: kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Create secrets
+        env:
+          AZURE_API_KEY: ${{ secrets.AZURE_API_KEY }}
+          AZURE_API_BASE: ${{ secrets.AZURE_API_BASE }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          AZURE_API_VERSION: ${{ secrets.AZURE_API_VERSION }}
+          CALLBACK_SECRET: ${{ secrets.CALLBACK_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_WEBHOOK_SECRET: ${{ secrets.GITHUB_WEBHOOK_SECRET }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_BASE_URL: https://langfuse.vibebrowser.app
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_CLIENT_SECRET: ${{ secrets.SENTRY_CLIENT_SECRET }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_ASSISTANT_TOKEN: ${{ secrets.SLACK_ASSISTANT_TOKEN }}
+          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+          SLACK_TRIGGER_SECRET: ${{ secrets.SLACK_TRIGGER_SECRET }}
+          GITHUB_APP_ROLE_SECRETS_JSON: ${{ secrets.GITHUB_APP_ROLE_SECRETS_JSON }}
+          SLACK_ROLE_SECRETS_JSON: ${{ secrets.SLACK_ROLE_SECRETS_JSON }}
+          GITHUB_APP_ID_SOFTWARE_ENGINEER: ${{ secrets.GITHUB_APP_ID_SOFTWARE_ENGINEER }}
+          GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER: ${{ secrets.GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER }}
+          GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER: ${{ secrets.GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER }}
+          GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER: ${{ secrets.GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER }}
+          GITHUB_APP_ID_SUPPORT_ENGINEER: ${{ secrets.GITHUB_APP_ID_SUPPORT_ENGINEER }}
+          GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER: ${{ secrets.GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER }}
+          GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER: ${{ secrets.GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER }}
+          GITHUB_WEBHOOK_SECRET_SUPPORT_ENGINEER: ${{ secrets.GITHUB_WEBHOOK_SECRET_SUPPORT_ENGINEER }}
+          GITHUB_APP_ID_RELEASE_ENGINEER: ${{ secrets.GITHUB_APP_ID_RELEASE_ENGINEER }}
+          GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER: ${{ secrets.GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER }}
+          GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER: ${{ secrets.GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER }}
+          GITHUB_WEBHOOK_SECRET_RELEASE_ENGINEER: ${{ secrets.GITHUB_WEBHOOK_SECRET_RELEASE_ENGINEER }}
+          GITHUB_APP_ID_PRODUCT_MANAGER: ${{ secrets.GITHUB_APP_ID_PRODUCT_MANAGER }}
+          GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER: ${{ secrets.GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER }}
+          GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER: ${{ secrets.GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER }}
+          GITHUB_WEBHOOK_SECRET_PRODUCT_MANAGER: ${{ secrets.GITHUB_WEBHOOK_SECRET_PRODUCT_MANAGER }}
+          GITHUB_APP_ID_MARKETING_MANAGER: ${{ secrets.GITHUB_APP_ID_MARKETING_MANAGER }}
+          GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER: ${{ secrets.GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER }}
+          GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER: ${{ secrets.GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER }}
+          GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER: ${{ secrets.GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER }}
+          SLACK_BOT_TOKEN_SOFTWARE_ENGINEER: ${{ secrets.SLACK_BOT_TOKEN_SOFTWARE_ENGINEER }}
+          SLACK_BOT_TOKEN_SUPPORT_ENGINEER: ${{ secrets.SLACK_BOT_TOKEN_SUPPORT_ENGINEER }}
+          SLACK_BOT_TOKEN_RELEASE_ENGINEER: ${{ secrets.SLACK_BOT_TOKEN_RELEASE_ENGINEER }}
+          SLACK_BOT_TOKEN_PRODUCT_MANAGER: ${{ secrets.SLACK_BOT_TOKEN_PRODUCT_MANAGER }}
+          SLACK_BOT_TOKEN_MARKETING_MANAGER: ${{ secrets.SLACK_BOT_TOKEN_MARKETING_MANAGER }}
+          SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER: ${{ secrets.SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER }}
+          SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER: ${{ secrets.SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER }}
+          SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER: ${{ secrets.SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER }}
+          SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER: ${{ secrets.SLACK_ASSISTANT_TOKEN_PRODUCT_MANAGER }}
+          SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER: ${{ secrets.SLACK_ASSISTANT_TOKEN_MARKETING_MANAGER }}
+          SLACK_SIGNING_SECRET_SOFTWARE_ENGINEER: ${{ secrets.SLACK_SIGNING_SECRET_SOFTWARE_ENGINEER }}
+          SLACK_SIGNING_SECRET_SUPPORT_ENGINEER: ${{ secrets.SLACK_SIGNING_SECRET_SUPPORT_ENGINEER }}
+          SLACK_SIGNING_SECRET_RELEASE_ENGINEER: ${{ secrets.SLACK_SIGNING_SECRET_RELEASE_ENGINEER }}
+          SLACK_SIGNING_SECRET_PRODUCT_MANAGER: ${{ secrets.SLACK_SIGNING_SECRET_PRODUCT_MANAGER }}
+          SLACK_SIGNING_SECRET_MARKETING_MANAGER: ${{ secrets.SLACK_SIGNING_SECRET_MARKETING_MANAGER }}
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
         run: |
+          set -euo pipefail
+
           kubectl -n $NAMESPACE delete secret ghcr-pull-secret --ignore-not-found
           kubectl -n $NAMESPACE create secret docker-registry ghcr-pull-secret \
             --docker-server=ghcr.io \
             --docker-username=${{ github.actor }} \
-            --docker-password=${{ secrets.PAT_TOKEN }}
+            --docker-password=$GITHUB_TOKEN
 
-          kubectl -n $NAMESPACE delete secret vibeteam-secrets --ignore-not-found
+          python scripts/render_k8s_role_secrets.py \
+            --namespace "$NAMESPACE" \
+            --vibeteam-env-output /tmp/vibeteam-secrets.env \
+            --github-role-yaml-output /tmp/github-app-role-secrets.yaml
+
           kubectl -n $NAMESPACE create secret generic vibeteam-secrets \
-            --from-literal=SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}" \
-            --from-literal=GITHUB_TOKEN="${{ secrets.PAT_TOKEN }}" \
-            --from-literal=LANGFUSE_PUBLIC_KEY="${{ secrets.LANGFUSE_PUBLIC_KEY }}" \
-            --from-literal=LANGFUSE_SECRET_KEY="${{ secrets.LANGFUSE_SECRET_KEY }}" \
-            --from-literal=LANGFUSE_BASE_URL="https://langfuse.vibebrowser.app" \
-            --from-literal=AZURE_API_KEY="${{ secrets.AZURE_API_KEY }}" \
-            --from-literal=AZURE_API_BASE="${{ secrets.AZURE_API_BASE }}" \
-            --from-literal=AZURE_OPENAI_DEPLOYMENT="${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" \
-            --from-literal=AZURE_API_VERSION="${{ secrets.AZURE_API_VERSION }}" \
-            --from-literal=SLACK_BOT_TOKEN="${{ secrets.SLACK_BOT_TOKEN }}" \
-            --from-literal=SLACK_SIGNING_SECRET="${{ secrets.SLACK_SIGNING_SECRET }}" \
-            --from-literal=SLACK_TRIGGER_SECRET="${{ secrets.SLACK_TRIGGER_SECRET }}" \
-            --from-literal=GITHUB_WEBHOOK_SECRET="${{ secrets.GITHUB_WEBHOOK_SECRET }}" \
-            --from-literal=SENTRY_CLIENT_SECRET="${{ secrets.SENTRY_CLIENT_SECRET }}" \
-            --from-literal=CALLBACK_SECRET="${{ secrets.CALLBACK_SECRET }}"
+            --from-env-file=/tmp/vibeteam-secrets.env \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-          kubectl -n $NAMESPACE delete secret github-app-role-secrets --ignore-not-found
-          kubectl -n $NAMESPACE create secret generic github-app-role-secrets \
-            --from-literal=GITHUB_APP_ID_SOFTWARE_ENGINEER="${{ secrets.GITHUB_APP_ID_SOFTWARE_ENGINEER }}" \
-            --from-literal=GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER="${{ secrets.GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER }}" \
-            --from-literal=GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER="${{ secrets.GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER }}" \
-            --from-literal=GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER="${{ secrets.GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER }}" \
-            --from-literal=GITHUB_APP_ID_SUPPORT_ENGINEER="${{ secrets.GITHUB_APP_ID_SUPPORT_ENGINEER }}" \
-            --from-literal=GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER="${{ secrets.GITHUB_APP_INSTALLATION_ID_SUPPORT_ENGINEER }}" \
-            --from-literal=GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER="${{ secrets.GITHUB_APP_PRIVATE_KEY_SUPPORT_ENGINEER }}" \
-            --from-literal=GITHUB_WEBHOOK_SECRET_SUPPORT_ENGINEER="${{ secrets.GITHUB_WEBHOOK_SECRET_SUPPORT_ENGINEER }}" \
-            --from-literal=GITHUB_APP_ID_RELEASE_ENGINEER="${{ secrets.GITHUB_APP_ID_RELEASE_ENGINEER }}" \
-            --from-literal=GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER="${{ secrets.GITHUB_APP_INSTALLATION_ID_RELEASE_ENGINEER }}" \
-            --from-literal=GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER="${{ secrets.GITHUB_APP_PRIVATE_KEY_RELEASE_ENGINEER }}" \
-            --from-literal=GITHUB_WEBHOOK_SECRET_RELEASE_ENGINEER="${{ secrets.GITHUB_WEBHOOK_SECRET_RELEASE_ENGINEER }}" \
-            --from-literal=GITHUB_APP_ID_PRODUCT_MANAGER="${{ secrets.GITHUB_APP_ID_PRODUCT_MANAGER }}" \
-            --from-literal=GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER="${{ secrets.GITHUB_APP_INSTALLATION_ID_PRODUCT_MANAGER }}" \
-            --from-literal=GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER="${{ secrets.GITHUB_APP_PRIVATE_KEY_PRODUCT_MANAGER }}" \
-            --from-literal=GITHUB_WEBHOOK_SECRET_PRODUCT_MANAGER="${{ secrets.GITHUB_WEBHOOK_SECRET_PRODUCT_MANAGER }}" \
-            --from-literal=GITHUB_APP_ID_MARKETING_MANAGER="${{ secrets.GITHUB_APP_ID_MARKETING_MANAGER }}" \
-            --from-literal=GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER="${{ secrets.GITHUB_APP_INSTALLATION_ID_MARKETING_MANAGER }}" \
-            --from-literal=GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER="${{ secrets.GITHUB_APP_PRIVATE_KEY_MARKETING_MANAGER }}" \
-            --from-literal=GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER="${{ secrets.GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER }}"
+          kubectl -n $NAMESPACE apply -f /tmp/github-app-role-secrets.yaml
 
-          if [ -n "${{ secrets.GMAIL_CREDENTIALS_JSON }}" ]; then
+          if [ -n "$GMAIL_CREDENTIALS_JSON" ]; then
             kubectl -n $NAMESPACE delete secret gmail-oauth-secrets --ignore-not-found
-            echo '${{ secrets.GMAIL_CREDENTIALS_JSON }}' > /tmp/gmail-credentials.json
-            echo '${{ secrets.GMAIL_TOKEN_JSON }}' > /tmp/gmail-token.json
+            printf '%s' "$GMAIL_CREDENTIALS_JSON" > /tmp/gmail-credentials.json
+            printf '%s' "$GMAIL_TOKEN_JSON" > /tmp/gmail-token.json
             kubectl -n $NAMESPACE create secret generic gmail-oauth-secrets \
               --from-file=gmail-credentials.json=/tmp/gmail-credentials.json \
               --from-file=gmail-token.json=/tmp/gmail-token.json
-            rm -f /tmp/gmail-credentials.json /tmp/gmail-token.json
           fi
+
+          rm -f \
+            /tmp/vibeteam-secrets.env \
+            /tmp/github-app-role-secrets.yaml \
+            /tmp/gmail-credentials.json \
+            /tmp/gmail-token.json
 
       - name: Update image tags in manifests
         run: |

@@ -118,6 +118,39 @@ Role-scoped GitHub App credentials are preferred and used to attribute PRs to th
 In Kubernetes, agent pods load these from the `github-app-role-secrets` secret via `envFrom`.
 **Required**: OpenHands/OpenClaw services fail fast if GitHub or Sentry credentials are missing.
 
+For deployment workflows, GitHub App role credentials can be provided as one JSON payload
+secret instead of many individual GitHub Secrets:
+
+- `GITHUB_APP_ROLE_SECRETS_JSON`
+
+Supported JSON formats:
+
+```json
+{
+  "roles": {
+    "software_engineer": {
+      "app_id": "12345",
+      "installation_id": "67890",
+      "private_key": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----",
+      "webhook_secret": "..."
+    }
+  }
+}
+```
+
+or a direct env-key map:
+
+```json
+{
+  "GITHUB_APP_ID_SOFTWARE_ENGINEER": "12345",
+  "GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER": "67890",
+  "GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+}
+```
+
+If both JSON and individual vars are provided, JSON values take precedence for deployment
+artifact generation.
+
 Private keys can be supplied as PEM strings with `\n` newlines. For local `.env` usage
 with `export $( < .env )`, replace spaces with underscores:
 `BEGIN_RSA_PRIVATE_KEY` / `END_RSA_PRIVATE_KEY`.
@@ -150,6 +183,41 @@ SLACK_TRIGGER_SECRET=
 Gateway Slack API calls resolve bot tokens per role (`software_engineer`, `support_engineer`,
 `release_engineer`, `product_manager`, `marketing_manager`). If a role-specific token is not set,
 the gateway falls back to `SLACK_BOT_TOKEN`. Incoming Slack signatures are accepted when they match any configured signing secret (default or role-scoped).
+
+For deployment workflows, Slack credentials can also be provided as one JSON payload secret:
+
+- `SLACK_ROLE_SECRETS_JSON`
+
+Supported JSON formats:
+
+```json
+{
+  "default": {
+    "bot_token": "xoxb-...",
+    "assistant_token": "xapp-...",
+    "signing_secret": "...",
+    "trigger_secret": "..."
+  },
+  "support_engineer": {
+    "bot_token": "xoxb-...",
+    "assistant_token": "xapp-...",
+    "signing_secret": "..."
+  }
+}
+```
+
+or a direct env-key map:
+
+```json
+{
+  "SLACK_BOT_TOKEN_SUPPORT_ENGINEER": "xoxb-...",
+  "SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER": "xapp-...",
+  "SLACK_SIGNING_SECRET_SUPPORT_ENGINEER": "..."
+}
+```
+
+If both JSON and individual vars are provided, JSON values take precedence for deployment
+artifact generation.
 
 ### Gmail (File-Based Secrets)
 
