@@ -37,7 +37,9 @@ def test_docs_context_not_included_when_no_matches(monkeypatch) -> None:
     monkeypatch.setattr(
         openclaw_server,
         "get_docs_context",
-        lambda query, max_results: "## Product Documentation Context\n\nNo documentation found matching: foo",
+        lambda query, max_results: (
+            "## Product Documentation Context\n\nNo documentation found matching: foo"
+        ),
     )
 
     task, included = openclaw_server._build_task_with_docs_context("foo", "product_manager")
@@ -114,7 +116,9 @@ def test_chrome_devtools_skill_confirmation_normalized() -> None:
     )
 
     assert "did not use" not in normalized.lower()
-    assert "Chrome DevTools skill was used via OpenClaw's built-in browser/CDP tooling." in normalized
+    assert (
+        "Chrome DevTools skill was used via OpenClaw's built-in browser/CDP tooling." in normalized
+    )
 
 
 def test_chrome_devtools_skill_confirmation_noop_for_other_tasks() -> None:

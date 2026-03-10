@@ -442,9 +442,7 @@ def _validate_and_normalize_kubeconfig(raw_content: str) -> dict[str, Any]:
     if not raw_content.strip():
         raise ValueError("empty file")
     if len(raw_bytes) > _KUBECONFIG_MAX_BYTES:
-        raise ValueError(
-            f"file exceeds {_KUBECONFIG_MAX_BYTES} bytes; upload a minimal kubeconfig"
-        )
+        raise ValueError(f"file exceeds {_KUBECONFIG_MAX_BYTES} bytes; upload a minimal kubeconfig")
 
     parsed = yaml.safe_load(raw_content)
     if not isinstance(parsed, dict):
@@ -537,7 +535,9 @@ async def _extract_kubeconfig_context_from_event(
             )
             continue
 
-        download_url = str(info.get("url_private_download", "") or info.get("url_private", "")).strip()
+        download_url = str(
+            info.get("url_private_download", "") or info.get("url_private", "")
+        ).strip()
         if not download_url:
             errors.append(f"`{file_name}` is missing a downloadable URL")
             continue
@@ -653,6 +653,7 @@ def _role_env_suffix(role: str | None) -> str | None:
     normalized = re.sub(r"[^A-Z0-9]+", "_", role_text.upper()).strip("_")
     return normalized or None
 
+
 def _get_role_scoped_env(prefix: str, role: str | None) -> str:
     """Get role-scoped env var value (e.g., SLACK_BOT_TOKEN_SUPPORT_ENGINEER)."""
     suffix = _role_env_suffix(role)
@@ -679,10 +680,13 @@ def _collect_slack_bot_tokens() -> list[str]:
     """Collect all configured Slack bot tokens (default + role-scoped), deduplicated."""
     ordered: list[str] = []
     seen: set[str] = set()
-    for token in [config.SLACK_BOT_TOKEN, *[
-        _get_role_scoped_env("SLACK_BOT_TOKEN", role)
-        for role in sorted(set(ROLE_MENTION_MAP.values()))
-    ]]:
+    for token in [
+        config.SLACK_BOT_TOKEN,
+        *[
+            _get_role_scoped_env("SLACK_BOT_TOKEN", role)
+            for role in sorted(set(ROLE_MENTION_MAP.values()))
+        ],
+    ]:
         if token and token not in seen:
             seen.add(token)
             ordered.append(token)
@@ -2298,7 +2302,9 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             if message_ts:
                 await add_reaction(channel, message_ts, "thinking_face")
 
-            await run_agent_for_slack(routed_text, channel, thread_ts, user_id, message_ts=message_ts)
+            await run_agent_for_slack(
+                routed_text, channel, thread_ts, user_id, message_ts=message_ts
+            )
 
             return {"status": "accepted", "event": "app_mention"}
 
@@ -2318,7 +2324,9 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             if message_ts:
                 await add_reaction(channel, message_ts, "thinking_face")
 
-            await run_agent_for_slack(routed_text, channel, thread_ts, user_id, message_ts=message_ts)
+            await run_agent_for_slack(
+                routed_text, channel, thread_ts, user_id, message_ts=message_ts
+            )
 
             return {"status": "accepted", "event": "message.im"}
 

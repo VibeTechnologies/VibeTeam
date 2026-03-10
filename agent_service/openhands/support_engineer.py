@@ -395,10 +395,9 @@ def _build_investigation_fallback(
         "readiness probe failed" in line or "connect: connection refused" in line
         for line in gateway_event_lines
     )
-    has_hpa_metrics_fail = (
-        any("failedgetresourcemetric" in line for line in gateway_event_lines)
-        or any("failedcomputemetricsreplicas" in line for line in gateway_event_lines)
-    )
+    has_hpa_metrics_fail = any(
+        "failedgetresourcemetric" in line for line in gateway_event_lines
+    ) or any("failedcomputemetricsreplicas" in line for line in gateway_event_lines)
     has_gateway_crashloop = _has_gateway_crashloop(pods_output)
     has_4xx_logs = "4xx responses observed" in logs_summary.lower() or bool(
         re.search(r"\b4\d\d\b", logs_output)
@@ -1084,9 +1083,11 @@ class OpenHandsSupportEngineer:
             if is_notification and not is_explicit_investigation:
                 response = build_notification_message(user_message)
 
-            if pr_requested and not re.search(
-                r"https?://github\.com/\S+/pull/\d+", user_message, re.IGNORECASE
-            ) and not (is_notification and not is_explicit_investigation):
+            if (
+                pr_requested
+                and not re.search(r"https?://github\.com/\S+/pull/\d+", user_message, re.IGNORECASE)
+                and not (is_notification and not is_explicit_investigation)
+            ):
                 # Keep PR request responses short and focused on a single issue + handoff.
                 response = _build_pr_handoff_response(user_message)
 
@@ -1100,10 +1101,7 @@ class OpenHandsSupportEngineer:
                         client = SentryClient(timeout=10.0)
                         closed_id = issue_ids[0]
                         client.resolve_issue(closed_id)
-                        response = (
-                            f"Closed Sentry issue {closed_id}. "
-                            f"PR: {pr_url}."
-                        )
+                        response = f"Closed Sentry issue {closed_id}. PR: {pr_url}."
                     except Exception as exc:
                         response = f"Sentry: failed to close issue ({exc}). PR: {pr_url}."
 

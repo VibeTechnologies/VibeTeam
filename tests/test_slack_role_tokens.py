@@ -91,9 +91,7 @@ class TestRoleScopedApiCalls:
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
 
-            ts = await send_slack_message(
-                "C_TEST", "hello", "1111.2222", role="support_engineer"
-            )
+            ts = await send_slack_message("C_TEST", "hello", "1111.2222", role="support_engineer")
             assert ts == "1234.5678"
 
             headers = mock_client.post.call_args.kwargs["headers"]

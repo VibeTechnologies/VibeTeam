@@ -329,9 +329,7 @@ class TestCallbackEndpoint:
             assert result["outcome"] == "error_posted"
 
             # Verify X reaction (not checkmark)
-            mock_add.assert_called_once_with(
-                "C_TEST", "ts_1234", "x", role="release_engineer"
-            )
+            mock_add.assert_called_once_with("C_TEST", "ts_1234", "x", role="release_engineer")
 
             # Verify error message sent
             sent_text = mock_send.call_args[0][1]

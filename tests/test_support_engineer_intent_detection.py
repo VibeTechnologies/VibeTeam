@@ -55,10 +55,7 @@ def test_extract_user_message_returns_original_when_markers_missing() -> None:
 
 
 def test_should_prefetch_investigation_context_for_400_gateway_incident() -> None:
-    msg = (
-        "@SupportEngineer users see API gateway 400 errors after deployment, "
-        "please investigate."
-    )
+    msg = "@SupportEngineer users see API gateway 400 errors after deployment, please investigate."
     assert _should_prefetch_investigation_context(msg.lower()) is True
 
 

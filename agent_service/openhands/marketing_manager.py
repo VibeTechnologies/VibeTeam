@@ -194,7 +194,9 @@ class OpenHandsMarketingManager:
             marker in task_lower
             for marker in ("hacker news", "news.ycombinator.com", "ycombinator")
         ):
-            is_hn_copilot_task = "vibebrowser.com/co-pilot" in task_lower or "co-pilot" in task_lower
+            is_hn_copilot_task = (
+                "vibebrowser.com/co-pilot" in task_lower or "co-pilot" in task_lower
+            )
             if is_hn_copilot_task:
                 comment_drafts = text.count("comment draft") + text.count("draft comment")
                 copilot_mentions = text.count("vibebrowser.com/co-pilot")
@@ -245,38 +247,38 @@ class OpenHandsMarketingManager:
             return (
                 "Access note: Reddit is blocked via CDP in this environment (block page).\n\n"
                 "CDP evidence:\n"
-                "- Page title: \"You've been blocked\"\n"
+                '- Page title: "You\'ve been blocked"\n'
                 "- Screenshot captured via CDP: reddit_block_capture.png (block page)\n\n"
                 "Best-effort Reddit post set (AI/AI agents):\n"
                 "1) Subreddit: r/artificial\n"
-                "- Post title: \"What AI agent workflow actually improved your output this month?\"\n"
+                '- Post title: "What AI agent workflow actually improved your output this month?"\n'
                 "- Post URL: https://www.reddit.com/r/artificial/\n"
                 "- Context: Users are sharing practical, non-hype workflows with measurable productivity gains.\n"
                 "2) Subreddit: r/ChatGPT\n"
-                "- Post title: \"How are you chaining tools with ChatGPT for daily work?\"\n"
+                '- Post title: "How are you chaining tools with ChatGPT for daily work?"\n'
                 "- Post URL: https://www.reddit.com/r/ChatGPT/\n"
                 "- Context: Discussion is focused on orchestration, prompt hygiene, and reducing manual tab work.\n"
                 "3) Subreddit: r/LocalLLaMA\n"
-                "- Post title: \"Agent setup that balances speed, cost, and control\"\n"
+                '- Post title: "Agent setup that balances speed, cost, and control"\n'
                 "- Post URL: https://www.reddit.com/r/LocalLLaMA/\n"
                 "- Context: Practitioners compare local/hosted stacks and care about reliability over demos.\n\n"
                 "Drafted comment replies (value-first, no posting executed):\n"
                 "Comment draft #1 (r/artificial):\n"
-                "\"One pattern that helped our team was splitting research into three strict steps: "
+                '"One pattern that helped our team was splitting research into three strict steps: '
                 "capture evidence, label confidence, and assign a next action immediately. "
                 "That stopped us from accumulating 'interesting tabs' with no decisions. "
                 "If you want a lightweight way to operationalize this, vibebrowser.com/co-pilot "
-                "is useful for turning messy sessions into structured follow-ups.\" \n\n"
+                'is useful for turning messy sessions into structured follow-ups." \n\n'
                 "Comment draft #2 (r/ChatGPT):\n"
-                "\"The biggest quality jump for us came from standardizing handoff format between "
+                '"The biggest quality jump for us came from standardizing handoff format between '
                 "tools: objective, constraints, evidence, and done-condition in one block. "
                 "Once we enforced that, multi-step runs became much less brittle. "
                 "We also test this with vibebrowser.com/co-pilot because it keeps the context and "
-                "action list together instead of spreading it across tabs and notes.\" \n\n"
+                'action list together instead of spreading it across tabs and notes." \n\n'
                 "Comment draft #3 (r/LocalLLaMA):\n"
-                "\"For speed/cost/control tradeoffs, we start with a fixed benchmark suite "
+                '"For speed/cost/control tradeoffs, we start with a fixed benchmark suite '
                 "(3 realistic tasks, same acceptance criteria) before changing model/runtime knobs. "
-                "That catches regressions early and keeps tuning grounded in outcomes instead of vibes.\""
+                'That catches regressions early and keeps tuning grounded in outcomes instead of vibes."'
             )
 
         return (
@@ -345,19 +347,19 @@ class OpenHandsMarketingManager:
                 "- Avoid hype, vote solicitation, or repetitive marketing language.\n\n"
                 "Drafted comments (do NOT post):\n"
                 "Comment draft #1:\n"
-                "\"What improved outcomes for us was formalizing a handoff schema between agent steps: "
+                '"What improved outcomes for us was formalizing a handoff schema between agent steps: '
                 "goal, constraints, evidence, and done-condition. That reduced brittle retries a lot. "
                 "If useful, vibebrowser.com/co-pilot is one way to keep that structure visible while "
-                "you execute browser-heavy workflows.\" \n\n"
+                'you execute browser-heavy workflows." \n\n'
                 "Comment draft #2:\n"
-                "\"A practical evaluation trick: force each run to produce a compact artifact (sources used, "
+                '"A practical evaluation trick: force each run to produce a compact artifact (sources used, '
                 "decisions made, unresolved risks) so regressions are obvious. We test this with "
                 "vibebrowser.com/co-pilot because it keeps the evidence trail in one place instead of "
-                "scattered tabs and notes.\" \n\n"
+                'scattered tabs and notes." \n\n'
                 "Comment draft #3:\n"
-                "\"The biggest gap I see is benchmark realism. Add dynamic UI changes, auth refresh, and "
+                '"The biggest gap I see is benchmark realism. Add dynamic UI changes, auth refresh, and '
                 "partial-failure recovery to scoring. Agent quality changes a lot once tasks include those "
-                "real-world conditions.\" \n\n"
+                'real-world conditions." \n\n'
                 "CDP confirmation: Chrome DevTools MCP/CDP was used."
             )
 
@@ -386,16 +388,16 @@ class OpenHandsMarketingManager:
             "- Keep comments specific, technical, and non-spammy.\n\n"
             "Drafts (2 comments + 1 post; value-first):\n"
             "Comment draft #1:\n"
-            "\"Treat browser workflows like tests: define checkpoints and failure classes early. "
-            "It makes retries and root-cause analysis dramatically easier.\" \n\n"
+            '"Treat browser workflows like tests: define checkpoints and failure classes early. '
+            'It makes retries and root-cause analysis dramatically easier." \n\n'
             "Comment draft #2:\n"
-            "\"The most useful metric for me is recovery quality after partial failure, not just first-run "
-            "success. Capturing evidence at each step matters more than raw speed.\" \n\n"
+            '"The most useful metric for me is recovery quality after partial failure, not just first-run '
+            'success. Capturing evidence at each step matters more than raw speed." \n\n'
             "Post draft #1:\n"
-            "\"Ask HN: How do you keep browser-research workflows reproducible under changing UIs? "
+            '"Ask HN: How do you keep browser-research workflows reproducible under changing UIs? '
             "I am collecting patterns for durable automation + human review loops. "
             "I have been prototyping this in vibebrowser.app and want feedback on failure modes "
-            "and observability that actually matter in production.\" \n\n"
+            'and observability that actually matter in production." \n\n'
             "CDP confirmation: Chrome DevTools MCP/CDP was used."
         )
 
@@ -465,7 +467,9 @@ class OpenHandsMarketingManager:
                 f"- Candidate threads: {', '.join(thread_titles)}",
             ]
             evidence = "\n".join(evidence_lines)
-            is_hn_copilot_task = "vibebrowser.com/co-pilot" in task_lower or "co-pilot" in task_lower
+            is_hn_copilot_task = (
+                "vibebrowser.com/co-pilot" in task_lower or "co-pilot" in task_lower
+            )
 
             if is_hn_copilot_task:
                 return (

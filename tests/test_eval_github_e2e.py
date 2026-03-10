@@ -603,7 +603,9 @@ def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
     def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
         return {"vibeteam-support-bot-260301[bot]"}
 
-    def fake_wait_for_assignee_activity(fetch_comments, since, target_assignee, timeout, poll_interval=10):
+    def fake_wait_for_assignee_activity(
+        fetch_comments, since, target_assignee, timeout, poll_interval=10
+    ):
         called["waited_for"] = target_assignee
         return set()
 
@@ -616,7 +618,7 @@ def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
             {
                 "created_at": now.isoformat().replace("+00:00", "Z"),
                 "user": {"login": "vibeteam-swe-bot-260301[bot]", "type": "Bot"},
-            }
+            },
         ]
 
     def fake_evaluate_issue_assignment(*args, **kwargs):
@@ -633,9 +635,13 @@ def test_run_issue_handoff_requires_assignee_activity_for_pass(monkeypatch):
     monkeypatch.setattr(eval_github_e2e, "_create_issue", fake_create_issue)
     monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fail_create_issue_comment)
     monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
-    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity)
+    monkeypatch.setattr(
+        eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity
+    )
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
-    monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment)
+    monkeypatch.setattr(
+        eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment
+    )
 
     result = eval_github_e2e._run_issue_handoff(
         owner="VibeTechnologies",
@@ -669,7 +675,9 @@ def test_run_issue_handoff_passes_with_assignment_and_assignee_activity(monkeypa
     def fake_wait_for_bot_authors(fetch_comments, since, min_bots, timeout, poll_interval=10):
         return {"vibeteam-support-bot-260301[bot]"}
 
-    def fake_wait_for_assignee_activity(fetch_comments, since, target_assignee, timeout, poll_interval=10):
+    def fake_wait_for_assignee_activity(
+        fetch_comments, since, target_assignee, timeout, poll_interval=10
+    ):
         return {target_assignee}
 
     def fake_fetch_issue_comments(owner, repo, number, token, since=None):
@@ -698,9 +706,13 @@ def test_run_issue_handoff_passes_with_assignment_and_assignee_activity(monkeypa
     monkeypatch.setattr(eval_github_e2e, "_create_issue", fake_create_issue)
     monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fail_create_issue_comment)
     monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
-    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity)
+    monkeypatch.setattr(
+        eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity
+    )
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
-    monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment)
+    monkeypatch.setattr(
+        eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment
+    )
 
     result = eval_github_e2e._run_issue_handoff(
         owner="VibeTechnologies",
@@ -772,9 +784,13 @@ def test_run_issue_handoff_passes_with_fallback_bot_activity(monkeypatch):
     monkeypatch.setattr(eval_github_e2e, "_create_issue", fake_create_issue)
     monkeypatch.setattr(eval_github_e2e, "_create_issue_comment", fake_create_issue_comment)
     monkeypatch.setattr(eval_github_e2e, "_wait_for_bot_authors", fake_wait_for_bot_authors)
-    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fail_wait_for_assignee_activity)
+    monkeypatch.setattr(
+        eval_github_e2e, "_wait_for_assignee_activity", fail_wait_for_assignee_activity
+    )
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
-    monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment)
+    monkeypatch.setattr(
+        eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment
+    )
 
     result = eval_github_e2e._run_issue_handoff(
         owner="VibeTechnologies",
@@ -1046,7 +1062,9 @@ def test_run_issue_handoff_fails_when_creator_mismatch(monkeypatch):
             "dzianisv",
         )
 
-    def fake_wait_for_assignee_activity(fetch_comments, since, target_assignee, timeout, poll_interval=10):
+    def fake_wait_for_assignee_activity(
+        fetch_comments, since, target_assignee, timeout, poll_interval=10
+    ):
         return {target_assignee}
 
     def fake_fetch_issue_comments(owner, repo, number, token, since=None):
@@ -1069,9 +1087,13 @@ def test_run_issue_handoff_fails_when_creator_mismatch(monkeypatch):
         }
 
     monkeypatch.setattr(eval_github_e2e, "_create_issue", fake_create_issue)
-    monkeypatch.setattr(eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity)
+    monkeypatch.setattr(
+        eval_github_e2e, "_wait_for_assignee_activity", fake_wait_for_assignee_activity
+    )
     monkeypatch.setattr(eval_github_e2e, "_fetch_issue_comments", fake_fetch_issue_comments)
-    monkeypatch.setattr(eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment)
+    monkeypatch.setattr(
+        eval_github_e2e, "_evaluate_issue_assignment", fake_evaluate_issue_assignment
+    )
 
     result = eval_github_e2e._run_issue_handoff(
         owner="VibeTechnologies",

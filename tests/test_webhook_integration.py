@@ -842,7 +842,9 @@ class TestGitHubWebhookRouting:
         finally:
             github.config.GITHUB_WEBHOOK_SECRET = original_secret
 
-    def test_invalid_signature_logs_context(self, test_client, github_webhook_secret, monkeypatch, caplog):
+    def test_invalid_signature_logs_context(
+        self, test_client, github_webhook_secret, monkeypatch, caplog
+    ):
         """Invalid signature logs include event/repo/delivery context for debugging."""
         monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
         monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")

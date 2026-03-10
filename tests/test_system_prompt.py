@@ -102,7 +102,9 @@ class TestAgentPromptFilenameConstruction:
             assert "OpenHandsRoleAgent" in content
             assert "system_prompt_filename" in role_base
             return
-        assert "system_prompt_filename" in content, f"{agent_file} does not set system_prompt_filename"
+        assert "system_prompt_filename" in content, (
+            f"{agent_file} does not set system_prompt_filename"
+        )
 
     @pytest.mark.parametrize("agent_file", AGENT_FILES)
     def test_agent_uses_correct_template_path(self, agent_file: str):
@@ -1041,7 +1043,8 @@ class TestAzureLLMConsolidation:
             assert "OpenHandsRoleAgent" in content
             assert "from agent_service.shared.llm import" in role_base
             assert (
-                "AzureLLM" in role_base.split("from agent_service.shared.llm import")[1].split("\n")[0]
+                "AzureLLM"
+                in role_base.split("from agent_service.shared.llm import")[1].split("\n")[0]
             )
             return
 
