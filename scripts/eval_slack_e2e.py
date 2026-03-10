@@ -81,6 +81,27 @@ except ImportError:
 # Test Scenarios
 # ==============================================================================
 
+_EVAL_MINIMAL_KUBECONFIG = """\
+apiVersion: v1
+kind: Config
+clusters:
+  - name: eval-k3s
+    cluster:
+      server: https://127.0.0.1:6443
+      insecure-skip-tls-verify: true
+contexts:
+  - name: eval-k3s-context
+    context:
+      cluster: eval-k3s
+      user: eval-user
+current-context: eval-k3s-context
+users:
+  - name: eval-user
+    user:
+      token: eval-token
+"""
+
+
 SCENARIOS = {
     "support_400_errors": {
         "name": "Support Engineer - API 400 Errors Investigation",
@@ -1421,9 +1442,15 @@ SCENARIOS = {
             "@ReleaseEngineer configure k3s cluster access from the kubeconfig I attached and "
             "confirm you can use it for this thread."
         ),
+        # For trigger-based evals we inject kubeconfig context directly in the
+        # initial /slack/trigger payload to emulate an attached kubeconfig.
+        "trigger_kubeconfig_yaml": _EVAL_MINIMAL_KUBECONFIG,
+        "trigger_kubeconfig_file_name": "eval-k3s-kubeconfig.yaml",
         "follow_up_messages": [
             "@ReleaseEngineer now investigate vibe cluster health and provide a concise status summary."
         ],
+        # Avoid posting eval-owned follow-up text as a bot message in-thread.
+        "post_follow_up_messages": False,
         "follow_up_delay_seconds": 8,
         "expected_agent": "release_engineer",
         "evaluation_criteria": {
@@ -2723,6 +2750,15 @@ async def run_evaluation(
                         trigger_payload["framework"] = framework
                     if use_async:
                         trigger_payload["use_async"] = True
+                    if (
+                        step_name == "Initial message"
+                        and isinstance(scenario.get("trigger_kubeconfig_yaml"), str)
+                        and scenario.get("trigger_kubeconfig_yaml", "").strip()
+                    ):
+                        trigger_payload["kubeconfig_yaml"] = scenario["trigger_kubeconfig_yaml"]
+                        trigger_payload["kubeconfig_file_name"] = str(
+                            scenario.get("trigger_kubeconfig_file_name", "uploaded-kubeconfig.yaml")
+                        )
 
                     response = await client.post(
                         trigger_url,
@@ -2755,19 +2791,23 @@ async def run_evaluation(
         await _trigger_gateway_message(user_message, "Initial message")
 
         follow_up_messages = scenario.get("follow_up_messages", [])
+        post_follow_up_messages = bool(scenario.get("post_follow_up_messages", True))
         follow_up_delay_seconds = int(scenario.get("follow_up_delay_seconds", 8))
         if follow_up_messages:
             for idx, follow_up in enumerate(follow_up_messages, start=1):
-                print(f"\n>>> Step 1c.{idx}: Posting follow-up message")
-                follow_up_posted = ROLE_PATTERN.sub("", follow_up).strip()
-                if not follow_up_posted:
-                    follow_up_posted = f"Evaluation follow-up #{idx}"
-                await _slack_call(
-                    slack.post_message,
-                    channel=channel,
-                    text=follow_up_posted,
-                    thread_ts=thread_ts,
-                )
+                if post_follow_up_messages:
+                    print(f"\n>>> Step 1c.{idx}: Posting follow-up message")
+                    follow_up_posted = ROLE_PATTERN.sub("", follow_up).strip()
+                    if not follow_up_posted:
+                        follow_up_posted = f"Evaluation follow-up #{idx}"
+                    await _slack_call(
+                        slack.post_message,
+                        channel=channel,
+                        text=follow_up_posted,
+                        thread_ts=thread_ts,
+                    )
+                else:
+                    print(f"\n>>> Step 1c.{idx}: Skipping follow-up post (trigger-only mode)")
                 if follow_up_delay_seconds > 0:
                     await asyncio.sleep(follow_up_delay_seconds)
 

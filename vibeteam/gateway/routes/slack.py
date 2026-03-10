@@ -2586,7 +2586,9 @@ async def trigger_agent_for_slack(
         "text": "@SupportEngineer please investigate the issue",
         "user_id": "eval_script",
         "framework": "openclaw",
-        "use_async": false
+        "use_async": false,
+        "kubeconfig_yaml": "apiVersion: v1 ...",
+        "kubeconfig_file_name": "uploaded-kubeconfig.yaml"
     }
 
     Fields:
@@ -2599,6 +2601,10 @@ async def trigger_agent_for_slack(
       (POST /run/async → agent processes → POST /callback/agent) instead of the
       synchronous path. Useful for testing the full async lifecycle including
       CALLBACK_SECRET verification.
+    - kubeconfig_yaml (optional): Inline kubeconfig YAML used to seed
+      thread-scoped kubeconfig context for this trigger.
+    - kubeconfig_file_name (optional): Source filename label for the inline
+      kubeconfig context (default: "uploaded-kubeconfig.yaml").
     """
     # Rate limiting
     if not _trigger_rate_limiter.allow():
@@ -2632,11 +2638,29 @@ async def trigger_agent_for_slack(
     user_id = body.get("user_id", "trigger_api")
     use_async = body.get("use_async", False)
     framework = body.get("framework")
+    kubeconfig_yaml = body.get("kubeconfig_yaml")
+    kubeconfig_file_name = str(body.get("kubeconfig_file_name", "uploaded-kubeconfig.yaml"))
 
     if not channel:
         raise HTTPException(status_code=400, detail="channel is required")
     if not text:
         raise HTTPException(status_code=400, detail="text is required")
+
+    kubeconfig_context_stored = False
+    if isinstance(kubeconfig_yaml, str) and kubeconfig_yaml.strip():
+        if not thread_ts:
+            raise HTTPException(
+                status_code=400,
+                detail="thread_ts is required when kubeconfig_yaml is provided",
+            )
+        try:
+            kube_context = _validate_and_normalize_kubeconfig(kubeconfig_yaml)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"invalid kubeconfig_yaml: {exc}") from exc
+        kube_context["file_name"] = kubeconfig_file_name
+        kube_context["source"] = "slack_trigger"
+        _store_thread_kubeconfig_context(channel, thread_ts, kube_context)
+        kubeconfig_context_stored = True
 
     # Check for role mentions
     message_router = get_message_router()
@@ -2671,4 +2695,5 @@ async def trigger_agent_for_slack(
         "thread_ts": thread_ts,
         "roles": role_mentions,
         "mode": mode,
+        "kubeconfig_context_stored": kubeconfig_context_stored,
     }
