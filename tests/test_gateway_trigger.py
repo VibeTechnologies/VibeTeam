@@ -243,6 +243,28 @@ class TestTriggerValidation:
         data = response.json()
         assert data["kubeconfig_context_stored"] is True
 
+    def test_inline_kubeconfig_is_injected_into_trigger_text(
+        self, client: TestClient, _patch_run_agent
+    ):
+        """Trigger path should inject stored kubeconfig context into routed text."""
+        payload = {
+            "channel": "C0AATPSADB8",
+            "thread_ts": "1234567890.123456",
+            "text": "@ReleaseEngineer investigate vibe cluster health",
+            "kubeconfig_yaml": VALID_KUBECONFIG,
+            "kubeconfig_file_name": "eval-kubeconfig.yaml",
+        }
+        with patch("vibeteam.gateway.routes.slack.config") as mock_config:
+            mock_config.SLACK_TRIGGER_SECRET = "test-secret"
+            mock_config.SLACK_BOT_TOKEN = "xoxb-test"
+            response = client.post("/slack/trigger", json=payload, headers=AUTH_HEADERS)
+
+        assert response.status_code == 200
+        _patch_run_agent.assert_called_once()
+        routed_text = _patch_run_agent.call_args.args[0]
+        assert "Attached Kubeconfig Context" in routed_text
+        assert "eval-kubeconfig.yaml" in routed_text
+
 
 class TestTriggerRateLimit:
     """Test /slack/trigger rate limiting."""
