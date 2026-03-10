@@ -284,7 +284,7 @@ class TestCallbackEndpoint:
             # Verify message posted to thread
             mock_send.assert_called_once()
             sent_text = mock_send.call_args[0][1]
-            assert "[SupportEngineer]" in sent_text
+            assert "[SupportEngineer]" not in sent_text
             assert "I investigated the issue" in sent_text
 
     def test_callback_failure_posts_error(self, test_client):
@@ -580,11 +580,13 @@ class TestCallbackEndpoint:
 
             # First message should have role prefix
             first_text = mock_send.call_args_list[0][0][1]
-            assert "[SupportEngineer]" in first_text
+            assert "[SupportEngineer]" not in first_text
+            assert first_text
 
-            # Second message should have continuation prefix
+            # Second message should be plain chunk text as well
             second_text = mock_send.call_args_list[1][0][1]
-            assert "(cont.)" in second_text
+            assert "(cont.)" not in second_text
+            assert second_text
 
     def test_callback_rejects_invalid_secret(self, test_client):
         """Callback with wrong secret is rejected when CALLBACK_SECRET is set."""
@@ -952,6 +954,37 @@ class TestSlackEventsPassMessageTs:
             mock_run.assert_called_once()
             assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"
 
+    def test_self_bot_message_with_role_mention_is_ignored(self, test_client):
+        """Self-posted bot messages are ignored to avoid duplicate handoff processing."""
+        payload = self._make_slack_event(
+            "message", text="@SupportEngineer please investigate", is_bot=True
+        )
+        payload["event"]["user"] = "U_SUPPORT_BOT"
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ) as mock_add,
+            patch(
+                "vibeteam.gateway.routes.slack._our_bot_user_ids",
+                new_callable=AsyncMock,
+                return_value={"U_SUPPORT_BOT"},
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ) as mock_run,
+        ):
+            result = asyncio.run(_process_slack_event(payload))
+
+            assert result["status"] == "ignored"
+            assert result["reason"] == "self_bot_handoff_already_handled"
+            mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
+            thinking_calls = [c for c in mock_add.call_args_list if c.args[2] == "thinking_face"]
+            assert not thinking_calls
+            mock_run.assert_not_called()
+
     def test_channel_role_bot_mention_routes_without_ingress_mention(self, test_client):
         """Direct role-bot user mention in channel should route even without @VibeTeam."""
         payload = self._make_slack_event(
@@ -1275,7 +1308,7 @@ class TestCallbackTimeout:
             # Verify timeout message posted with partial response
             mock_send.assert_called_once()
             sent_text = mock_send.call_args[0][1]
-            assert "[SupportEngineer]" in sent_text
+            assert "[SupportEngineer]" not in sent_text
             assert ":hourglass:" in sent_text
             assert "ran out of time" in sent_text
 
