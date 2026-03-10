@@ -130,21 +130,7 @@ def _build_service_account_eval_kubeconfig() -> str | None:
                 ],
                 text=True,
                 stderr=subprocess.STDOUT,
-            )
-            .strip()
-        )
-        ca_data = (
-            subprocess.check_output(
-                [
-                    "kubectl",
-                    "config",
-                    "view",
-                    "--minify",
-                    "-o",
-                    "jsonpath={.clusters[0].cluster.certificate-authority-data}",
-                ],
-                text=True,
-                stderr=subprocess.STDOUT,
+                timeout=20,
             )
             .strip()
         )
@@ -153,13 +139,14 @@ def _build_service_account_eval_kubeconfig() -> str | None:
                 ["kubectl", "create", "token", service_account, "-n", namespace],
                 text=True,
                 stderr=subprocess.STDOUT,
+                timeout=20,
             )
             .strip()
         )
-    except subprocess.CalledProcessError as exc:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         print(
             "WARNING: Failed to generate service-account kubeconfig for k3s eval "
-            f"({exc.output.strip() if exc.output else exc})"
+            f"({exc.output.strip() if hasattr(exc, 'output') and exc.output else exc})"
         )
         return None
 
@@ -173,11 +160,10 @@ def _build_service_account_eval_kubeconfig() -> str | None:
         f"  - name: {cluster_name}",
         "    cluster:",
         f"      server: {server}",
+        # Keep kubeconfig compact and resilient for LLM handoff: avoid large CA blobs
+        # that are often reformatted/truncated in generated shell commands.
+        "      insecure-skip-tls-verify: true",
     ]
-    if ca_data:
-        lines.append(f"      certificate-authority-data: {ca_data}")
-    else:
-        lines.append("      insecure-skip-tls-verify: true")
 
     lines.extend(
         [
@@ -1535,7 +1521,7 @@ SCENARIOS = {
         "name": "Release Engineer - Configure k3s then Investigate vibe Health",
         "message": (
             "@ReleaseEngineer configure k3s cluster access from the kubeconfig I attached and "
-            "confirm you can use it for this thread."
+            "confirm you can use it for this thread. Do not run health checks yet."
         ),
         # For trigger-based evals we inject kubeconfig context directly in the
         # initial /slack/trigger payload to emulate an attached kubeconfig.
@@ -1543,7 +1529,7 @@ SCENARIOS = {
         "trigger_kubeconfig_yaml": _EVAL_MINIMAL_KUBECONFIG,
         "trigger_kubeconfig_file_name": "eval-k3s-kubeconfig.yaml",
         "follow_up_messages": [
-            "@ReleaseEngineer now investigate vibe cluster health and provide a concise status summary."
+            "@ReleaseEngineer now investigate vibeteam cluster health and provide a concise status summary."
         ],
         # Avoid posting eval-owned follow-up text as a bot message in-thread.
         "post_follow_up_messages": False,
