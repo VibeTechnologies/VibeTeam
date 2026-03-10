@@ -223,7 +223,7 @@ def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
 
     Args:
         text: The text to split
-        max_chunk_size: Maximum size of each chunk (default 2900 to leave room for prefix)
+        max_chunk_size: Maximum size of each chunk (default 2900)
 
     Returns:
         List of text chunks
@@ -414,6 +414,16 @@ async def _role_bot_user_ids() -> dict[str, str]:
         if user_id:
             user_id_to_role[user_id] = role
     return user_id_to_role
+
+
+async def _our_bot_user_ids() -> set[str]:
+    """Collect Slack user IDs for ingress + role-scoped bot tokens."""
+    bot_ids: set[str] = set()
+    for token in _collect_slack_bot_tokens():
+        user_id = await get_bot_user_id(token=token)
+        if user_id:
+            bot_ids.add(user_id)
+    return bot_ids
 
 
 async def _extract_roles_from_slack_user_mentions(text: str) -> list[str]:
@@ -744,11 +754,7 @@ async def bot_participated_in_thread(channel: str, thread_ts: str) -> bool:
     tokens = _collect_slack_bot_tokens()
     if not tokens:
         return False
-    bot_ids: set[str] = set()
-    for token in tokens:
-        bot_id = await get_bot_user_id(token=token)
-        if bot_id:
-            bot_ids.add(bot_id)
+    bot_ids = await _our_bot_user_ids()
     if not bot_ids:
         return False
 
@@ -1427,9 +1433,7 @@ async def _submit_agent_async(
         await remove_reaction(channel, message_ts, "thinking_face", role=role)
         await clear_thread_status(channel, status_thread_ts, role=role)
         await add_reaction(channel, message_ts, "x", role=role)
-        error_text = (
-            f"[{display_name}] Sorry, I couldn't reach the agent service: {result['error']}"
-        )
+        error_text = f"Sorry, I couldn't reach the agent service: {result['error']}"
         await send_slack_message(channel, error_text, thread_ts, role=role)
         logger.error(f"[ASYNC] Failed to submit task for {role}: {result['error']}")
     else:
@@ -1585,7 +1589,7 @@ async def _run_agent_and_respond(
         logger.info(f"[TIMING] Agent {role} completed in {agent_duration:.1f}s")
 
         if "error" in result:
-            error_text = f"[{display_name}] Sorry, I encountered an error: {result['error']}"
+            error_text = f"Sorry, I encountered an error: {result['error']}"
             if message_ts:
                 await remove_reaction(channel, message_ts, "thinking_face", role=role)
                 await add_reaction(channel, message_ts, "x", role=role)
@@ -1598,24 +1602,13 @@ async def _run_agent_and_respond(
                 await remove_reaction(channel, message_ts, "thinking_face", role=role)
                 await add_reaction(channel, message_ts, "white_check_mark", role=role)
 
-            # Build display prefix with model info if available
-            model_name = result.get("model", "")
-            if model_name:
-                agent_prefix = f"[{display_name}:{model_name}]"
-            else:
-                agent_prefix = f"[{display_name}]"
-
             # Split long responses into multiple messages instead of truncating
             # This preserves handoff mentions that might be at the end
             chunks = split_long_message(response)
 
             # Send each chunk as a separate message
-            for i, chunk in enumerate(chunks):
-                if i == 0:
-                    formatted_chunk = f"{agent_prefix} {chunk}"
-                else:
-                    formatted_chunk = f"{agent_prefix} (cont.) {chunk}"
-                await send_slack_message(channel, formatted_chunk, thread_ts, role=role)
+            for chunk in chunks:
+                await send_slack_message(channel, chunk, thread_ts, role=role)
 
             # Check for handoffs in the response and execute them synchronously
             handoff_roles = _parse_handoff_roles(response, role)
@@ -1680,9 +1673,7 @@ async def _run_agent_and_respond(
 
     except Exception as e:
         logger.exception(f"Failed to run agent for Slack: {e}")
-        error_text = (
-            f"[{display_name}] Sorry, I encountered an unexpected error. Please try again later."
-        )
+        error_text = "Sorry, I encountered an unexpected error. Please try again later."
         if message_ts:
             await remove_reaction(channel, message_ts, "thinking_face", role=role)
             await add_reaction(channel, message_ts, "x", role=role)
@@ -1762,7 +1753,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
             "Sorry, I ran out of time working on this task. "
             "Please try again or break the request into smaller steps."
         )
-        timeout_text = f"[{display_name}] :hourglass: {timeout_response}"
+        timeout_text = f":hourglass: {timeout_response}"
         await send_slack_message(channel, timeout_text, thread_ts, role=role)
         return {"status": "ok", "job_id": job_id, "outcome": "timeout_posted"}
 
@@ -1771,7 +1762,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
         if message_ts:
             await add_reaction(channel, message_ts, "x", role=role)
         error_msg = error or "Unknown error"
-        error_text = f"[{display_name}] Sorry, I encountered an error: {error_msg}"
+        error_text = f"Sorry, I encountered an error: {error_msg}"
         await send_slack_message(channel, error_text, thread_ts, role=role)
         return {"status": "ok", "job_id": job_id, "outcome": "error_posted"}
 
@@ -1781,23 +1772,11 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
 
     response = response_text or "I completed the task but have no output to share."
 
-    # Build display prefix with model info if available
-    result_metadata = payload.get("metadata", {})
-    model_name = result_metadata.get("model", "")
-    if model_name:
-        agent_prefix = f"[{display_name}:{model_name}]"
-    else:
-        agent_prefix = f"[{display_name}]"
-
     # Split long responses into multiple messages
     chunks = split_long_message(response)
 
-    for i, chunk in enumerate(chunks):
-        if i == 0:
-            formatted_chunk = f"{agent_prefix} {chunk}"
-        else:
-            formatted_chunk = f"{agent_prefix} (cont.) {chunk}"
-        await send_slack_message(channel, formatted_chunk, thread_ts, role=role)
+    for chunk in chunks:
+        await send_slack_message(channel, chunk, thread_ts, role=role)
 
     # Check for handoffs in the response
     message_router = get_message_router()
@@ -1882,7 +1861,6 @@ async def handle_agent_progress(request: Request) -> dict[str, Any]:
     channel = meta.get("channel", "")
     thread_ts = meta.get("thread_ts")
     role = meta.get("role")
-    display_name = meta.get("display_name", meta.get("role", "Agent"))
 
     if not channel or not step_summary:
         return {"status": "ignored", "reason": "missing channel or step_summary"}
@@ -1899,7 +1877,7 @@ async def handle_agent_progress(request: Request) -> dict[str, Any]:
     time_str = f"{mins}m{secs:02d}s" if mins > 0 else f"{secs}s"
 
     # Post progress as a subtle update
-    progress_text = f"_[{display_name}] Step {step_number} ({time_str}): {step_summary}_"
+    progress_text = f"_Step {step_number} ({time_str}): {step_summary}_"
     await send_slack_message(channel, progress_text, thread_ts, role=role)
 
     logger.info(
@@ -2119,23 +2097,18 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             thread_ts = event.get("thread_ts") or message_ts
             bot_id = event.get("bot_id", "")
 
-            # Check if this message was posted by our own bot (self-posted handoff).
-            # Our bot's messages from the callback handler contain a "[RoleName]" prefix.
-            # The callback handler already processes handoffs in the response, so
-            # re-processing here would cause duplicate agent executions.
+            # Check if this message was posted by one of our own Slack apps.
+            # Callback handlers already submit handoffs, so re-processing our own
+            # thread replies here would cause duplicate agent executions.
             is_self_bot_message = False
-            if text:
-                # Our callback handler formats messages as "[DisplayName] ..." or
-                # "[DisplayName:model] ...". If the message starts with this pattern
-                # and is in a thread, it's a response we posted — not a new request.
-                import re as _re
-
-                self_bot_pattern = _re.match(r"^\[[\w:.\-]+\]\s", text)
-                if self_bot_pattern and thread_ts and thread_ts != message_ts:
+            message_user = event.get("user", "")
+            if message_user and thread_ts and thread_ts != message_ts:
+                own_bot_user_ids = await _our_bot_user_ids()
+                if message_user in own_bot_user_ids:
                     is_self_bot_message = True
                     logger.info(
-                        f"Skipping self-posted bot message with role mention "
-                        f"(handoff already handled by callback): {text[:80]}..."
+                        "Skipping self-posted bot message from known VibeTeam bot "
+                        f"user_id={message_user}: {text[:80]}..."
                     )
 
             if is_self_bot_message:

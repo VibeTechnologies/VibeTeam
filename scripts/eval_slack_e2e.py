@@ -1432,6 +1432,24 @@ def _build_role_display() -> dict[str, str]:
 ROLE_DISPLAY = _build_role_display()
 
 
+# Role-scoped Slack bot user IDs (user_id -> role), resolved from env tokens.
+@lru_cache(maxsize=1)
+def _load_role_bot_user_ids() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for role in sorted(r for r in ROLE_DISPLAY if r != "user"):
+        token = os.environ.get(f"SLACK_BOT_TOKEN_{role.upper()}", "").strip()
+        if not token:
+            continue
+        try:
+            connector = SlackConnector(token=token)
+            user_id = connector.bot_user_id
+            if user_id:
+                mapping[user_id] = role
+        except Exception as exc:
+            print(f"WARNING: Failed to resolve Slack bot user ID for role '{role}': {exc}")
+    return mapping
+
+
 # ==============================================================================
 # Azure OpenAI Model for DeepEval
 # ==============================================================================
@@ -1553,21 +1571,28 @@ def _is_placeholder(text: str) -> bool:
 
     Placeholder patterns posted by the gateway while agent is working:
     - "Thinking..." messages: ":hourglass_flowing_sand: [Role] Thinking..."
-    - Progress updates: "_[Role] Step N (Xs): summary_" (italicized)
+      and role-prefix-free variants (e.g., ":hourglass_flowing_sand: Thinking...")
+    - Progress updates: "_[Role] Step N (Xs): summary_" (legacy) or
+      "_Step N (Xs): summary_" (role-prefix-free)
     - Timeout notices: ":hourglass: ..."
     """
-    import re
-
     stripped = text.strip()
-    # Progress updates are posted as italicized messages: _[Role] Step N ..._
-    if stripped.startswith("_[") and stripped.endswith("_"):
+
+    # Progress updates are posted as italicized messages:
+    #   _[Role] Step N (45s): summary_   (legacy)
+    #   _Step N (45s): summary_          (current)
+    progress_re = re.compile(r"^_(?:\[[^\]]+\]\s*)?Step\s+\d+\s+\([^)]*\):\s+.+_$")
+    if progress_re.match(stripped):
         return True
+
     # Thinking placeholders
     if "Thinking..." in stripped and len(stripped) < 200:
         return True
+
     # Very short messages that look like status updates
-    if re.match(r"^:[\w_]+:\s*\[[\w]+\]\s*(Thinking|Processing|Working)", stripped):
+    if re.match(r"^:[\w_]+:\s*(?:\[[\w:.\-]+\]\s*)?(Thinking|Processing|Working)\b", stripped):
         return True
+
     return False
 
 
@@ -2521,6 +2546,7 @@ async def run_evaluation(
         raise ValueError("SLACK_BOT_TOKEN environment variable not set")
 
     slack = SlackConnector(token=slack_token)
+    role_bot_user_ids = _load_role_bot_user_ids()
 
     async def _slack_call(fn: Any, *args: Any, timeout: float = 30.0, **kwargs: Any) -> Any:
         """Run a Slack API call in a thread with a timeout to avoid hangs."""
@@ -2547,6 +2573,68 @@ async def run_evaluation(
     print()
 
     user_message = scenario["message"]
+
+    def _extract_agent_prefix(text: str) -> str:
+        """Extract the agent name from a legacy bot prefix like '[SupportEngineer]'."""
+        m = re.match(r"_?\[([A-Za-z][\w.\-]*)\]", text.strip())
+        return m.group(1) if m else ""
+
+    def _display_to_role(display: str) -> str:
+        """Convert display name like 'SupportEngineer' to role key 'support_engineer'."""
+        if not display:
+            return ""
+        lowered = display.strip().lower()
+        for role in ROLE_DISPLAY:
+            if role.lower() == lowered:
+                return role
+        for role, disp in ROLE_DISPLAY.items():
+            if disp.lower() == lowered:
+                return role
+        return ""
+
+    def _parse_role_mentions_loose(text: str) -> list[str]:
+        """Parse role mentions, including bare role names in handoff phrasing."""
+        explicit = parse_role_mentions(text)
+        if explicit:
+            return explicit
+        # Remove leading agent prefix like "[SupportEngineer]" from legacy messages.
+        clean = re.sub(r"_?\[[A-Za-z]+\]\s*", "", text.strip())
+        names_pattern = "|".join(re.escape(v) for v in ROLE_DISPLAY.values())
+        if not names_pattern:
+            return []
+        pattern = re.compile(rf"(?i)(?<![@/])\b({names_pattern})\b")
+        display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY.items()}
+        roles: list[str] = []
+        for match in pattern.findall(clean):
+            role = display_to_role.get(match.lower())
+            if role and role not in roles:
+                roles.append(role)
+        return roles
+
+    def _role_from_reply(reply: SlackMessage) -> str:
+        """Resolve role from Slack app identity, fallback to legacy text prefix."""
+        if reply.user in role_bot_user_ids:
+            return role_bot_user_ids[reply.user]
+        prefix_display = _extract_agent_prefix(reply.text)
+        if prefix_display:
+            prefix_role = _display_to_role(prefix_display)
+            if prefix_role:
+                return prefix_role
+        return "bot"
+
+    def _has_non_self_handoff(text: str, source_role: str = "") -> bool:
+        """True if text mentions a role other than the current agent."""
+        targets = _parse_role_mentions_loose(text)
+        if not targets:
+            return False
+        if source_role == "bot":
+            source_role = ""
+        if not source_role:
+            source_role = _display_to_role(_extract_agent_prefix(text))
+        # If we can't identify the source role, treat any mention as a handoff.
+        if not source_role:
+            return True
+        return any(t != source_role for t in targets)
 
     if existing_thread_ts:
         # ── Re-score mode: skip Steps 1, 1b, 2 ──────────────────────────
@@ -2645,7 +2733,7 @@ async def run_evaluation(
         # Track substantive responses per agent role for handoff completion.
         # When a handoff is detected, we need a substantive response from the
         # handoff *target* agent, not just the original agent.
-        handoff_source_agent = ""  # e.g. "SupportEngineer" — the agent that initiated handoff
+        handoff_source_role = ""  # e.g. "support_engineer" — the handoff initiator role
         handoff_target_responded = False  # True once the handoff target posts a real response
 
         def _content_fingerprint(replies: list) -> str:
@@ -2654,58 +2742,6 @@ async def run_evaluation(
 
             content = "|".join(r.text for r in replies)
             return hashlib.md5(content.encode()).hexdigest()
-
-        def _extract_agent_prefix(text: str) -> str:
-            """Extract the agent name from a bot message prefix like '[SupportEngineer]'.
-
-            Works for both substantive messages ('[Agent] ...') and progress
-            messages ('_[Agent] Step N ..._').
-            """
-            import re
-
-            # Match [AgentName] at start, optionally preceded by _ (italic progress)
-            m = re.match(r"_?\[([A-Za-z]+)\]", text.strip())
-            return m.group(1) if m else ""
-
-        def _display_to_role(display: str) -> str:
-            """Convert display name like 'SupportEngineer' to role key 'support_engineer'."""
-            if not display:
-                return ""
-            lowered = display.strip().lower()
-            for role, disp in ROLE_DISPLAY.items():
-                if disp.lower() == lowered:
-                    return role
-            return ""
-
-        def _parse_role_mentions_loose(text: str) -> list[str]:
-            """Parse role mentions, including bare role names in handoff phrasing."""
-            explicit = parse_role_mentions(text)
-            if explicit:
-                return explicit
-            # Remove leading agent prefix like "[SupportEngineer]"
-            clean = re.sub(r"_?\[[A-Za-z]+\]\s*", "", text.strip())
-            names_pattern = "|".join(re.escape(v) for v in ROLE_DISPLAY.values())
-            if not names_pattern:
-                return []
-            pattern = re.compile(rf"(?i)(?<![@/])\b({names_pattern})\b")
-            display_to_role = {v.lower(): k for k, v in ROLE_DISPLAY.items()}
-            roles: list[str] = []
-            for match in pattern.findall(clean):
-                role = display_to_role.get(match.lower())
-                if role and role not in roles:
-                    roles.append(role)
-            return roles
-
-        def _has_non_self_handoff(text: str) -> bool:
-            """True if text mentions a role other than the current agent."""
-            targets = _parse_role_mentions_loose(text)
-            if not targets:
-                return False
-            source_role = _display_to_role(_extract_agent_prefix(text))
-            # If we can't identify the source role, treat any mention as a handoff
-            if not source_role:
-                return True
-            return any(t != source_role for t in targets)
 
         while True:
             await asyncio.sleep(poll_interval)
@@ -2734,14 +2770,15 @@ async def run_evaluation(
                 bot_messages = [r for r in replies if r.is_bot and r.ts != thread_ts]
                 if bot_messages:
                     latest_bot_msg = bot_messages[-1]
-                    has_handoff = _has_non_self_handoff(latest_bot_msg.text)
+                    latest_role = _role_from_reply(latest_bot_msg)
+                    has_handoff = _has_non_self_handoff(latest_bot_msg.text, latest_role)
                     if has_handoff and not scenario.get("skip_handoff", False):
                         print("    Handoff detected in response! Waiting for next agent...")
                         pending_handoff = True
                         effective_timeout = time.time() - start_time + handoff_timeout_extension
                         # Track which agent initiated the handoff so we can
                         # distinguish its messages from the handoff target's
-                        handoff_source_agent = _extract_agent_prefix(latest_bot_msg.text)
+                        handoff_source_role = latest_role
                         handoff_target_responded = False
                         continue
                     else:
@@ -2754,12 +2791,18 @@ async def run_evaluation(
                                 m for m in bot_messages if not _is_placeholder(m.text)
                             ]
                             for msg in new_substantive:
-                                agent = _extract_agent_prefix(msg.text)
-                                if agent and agent != handoff_source_agent:
+                                agent_role = _role_from_reply(msg)
+                                if (
+                                    agent_role
+                                    and agent_role != "bot"
+                                    and agent_role != handoff_source_role
+                                ):
                                     handoff_target_responded = True
                                     pending_handoff = False
+                                    agent_display = ROLE_DISPLAY.get(agent_role, agent_role)
                                     print(
-                                        f"    Handoff target [{agent}] posted substantive response."
+                                        f"    Handoff target [{agent_display}] posted substantive "
+                                        "response."
                                     )
                                     break
                             # If still only progress from target, keep waiting
@@ -2804,7 +2847,8 @@ async def run_evaluation(
                             continue
 
                     latest_bot_msg = bot_messages[-1]
-                    has_handoff = _has_non_self_handoff(latest_bot_msg.text)
+                    latest_role = _role_from_reply(latest_bot_msg)
+                    has_handoff = _has_non_self_handoff(latest_bot_msg.text, latest_role)
                     if not has_handoff or scenario.get("skip_handoff", False):
                         print(
                             f"    Conversation stable for {int(time_since_last)}s, "
@@ -2843,22 +2887,21 @@ async def run_evaluation(
         if reply.ts == thread_ts:
             continue  # Skip original message
 
-        # Detect agent role from message prefix like "[SupportEngineer]"
-        text = reply.text
         role = "bot"
+        if reply.user in role_bot_user_ids:
+            role = role_bot_user_ids[reply.user]
+        else:
+            # Legacy fallback for old threads that still used [Role] prefixes.
+            text_prefix = _extract_agent_prefix(reply.text)
+            if text_prefix:
+                prefix_role = _display_to_role(text_prefix)
+                if prefix_role:
+                    role = prefix_role
 
+        text = reply.text
         if text.startswith("["):
             bracket_end = text.find("]")
             if bracket_end > 0:
-                role_name = text[1:bracket_end].lower().replace(" ", "_")
-                if role_name in ROLE_DISPLAY.values() or role_name.replace("_", "") in [
-                    r.lower().replace("_", "") for r in ROLE_DISPLAY.keys()
-                ]:
-                    # Normalize role name
-                    for key, display in ROLE_DISPLAY.items():
-                        if display.lower() == role_name or key == role_name:
-                            role = key
-                            break
                 text = text[bracket_end + 1 :].strip()
 
         conversation.append((role, text))
