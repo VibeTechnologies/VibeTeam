@@ -32,6 +32,10 @@ spec:
           env:
             - name: PYTHONPATH
               value: "/code/current"
+            - name: AGENTS_DIR
+              value: "/code/current/agents"
+            - name: AGENTS_CONFIG_PATH
+              value: "/code/current/agents/agents.yaml"
           volumeMounts:
             - name: code
               mountPath: /code
