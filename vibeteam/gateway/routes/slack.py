@@ -20,6 +20,7 @@ import time
 from typing import Any, cast
 
 import httpx
+import yaml
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from agent_service.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
@@ -267,6 +268,14 @@ _SLACK_EVENT_MAX_ENTRIES = 4096
 _slack_event_seen: dict[str, float] = {}
 _slack_event_lock = threading.Lock()
 
+# Thread-scoped kubeconfig context captured from Slack file attachments.
+_KUBECONFIG_CONTEXT_TTL_SECONDS = int(
+    os.environ.get("SLACK_KUBECONFIG_CONTEXT_TTL_SECONDS", str(12 * 60 * 60))
+)
+_KUBECONFIG_MAX_BYTES = int(os.environ.get("SLACK_KUBECONFIG_MAX_BYTES", "65536"))
+_thread_kubeconfig_contexts: dict[str, dict[str, Any]] = {}
+_thread_kubeconfig_lock = threading.Lock()
+
 
 def _slack_event_key(payload: dict[str, Any], event: dict[str, Any]) -> str | None:
     """Build a stable dedup key for a Slack event."""
@@ -313,6 +322,287 @@ def _is_duplicate_slack_event(key: str | None) -> bool:
 def _schedule_background(coro: Any) -> None:
     """Schedule background work for Slack events."""
     asyncio.create_task(coro)
+
+
+def _slack_thread_context_key(channel: str, thread_ts: str) -> str:
+    """Build an in-memory key for thread-scoped Slack context."""
+    return f"{channel}:{thread_ts}"
+
+
+def _prune_kubeconfig_contexts(now: float | None = None) -> None:
+    """Prune expired thread kubeconfig context entries."""
+    cutoff = (now or time.monotonic()) - _KUBECONFIG_CONTEXT_TTL_SECONDS
+    expired = [
+        key
+        for key, value in _thread_kubeconfig_contexts.items()
+        if value.get("stored_at", 0.0) < cutoff
+    ]
+    for key in expired:
+        _thread_kubeconfig_contexts.pop(key, None)
+
+
+def _store_thread_kubeconfig_context(
+    channel: str,
+    thread_ts: str,
+    context: dict[str, Any],
+) -> None:
+    """Store validated kubeconfig context for a Slack thread."""
+    if not channel or not thread_ts:
+        return
+    with _thread_kubeconfig_lock:
+        _prune_kubeconfig_contexts()
+        _thread_kubeconfig_contexts[_slack_thread_context_key(channel, thread_ts)] = {
+            **context,
+            "stored_at": time.monotonic(),
+        }
+
+
+def _get_thread_kubeconfig_context(channel: str, thread_ts: str | None) -> dict[str, Any] | None:
+    """Get validated kubeconfig context for a Slack thread if available."""
+    if not channel or not thread_ts:
+        return None
+    with _thread_kubeconfig_lock:
+        _prune_kubeconfig_contexts()
+        value = _thread_kubeconfig_contexts.get(_slack_thread_context_key(channel, thread_ts))
+        if not value:
+            return None
+        return {k: v for k, v in value.items() if k != "stored_at"}
+
+
+def _is_cluster_config_request(text: str) -> bool:
+    """Return True when message text suggests kubeconfig or k8s cluster work."""
+    lowered = (text or "").lower()
+    keywords = [
+        "kubeconfig",
+        "k3s",
+        "k8s",
+        "kubernetes",
+        "cluster config",
+        "cluster health",
+        "kubectl",
+        "namespace",
+        "vibe cluster",
+        "vibe namespace",
+    ]
+    return any(keyword in lowered for keyword in keywords)
+
+
+def _looks_like_kubeconfig_file(file_info: dict[str, Any]) -> bool:
+    """Heuristic check for kubeconfig-like Slack file metadata."""
+    name = str(file_info.get("name", "")).lower()
+    filetype = str(file_info.get("filetype", "")).lower()
+    mimetype = str(file_info.get("mimetype", "")).lower()
+    return (
+        "kubeconfig" in name
+        or name.endswith((".kubeconfig", ".yaml", ".yml", ".conf", ".config"))
+        or filetype in {"yaml", "yml", "conf", "config", "text"}
+        or mimetype in {"application/x-yaml", "text/yaml", "text/x-yaml", "text/plain"}
+    )
+
+
+async def _fetch_slack_file_info(file_id: str, bot_token: str) -> dict[str, Any] | None:
+    """Fetch Slack file metadata from files.info when event payload is partial."""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://slack.com/api/files.info",
+                headers={"Authorization": f"Bearer {bot_token}"},
+                params={"file": file_id},
+                timeout=20.0,
+            )
+            payload = response.json()
+            if not payload.get("ok"):
+                logger.warning("Slack files.info failed for %s: %s", file_id, payload.get("error"))
+                return None
+            file_obj = payload.get("file")
+            return file_obj if isinstance(file_obj, dict) else None
+    except Exception as exc:
+        logger.warning("Failed to fetch Slack file metadata for %s: %s", file_id, exc)
+        return None
+
+
+async def _download_slack_file_text(url: str, bot_token: str) -> str:
+    """Download private Slack file content as text."""
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        response = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {bot_token}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        return response.text
+
+
+def _validate_and_normalize_kubeconfig(raw_content: str) -> dict[str, Any]:
+    """Validate kubeconfig YAML and return normalized context payload.
+
+    Rejects unsafe kubeconfigs that rely on exec-based auth plugins.
+    """
+    raw_bytes = raw_content.encode("utf-8")
+    if not raw_content.strip():
+        raise ValueError("empty file")
+    if len(raw_bytes) > _KUBECONFIG_MAX_BYTES:
+        raise ValueError(f"file exceeds {_KUBECONFIG_MAX_BYTES} bytes; upload a minimal kubeconfig")
+
+    parsed = yaml.safe_load(raw_content)
+    if not isinstance(parsed, dict):
+        raise ValueError("expected a YAML mapping")
+
+    kind = str(parsed.get("kind", "Config"))
+    if kind != "Config":
+        raise ValueError(f"unexpected kubeconfig kind '{kind}'")
+
+    clusters = parsed.get("clusters")
+    users = parsed.get("users")
+    contexts = parsed.get("contexts")
+    if not isinstance(clusters, list) or not clusters:
+        raise ValueError("missing clusters")
+    if not isinstance(users, list) or not users:
+        raise ValueError("missing users")
+    if not isinstance(contexts, list) or not contexts:
+        raise ValueError("missing contexts")
+
+    for user_entry in users:
+        if not isinstance(user_entry, dict):
+            continue
+        user_config = user_entry.get("user")
+        if isinstance(user_config, dict) and "exec" in user_config:
+            raise ValueError("exec auth plugins are not supported; provide static credentials")
+
+    cluster_names = [
+        c.get("name")
+        for c in clusters
+        if isinstance(c, dict) and isinstance(c.get("name"), str) and c.get("name")
+    ]
+    context_names = [
+        c.get("name")
+        for c in contexts
+        if isinstance(c, dict) and isinstance(c.get("name"), str) and c.get("name")
+    ]
+    current_context = parsed.get("current-context")
+    normalized_yaml = yaml.safe_dump(parsed, sort_keys=False).strip()
+    if not normalized_yaml:
+        raise ValueError("could not normalize kubeconfig")
+
+    return {
+        "kubeconfig_yaml": normalized_yaml,
+        "cluster_names": cluster_names,
+        "context_names": context_names,
+        "current_context": str(current_context or ""),
+    }
+
+
+async def _extract_kubeconfig_context_from_event(
+    event: dict[str, Any],
+    *,
+    request_text: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Extract and validate kubeconfig attachment context from a Slack event."""
+    files = event.get("files")
+    if not isinstance(files, list) or not files:
+        return None, None
+
+    request_is_cluster_related = _is_cluster_config_request(request_text)
+    candidate_files: list[dict[str, Any]] = []
+    for file_obj in files:
+        if not isinstance(file_obj, dict):
+            continue
+        if request_is_cluster_related or _looks_like_kubeconfig_file(file_obj):
+            candidate_files.append(file_obj)
+
+    if not candidate_files:
+        return None, None
+
+    bot_token = _resolve_slack_bot_token()
+    if not bot_token:
+        return None, "gateway Slack token is not configured to read file attachments"
+
+    errors: list[str] = []
+
+    for file_obj in candidate_files:
+        info = file_obj
+        file_id = str(info.get("id", "")).strip()
+        if file_id and not info.get("url_private_download"):
+            fetched = await _fetch_slack_file_info(file_id, bot_token)
+            if fetched:
+                info = fetched
+
+        file_name = str(info.get("name", "uploaded-kubeconfig"))
+        file_size = int(info.get("size", 0) or 0)
+        if file_size > _KUBECONFIG_MAX_BYTES:
+            errors.append(
+                f"`{file_name}` exceeds {_KUBECONFIG_MAX_BYTES} bytes; upload a smaller kubeconfig"
+            )
+            continue
+
+        download_url = str(
+            info.get("url_private_download", "") or info.get("url_private", "")
+        ).strip()
+        if not download_url:
+            errors.append(f"`{file_name}` is missing a downloadable URL")
+            continue
+
+        try:
+            content = await _download_slack_file_text(download_url, bot_token)
+        except Exception as exc:
+            errors.append(f"failed to download `{file_name}` ({exc})")
+            continue
+
+        try:
+            context = _validate_and_normalize_kubeconfig(content)
+        except ValueError as exc:
+            errors.append(f"`{file_name}` is not a valid kubeconfig ({exc})")
+            continue
+
+        return {
+            **context,
+            "file_name": file_name,
+            "source": "slack_file",
+        }, None
+
+    reason = "; ".join(errors[:2]) if errors else "no valid kubeconfig attachment found"
+    return None, reason
+
+
+def _build_kubeconfig_instructions(context: dict[str, Any]) -> str:
+    """Render a compact instruction block injected into agent task text."""
+    kubeconfig_yaml = str(context.get("kubeconfig_yaml", "")).strip()
+    file_name = str(context.get("file_name", "uploaded-kubeconfig"))
+    cluster_names = context.get("cluster_names", [])
+    current_context = str(context.get("current_context", "")).strip()
+    cluster_summary = ", ".join(cluster_names) if cluster_names else "unknown"
+    current_summary = current_context or "not set"
+
+    return (
+        "### Attached Kubeconfig Context (from Slack file upload)\n"
+        f"- Source file: {file_name}\n"
+        f"- Cluster names: {cluster_summary}\n"
+        f"- Current context: {current_summary}\n"
+        "- This kubeconfig was validated by gateway (no exec auth plugin).\n"
+        "- Use it for vibe/k3s cluster checks in this thread.\n"
+        "- Write it to /tmp/vibe-k3s.config and run kubectl with "
+        "`KUBECONFIG=/tmp/vibe-k3s.config`.\n\n"
+        "KUBECONFIG_YAML_START\n"
+        f"{kubeconfig_yaml}\n"
+        "KUBECONFIG_YAML_END"
+    )
+
+
+def _inject_thread_kubeconfig_context(
+    user_message: str,
+    channel: str,
+    thread_ts: str | None,
+) -> str:
+    """Append thread kubeconfig context for cluster-related requests."""
+    if not _is_cluster_config_request(user_message):
+        return user_message
+
+    context = _get_thread_kubeconfig_context(channel, thread_ts)
+    if not context:
+        return user_message
+
+    instruction_block = _build_kubeconfig_instructions(context)
+    return f"{user_message.rstrip()}\n\n{instruction_block}".strip()
 
 
 def get_message_router() -> Router:
@@ -363,6 +653,7 @@ def _role_env_suffix(role: str | None) -> str | None:
     normalized = re.sub(r"[^A-Z0-9]+", "_", role_text.upper()).strip("_")
     return normalized or None
 
+
 def _get_role_scoped_env(prefix: str, role: str | None) -> str:
     """Get role-scoped env var value (e.g., SLACK_BOT_TOKEN_SUPPORT_ENGINEER)."""
     suffix = _role_env_suffix(role)
@@ -389,10 +680,13 @@ def _collect_slack_bot_tokens() -> list[str]:
     """Collect all configured Slack bot tokens (default + role-scoped), deduplicated."""
     ordered: list[str] = []
     seen: set[str] = set()
-    for token in [config.SLACK_BOT_TOKEN, *[
-        _get_role_scoped_env("SLACK_BOT_TOKEN", role)
-        for role in sorted(set(ROLE_MENTION_MAP.values()))
-    ]]:
+    for token in [
+        config.SLACK_BOT_TOKEN,
+        *[
+            _get_role_scoped_env("SLACK_BOT_TOKEN", role)
+            for role in sorted(set(ROLE_MENTION_MAP.values()))
+        ],
+    ]:
         if token and token not in seen:
             seen.add(token)
             ordered.append(token)
@@ -1900,6 +2194,8 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
         event_subtype = event.get("subtype")
         event_channel = event.get("channel", "")
         event_ts = event.get("ts", "")
+        event_text = event.get("text", "")
+        event_thread_ts = event.get("thread_ts") or event_ts
 
         logger.info(
             f"Received Slack event: {event_type}, "
@@ -1929,9 +2225,54 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
         if should_add_read_reaction:
             await add_read_reaction(event_channel, event_ts)
 
+        is_bot_message = event.get("bot_id") or event.get("subtype") == "bot_message"
+
+        # Capture thread-scoped kubeconfig context from Slack file attachments.
+        if (
+            event_type in {"app_mention", "message"}
+            and not is_bot_message
+            and event_channel
+            and event_thread_ts
+            and (
+                event_type == "app_mention"
+                or event_subtype
+                not in {
+                    "message_changed",
+                    "message_deleted",
+                    "message_replied",
+                }
+            )
+        ):
+            kubeconfig_context, kubeconfig_error = await _extract_kubeconfig_context_from_event(
+                event,
+                request_text=event_text,
+            )
+            if kubeconfig_context:
+                _store_thread_kubeconfig_context(event_channel, event_thread_ts, kubeconfig_context)
+                cluster_names = kubeconfig_context.get("cluster_names", [])
+                cluster_summary = ", ".join(cluster_names) if cluster_names else "unknown"
+                await send_slack_message(
+                    event_channel,
+                    (
+                        ":white_check_mark: Received kubeconfig attachment "
+                        f"`{kubeconfig_context.get('file_name', 'uploaded-kubeconfig')}`. "
+                        f"Stored for this thread (clusters: {cluster_summary}). "
+                        "I will use it for k3s/vibe cluster checks."
+                    ),
+                    event_thread_ts,
+                )
+            elif kubeconfig_error:
+                await send_slack_message(
+                    event_channel,
+                    (
+                        ":warning: I found a kubeconfig-like attachment but could not use it: "
+                        f"{kubeconfig_error}. Please upload a valid kubeconfig YAML."
+                    ),
+                    event_thread_ts,
+                )
+
         # Handle bot messages: process if they contain role mentions (handoffs/eval)
         # Per requirements: "Bot Messages: Router processes bot's own messages to detect handoffs"
-        is_bot_message = event.get("bot_id") or event.get("subtype") == "bot_message"
         if is_bot_message:
             text = event.get("text", "")
             message_router = get_message_router()
@@ -1952,13 +2293,17 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
 
             # Remove the bot mention from the text
             clean_text = re.sub(r"<@[A-Z0-9]+>\\s*", "", text).strip()
+            routed_text = _inject_thread_kubeconfig_context(clean_text, channel, thread_ts)
+
+            if not routed_text:
+                return {"status": "accepted", "event": "app_mention"}
 
             # React with thinking face to show we're working on it
             if message_ts:
                 await add_reaction(channel, message_ts, "thinking_face")
 
             await run_agent_for_slack(
-                clean_text, channel, thread_ts, user_id, message_ts=message_ts
+                routed_text, channel, thread_ts, user_id, message_ts=message_ts
             )
 
             return {"status": "accepted", "event": "app_mention"}
@@ -1970,12 +2315,18 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             text = event.get("text", "")
             message_ts = event.get("ts", "")
             thread_ts = event.get("thread_ts") or message_ts
+            routed_text = _inject_thread_kubeconfig_context(text, channel, thread_ts)
+
+            if not routed_text:
+                return {"status": "accepted", "event": "message.im"}
 
             # React with thinking face to show we're working on it
             if message_ts:
                 await add_reaction(channel, message_ts, "thinking_face")
 
-            await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
+            await run_agent_for_slack(
+                routed_text, channel, thread_ts, user_id, message_ts=message_ts
+            )
 
             return {"status": "accepted", "event": "message.im"}
 
@@ -2010,6 +2361,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                     token = f"@{display_name}"
                     if token.lower() not in routed_text.lower():
                         routed_text = f"{token} {routed_text}".strip()
+                routed_text = _inject_thread_kubeconfig_context(routed_text, channel, thread_ts)
 
                 await run_agent_for_slack(
                     routed_text,
@@ -2080,7 +2432,14 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                 if message_ts:
                     await add_reaction(channel, message_ts, "thinking_face")
 
-                await run_agent_for_slack(text, channel, thread_ts, user_id, message_ts=message_ts)
+                routed_text = _inject_thread_kubeconfig_context(text, channel, thread_ts)
+                await run_agent_for_slack(
+                    routed_text,
+                    channel,
+                    thread_ts,
+                    user_id,
+                    message_ts=message_ts,
+                )
 
                 return {"status": "accepted", "event": "message.subscribed_thread"}
 

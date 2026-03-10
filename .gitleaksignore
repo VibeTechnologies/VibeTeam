@@ -1,0 +1,19 @@
+# Existing template/test/documentation placeholders that match gitleaks rules.
+config/secrets/github_app_role_secrets.template.json:private-key:6
+config/secrets/github_app_role_secrets.template.json:private-key:20
+k8s/overlays/prod/github-app-secret.yaml:private-key:23
+docs/github.md:private-key:68
+docs/github.md:private-key:81
+docs/github.md:private-key:89
+tests/test_github_app_auth.py:private-key:42
+tests/test_github_app_auth.py:private-key:84
+tests/test_github_app_auth.py:private-key:143
+tests/test_github_app_auth.py:private-key:198
+tests/test_github_app_auth.py:private-key:246
+docs/requirements.md:private-key:145
+docs/infra-llms.txt:generic-api-key:727
+docs/infra-llms.txt:generic-api-key:728
+docs/infra-llms.txt:curl-auth-header:1431
+docs/infra-llms.txt:curl-auth-header:5505
+docs/infra-llms.txt:curl-auth-header:6305
+docs/infra-llms.txt:curl-auth-header:6314

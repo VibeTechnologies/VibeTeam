@@ -168,6 +168,7 @@ Slack scenarios are defined in `scripts/eval_slack_e2e.py` (`SCENARIOS`).
 | `release_deploy` | `release_engineer` | Execute validated deployment workflow (disabled in scenario config by default). |
 | `stripe_webhook_failure` | `support_engineer` | Investigate Stripe webhook failures with concrete remediation path. |
 | `release_health_check` | `release_engineer` | Perform production health/readiness checks with evidence-based conclusion. |
+| `release_k3s_configure_then_health` | `release_engineer` | Two-step flow: configure k3s access context first, then investigate `vibe` cluster health in the same thread. |
 
 Collaboration identity requirement (hard check for `github_issue_pr_handoff_slack`):
 - Required Slack roles must respond (`software_engineer`, `support_engineer`).

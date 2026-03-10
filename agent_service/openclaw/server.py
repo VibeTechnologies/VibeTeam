@@ -13,9 +13,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import uuid
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +27,7 @@ import websockets
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
 from agent_service.shared.agents_md_loader import load_knowledgebase_skill_instructions
 from agent_service.shared.docs_tools import get_docs_context
 
@@ -36,6 +37,7 @@ except Exception:  # Optional for minimal images
     validate_required_integrations = None  # type: ignore[assignment]
 
 if validate_required_integrations is None:
+
     def validate_required_integrations(service_name: str) -> None:  # type: ignore[no-redef]
         missing: list[str] = []
         if not os.environ.get("SENTRY_AUTH_TOKEN"):
@@ -54,6 +56,7 @@ if validate_required_integrations is None:
                 f"[{service_name}] Required integrations not configured:\n- {details}\n"
                 "Service will not start until these are provided."
             )
+
 
 try:
     from agent_service.shared.db import close_db, get_postgres_store, init_db
@@ -188,8 +191,7 @@ OPENCLAW_DOCS_CONTEXT_MAX_RESULTS = int(os.environ.get("OPENCLAW_DOCS_CONTEXT_MA
 OPENCLAW_DOCS_CONTEXT_MAX_CHARS = int(os.environ.get("OPENCLAW_DOCS_CONTEXT_MAX_CHARS", "4000"))
 OPENCLAW_DOCS_CONTEXT_ROLES = {
     role.strip()
-    for role in os.environ.get("OPENCLAW_DOCS_CONTEXT_ROLES", "product_manager")
-    .split(",")
+    for role in os.environ.get("OPENCLAW_DOCS_CONTEXT_ROLES", "product_manager").split(",")
     if role.strip()
 }
 
@@ -356,9 +358,7 @@ def _normalize_chrome_devtools_skill_confirmation(task: str, response_text: str)
         normalized = re.sub(pattern, "", normalized, flags=re.IGNORECASE | re.MULTILINE)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
 
-    confirmation = (
-        "Chrome DevTools skill was used via OpenClaw's built-in browser/CDP tooling."
-    )
+    confirmation = "Chrome DevTools skill was used via OpenClaw's built-in browser/CDP tooling."
     if "chrome devtools skill was used" not in normalized.lower():
         normalized = normalized.rstrip() + "\n\n" + confirmation
 
@@ -751,9 +751,7 @@ async def run_task(request: RunRequest):
                 agent_id=agent_id,
                 session_key=session_key,
             )
-        response_text = _normalize_chrome_devtools_skill_confirmation(
-            request.task, response_text
-        )
+        response_text = _normalize_chrome_devtools_skill_confirmation(request.task, response_text)
 
         latency_ms = int((time.time() - start_time) * 1000)
 

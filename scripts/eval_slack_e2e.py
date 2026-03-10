@@ -56,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent_service.shared.llm import resolve_azure_model
 from agent_service.shared.role_resolver import ROLE_PATTERN, parse_role_mentions
-from vibeteam.connectors.slack import SlackConnector
+from vibeteam.connectors.slack import SlackConnector, SlackMessage
 
 # Try to import DeepEval
 DEEPEVAL_AVAILABLE = False
@@ -1415,6 +1415,37 @@ SCENARIOS = {
         },
         "threshold": 0.70,
     },
+    "release_k3s_configure_then_health": {
+        "name": "Release Engineer - Configure k3s then Investigate vibe Health",
+        "message": (
+            "@ReleaseEngineer configure k3s cluster access from the kubeconfig I attached and "
+            "confirm you can use it for this thread."
+        ),
+        "follow_up_messages": [
+            "@ReleaseEngineer now investigate vibe cluster health and provide a concise status summary."
+        ],
+        "follow_up_delay_seconds": 8,
+        "expected_agent": "release_engineer",
+        "evaluation_criteria": {
+            "TaskCompletion": (
+                "Did the ReleaseEngineer complete both intents in order: "
+                "(1) acknowledge/complete cluster configuration from provided kubeconfig context, "
+                "(2) investigate vibe cluster health and provide an evidence-based summary? "
+                "REQUIRED FOR HIGH SCORE: "
+                "Agent acknowledges kubeconfig setup/onboarding intent, then reports concrete health "
+                "findings (pods/deployments/events and/or readiness endpoint) with a final verdict. "
+                "SCORING: 0.0-0.3 if either step is ignored; 0.3-0.6 if partial; "
+                "0.6-0.8 if both steps addressed with limited evidence; 0.8-1.0 if both completed well."
+            ),
+            "ResponseEfficiency": (
+                "Was the response sequence concise and focused on configuration + health check only? "
+                "Penalize scope creep into unrelated infrastructure, excessive tool spam, or circular handoffs. "
+                "SCORING: 0.0-0.3 unfocused/circular; 0.3-0.6 some redundancy; "
+                "0.6-0.8 mostly focused; 0.8-1.0 highly focused and concise."
+            ),
+        },
+        "threshold": 0.65,
+    },
 }
 
 # Role display names (from agents/agents.yaml)
@@ -2679,39 +2710,69 @@ async def run_evaluation(
 
         headers: dict[str, str] = {"Authorization": f"Bearer {trigger_secret}"}
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                trigger_payload: dict[str, Any] = {
-                    "channel": channel,
-                    "thread_ts": thread_ts,
-                    "text": user_message,
-                    "user_id": "eval_script",
-                }
-                if framework:
-                    trigger_payload["framework"] = framework
-                if use_async:
-                    trigger_payload["use_async"] = True
+        async def _trigger_gateway_message(message_text: str, step_name: str) -> bool:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    trigger_payload: dict[str, Any] = {
+                        "channel": channel,
+                        "thread_ts": thread_ts,
+                        "text": message_text,
+                        "user_id": "eval_script",
+                    }
+                    if framework:
+                        trigger_payload["framework"] = framework
+                    if use_async:
+                        trigger_payload["use_async"] = True
 
-                response = await client.post(
-                    trigger_url,
-                    json=trigger_payload,
-                    headers=headers,
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    mode = result.get("mode", "sync")
-                    print(
-                        f"    Gateway accepted: routing to {result.get('roles', [])} (mode={mode})"
+                    response = await client.post(
+                        trigger_url,
+                        json=trigger_payload,
+                        headers=headers,
                     )
-                else:
-                    print(f"    WARNING: Gateway returned {response.status_code}: {response.text}")
-        except Exception as e:
-            print(f"    WARNING: Failed to trigger gateway: {e}")
-            print(
-                "    ERROR: Gateway trigger failed. No agent will be invoked — "
-                "bot-posted messages do not generate Slack webhook events. "
-                "The eval will wait but no response will arrive."
-            )
+                    if response.status_code == 200:
+                        result = response.json()
+                        mode = result.get("mode", "sync")
+                        print(
+                            f"    {step_name}: accepted routing to {result.get('roles', [])} "
+                            f"(mode={mode})"
+                        )
+                        return True
+
+                    print(
+                        f"    WARNING: {step_name} gateway returned "
+                        f"{response.status_code}: {response.text}"
+                    )
+                    return False
+            except Exception as e:
+                print(f"    WARNING: {step_name} failed to trigger gateway: {e}")
+                print(
+                    "    ERROR: Gateway trigger failed. No agent will be invoked — "
+                    "bot-posted messages do not generate Slack webhook events. "
+                    "The eval will wait but no response will arrive."
+                )
+                return False
+
+        await _trigger_gateway_message(user_message, "Initial message")
+
+        follow_up_messages = scenario.get("follow_up_messages", [])
+        follow_up_delay_seconds = int(scenario.get("follow_up_delay_seconds", 8))
+        if follow_up_messages:
+            for idx, follow_up in enumerate(follow_up_messages, start=1):
+                print(f"\n>>> Step 1c.{idx}: Posting follow-up message")
+                follow_up_posted = ROLE_PATTERN.sub("", follow_up).strip()
+                if not follow_up_posted:
+                    follow_up_posted = f"Evaluation follow-up #{idx}"
+                await _slack_call(
+                    slack.post_message,
+                    channel=channel,
+                    text=follow_up_posted,
+                    thread_ts=thread_ts,
+                )
+                if follow_up_delay_seconds > 0:
+                    await asyncio.sleep(follow_up_delay_seconds)
+
+                print(f">>> Step 1d.{idx}: Triggering follow-up")
+                await _trigger_gateway_message(follow_up, f"Follow-up #{idx}")
 
         # Step 2: Wait for bot response (with handoff chain support + auto-extend)
         print(
