@@ -73,7 +73,6 @@ class WebhookPayload(BaseModel):
 def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     """Verify GitHub webhook signature (HMAC-SHA256)."""
     if not secret:
-        logger.error("GITHUB_WEBHOOK_SECRET is not configured")
         return False
 
     if not signature or not signature.startswith("sha256="):
@@ -81,6 +80,38 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
 
     expected = "sha256=" + hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
+
+
+def _iter_github_webhook_secrets() -> list[str]:
+    """Collect all configured GitHub webhook secrets (default + role-scoped)."""
+    secrets: list[str] = []
+
+    def _append(raw: str | None) -> None:
+        if not raw:
+            return
+        for candidate in raw.split(","):
+            value = candidate.strip()
+            if value and value not in secrets:
+                secrets.append(value)
+
+    _append(GITHUB_WEBHOOK_SECRET)
+    _append(os.environ.get("GITHUB_WEBHOOK_SECRET", ""))
+    _append(os.environ.get("GITHUB_WEBHOOK_SECRETS", ""))
+
+    for key, value in os.environ.items():
+        if not value:
+            continue
+        if key.startswith("GITHUB_WEBHOOK_SECRET_") or key.startswith("GITHUB_APP_WEBHOOK_SECRET_"):
+            _append(value)
+
+    return secrets
+
+
+def verify_signature_any(payload: bytes, signature: str, secrets: list[str]) -> bool:
+    """Verify webhook signature against any configured secret."""
+    if not signature or not signature.startswith("sha256="):
+        return False
+    return any(verify_signature(payload, signature, secret) for secret in secrets)
 
 
 def get_bot_user_id() -> str | None:
@@ -272,16 +303,40 @@ async def handle_webhook(
     request: Request,
     x_github_event: str = Header(..., alias="X-GitHub-Event"),
     x_hub_signature_256: str = Header(None, alias="X-Hub-Signature-256"),
+    x_github_delivery: str | None = Header(None, alias="X-GitHub-Delivery"),
 ) -> dict[str, str]:
     """Handle incoming GitHub webhook events."""
     payload_bytes = await request.body()
+    payload_preview: dict[str, Any] = {}
+    try:
+        payload_preview = json.loads(payload_bytes) if payload_bytes else {}
+    except json.JSONDecodeError:
+        payload_preview = {}
+
+    preview_repo = str((payload_preview.get("repository") or {}).get("full_name") or "n/a")
+    preview_action = str(payload_preview.get("action") or "n/a")
+    preview_sender = str((payload_preview.get("sender") or {}).get("login") or "n/a")
+    preview_installation = str((payload_preview.get("installation") or {}).get("id") or "n/a")
+    secrets = _iter_github_webhook_secrets()
+    if not secrets:
+        logger.error("GitHub webhook secret is not configured")
+        raise HTTPException(status_code=503, detail="GitHub webhook secret not configured")
 
     # Verify signature
-    if not verify_signature(payload_bytes, x_hub_signature_256 or "", GITHUB_WEBHOOK_SECRET):
-        logger.warning("Invalid webhook signature")
+    if not verify_signature_any(payload_bytes, x_hub_signature_256 or "", secrets):
+        logger.warning(
+            "Invalid webhook signature: event=%s action=%s repo=%s sender=%s installation=%s delivery=%s configured_secrets=%d",
+            x_github_event,
+            preview_action,
+            preview_repo,
+            preview_sender,
+            preview_installation,
+            x_github_delivery or "n/a",
+            len(secrets),
+        )
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    payload = json.loads(payload_bytes)
+    payload = payload_preview or json.loads(payload_bytes)
     action = payload.get("action", "")
     repo_data = payload.get("repository", {})
     repo_full_name = repo_data.get("full_name", "")

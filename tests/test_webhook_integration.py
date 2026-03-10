@@ -726,6 +726,13 @@ class TestGitHubWebhookRouting:
 
         try:
             monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+            monkeypatch.delenv("GITHUB_WEBHOOK_SECRET", raising=False)
+            monkeypatch.delenv("GITHUB_WEBHOOK_SECRETS", raising=False)
+            for env_name in list(os.environ):
+                if env_name.startswith("GITHUB_WEBHOOK_SECRET_") or env_name.startswith(
+                    "GITHUB_APP_WEBHOOK_SECRET_"
+                ):
+                    monkeypatch.delenv(env_name, raising=False)
 
             payload = {
                 "action": "opened",
@@ -747,6 +754,128 @@ class TestGitHubWebhookRouting:
             assert "not configured" in response.json()["detail"].lower()
         finally:
             github.config.GITHUB_WEBHOOK_SECRET = original_secret
+
+    def test_role_scoped_webhook_secret_accepted(self, test_client, monkeypatch):
+        """Role-scoped webhook secret should be accepted when default secret is missing."""
+        from vibeteam.gateway.routes import github
+
+        original_secret = github.config.GITHUB_WEBHOOK_SECRET
+        github.config.GITHUB_WEBHOOK_SECRET = ""
+
+        role_secret = "role_scoped_secret"
+        monkeypatch.delenv("GITHUB_WEBHOOK_SECRET", raising=False)
+        monkeypatch.delenv("GITHUB_WEBHOOK_SECRETS", raising=False)
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER", role_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "issue": {"number": 404, "title": "Role webhook secret test", "body": "Body"},
+            "comment": {"body": "@SoftwareEngineer please check", "user": {"login": "testuser"}},
+            "repository": {"full_name": "owner/repo"},
+        }
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, role_secret)
+
+        try:
+            with patch(
+                "vibeteam.gateway.routes.github.call_agent_service",
+                new_callable=AsyncMock,
+                return_value={"response": "Working"},
+            ):
+                response = test_client.post(
+                    "/webhook",
+                    content=payload_str,
+                    headers={
+                        "X-GitHub-Event": "issue_comment",
+                        "X-Hub-Signature-256": signature,
+                        "Content-Type": "application/json",
+                    },
+                )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "accepted"
+            assert "Processing roles" in data["message"]
+        finally:
+            github.config.GITHUB_WEBHOOK_SECRET = original_secret
+
+    def test_comma_separated_webhook_secrets_accepted(self, test_client, monkeypatch):
+        """Any secret from GITHUB_WEBHOOK_SECRETS should validate signatures."""
+        from vibeteam.gateway.routes import github
+
+        original_secret = github.config.GITHUB_WEBHOOK_SECRET
+        github.config.GITHUB_WEBHOOK_SECRET = ""
+
+        alt_secret = "comma_list_secret"
+        monkeypatch.delenv("GITHUB_WEBHOOK_SECRET", raising=False)
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRETS", f"first_secret,{alt_secret},third_secret")
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "issue": {"number": 405, "title": "Comma secret test", "body": "Body"},
+            "comment": {"body": "@SupportEngineer please check", "user": {"login": "testuser"}},
+            "repository": {"full_name": "owner/repo"},
+        }
+        payload_str = json.dumps(payload)
+        signature = generate_github_signature(payload_str, alt_secret)
+
+        try:
+            with patch(
+                "vibeteam.gateway.routes.github.call_agent_service",
+                new_callable=AsyncMock,
+                return_value={"response": "Working"},
+            ):
+                response = test_client.post(
+                    "/webhook",
+                    content=payload_str,
+                    headers={
+                        "X-GitHub-Event": "issue_comment",
+                        "X-Hub-Signature-256": signature,
+                        "Content-Type": "application/json",
+                    },
+                )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "accepted"
+            assert "Processing roles" in data["message"]
+        finally:
+            github.config.GITHUB_WEBHOOK_SECRET = original_secret
+
+    def test_invalid_signature_logs_context(self, test_client, github_webhook_secret, monkeypatch, caplog):
+        """Invalid signature logs include event/repo/delivery context for debugging."""
+        monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", github_webhook_secret)
+        monkeypatch.setenv("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
+
+        payload = {
+            "action": "created",
+            "issue": {"number": 406},
+            "comment": {"body": "@SoftwareEngineer", "user": {"login": "testuser"}},
+            "repository": {"full_name": "owner/repo"},
+            "sender": {"login": "OpenCodeEngineer"},
+            "installation": {"id": 123456},
+        }
+        payload_str = json.dumps(payload)
+
+        with caplog.at_level("WARNING"):
+            response = test_client.post(
+                "/webhook",
+                content=payload_str,
+                headers={
+                    "X-GitHub-Event": "issue_comment",
+                    "X-Hub-Signature-256": "sha256=invalid",
+                    "X-GitHub-Delivery": "delivery-123",
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert response.status_code == 401
+        assert any(
+            "Invalid webhook signature" in message
+            and "repo=owner/repo" in message
+            and "delivery=delivery-123" in message
+            for message in caplog.messages
+        )
 
     def test_is_assigned_to_bot_by_user_id(self, test_client, github_webhook_secret, monkeypatch):
         """Issue assigned to user matching GITHUB_BOT_USER_ID env var → accepted."""
