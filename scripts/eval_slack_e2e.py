@@ -102,6 +102,101 @@ users:
 """
 
 
+def _build_service_account_eval_kubeconfig() -> str | None:
+    """Build a short-lived kubeconfig from a Kubernetes service account token.
+
+    This avoids hard-coding static credentials in the repo and gives the eval
+    scenario a real, reachable API server for the trigger-driven k3s flow.
+    """
+    namespace = os.environ.get("EVAL_K3S_SERVICE_ACCOUNT_NAMESPACE", "vibeteam").strip()
+    service_account = os.environ.get("EVAL_K3S_SERVICE_ACCOUNT_NAME", "vibeteam-agent").strip()
+    cluster_name = os.environ.get("EVAL_K3S_CLUSTER_NAME", "eval-k3s-cluster").strip()
+    context_name = os.environ.get("EVAL_K3S_CONTEXT_NAME", "eval-k3s-context").strip()
+    user_name = os.environ.get("EVAL_K3S_USER_NAME", "eval-k3s-user").strip()
+
+    if not namespace or not service_account:
+        return None
+
+    try:
+        server = (
+            subprocess.check_output(
+                [
+                    "kubectl",
+                    "config",
+                    "view",
+                    "--minify",
+                    "-o",
+                    "jsonpath={.clusters[0].cluster.server}",
+                ],
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+            .strip()
+        )
+        ca_data = (
+            subprocess.check_output(
+                [
+                    "kubectl",
+                    "config",
+                    "view",
+                    "--minify",
+                    "-o",
+                    "jsonpath={.clusters[0].cluster.certificate-authority-data}",
+                ],
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+            .strip()
+        )
+        token = (
+            subprocess.check_output(
+                ["kubectl", "create", "token", service_account, "-n", namespace],
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+            .strip()
+        )
+    except subprocess.CalledProcessError as exc:
+        print(
+            "WARNING: Failed to generate service-account kubeconfig for k3s eval "
+            f"({exc.output.strip() if exc.output else exc})"
+        )
+        return None
+
+    if not server or not token:
+        return None
+
+    lines = [
+        "apiVersion: v1",
+        "kind: Config",
+        "clusters:",
+        f"  - name: {cluster_name}",
+        "    cluster:",
+        f"      server: {server}",
+    ]
+    if ca_data:
+        lines.append(f"      certificate-authority-data: {ca_data}")
+    else:
+        lines.append("      insecure-skip-tls-verify: true")
+
+    lines.extend(
+        [
+            "contexts:",
+            f"  - name: {context_name}",
+            "    context:",
+            f"      cluster: {cluster_name}",
+            f"      user: {user_name}",
+            f"current-context: {context_name}",
+            "users:",
+            f"  - name: {user_name}",
+            "    user:",
+            f"      token: {token}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 SCENARIOS = {
     "support_400_errors": {
         "name": "Support Engineer - API 400 Errors Investigation",
@@ -1444,6 +1539,7 @@ SCENARIOS = {
         ),
         # For trigger-based evals we inject kubeconfig context directly in the
         # initial /slack/trigger payload to emulate an attached kubeconfig.
+        "trigger_kubeconfig_source": "k8s_service_account",
         "trigger_kubeconfig_yaml": _EVAL_MINIMAL_KUBECONFIG,
         "trigger_kubeconfig_file_name": "eval-k3s-kubeconfig.yaml",
         "follow_up_messages": [
@@ -2631,6 +2727,22 @@ async def run_evaluation(
     print()
 
     user_message = scenario["message"]
+    resolved_trigger_kubeconfig_yaml: str = ""
+    if isinstance(scenario.get("trigger_kubeconfig_yaml"), str):
+        resolved_trigger_kubeconfig_yaml = scenario["trigger_kubeconfig_yaml"].strip()
+    if scenario.get("trigger_kubeconfig_source") == "k8s_service_account":
+        generated_kubeconfig = _build_service_account_eval_kubeconfig()
+        if generated_kubeconfig:
+            resolved_trigger_kubeconfig_yaml = generated_kubeconfig.strip()
+            print(
+                "Using generated service-account kubeconfig for release_k3s "
+                "trigger payload."
+            )
+        elif resolved_trigger_kubeconfig_yaml:
+            print(
+                "WARNING: Falling back to static eval kubeconfig because service-account "
+                "kubeconfig generation failed."
+            )
 
     def _extract_agent_prefix(text: str) -> str:
         """Extract the agent name from a legacy bot prefix like '[SupportEngineer]'."""
@@ -2750,12 +2862,8 @@ async def run_evaluation(
                         trigger_payload["framework"] = framework
                     if use_async:
                         trigger_payload["use_async"] = True
-                    if (
-                        step_name == "Initial message"
-                        and isinstance(scenario.get("trigger_kubeconfig_yaml"), str)
-                        and scenario.get("trigger_kubeconfig_yaml", "").strip()
-                    ):
-                        trigger_payload["kubeconfig_yaml"] = scenario["trigger_kubeconfig_yaml"]
+                    if step_name == "Initial message" and resolved_trigger_kubeconfig_yaml:
+                        trigger_payload["kubeconfig_yaml"] = resolved_trigger_kubeconfig_yaml
                         trigger_payload["kubeconfig_file_name"] = str(
                             scenario.get("trigger_kubeconfig_file_name", "uploaded-kubeconfig.yaml")
                         )
