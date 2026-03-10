@@ -44,6 +44,24 @@ class GatewayConfig:
 
     # GitHub configuration
     GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+    # Optional comma-separated list for additional webhook secrets.
+    GITHUB_WEBHOOK_SECRETS = os.environ.get("GITHUB_WEBHOOK_SECRETS", "")
+    # Optional role-scoped webhook secrets (one GitHub App per role).
+    GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER = os.environ.get(
+        "GITHUB_WEBHOOK_SECRET_SOFTWARE_ENGINEER", ""
+    )
+    GITHUB_WEBHOOK_SECRET_SUPPORT_ENGINEER = os.environ.get(
+        "GITHUB_WEBHOOK_SECRET_SUPPORT_ENGINEER", ""
+    )
+    GITHUB_WEBHOOK_SECRET_RELEASE_ENGINEER = os.environ.get(
+        "GITHUB_WEBHOOK_SECRET_RELEASE_ENGINEER", ""
+    )
+    GITHUB_WEBHOOK_SECRET_PRODUCT_MANAGER = os.environ.get(
+        "GITHUB_WEBHOOK_SECRET_PRODUCT_MANAGER", ""
+    )
+    GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER = os.environ.get(
+        "GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER", ""
+    )
     BOT_USERNAME = os.environ.get("GITHUB_BOT_USERNAME", "vibeteam-bot[bot]")
     GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "")
     GITHUB_APP_PRIVATE_KEY = os.environ.get("GITHUB_APP_PRIVATE_KEY", "")
