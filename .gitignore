@@ -62,6 +62,8 @@ Thumbs.db
 k8s/overlays/*/.env.secrets
 k8s/overlays/*/github-app-private-key.pem
 k8s/overlays/*/github-app-secret.env
+config/secrets/*.json
+!config/secrets/*.template.json
 # Temporary files
 .tts/
 tmp/

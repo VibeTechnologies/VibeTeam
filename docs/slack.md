@@ -152,6 +152,15 @@ For GitHub Actions-based deployment, you can store role-scoped Slack credentials
 repository secret (`SLACK_ROLE_SECRETS_JSON`) instead of managing many individual secrets.
 The deploy workflows flatten that JSON into the `vibeteam-secrets` keys above at deploy time.
 
+Use the template at `config/secrets/slack_role_secrets.template.json`, fill in real values
+locally, then upload it as a GitHub repository secret:
+
+```bash
+cp config/secrets/slack_role_secrets.template.json /tmp/slack_role_secrets.json
+# edit /tmp/slack_role_secrets.json
+gh secret set SLACK_ROLE_SECRETS_JSON < /tmp/slack_role_secrets.json
+```
+
 ## 6. Invite the Bot
 
 After installing the apps, invite the ingress bot and all responder bots to channels

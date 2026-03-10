@@ -151,6 +151,16 @@ or a direct env-key map:
 If both JSON and individual vars are provided, JSON values take precedence for deployment
 artifact generation.
 
+Template payload: `config/secrets/github_app_role_secrets.template.json`
+
+Upload this payload into GitHub repository secrets:
+
+```bash
+cp config/secrets/github_app_role_secrets.template.json /tmp/github_app_role_secrets.json
+# edit /tmp/github_app_role_secrets.json with real values
+gh secret set GITHUB_APP_ROLE_SECRETS_JSON < /tmp/github_app_role_secrets.json
+```
+
 Private keys can be supplied as PEM strings with `\n` newlines. For local `.env` usage
 with `export $( < .env )`, replace spaces with underscores:
 `BEGIN_RSA_PRIVATE_KEY` / `END_RSA_PRIVATE_KEY`.
@@ -218,6 +228,16 @@ or a direct env-key map:
 
 If both JSON and individual vars are provided, JSON values take precedence for deployment
 artifact generation.
+
+Template payload: `config/secrets/slack_role_secrets.template.json`
+
+Upload this payload into GitHub repository secrets:
+
+```bash
+cp config/secrets/slack_role_secrets.template.json /tmp/slack_role_secrets.json
+# edit /tmp/slack_role_secrets.json with real values
+gh secret set SLACK_ROLE_SECRETS_JSON < /tmp/slack_role_secrets.json
+```
 
 ### Gmail (File-Based Secrets)
 
