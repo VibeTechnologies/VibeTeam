@@ -675,20 +675,14 @@ def convert_numbered_lists_to_bullets(text: str) -> str:
     return re.sub(pattern, r"\1- ", text, flags=re.MULTILINE)
 
 
-try:
-    from openhands.sdk import Agent, LocalConversation, Tool
-    from openhands.tools.file_editor import FileEditorTool
-    from openhands.tools.terminal import TerminalTool
-
-    OPENHANDS_AVAILABLE = True
-
-except ImportError:
-    OPENHANDS_AVAILABLE = False
-    Agent = None
-    LocalConversation = None
-    Tool = None
-    TerminalTool = None
-    FileEditorTool = None
+from .runtime_compat import (
+    OPENHANDS_AVAILABLE,
+    Agent,
+    FileEditorTool,
+    LocalConversation,
+    TerminalTool,
+    Tool,
+)
 
 from agent_service.shared.agents_md_loader import compose_agent_context
 from agent_service.shared.llm import LLM, AzureLLM

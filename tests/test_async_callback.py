@@ -1555,6 +1555,75 @@ class TestRunAgentForSlackRouting:
             mock_sync.assert_called_once()
             mock_async.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_kubeconfig_setup_fast_path_skips_agent_execution(self):
+        from vibeteam.gateway.routes.slack import (
+            _store_thread_kubeconfig_context,
+            _thread_kubeconfig_contexts,
+            _thread_kubeconfig_lock,
+            run_agent_for_slack,
+        )
+
+        with _thread_kubeconfig_lock:
+            _thread_kubeconfig_contexts.clear()
+
+        _store_thread_kubeconfig_context(
+            "C_TEST",
+            "ts_1234",
+            {
+                "file_name": "vibe-k3s.yaml",
+                "kubeconfig_yaml": "apiVersion: v1\nkind: Config\n",
+                "cluster_names": ["my-k3s"],
+                "context_names": ["dev@my-k3s"],
+                "current_context": "dev@my-k3s",
+                "source": "slack_file",
+            },
+        )
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack._submit_agent_async",
+                new_callable=AsyncMock,
+            ) as mock_async,
+            patch(
+                "vibeteam.gateway.routes.slack._run_agent_and_respond",
+                new_callable=AsyncMock,
+            ) as mock_sync,
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+            ) as mock_remove_reaction,
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ) as mock_add_reaction,
+        ):
+            await run_agent_for_slack(
+                user_message=(
+                    "@ReleaseEngineer configure k3s cluster access from the kubeconfig "
+                    "I attached and confirm you can use it for this thread. "
+                    "Do not run health checks yet."
+                ),
+                channel="C_TEST",
+                thread_ts="ts_1234",
+                user_id="U_USER",
+                message_ts="msg_1234",
+                use_async=True,
+            )
+
+            mock_async.assert_not_called()
+            mock_sync.assert_not_called()
+            mock_remove_reaction.assert_awaited_once()
+            mock_add_reaction.assert_awaited_once()
+            mock_send.assert_awaited_once()
+            sent_text = mock_send.await_args.args[1]
+            assert "Kubeconfig setup complete for this thread" in sent_text
+            assert "not run health checks yet" in sent_text
+
 
 # ==============================================================================
 # Tests for openhands /run/async endpoint

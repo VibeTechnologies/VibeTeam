@@ -148,10 +148,14 @@ def openhands_runtime_status() -> tuple[bool, str | None]:
 
 @pytest.fixture(scope="session")
 def require_openhands_runtime(openhands_runtime_status):
-    """Require OpenHands runtime dependencies for integration tests."""
+    """Require OpenHands runtime dependencies for integration tests.
+
+    Critical OpenHands paths must execute in CI and local validation. If runtime
+    bootstrap fails, fail fast instead of silently skipping the test.
+    """
     available, reason = openhands_runtime_status
     if not available:
-        pytest.skip(f"OpenHands runtime unavailable in this environment: {reason}")
+        pytest.fail(f"OpenHands runtime unavailable in this environment: {reason}")
 
 
 @pytest.fixture

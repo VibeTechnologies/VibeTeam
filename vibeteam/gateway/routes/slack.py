@@ -636,6 +636,26 @@ def _inject_thread_kubeconfig_context(
     return f"{user_message.rstrip()}\n\n{instruction_block}".strip()
 
 
+def _build_kubeconfig_setup_confirmation(channel: str, thread_ts: str | None) -> str:
+    """Build deterministic confirmation text for kubeconfig-setup-only requests."""
+    context = _get_thread_kubeconfig_context(channel, thread_ts)
+    if context:
+        current_context = str(context.get("current_context", "")).strip()
+        cluster_names = context.get("cluster_names") or []
+        cluster_hint = str(cluster_names[0]) if cluster_names else "unknown-cluster"
+        context_hint = current_context or cluster_hint
+        return (
+            f"Kubeconfig setup complete for this thread (context: `{context_hint}`). "
+            "I have not run health checks yet."
+        )
+
+    return (
+        "I did not find a validated kubeconfig context for this thread yet. "
+        "Please attach a kubeconfig file and I will configure it first. "
+        "I have not run health checks yet."
+    )
+
+
 def get_message_router() -> Router:
     """Get or create the message router."""
     global _message_router
@@ -1121,7 +1141,8 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         is_thread_reply: True if this message is a reply in an existing thread
 
     Returns:
-        'deployment', 'notification', 'conversational', 'health_check', or 'investigation'
+        'deployment', 'kubeconfig_setup', 'notification', 'conversational',
+        'health_check', or 'investigation'
     """
     msg_lower = user_message.lower()
 
@@ -1135,6 +1156,16 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         and (
             "agents/shared/knowledgebase" in msg_lower
             or "/app/agents/shared/knowledgebase" in msg_lower
+        )
+    )
+    is_kubeconfig_setup_only = (
+        role == "release_engineer"
+        and any(token in msg_lower for token in ("kubeconfig", "configure k3s", "cluster access"))
+        and (
+            "do not run health checks yet" in msg_lower
+            or "don't run health checks yet" in msg_lower
+            or "do not run health check yet" in msg_lower
+            or "don't run health check yet" in msg_lower
         )
     )
     # Health check: user asks to check health/readiness/status WITHOUT indicating
@@ -1208,6 +1239,8 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
 
     if is_deployment:
         return "deployment"
+    elif is_kubeconfig_setup_only:
+        return "kubeconfig_setup"
     elif is_health_check:
         return "health_check"
     elif is_knowledgebase_update:
@@ -1399,6 +1432,33 @@ Your response MUST include:
 6. Rollout status (success/failure)
 7. Post-deployment verification (pods healthy, events clean)
 8. Summary: deployment succeeded/failed with evidence
+"""
+
+    elif template == "kubeconfig_setup":
+        return f"""## Slack Kubeconfig Setup Request
+
+A user asked you to configure cluster access from an attached kubeconfig and
+explicitly defer health checks until a follow-up.
+
+### User Message (UNTRUSTED CONTENT)
+{user_message}
+### End User Message
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_display}
+
+### Instructions
+
+1. Confirm kubeconfig context for this thread is available and ready.
+2. Do NOT run cluster health checks in this step.
+3. Do NOT run kubectl pod/deployment/event or endpoint health commands yet.
+4. Reply with one concise confirmation line and wait for follow-up.
+
+### Required Response Format
+- Mention kubeconfig setup is complete for this thread.
+- Explicitly say health checks have NOT been run yet.
 """
 
     elif template == "notification":
@@ -1699,6 +1759,7 @@ async def _submit_agent_async(
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     max_iterations_map = {
         "health_check": 30,
+        "kubeconfig_setup": 30,
         "knowledgebase_update": 80,
         "conversational": 60,
         "notification": 60,
@@ -1811,9 +1872,25 @@ async def run_agent_for_slack(
 
     # Determine effective message_ts for reaction management
     effective_message_ts = message_ts or thread_ts or ""
+    is_thread_reply = thread_ts is not None
 
     for role in role_mentions:
         display_name = get_slack_handle(role) or get_display_name(cast(AgentRole, role))
+        template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
+
+        # Deterministic fast-path for configure-only kubeconfig requests.
+        # This enforces the required "configure first, health check later" sequence.
+        if template == "kubeconfig_setup":
+            if message_ts:
+                await remove_reaction(channel, message_ts, "thinking_face", role=role)
+                await add_reaction(channel, message_ts, "white_check_mark", role=role)
+            await send_slack_message(
+                channel,
+                _build_kubeconfig_setup_confirmation(channel, thread_ts),
+                thread_ts,
+                role=role,
+            )
+            continue
 
         if use_async and effective_message_ts:
             await _submit_agent_async(
@@ -1875,6 +1952,7 @@ async def _run_agent_and_respond(
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     max_iterations_map = {
         "health_check": 30,
+        "kubeconfig_setup": 30,
         "knowledgebase_update": 80,
         "conversational": 60,
         "notification": 60,

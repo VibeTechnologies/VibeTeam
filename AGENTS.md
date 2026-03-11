@@ -14,6 +14,18 @@ You are working on AI agentic team. Agent are implemented on OpenHands that runs
 Run unit tests and at least one Slack eval when changes affect agent behavior, routing, tools, or evaluation criteria.
 If you skip evals, explicitly report: “No. I did not run evals or E2E tests.” This is acceptable for changes that do not affect runtime behavior.
 
+### Critical OpenHands Test Integrity (Hard Rule)
+
+- Never disable, bypass, or silently downgrade OpenHands code paths to make tests pass.
+- Never convert OpenHands test failures into skips (including fixture-level `pytest.skip` gates).
+- Never mute failing tests by narrowing test selection, adding permissive markers, or changing assertions to always pass.
+- If OpenHands runtime/dependencies are missing or incompatible, tests must fail loudly with actionable error output.
+- Any change that affects `agent_service/openhands/*`, gateway routing to OpenHands, or OpenHands integration tests requires:
+  1. `uv run python -m pytest tests -v`
+  2. `uv run python -m pytest tests -v --run-integration`
+  3. Reporting final summaries (passed/failed/skipped) and log paths.
+- A PR is not merge-ready while critical OpenHands tests are skipped due to environment masking.
+
 Recommended order:
 1. Run unit tests.
 2. Run a Slack eval in dev.

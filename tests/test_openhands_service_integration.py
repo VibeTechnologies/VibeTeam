@@ -43,14 +43,6 @@ def _wait_for_health(base_url: str, timeout_s: float = 30.0) -> None:
 
 @pytest.fixture(scope="session")
 def openhands_service_url(azure_credentials: dict[str, str]) -> Iterator[str]:
-    try:
-        import openhands.sdk  # noqa: F401
-    except Exception:
-        pytest.skip(
-            "OpenHands SDK unavailable in this runtime (Python 3.11 cannot resolve "
-            "current openhands-ai/openhands-sdk dependencies)."
-        )
-
     port = _find_free_port()
     base_url = f"http://127.0.0.1:{port}"
 
