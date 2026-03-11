@@ -586,6 +586,7 @@ class TestScenarios:
         assert scenario["trigger_kubeconfig_yaml"].strip()
         assert scenario.get("trigger_kubeconfig_file_name") == "eval-k3s-kubeconfig.yaml"
         assert scenario.get("post_follow_up_messages") is False
+        assert scenario.get("min_substantive_bot_messages") == 2
 
     @pytest.mark.asyncio
     async def test_release_k3s_trigger_payload_and_followup_posting(self, monkeypatch):
