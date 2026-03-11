@@ -6,7 +6,7 @@
   - [x] #393 - `@DevOps` mention alias routing to ReleaseEngineer
 - [x] Implement code fixes for #391, #392, #393
 - [x] Run full test suites (unit + integration-enabled)
-- [ ] Run Slack evals for k3s configure/health and overload recovery
-- [ ] Deploy updated gateway + openhands services to `vibeteam`
-- [ ] Re-run evals after deployment and collect thread/report URLs
-- [ ] Close issues with evidence links
+- [x] Run Slack evals for k3s configure/health and overload recovery
+- [x] Deploy updated gateway + openhands services to `vibeteam`
+- [x] Re-run evals after deployment and collect thread/report URLs
+- [x] Close issues with evidence links
