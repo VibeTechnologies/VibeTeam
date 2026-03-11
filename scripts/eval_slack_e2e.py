@@ -1531,8 +1531,8 @@ SCENARIOS = {
         "follow_up_messages": [
             "@ReleaseEngineer now investigate vibe cluster health and provide a concise status summary."
         ],
-        # Post follow-up explicitly so transcript includes intent transition.
-        "post_follow_up_messages": True,
+        # Keep follow-up trigger-only to avoid eval bot chatter in-thread.
+        "post_follow_up_messages": False,
         "follow_up_delay_seconds": 8,
         "expected_agent": "release_engineer",
         "evaluation_criteria": {
@@ -3071,6 +3071,11 @@ async def run_evaluation(
 
     # Track conversation
     conversation: list[tuple[str, str]] = [("user", user_message)]
+    if follow_up_messages and not post_follow_up_messages:
+        for follow_up in follow_up_messages:
+            follow_up_text = ROLE_PATTERN.sub("", follow_up).strip()
+            if follow_up_text:
+                conversation.append(("user", follow_up_text))
 
     # Step 3: Collect conversation
     print("\n>>> Step 3: Collecting conversation")
