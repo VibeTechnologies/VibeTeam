@@ -135,6 +135,33 @@ def _summarize_gateway_events(events_output: str) -> str:
     return "Recent gateway warnings/errors: " + " | ".join(tail)
 
 
+def _summarize_rollout_history(history_output: str) -> str:
+    if not history_output:
+        return "Gateway rollout history unavailable in this snapshot."
+
+    lines = [line.strip() for line in history_output.splitlines() if line.strip()]
+    if not lines:
+        return "Gateway rollout history returned no revision entries."
+
+    revision_rows: list[str] = []
+    for line in lines:
+        upper = line.upper()
+        if line.startswith("deployment") or upper.startswith("REVISION"):
+            continue
+        if re.match(r"^\d+\s+", line):
+            revision_rows.append(line)
+
+    if not revision_rows:
+        return "Gateway rollout history captured, but revision rows were not parsed."
+
+    revisions = [row.split()[0] for row in revision_rows if row.split() and row.split()[0].isdigit()]
+    if not revisions:
+        return "Gateway rollout history captured, but revision numbers were not found."
+    if len(revisions) == 1:
+        return f"Gateway rollout revision observed: {revisions[0]}."
+    return f"Gateway rollout revisions observed: {revisions[-2]} -> {revisions[-1]}."
+
+
 def _summarize_logs(logs_output: str) -> str:
     if not logs_output:
         return "No logs captured."
@@ -366,6 +393,7 @@ def _build_investigation_fallback(
 ) -> str:
     context_str = "\n\n".join(injected_context)
     user_message = _extract_user_message(task)
+    user_message_lower = user_message.lower()
     url_match = re.search(r"https?://\\S+", user_message)
     url_to_probe = url_match.group(0).rstrip(").,") if url_match else ""
     if url_to_probe:
@@ -384,9 +412,14 @@ def _build_investigation_fallback(
         context_str,
         flags=re.DOTALL,
     )
+    rollout_section = _extract_section(
+        context_str,
+        "### kubectl rollout history deployment/vibeteam-gateway",
+    )
     pods_summary = _summarize_pods(pods_section.body if pods_section else "")
     events_summary = _summarize_gateway_events(events_section.body if events_section else "")
     logs_summary = _summarize_logs(logs_match.group(1).strip() if logs_match else "")
+    rollout_summary = _summarize_rollout_history(rollout_section.body if rollout_section else "")
     events_output = events_section.body if events_section else ""
     pods_output = pods_section.body if pods_section else ""
     logs_output = logs_match.group(1).strip() if logs_match else ""
@@ -401,6 +434,14 @@ def _build_investigation_fallback(
     has_gateway_crashloop = _has_gateway_crashloop(pods_output)
     has_4xx_logs = "4xx responses observed" in logs_summary.lower() or bool(
         re.search(r"\b4\d\d\b", logs_output)
+    )
+    has_5xx_logs = "5xx responses observed" in logs_summary.lower() or bool(
+        re.search(r"\b5\d\d\b", logs_output)
+    )
+    deployment_timing_mentioned = (
+        "after deployment" in user_message_lower
+        or "deployment at" in user_message_lower
+        or bool(re.search(r"\b\d{1,2}\s*(am|pm)\b", user_message_lower))
     )
     strong_gateway_failure = has_4xx_logs and (has_readiness_fail or has_gateway_crashloop)
     partial_gateway_risk = has_hpa_metrics_fail or has_readiness_fail
@@ -440,16 +481,33 @@ def _build_investigation_fallback(
             "config/image changes. If 4xx spike correlates with gateway instability, then rollback."
         )
     else:
-        root_cause = (
-            "No clear infrastructure failure found in kubectl or Sentry context. "
-            "Likely client request/validation issues (400/422) unless customers can "
-            "provide failing request details."
-        )
-        recommendation = (
-            "Infrastructure appears healthy. Do not rollback. "
-            "Please request exact endpoint/path, method, timestamp, and response body "
-            "from affected customers to confirm whether it is a client contract issue."
-        )
+        if deployment_timing_mentioned:
+            root_cause = (
+                "Current snapshot shows no hard infrastructure failure in pods/events, but "
+                "the reported deployment-timed 400 spike is not yet correlated to a specific "
+                "gateway revision."
+            )
+            if has_5xx_logs:
+                root_cause += (
+                    " Gateway logs currently show 5xx patterns, which do not directly explain "
+                    "the reported 400 symptom and indicate mixed failure signals."
+                )
+            recommendation = (
+                "Do not rollback blindly. Correlate failing 400 samples (endpoint, method, "
+                "timestamp, status/body) with gateway rollout revisions and image/config "
+                "changes around the reported deployment window. If correlation is confirmed, "
+                "handoff to ReleaseEngineer for controlled rollback; otherwise handoff to "
+                "SoftwareEngineer for request-validation regression analysis."
+            )
+        else:
+            root_cause = (
+                "No clear infrastructure failure found in kubectl or Sentry context. "
+                "Current evidence is insufficient to attribute this to infrastructure."
+            )
+            recommendation = (
+                "Collect failing endpoint/path, method, timestamp, and response body, then "
+                "re-run targeted checks before deciding on rollback."
+            )
 
     return (
         "Sentry findings:\n"
@@ -457,7 +515,8 @@ def _build_investigation_fallback(
         f"kubectl findings ({namespace}):\n"
         f"- {pods_summary}\n"
         f"- {events_summary}\n"
-        f"- {logs_summary}\n\n"
+        f"- {logs_summary}\n"
+        f"- {rollout_summary}\n\n"
         "Endpoint test (curl):\n"
         f"- {curl_result}\n\n"
         "Root cause analysis:\n"
