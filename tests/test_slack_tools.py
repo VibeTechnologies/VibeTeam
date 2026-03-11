@@ -184,11 +184,10 @@ class TestSlackToolsUnit:
 
         result = await send_message("Test message")
 
-        # Verify the message was prefixed correctly
+        # Verify message is posted as plain text without legacy role/session prefix.
         mock_client.post_message.assert_called_once()
         call_kwargs = mock_client.post_message.call_args[1]
-        assert "[SupportEngineer:session1]" in call_kwargs["text"]
-        assert "Test message" in call_kwargs["text"]
+        assert call_kwargs["text"] == "Test message"
         assert call_kwargs["channel"] == "C12345"
         assert call_kwargs["thread_ts"] == "1111111111.111111"
 
