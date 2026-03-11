@@ -1529,10 +1529,10 @@ SCENARIOS = {
         "trigger_kubeconfig_yaml": _EVAL_MINIMAL_KUBECONFIG,
         "trigger_kubeconfig_file_name": "eval-k3s-kubeconfig.yaml",
         "follow_up_messages": [
-            "@ReleaseEngineer now investigate vibeteam cluster health and provide a concise status summary."
+            "@ReleaseEngineer now investigate vibe cluster health and provide a concise status summary."
         ],
-        # Avoid posting eval-owned follow-up text as a bot message in-thread.
-        "post_follow_up_messages": False,
+        # Post follow-up explicitly so transcript includes intent transition.
+        "post_follow_up_messages": True,
         "follow_up_delay_seconds": 8,
         "expected_agent": "release_engineer",
         "evaluation_criteria": {

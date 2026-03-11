@@ -585,7 +585,7 @@ class TestScenarios:
         assert isinstance(scenario.get("trigger_kubeconfig_yaml"), str)
         assert scenario["trigger_kubeconfig_yaml"].strip()
         assert scenario.get("trigger_kubeconfig_file_name") == "eval-k3s-kubeconfig.yaml"
-        assert scenario.get("post_follow_up_messages") is False
+        assert scenario.get("post_follow_up_messages") is True
 
     @pytest.mark.asyncio
     async def test_release_k3s_trigger_payload_and_followup_posting(self, monkeypatch):
@@ -629,8 +629,8 @@ class TestScenarios:
                 skip_eval=True,
             )
 
-        # Initial user message only; follow-up should be trigger-only for this scenario.
-        mock_slack.post_message.assert_called_once()
+        # Initial message and follow-up should both be posted into thread history.
+        assert mock_slack.post_message.call_count == 2
         assert mock_client.post.call_count == 2
 
         initial_trigger_payload = mock_client.post.call_args_list[0].kwargs["json"]
