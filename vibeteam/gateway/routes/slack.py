@@ -1684,8 +1684,15 @@ limitation, NOT a production issue. If curl returns 000 or times out,
 note "could not verify from sandbox" and move on. kubectl status is the
 primary indicator.
 
-**Report format**: namespace, pod status, replica counts, health endpoint
-result, overall verdict (Healthy / Unhealthy).
+**Report format (STRICT)**:
+- Keep final answer under 90 words total (hard limit).
+- Use exactly 5 short bullets:
+  1) Namespace
+  2) Pods
+  3) Deployments
+  4) Health endpoint result
+  5) Verdict (Healthy / Unhealthy)
+- Do not include extra narrative, timestamps, or remediation plans unless explicitly requested.
 """
 
     else:
