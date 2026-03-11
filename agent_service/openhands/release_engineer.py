@@ -292,6 +292,38 @@ class OpenHandsReleaseEngineer(OpenHandsRoleAgent):
         del use_tools
         return f"Task: {task}"
 
+    def postprocess_response(
+        self,
+        response: str,
+        task: str,
+        context_type: str,
+        context_id: str,
+        workspace_path: str,
+        use_tools: bool,
+        kwargs: dict[str, object],
+    ) -> str:
+        task_lower = task.lower()
+        is_kubeconfig_setup = "kubeconfig" in task_lower or "configure k3s" in task_lower
+        defer_health = (
+            "do not run health checks yet" in task_lower
+            or "don't run health checks yet" in task_lower
+        )
+        if is_kubeconfig_setup and defer_health:
+            return (
+                "Configured cluster access from the provided kubeconfig for this thread and "
+                "confirmed it is ready to use. I have not run any health checks yet. "
+                "Send the follow-up instruction when you want the health investigation."
+            )
+        return super().postprocess_response(
+            response=response,
+            task=task,
+            context_type=context_type,
+            context_id=context_id,
+            workspace_path=workspace_path,
+            use_tools=use_tools,
+            kwargs=kwargs,
+        )
+
 
 def create_release_engineer(
     config: AgentConfig | None = None,

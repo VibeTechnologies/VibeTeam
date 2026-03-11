@@ -469,7 +469,7 @@ async def send_message(
     thread_ts: str | None = None,
 ) -> str:
     """
-    Post a message to Slack with automatic [RoleName:session_id] prefix.
+    Post a plain-text message to Slack.
 
     Args:
         message: The message text to post
@@ -489,20 +489,9 @@ async def send_message(
     ch = channel or ctx.get("channel") or os.getenv("SLACK_CHANNEL", "#ai-team")
     ts = thread_ts or ctx.get("thread_ts")
 
-    # Add [RoleName:session_id] prefix
-    from_agent = ctx.get("from_agent")
-    session_id = ctx.get("session_id")
-
-    if from_agent and session_id:
-        short_session = session_id[:8] if len(session_id) > 8 else session_id
-        prefixed_message = f"[{from_agent}:{short_session}] {message}"
-    elif from_agent:
-        prefixed_message = f"[{from_agent}] {message}"
-    else:
-        prefixed_message = message
-
     try:
-        result = client.post_message(channel=ch, text=prefixed_message, thread_ts=ts)
+        # Response attribution is handled by Slack app identity, not text prefixes.
+        result = client.post_message(channel=ch, text=message, thread_ts=ts)
         return f"Posted to {ch} at {result.ts}"
     except Exception as e:
         return f"Error posting to Slack: {e}"

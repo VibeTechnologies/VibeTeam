@@ -586,6 +586,7 @@ class TestScenarios:
         assert scenario["trigger_kubeconfig_yaml"].strip()
         assert scenario.get("trigger_kubeconfig_file_name") == "eval-k3s-kubeconfig.yaml"
         assert scenario.get("post_follow_up_messages") is False
+        assert scenario.get("min_substantive_bot_messages") == 2
 
     @pytest.mark.asyncio
     async def test_release_k3s_trigger_payload_and_followup_posting(self, monkeypatch):
@@ -621,7 +622,7 @@ class TestScenarios:
             mock_client.__aexit__ = AsyncMock(return_value=None)
             mock_httpx_cls.return_value = mock_client
 
-            await run_evaluation(
+            result = await run_evaluation(
                 scenario_name="release_k3s_configure_then_health",
                 channel="C_TEST",
                 wait_timeout=0,
@@ -638,6 +639,13 @@ class TestScenarios:
         assert "kubeconfig_yaml" in initial_trigger_payload
         assert initial_trigger_payload["kubeconfig_file_name"] == "eval-k3s-kubeconfig.yaml"
         assert "kubeconfig_yaml" not in follow_up_trigger_payload
+
+        # Trigger-only follow-up should still be represented as a user turn
+        # in the eval transcript for metric scoring.
+        assert result["conversation"][1] == (
+            "user",
+            "now investigate vibe cluster health and provide a concise status summary.",
+        )
 
 
 class TestPerScenarioTimeout:

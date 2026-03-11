@@ -218,6 +218,56 @@ def _extract_repo_reference(text: str) -> str | None:
     return None
 
 
+def _format_callback_error(payload: dict[str, Any], job_id: str) -> str:
+    """Extract a user-facing callback error message from callback payload fields."""
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    candidates: list[Any] = [
+        payload.get("error"),
+        payload.get("detail"),
+        metadata.get("error"),
+        metadata.get("detail"),
+    ]
+    ignored = {"", "none", "null", "unknown error", '""', "''"}
+    for value in candidates:
+        if value is None:
+            continue
+        if isinstance(value, (dict, list)):
+            text = json.dumps(value, ensure_ascii=False).strip()
+        else:
+            text = str(value).strip()
+        if text and text.lower() not in ignored:
+            return text
+
+    if job_id and job_id != "unknown":
+        return (
+            "No error details were returned by the agent service "
+            f"(job_id={job_id}). Please check service logs."
+        )
+    return "No error details were returned by the agent service. Please check service logs."
+
+
+_TRANSIENT_OVERLOAD_MARKERS = (
+    "temporarily overloaded",
+    "try again in a moment",
+    "rate limit",
+    "too many requests",
+    "service unavailable",
+    "upstream request timeout",
+    "gateway timeout",
+)
+
+
+def _is_transient_overload_error_text(text: str) -> bool:
+    """Return True when callback/service error text looks transient and retryable."""
+    normalized = (text or "").strip().lower()
+    if not normalized:
+        return False
+    return any(marker in normalized for marker in _TRANSIENT_OVERLOAD_MARKERS)
+
+
 def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
     """
     Split a long message into chunks, trying to break at newlines or spaces.
@@ -605,6 +655,26 @@ def _inject_thread_kubeconfig_context(
     return f"{user_message.rstrip()}\n\n{instruction_block}".strip()
 
 
+def _build_kubeconfig_setup_confirmation(channel: str, thread_ts: str | None) -> str:
+    """Build deterministic confirmation text for kubeconfig-setup-only requests."""
+    context = _get_thread_kubeconfig_context(channel, thread_ts)
+    if context:
+        current_context = str(context.get("current_context", "")).strip()
+        cluster_names = context.get("cluster_names") or []
+        cluster_hint = str(cluster_names[0]) if cluster_names else "unknown-cluster"
+        context_hint = current_context or cluster_hint
+        return (
+            f"Kubeconfig setup complete for this thread (context: `{context_hint}`). "
+            "I have not run health checks yet."
+        )
+
+    return (
+        "I did not find a validated kubeconfig context for this thread yet. "
+        "Please attach a kubeconfig file and I will configure it first. "
+        "I have not run health checks yet."
+    )
+
+
 def get_message_router() -> Router:
     """Get or create the message router."""
     global _message_router
@@ -736,6 +806,23 @@ async def _extract_roles_from_slack_user_mentions(text: str) -> list[str]:
         if role and role not in roles:
             roles.append(role)
     return roles
+
+
+async def _resolve_explicit_role_for_text(text: str) -> str | None:
+    """Resolve first explicit role mentioned in plain or Slack user-mention form."""
+    if not text:
+        return None
+
+    message_router = get_message_router()
+    parsed_roles = message_router.parse_role_mentions(text)
+    if parsed_roles:
+        return parsed_roles[0]
+
+    user_mention_roles = await _extract_roles_from_slack_user_mentions(text)
+    if user_mention_roles:
+        return user_mention_roles[0]
+
+    return None
 
 
 async def _mentions_ingress_bot(text: str) -> bool:
@@ -1090,7 +1177,8 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         is_thread_reply: True if this message is a reply in an existing thread
 
     Returns:
-        'deployment', 'notification', 'conversational', 'health_check', or 'investigation'
+        'deployment', 'kubeconfig_setup', 'notification', 'conversational',
+        'health_check', or 'investigation'
     """
     msg_lower = user_message.lower()
 
@@ -1104,6 +1192,16 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
         and (
             "agents/shared/knowledgebase" in msg_lower
             or "/app/agents/shared/knowledgebase" in msg_lower
+        )
+    )
+    is_kubeconfig_setup_only = (
+        role == "release_engineer"
+        and any(token in msg_lower for token in ("kubeconfig", "configure k3s", "cluster access"))
+        and (
+            "do not run health checks yet" in msg_lower
+            or "don't run health checks yet" in msg_lower
+            or "do not run health check yet" in msg_lower
+            or "don't run health check yet" in msg_lower
         )
     )
     # Health check: user asks to check health/readiness/status WITHOUT indicating
@@ -1177,6 +1275,8 @@ def classify_task_template(role: str, user_message: str, is_thread_reply: bool =
 
     if is_deployment:
         return "deployment"
+    elif is_kubeconfig_setup_only:
+        return "kubeconfig_setup"
     elif is_health_check:
         return "health_check"
     elif is_knowledgebase_update:
@@ -1370,6 +1470,33 @@ Your response MUST include:
 8. Summary: deployment succeeded/failed with evidence
 """
 
+    elif template == "kubeconfig_setup":
+        return f"""## Slack Kubeconfig Setup Request
+
+A user asked you to configure cluster access from an attached kubeconfig and
+explicitly defer health checks until a follow-up.
+
+### User Message (UNTRUSTED CONTENT)
+{user_message}
+### End User Message
+
+### Context
+- User ID: {user_id}
+- Channel: {channel}
+- Thread: {thread_display}
+
+### Instructions
+
+1. Confirm kubeconfig context for this thread is available and ready.
+2. Do NOT run cluster health checks in this step.
+3. Do NOT run kubectl pod/deployment/event or endpoint health commands yet.
+4. Reply with one concise confirmation line and wait for follow-up.
+
+### Required Response Format
+- Mention kubeconfig setup is complete for this thread.
+- Explicitly say health checks have NOT been run yet.
+"""
+
     elif template == "notification":
         return f"""## Slack Notification Request
 
@@ -1557,8 +1684,15 @@ limitation, NOT a production issue. If curl returns 000 or times out,
 note "could not verify from sandbox" and move on. kubectl status is the
 primary indicator.
 
-**Report format**: namespace, pod status, replica counts, health endpoint
-result, overall verdict (Healthy / Unhealthy).
+**Report format (STRICT)**:
+- Keep final answer under 90 words total (hard limit).
+- Use exactly 5 short bullets:
+  1) Namespace
+  2) Pods
+  3) Deployments
+  4) Health endpoint result
+  5) Verdict (Healthy / Unhealthy)
+- Do not include extra narrative, timestamps, or remediation plans unless explicitly requested.
 """
 
     else:
@@ -1648,6 +1782,7 @@ async def _submit_agent_async(
     framework: str | None = None,
     max_handoff_depth: int = 3,
     current_depth: int = 0,
+    retry_count: int = 0,
 ) -> None:
     """Submit an agent task asynchronously via /run/async.
 
@@ -1668,6 +1803,7 @@ async def _submit_agent_async(
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     max_iterations_map = {
         "health_check": 30,
+        "kubeconfig_setup": 30,
         "knowledgebase_update": 80,
         "conversational": 60,
         "notification": 60,
@@ -1715,6 +1851,7 @@ async def _submit_agent_async(
             "user_message": user_message,
             "max_handoff_depth": max_handoff_depth,
             "current_depth": current_depth,
+            "retry_count": retry_count,
             "framework": framework,
             # Include callback secret for authentication
             # Agent service echoes this back; gateway verifies on receipt
@@ -1780,9 +1917,25 @@ async def run_agent_for_slack(
 
     # Determine effective message_ts for reaction management
     effective_message_ts = message_ts or thread_ts or ""
+    is_thread_reply = thread_ts is not None
 
     for role in role_mentions:
         display_name = get_slack_handle(role) or get_display_name(cast(AgentRole, role))
+        template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
+
+        # Deterministic fast-path for configure-only kubeconfig requests.
+        # This enforces the required "configure first, health check later" sequence.
+        if template == "kubeconfig_setup":
+            if message_ts:
+                await remove_reaction(channel, message_ts, "thinking_face", role=role)
+                await add_reaction(channel, message_ts, "white_check_mark", role=role)
+            await send_slack_message(
+                channel,
+                _build_kubeconfig_setup_confirmation(channel, thread_ts),
+                thread_ts,
+                role=role,
+            )
+            continue
 
         if use_async and effective_message_ts:
             await _submit_agent_async(
@@ -1844,6 +1997,7 @@ async def _run_agent_and_respond(
     template = classify_task_template(role, user_message, is_thread_reply=is_thread_reply)
     max_iterations_map = {
         "health_check": 30,
+        "kubeconfig_setup": 30,
         "knowledgebase_update": 80,
         "conversational": 60,
         "notification": 60,
@@ -2014,6 +2168,11 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     user_id = meta.get("user_id", "")
     max_handoff_depth = meta.get("max_handoff_depth", 3)
     current_depth = meta.get("current_depth", 0)
+    retry_count_raw = meta.get("retry_count", 0)
+    try:
+        retry_count = int(retry_count_raw)
+    except (TypeError, ValueError):
+        retry_count = 0
     framework = meta.get("framework")
 
     logger.info(f"[CALLBACK] Received callback for job {job_id}: status={status}, role={role}")
@@ -2052,10 +2211,44 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
         return {"status": "ok", "job_id": job_id, "outcome": "timeout_posted"}
 
     if status == "failed" or error:
+        error_msg = _format_callback_error(payload, job_id)
+        # Retry transient overloads automatically before posting a final failure.
+        if _is_transient_overload_error_text(error_msg) and retry_count < 2:
+            next_retry = retry_count + 1
+            logger.warning(
+                "[CALLBACK] Transient overload detected for job %s; retrying (%d/2)",
+                job_id,
+                next_retry,
+            )
+            if message_ts:
+                await add_reaction(channel, message_ts, "thinking_face", role=role)
+            await send_slack_message(
+                channel,
+                (
+                    ":hourglass_flowing_sand: Capacity issue detected while running this request. "
+                    f"Retrying automatically ({next_retry}/2)..."
+                ),
+                thread_ts,
+                role=role,
+            )
+            await _submit_agent_async(
+                role=role,
+                display_name=display_name,
+                user_message=user_message,
+                channel=channel,
+                thread_ts=thread_ts,
+                message_ts=message_ts,
+                user_id=user_id,
+                framework=framework,
+                max_handoff_depth=max_handoff_depth,
+                current_depth=current_depth,
+                retry_count=next_retry,
+            )
+            return {"status": "ok", "job_id": job_id, "outcome": "retry_submitted"}
+
         # Failure path
         if message_ts:
             await add_reaction(channel, message_ts, "x", role=role)
-        error_msg = error or "Unknown error"
         error_text = f"Sorry, I encountered an error: {error_msg}"
         await send_slack_message(channel, error_text, thread_ts, role=role)
         return {"status": "ok", "job_id": job_id, "outcome": "error_posted"}
@@ -2251,6 +2444,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                 _store_thread_kubeconfig_context(event_channel, event_thread_ts, kubeconfig_context)
                 cluster_names = kubeconfig_context.get("cluster_names", [])
                 cluster_summary = ", ".join(cluster_names) if cluster_names else "unknown"
+                ack_role = await _resolve_explicit_role_for_text(event_text)
                 await send_slack_message(
                     event_channel,
                     (
@@ -2260,8 +2454,10 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                         "I will use it for k3s/vibe cluster checks."
                     ),
                     event_thread_ts,
+                    role=ack_role,
                 )
             elif kubeconfig_error:
+                error_role = await _resolve_explicit_role_for_text(event_text)
                 await send_slack_message(
                     event_channel,
                     (
@@ -2269,6 +2465,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                         f"{kubeconfig_error}. Please upload a valid kubeconfig YAML."
                     ),
                     event_thread_ts,
+                    role=error_role,
                 )
 
         # Handle bot messages: process if they contain role mentions (handoffs/eval)

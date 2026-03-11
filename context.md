@@ -8,6 +8,41 @@
 
 ## Checkpoint 2026-03-10
 
+### Update 2026-03-10 (Late)
+
+- Stabilized integration test execution under Codex-first Azure deployments:
+  - Added pytest integration-mode model fallback in `tests/conftest.py`:
+    - when `AZURE_OPENAI_DEPLOYMENT` is responses-only (`*codex*`), tests switch to chat-compatible deployment (`AZURE_INTEGRATION_OPENAI_DEPLOYMENT` / `AZURE_CHAT_OPENAI_DEPLOYMENT` / default `gpt-4.1`).
+- Added explicit OpenHands runtime gating for integration tests:
+  - new fixtures in `tests/conftest.py`:
+    - `openhands_runtime_status`
+    - `require_openhands_runtime`
+  - OpenHands-specific integration tests now skip with clear reason instead of hard ImportError when SDK/runtime is unavailable in Python 3.11.
+- Fixed AutoGen MarketingManager response extraction in `agent_service/autogen/marketing_manager.py`:
+  - now captures `ToolCallSummaryMessage` outputs and avoids user-message echo fallback.
+  - resolved empty/incorrect responses in sentiment/web-research integration paths.
+- Updated cross-framework integration tests to handle unavailable OpenHands runtime as skipped (not failed):
+  - `tests/test_browser_integration.py`
+  - `tests/test_gmail_integration.py`
+  - `tests/test_sentry_integration.py`
+  - `tests/test_integration.py`
+  - `tests/test_openhands_service_integration.py` (explicit skip behavior retained)
+- Validation completed with fresh artifacts:
+  - `uv run python -m pytest tests -v` => `793 passed, 82 skipped`
+    - log: `results/test_logs/full_pytest_final_20260310_185430.log`
+  - `uv run python -m pytest tests -v --run-integration` => `841 passed, 34 skipped`
+    - log: `results/test_logs/full_pytest_with_integration_final_20260310_184952.log`
+  - Slack eval:
+    - command: `uv run python scripts/eval_slack_e2e.py --scenario release_health_check --channel C0AATPSADB8 --timeout 600`
+    - result: PASSED
+    - report: `results/eval_reports/eval_release_health_check_20260311_015659.md`
+    - thread: `https://slack.com/app_redirect?channel=C0AATPSADB8&thread_ts=1773194147.777209`
+- Git state:
+  - branch: `master-synced-3`
+  - latest commit: `f5da159e1e688f54121376c794b9a96afe9e4639`
+  - pushed to origin.
+  - PR opened: `https://github.com/VibeTechnologies/VibeTeam/pull/390`
+
 ### Completed Since Last Update
 
 - Merged Slack app provisioning documentation and skills to `master`:

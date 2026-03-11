@@ -13,6 +13,7 @@ import logging
 import os
 from functools import lru_cache
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -69,8 +70,108 @@ try:
 
 except ImportError:
     OPENHANDS_LLM_AVAILABLE = False
-    LLM = None  # type: ignore[assignment,misc]
-    AzureLLM = None  # type: ignore[assignment,misc]
+
+    class LLM:  # type: ignore[no-redef]
+        """Fallback LLM client for environments without OpenHands SDK.
+
+        Uses Azure OpenAI Chat Completions directly so OpenHands role tests can
+        execute on Python 3.11 where openhands-ai is unavailable.
+        """
+
+        def __init__(
+            self,
+            model: str,
+            api_key: str | None = None,
+            base_url: str | None = None,
+            api_version: str | None = None,
+            max_output_tokens: int = 4096,
+            timeout: int = 300,
+            num_retries: int = 3,
+            **kwargs: Any,
+        ):
+            self.model = model
+            self.api_key = api_key or os.getenv("AZURE_API_KEY")
+            self.base_url = (
+                base_url or os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("AZURE_API_BASE")
+            )
+            self.api_version = api_version or os.getenv("AZURE_API_VERSION", "2024-08-01-preview")
+            self.max_output_tokens = max_output_tokens
+            self.timeout = timeout
+            self.num_retries = num_retries
+            self.extra_kwargs = kwargs
+
+        def uses_responses_api(self) -> bool:
+            return False
+
+        def _deployment_name(self) -> str:
+            return self.model.split("/", 1)[1] if self.model.startswith("azure/") else self.model
+
+        @staticmethod
+        def _normalize_azure_endpoint(api_base: str | None) -> str | None:
+            if not api_base:
+                return None
+            raw = api_base.rstrip("/")
+            parsed = urlsplit(raw)
+            if not parsed.scheme or not parsed.netloc:
+                return raw
+
+            path = parsed.path.rstrip("/")
+            if path.endswith("/openai"):
+                path = path[: -len("/openai")]
+            elif "/openai/" in path:
+                path = path.split("/openai/", 1)[0]
+            if path and not path.startswith("/"):
+                path = f"/{path}"
+            return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+        @staticmethod
+        def _coerce_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+            normalized: list[dict[str, str]] = []
+            for message in messages:
+                role = str(message.get("role", "user"))
+                content = message.get("content", "")
+                if isinstance(content, list):
+                    parts: list[str] = []
+                    for item in content:
+                        if isinstance(item, dict):
+                            parts.append(str(item.get("text", item.get("content", ""))))
+                        else:
+                            parts.append(str(item))
+                    text = "\n".join(part for part in parts if part)
+                else:
+                    text = str(content)
+                normalized.append({"role": role, "content": text})
+            return normalized
+
+        def complete(self, messages: list[dict[str, Any]]) -> str:
+            endpoint = self._normalize_azure_endpoint(self.base_url)
+            if not self.api_key or not endpoint:
+                raise RuntimeError("Azure LLM fallback missing AZURE_API_KEY or AZURE_API_BASE")
+
+            from openai import AzureOpenAI
+
+            client = AzureOpenAI(
+                api_key=self.api_key,
+                azure_endpoint=endpoint,
+                api_version=self.api_version,
+                timeout=self.timeout,
+                max_retries=self.num_retries,
+            )
+
+            response = client.chat.completions.create(
+                model=self._deployment_name(),
+                messages=self._coerce_messages(messages),
+                max_tokens=self.max_output_tokens,
+            )
+            message = response.choices[0].message.content if response.choices else ""
+            if isinstance(message, list):
+                return "".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part) for part in message
+                ).strip()
+            return (message or "").strip()
+
+    class AzureLLM(LLM):  # type: ignore[no-redef]
+        """Fallback Azure-specific LLM wrapper."""
 
 
 def resolve_azure_model(

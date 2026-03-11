@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from vibeteam.gateway.routes.slack import (
@@ -335,6 +336,194 @@ class TestCallbackEndpoint:
             sent_text = mock_send.call_args[0][1]
             assert "error" in sent_text.lower()
             assert "Agent crashed" in sent_text
+
+    def test_callback_failure_empty_error_uses_non_generic_fallback(self, test_client):
+        """Empty callback error should not surface as a generic Unknown error."""
+        payload = {
+            "job_id": "job-empty-error",
+            "status": "failed",
+            "error": "",
+            "response": "",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "release_engineer",
+                "display_name": "ReleaseEngineer",
+                "max_handoff_depth": 3,
+                "current_depth": 0,
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            response = test_client.post("/callback/agent", json=payload)
+
+            assert response.status_code == 200
+            sent_text = mock_send.call_args[0][1]
+            assert "Unknown error" not in sent_text
+            assert "No error details were returned by the agent service" in sent_text
+            assert "job_id=job-empty-error" in sent_text
+
+    def test_callback_failure_literal_unknown_error_uses_fallback(self, test_client):
+        """Literal 'Unknown error' should be replaced with actionable fallback text."""
+        payload = {
+            "job_id": "job-unknown-literal",
+            "status": "failed",
+            "error": "Unknown error",
+            "response": "",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "release_engineer",
+                "display_name": "ReleaseEngineer",
+                "max_handoff_depth": 3,
+                "current_depth": 0,
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            response = test_client.post("/callback/agent", json=payload)
+
+            assert response.status_code == 200
+            sent_text = mock_send.call_args[0][1]
+            assert "Unknown error" not in sent_text
+            assert "No error details were returned by the agent service" in sent_text
+            assert "job_id=job-unknown-literal" in sent_text
+
+    def test_callback_failure_transient_overload_retries_automatically(self, test_client):
+        payload = {
+            "job_id": "job-overload",
+            "status": "failed",
+            "error": "The AI service is temporarily overloaded. Please try again in a moment.",
+            "response": "",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "release_engineer",
+                "display_name": "ReleaseEngineer",
+                "user_message": "@DevOps investigate vibe cluster health",
+                "max_handoff_depth": 3,
+                "current_depth": 0,
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_add,
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+            patch(
+                "vibeteam.gateway.routes.slack._submit_agent_async",
+                new_callable=AsyncMock,
+            ) as mock_submit,
+        ):
+            response = test_client.post("/callback/agent", json=payload)
+
+            assert response.status_code == 200
+            assert response.json()["outcome"] == "retry_submitted"
+            mock_submit.assert_awaited_once()
+            assert mock_submit.await_args.kwargs["retry_count"] == 1
+            # Retry path should re-add thinking indicator, not fail with X immediately.
+            add_emojis = [call.args[2] for call in mock_add.call_args_list if len(call.args) >= 3]
+            assert "thinking_face" in add_emojis
+            assert "x" not in add_emojis
+            retry_text = mock_send.call_args[0][1]
+            assert "Retrying automatically" in retry_text
+
+    def test_callback_failure_transient_overload_after_retries_posts_error(self, test_client):
+        payload = {
+            "job_id": "job-overload-final",
+            "status": "failed",
+            "error": "The AI service is temporarily overloaded. Please try again in a moment.",
+            "response": "",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "release_engineer",
+                "display_name": "ReleaseEngineer",
+                "user_message": "@ReleaseEngineer investigate vibe cluster health",
+                "max_handoff_depth": 3,
+                "current_depth": 0,
+                "retry_count": 2,
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_add,
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+            patch(
+                "vibeteam.gateway.routes.slack._submit_agent_async",
+                new_callable=AsyncMock,
+            ) as mock_submit,
+        ):
+            response = test_client.post("/callback/agent", json=payload)
+
+            assert response.status_code == 200
+            assert response.json()["outcome"] == "error_posted"
+            mock_submit.assert_not_awaited()
+            add_emojis = [call.args[2] for call in mock_add.call_args_list if len(call.args) >= 3]
+            assert "x" in add_emojis
+            final_text = mock_send.call_args[0][1]
+            assert "temporarily overloaded" in final_text.lower()
 
     def test_callback_missing_channel_returns_error(self, test_client):
         """Callback without channel in metadata returns error."""
@@ -1124,10 +1313,59 @@ class TestSlackKubeconfigAttachmentFlow:
             asyncio.run(_process_slack_event(payload))
 
             mock_send.assert_called_once()
+            assert mock_send.call_args.kwargs.get("role") == "release_engineer"
             routed_text = mock_run.call_args.args[0]
             assert "Attached Kubeconfig Context" in routed_text
             assert "KUBECONFIG_YAML_START" in routed_text
             assert "my-k3s" in routed_text
+
+    def test_app_mention_with_devops_alias_sets_release_role_sender(self, test_client):
+        payload = {
+            "type": "event_callback",
+            "event_id": f"Ev_{uuid.uuid4().hex}",
+            "event": {
+                "type": "app_mention",
+                "text": "<@U_INGRESS> @DevOps configure this k3s cluster",
+                "user": "U_TEST",
+                "channel": "C_TEST",
+                "channel_type": "channel",
+                "ts": "1234567890.223456",
+                "thread_ts": "1234567890.223456",
+                "files": [{"id": "F_TEST", "name": "vibe-k3s.yaml"}],
+            },
+        }
+        kubeconfig_context = {
+            "file_name": "vibe-k3s.yaml",
+            "kubeconfig_yaml": "apiVersion: v1\nkind: Config\n",
+            "cluster_names": ["my-k3s"],
+            "context_names": ["dev@my-k3s"],
+            "current_context": "dev@my-k3s",
+            "source": "slack_file",
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+            patch(
+                "vibeteam.gateway.routes.slack._extract_kubeconfig_context_from_event",
+                new_callable=AsyncMock,
+                return_value=(kubeconfig_context, None),
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ),
+        ):
+            asyncio.run(_process_slack_event(payload))
+
+            mock_send.assert_called_once()
+            assert mock_send.call_args.kwargs.get("role") == "release_engineer"
 
     def test_thread_reply_reuses_stored_kubeconfig_context(self, test_client):
         from vibeteam.gateway.routes.slack import (
@@ -1467,6 +1705,75 @@ class TestRunAgentForSlackRouting:
             # So it should fall back to sync
             mock_sync.assert_called_once()
             mock_async.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_kubeconfig_setup_fast_path_skips_agent_execution(self):
+        from vibeteam.gateway.routes.slack import (
+            _store_thread_kubeconfig_context,
+            _thread_kubeconfig_contexts,
+            _thread_kubeconfig_lock,
+            run_agent_for_slack,
+        )
+
+        with _thread_kubeconfig_lock:
+            _thread_kubeconfig_contexts.clear()
+
+        _store_thread_kubeconfig_context(
+            "C_TEST",
+            "ts_1234",
+            {
+                "file_name": "vibe-k3s.yaml",
+                "kubeconfig_yaml": "apiVersion: v1\nkind: Config\n",
+                "cluster_names": ["my-k3s"],
+                "context_names": ["dev@my-k3s"],
+                "current_context": "dev@my-k3s",
+                "source": "slack_file",
+            },
+        )
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack._submit_agent_async",
+                new_callable=AsyncMock,
+            ) as mock_async,
+            patch(
+                "vibeteam.gateway.routes.slack._run_agent_and_respond",
+                new_callable=AsyncMock,
+            ) as mock_sync,
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+            ) as mock_remove_reaction,
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ) as mock_add_reaction,
+        ):
+            await run_agent_for_slack(
+                user_message=(
+                    "@ReleaseEngineer configure k3s cluster access from the kubeconfig "
+                    "I attached and confirm you can use it for this thread. "
+                    "Do not run health checks yet."
+                ),
+                channel="C_TEST",
+                thread_ts="ts_1234",
+                user_id="U_USER",
+                message_ts="msg_1234",
+                use_async=True,
+            )
+
+            mock_async.assert_not_called()
+            mock_sync.assert_not_called()
+            mock_remove_reaction.assert_awaited_once()
+            mock_add_reaction.assert_awaited_once()
+            mock_send.assert_awaited_once()
+            sent_text = mock_send.await_args.args[1]
+            assert "Kubeconfig setup complete for this thread" in sent_text
+            assert "not run health checks yet" in sent_text
 
 
 # ==============================================================================
@@ -1877,3 +2184,20 @@ class TestExecuteAndCallbackTimeout:
             assert payload["job_id"] == "job-timeout-test"
             assert "timed out" in payload["error"]
             assert payload["callback_metadata"]["channel"] == "C123"
+
+
+def test_openhands_format_exception_message_prefers_http_detail() -> None:
+    from agent_service.openhands import server as oh_server
+
+    exc = HTTPException(status_code=503, detail="OpenHands downstream unavailable")
+    assert oh_server._format_exception_message(exc) == "OpenHands downstream unavailable"
+
+
+def test_openhands_format_exception_message_handles_blank_exception() -> None:
+    from agent_service.openhands import server as oh_server
+
+    class BlankError(Exception):
+        def __str__(self) -> str:
+            return ""
+
+    assert oh_server._format_exception_message(BlankError()) == "BlankError"

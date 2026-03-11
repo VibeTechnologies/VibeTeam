@@ -371,21 +371,21 @@ class TestOpenHandsUnitTasks:
     """Unit tasks (U1-U7) for OpenHands framework."""
 
     @pytest.fixture
-    def release_engineer(self, azure_credentials):
+    def release_engineer(self, azure_credentials, require_openhands_runtime):
         """Create OpenHands ReleaseEngineer."""
         from agent_service.openhands.release_engineer import OpenHandsReleaseEngineer
 
         return OpenHandsReleaseEngineer()
 
     @pytest.fixture
-    def marketing_manager(self, azure_credentials):
+    def marketing_manager(self, azure_credentials, require_openhands_runtime):
         """Create OpenHands MarketingManager."""
         from agent_service.openhands.marketing_manager import OpenHandsMarketingManager
 
         return OpenHandsMarketingManager()
 
     @pytest.fixture
-    def support_engineer(self, azure_credentials):
+    def support_engineer(self, azure_credentials, require_openhands_runtime):
         """Create OpenHands SupportEngineer."""
         from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
@@ -508,7 +508,7 @@ class TestOpenHandsIntegrationTasks:
     """Integration tasks (I1-I3) for OpenHands framework with team orchestration."""
 
     @pytest.fixture
-    def team(self, azure_credentials):
+    def team(self, azure_credentials, require_openhands_runtime):
         """Create OpenHands team."""
         from agent_service.openhands.team import OpenHandsTeam
 

@@ -39,6 +39,24 @@ logger = logging.getLogger(__name__)
 _GITHUB_TOKEN_LOCK = threading.Lock()
 
 
+def _format_exception_message(exc: Exception) -> str:
+    """Build a non-empty, callback-safe error message."""
+    if isinstance(exc, HTTPException):
+        detail = getattr(exc, "detail", None)
+        if detail is not None:
+            text = str(detail).strip()
+            if text:
+                return text
+        status_code = getattr(exc, "status_code", None)
+        if status_code:
+            return f"HTTP {status_code}"
+
+    text = str(exc).strip()
+    if text:
+        return text
+    return exc.__class__.__name__
+
+
 @contextlib.contextmanager
 def _github_token_context(role: str | None):
     """Temporarily set role-specific GitHub token for gh/SDK usage."""
@@ -791,7 +809,7 @@ async def _execute_and_callback(
             payload = CallbackPayload(
                 job_id=job_id,
                 status="failed",
-                error=str(e),
+                error=_format_exception_message(e),
                 callback_metadata=request.callback_metadata,
             )
 

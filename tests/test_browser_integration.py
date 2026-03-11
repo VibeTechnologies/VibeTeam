@@ -459,7 +459,7 @@ class TestOpenHandsBrowserIntegration:
     """Test OpenHands MarketingManager with browser context injection."""
 
     @pytest.fixture
-    def marketing_manager(self, azure_credentials):
+    def marketing_manager(self, azure_credentials, require_openhands_runtime):
         """Create OpenHands MarketingManager with real credentials."""
         from agent_service.openhands.marketing_manager import OpenHandsMarketingManager
 
@@ -517,11 +517,15 @@ class TestCrossFrameworkBrowserComparison:
     """Compare all frameworks on the same browser task."""
 
     @pytest.mark.asyncio
-    async def test_all_frameworks_web_research(self, azure_credentials, check_playwright):
+    async def test_all_frameworks_web_research(
+        self, azure_credentials, check_playwright, openhands_runtime_status
+    ):
         """Run identical web research task across all three frameworks."""
         from agent_service.autogen.marketing_manager import AutoGenMarketingManager
         from agent_service.crewai.marketing_manager import CrewAIMarketingManager
-        from agent_service.openhands.marketing_manager import OpenHandsMarketingManager
+        openhands_available, openhands_error = openhands_runtime_status
+        if openhands_available:
+            from agent_service.openhands.marketing_manager import OpenHandsMarketingManager
 
         task = "Fetch content from https://example.com and provide a brief summary."
 
@@ -598,36 +602,39 @@ class TestCrossFrameworkBrowserComparison:
             print(f"[CrewAI] ERROR: {e}")
 
         # OpenHands
-        try:
-            agent = OpenHandsMarketingManager()
-            start = time.perf_counter()
-            result = await agent.run_async(task)
-            latency = (time.perf_counter() - start) * 1000
-            response = result.get("response", "")
-            is_valid = len(response) > 50
+        if openhands_available:
+            try:
+                agent = OpenHandsMarketingManager()
+                start = time.perf_counter()
+                result = await agent.run_async(task)
+                latency = (time.perf_counter() - start) * 1000
+                response = result.get("response", "")
+                is_valid = len(response) > 50
 
-            results.append(
-                BrowserTestResult(
-                    framework="openhands",
-                    agent="marketing_manager",
-                    success=is_valid,
-                    response=response[:200],
-                    latency_ms=latency,
+                results.append(
+                    BrowserTestResult(
+                        framework="openhands",
+                        agent="marketing_manager",
+                        success=is_valid,
+                        response=response[:200],
+                        latency_ms=latency,
+                    )
                 )
-            )
-            print(f"[OpenHands] {latency:.0f}ms - {'PASS' if is_valid else 'FAIL'}")
-        except Exception as e:
-            results.append(
-                BrowserTestResult(
-                    framework="openhands",
-                    agent="marketing_manager",
-                    success=False,
-                    response="",
-                    latency_ms=0,
-                    error=str(e),
+                print(f"[OpenHands] {latency:.0f}ms - {'PASS' if is_valid else 'FAIL'}")
+            except Exception as e:
+                results.append(
+                    BrowserTestResult(
+                        framework="openhands",
+                        agent="marketing_manager",
+                        success=False,
+                        response="",
+                        latency_ms=0,
+                        error=str(e),
+                    )
                 )
-            )
-            print(f"[OpenHands] ERROR: {e}")
+                print(f"[OpenHands] ERROR: {e}")
+        else:
+            print(f"[OpenHands] SKIPPED: runtime unavailable ({openhands_error})")
 
         # Summary
         print("\n" + "-" * 70)

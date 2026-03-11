@@ -154,6 +154,34 @@ class HealthResponse(BaseModel):
 # Global HTTP client for connection pooling
 _http_client: httpx.AsyncClient | None = None
 
+# Retry budget for transient upstream capacity failures.
+_TRANSIENT_RETRYABLE_STATUSES = {429, 502, 503, 504}
+_TRANSIENT_ERROR_MARKERS = (
+    "temporarily overloaded",
+    "rate limit",
+    "too many requests",
+    "service unavailable",
+    "please try again in a moment",
+    "upstream request timeout",
+    "gateway timeout",
+)
+
+
+def _is_transient_status_error(status_code: int, detail: str) -> bool:
+    """Return True when an HTTP status/detail indicates retryable capacity issue."""
+    if status_code in _TRANSIENT_RETRYABLE_STATUSES:
+        return True
+    detail_lower = (detail or "").lower()
+    return any(marker in detail_lower for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+def _build_overload_error_message(attempts: int) -> str:
+    """Create deterministic user-facing overload fallback text."""
+    return (
+        "Agent execution is temporarily overloaded and did not recover after "
+        f"{attempts} automatic retry attempt(s). Please retry in 1-2 minutes."
+    )
+
 
 def get_http_client() -> httpx.AsyncClient:
     """Get or create async HTTP client with robust connection settings."""
@@ -270,10 +298,27 @@ async def call_agent_service(
 
             return result
         except httpx.HTTPStatusError as e:
-            logger.error(f"Agent service error: {e.response.status_code} - {e.response.text}")
+            status_code = int(e.response.status_code)
+            detail_text = e.response.text or ""
+            if _is_transient_status_error(status_code, detail_text) and attempt < max_retries - 1:
+                logger.warning(
+                    "Transient agent service status error (attempt %d/%d): %s - %s",
+                    attempt + 1,
+                    max_retries,
+                    status_code,
+                    detail_text[:200],
+                )
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            logger.error(f"Agent service error: {status_code} - {detail_text}")
+            if _is_transient_status_error(status_code, detail_text):
+                return {
+                    "error": _build_overload_error_message(attempt + 1),
+                    "detail": detail_text,
+                }
             return {
-                "error": f"Agent service error: {e.response.status_code}",
-                "detail": e.response.text,
+                "error": f"Agent service error: {status_code}",
+                "detail": detail_text,
             }
         except httpx.RequestError as e:
             last_error = e
@@ -341,6 +386,7 @@ async def call_agent_service_async(
     Returns:
         {"job_id": "...", "status": "accepted"} or {"error": "..."}
     """
+    import asyncio
     import time
 
     start_time = time.time()
@@ -372,31 +418,65 @@ async def call_agent_service_async(
     if progress_url:
         payload["progress_url"] = progress_url
 
-    try:
-        client = get_http_client()
-        response = await client.post(
-            f"{service_url}/run/async",
-            json=payload,
-            timeout=30.0,  # Should return immediately — 30s is generous
-        )
-        response.raise_for_status()
-        result = response.json()
+    max_retries = 3
+    last_request_error: httpx.RequestError | None = None
+    for attempt in range(max_retries):
+        try:
+            client = get_http_client()
+            response = await client.post(
+                f"{service_url}/run/async",
+                json=payload,
+                timeout=30.0,  # Should return immediately — 30s is generous
+            )
+            response.raise_for_status()
+            result = response.json()
 
-        elapsed = time.time() - start_time
-        logger.info(
-            f"[ASYNC] Task accepted in {elapsed:.1f}s: job_id={result.get('job_id')}, role={role}"
-        )
-        return result
+            elapsed = time.time() - start_time
+            logger.info(
+                f"[ASYNC] Task accepted in {elapsed:.1f}s: "
+                f"job_id={result.get('job_id')}, role={role}"
+            )
+            return result
 
-    except httpx.HTTPStatusError as e:
-        logger.error(f"[ASYNC] Agent service error: {e.response.status_code} - {e.response.text}")
-        return {
-            "error": f"Agent service error: {e.response.status_code}",
-            "detail": e.response.text,
-        }
-    except httpx.RequestError as e:
-        logger.error(f"[ASYNC] Failed to connect to {service_url}: {e}")
-        return {"error": f"Failed to connect to agent service: {e}"}
+        except httpx.HTTPStatusError as e:
+            status_code = int(e.response.status_code)
+            detail_text = e.response.text or ""
+            if _is_transient_status_error(status_code, detail_text) and attempt < max_retries - 1:
+                logger.warning(
+                    "[ASYNC] Transient status error (attempt %d/%d): %s - %s",
+                    attempt + 1,
+                    max_retries,
+                    status_code,
+                    detail_text[:200],
+                )
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            logger.error(f"[ASYNC] Agent service error: {status_code} - {detail_text}")
+            if _is_transient_status_error(status_code, detail_text):
+                return {
+                    "error": _build_overload_error_message(attempt + 1),
+                    "detail": detail_text,
+                }
+            return {
+                "error": f"Agent service error: {status_code}",
+                "detail": detail_text,
+            }
+        except httpx.RequestError as e:
+            last_request_error = e
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "[ASYNC] Failed to connect (attempt %d/%d) to %s: %s",
+                    attempt + 1,
+                    max_retries,
+                    service_url,
+                    e,
+                )
+                await close_http_client()
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            logger.error(f"[ASYNC] Failed to connect to {service_url}: {e}")
+
+    return {"error": f"Failed to connect to agent service: {last_request_error}"}
 
 
 async def call_scheduler_service(

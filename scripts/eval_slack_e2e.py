@@ -1529,11 +1529,13 @@ SCENARIOS = {
         "trigger_kubeconfig_yaml": _EVAL_MINIMAL_KUBECONFIG,
         "trigger_kubeconfig_file_name": "eval-k3s-kubeconfig.yaml",
         "follow_up_messages": [
-            "@ReleaseEngineer now investigate vibeteam cluster health and provide a concise status summary."
+            "@ReleaseEngineer now investigate vibe cluster health and provide a concise status summary."
         ],
-        # Avoid posting eval-owned follow-up text as a bot message in-thread.
+        # Keep follow-up trigger-only to avoid eval bot chatter in-thread.
         "post_follow_up_messages": False,
         "follow_up_delay_seconds": 8,
+        # Need one substantive message for setup + one for health summary.
+        "min_substantive_bot_messages": 2,
         "expected_agent": "release_engineer",
         "evaluation_criteria": {
             "TaskCompletion": (
@@ -2713,6 +2715,8 @@ async def run_evaluation(
     print()
 
     user_message = scenario["message"]
+    follow_up_messages = scenario.get("follow_up_messages", [])
+    post_follow_up_messages = bool(scenario.get("post_follow_up_messages", True))
     resolved_trigger_kubeconfig_yaml: str = ""
     if isinstance(scenario.get("trigger_kubeconfig_yaml"), str):
         resolved_trigger_kubeconfig_yaml = scenario["trigger_kubeconfig_yaml"].strip()
@@ -2884,8 +2888,6 @@ async def run_evaluation(
 
         await _trigger_gateway_message(user_message, "Initial message")
 
-        follow_up_messages = scenario.get("follow_up_messages", [])
-        post_follow_up_messages = bool(scenario.get("post_follow_up_messages", True))
         follow_up_delay_seconds = int(scenario.get("follow_up_delay_seconds", 8))
         if follow_up_messages:
             for idx, follow_up in enumerate(follow_up_messages, start=1):
@@ -2925,6 +2927,7 @@ async def run_evaluation(
         last_content_fingerprint = ""  # Hash of all message texts to detect chat.update edits
         pending_handoff = False
         has_substantive_response = False  # True once a real (non-placeholder) bot msg arrives
+        min_substantive_bot_messages = int(scenario.get("min_substantive_bot_messages", 1))
         # Track substantive responses per agent role for handoff completion.
         # When a handoff is detected, we need a substantive response from the
         # handoff *target* agent, not just the original agent.
@@ -3041,6 +3044,15 @@ async def run_evaluation(
                             )
                             continue
 
+                    substantive_count = len([m for m in bot_messages if not _is_placeholder(m.text)])
+                    if substantive_count < min_substantive_bot_messages:
+                        elapsed = int(time.time() - start_time)
+                        print(
+                            "    Waiting for additional substantive responses "
+                            f"({substantive_count}/{min_substantive_bot_messages}, total {elapsed}s)"
+                        )
+                        continue
+
                     latest_bot_msg = bot_messages[-1]
                     latest_role = _role_from_reply(latest_bot_msg)
                     has_handoff = _has_non_self_handoff(latest_bot_msg.text, latest_role)
@@ -3071,6 +3083,11 @@ async def run_evaluation(
 
     # Track conversation
     conversation: list[tuple[str, str]] = [("user", user_message)]
+    if follow_up_messages and not post_follow_up_messages:
+        for follow_up in follow_up_messages:
+            follow_up_text = ROLE_PATTERN.sub("", follow_up).strip()
+            if follow_up_text:
+                conversation.append(("user", follow_up_text))
 
     # Step 3: Collect conversation
     print("\n>>> Step 3: Collecting conversation")
@@ -3226,8 +3243,16 @@ async def run_evaluation(
                 )
 
                 transcript = build_transcript(conversation)
+                user_turns = [text for role, text in conversation if role == "user"]
+                eval_input = user_turns[0] if user_turns else user_message
+                if len(user_turns) > 1:
+                    eval_input = (
+                        f"{eval_input}\n\n"
+                        "Follow-up user turns in the same thread:\n"
+                        + "\n".join(f"- {turn}" for turn in user_turns[1:])
+                    )
                 test_case = LLMTestCase(
-                    input=user_message,
+                    input=eval_input,
                     actual_output=transcript,
                 )
 

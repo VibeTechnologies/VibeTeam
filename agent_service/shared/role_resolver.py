@@ -47,6 +47,9 @@ BASE_ROLE_MENTION_MAP: dict[str, AgentRole] = {
     # Short forms (gateway)
     "swe": "software_engineer",
     "release": "release_engineer",
+    "devops": "release_engineer",
+    "ops": "release_engineer",
+    "sre": "release_engineer",
     "support": "support_engineer",
     "pm": "product_manager",
     "marketing": "marketing_manager",

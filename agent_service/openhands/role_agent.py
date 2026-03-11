@@ -13,23 +13,17 @@ from agent_service.sessions import get_or_create_session, get_session_store
 from agent_service.shared.agents_md_loader import compose_agent_context
 from agent_service.shared.llm import LLM, AzureLLM
 
+from .runtime_compat import (
+    OPENHANDS_AVAILABLE,
+    Agent,
+    FileEditorTool,
+    LocalConversation,
+    TerminalTool,
+    Tool,
+)
 from .utils import build_condenser, extract_response_from_events, get_prompt_path
 
 logger = logging.getLogger(__name__)
-
-try:
-    from openhands.sdk import Agent, LocalConversation, Tool
-    from openhands.tools.file_editor import FileEditorTool
-    from openhands.tools.terminal import TerminalTool
-
-    OPENHANDS_AVAILABLE = True
-except ImportError:
-    OPENHANDS_AVAILABLE = False
-    Agent = None
-    LocalConversation = None
-    Tool = None
-    TerminalTool = None
-    FileEditorTool = None
 
 PROGRESS_IMPORT_ERROR: Exception | None = None
 try:

@@ -95,6 +95,40 @@ POST /api/v1/ingest 400
     assert "4xx responses observed in recent logs." in response
 
 
+def test_build_investigation_fallback_summarizes_rollout_history() -> None:
+    context = """
+### kubectl get pods -n vibeteam
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+vibeteam-gateway-abc               1/1     Running   0          10m
+```
+
+### kubectl get events -n vibeteam (warnings/errors)
+```
+(no warning/error events found)
+```
+
+### kubectl logs deployment/vibeteam-gateway -n vibeteam --tail=100
+```
+POST /api/v1/ingest 400
+```
+
+### kubectl rollout history deployment/vibeteam-gateway
+```
+deployment.apps/vibeteam-gateway
+REVISION  CHANGE-CAUSE
+12        <none>
+13        <none>
+```
+"""
+    response = _build_investigation_fallback(
+        "@SupportEngineer users report API gateway 400 errors after deployment at 8am",
+        [context],
+        "vibeteam",
+    )
+    assert "Gateway rollout revisions observed: 12 -> 13." in response
+
+
 def test_build_investigation_fallback_flags_gateway_instability_when_signals_exist() -> None:
     context = """
 ### kubectl get pods -n vibeteam
@@ -209,4 +243,5 @@ POST /api/v1/ingest 400
     )
     assert "gateway CrashLoopBackOff" not in response
     assert "Immediate mitigation: rollback vibeteam-gateway" not in response
-    assert "Infrastructure appears healthy. Do not rollback." in response
+    assert "deployment-timed 400 spike is not yet correlated to a specific gateway revision" in response
+    assert "Do not rollback blindly." in response

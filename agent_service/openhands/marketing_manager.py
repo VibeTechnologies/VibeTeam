@@ -29,15 +29,7 @@ from agent_service.config import (
 from agent_service.sessions import get_or_create_session, get_session_store
 
 # Browser tools are available via MCP; no prefetch context is injected.
-
-try:
-    from openhands.sdk import Agent, LocalConversation
-
-    OPENHANDS_AVAILABLE = True
-except ImportError:
-    OPENHANDS_AVAILABLE = False
-    Agent = None
-    LocalConversation = None
+from .runtime_compat import OPENHANDS_AVAILABLE, Agent, LocalConversation
 
 from agent_service.shared.agents_md_loader import compose_agent_context
 from agent_service.shared.llm import LLM, AzureLLM
