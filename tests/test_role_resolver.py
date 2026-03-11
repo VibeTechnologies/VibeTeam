@@ -40,6 +40,9 @@ class TestRoleMentionMap:
     def test_short_forms(self):
         assert ROLE_MENTION_MAP["swe"] == "software_engineer"
         assert ROLE_MENTION_MAP["release"] == "release_engineer"
+        assert ROLE_MENTION_MAP["devops"] == "release_engineer"
+        assert ROLE_MENTION_MAP["ops"] == "release_engineer"
+        assert ROLE_MENTION_MAP["sre"] == "release_engineer"
         assert ROLE_MENTION_MAP["support"] == "support_engineer"
         assert ROLE_MENTION_MAP["pm"] == "product_manager"
         assert ROLE_MENTION_MAP["marketing"] == "marketing_manager"
@@ -156,6 +159,18 @@ class TestParseRoleMentions:
         ],
     )
     def test_extra_aliases(self, text, expected):
+        assert parse_role_mentions(text) == expected
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("@DevOps investigate cluster health", ["release_engineer"]),
+            ("/devops restart rollout", ["release_engineer"]),
+            ("@ops check deployment status", ["release_engineer"]),
+            ("@SRE verify k8s alerts", ["release_engineer"]),
+        ],
+    )
+    def test_devops_aliases(self, text, expected):
         assert parse_role_mentions(text) == expected
 
     # --- Case insensitivity ---

@@ -249,6 +249,25 @@ def _format_callback_error(payload: dict[str, Any], job_id: str) -> str:
     return "No error details were returned by the agent service. Please check service logs."
 
 
+_TRANSIENT_OVERLOAD_MARKERS = (
+    "temporarily overloaded",
+    "try again in a moment",
+    "rate limit",
+    "too many requests",
+    "service unavailable",
+    "upstream request timeout",
+    "gateway timeout",
+)
+
+
+def _is_transient_overload_error_text(text: str) -> bool:
+    """Return True when callback/service error text looks transient and retryable."""
+    normalized = (text or "").strip().lower()
+    if not normalized:
+        return False
+    return any(marker in normalized for marker in _TRANSIENT_OVERLOAD_MARKERS)
+
+
 def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
     """
     Split a long message into chunks, trying to break at newlines or spaces.
@@ -787,6 +806,23 @@ async def _extract_roles_from_slack_user_mentions(text: str) -> list[str]:
         if role and role not in roles:
             roles.append(role)
     return roles
+
+
+async def _resolve_explicit_role_for_text(text: str) -> str | None:
+    """Resolve first explicit role mentioned in plain or Slack user-mention form."""
+    if not text:
+        return None
+
+    message_router = get_message_router()
+    parsed_roles = message_router.parse_role_mentions(text)
+    if parsed_roles:
+        return parsed_roles[0]
+
+    user_mention_roles = await _extract_roles_from_slack_user_mentions(text)
+    if user_mention_roles:
+        return user_mention_roles[0]
+
+    return None
 
 
 async def _mentions_ingress_bot(text: str) -> bool:
@@ -1739,6 +1775,7 @@ async def _submit_agent_async(
     framework: str | None = None,
     max_handoff_depth: int = 3,
     current_depth: int = 0,
+    retry_count: int = 0,
 ) -> None:
     """Submit an agent task asynchronously via /run/async.
 
@@ -1807,6 +1844,7 @@ async def _submit_agent_async(
             "user_message": user_message,
             "max_handoff_depth": max_handoff_depth,
             "current_depth": current_depth,
+            "retry_count": retry_count,
             "framework": framework,
             # Include callback secret for authentication
             # Agent service echoes this back; gateway verifies on receipt
@@ -2123,6 +2161,11 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     user_id = meta.get("user_id", "")
     max_handoff_depth = meta.get("max_handoff_depth", 3)
     current_depth = meta.get("current_depth", 0)
+    retry_count_raw = meta.get("retry_count", 0)
+    try:
+        retry_count = int(retry_count_raw)
+    except (TypeError, ValueError):
+        retry_count = 0
     framework = meta.get("framework")
 
     logger.info(f"[CALLBACK] Received callback for job {job_id}: status={status}, role={role}")
@@ -2161,10 +2204,44 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
         return {"status": "ok", "job_id": job_id, "outcome": "timeout_posted"}
 
     if status == "failed" or error:
+        error_msg = _format_callback_error(payload, job_id)
+        # Retry transient overloads automatically before posting a final failure.
+        if _is_transient_overload_error_text(error_msg) and retry_count < 2:
+            next_retry = retry_count + 1
+            logger.warning(
+                "[CALLBACK] Transient overload detected for job %s; retrying (%d/2)",
+                job_id,
+                next_retry,
+            )
+            if message_ts:
+                await add_reaction(channel, message_ts, "thinking_face", role=role)
+            await send_slack_message(
+                channel,
+                (
+                    ":hourglass_flowing_sand: Capacity issue detected while running this request. "
+                    f"Retrying automatically ({next_retry}/2)..."
+                ),
+                thread_ts,
+                role=role,
+            )
+            await _submit_agent_async(
+                role=role,
+                display_name=display_name,
+                user_message=user_message,
+                channel=channel,
+                thread_ts=thread_ts,
+                message_ts=message_ts,
+                user_id=user_id,
+                framework=framework,
+                max_handoff_depth=max_handoff_depth,
+                current_depth=current_depth,
+                retry_count=next_retry,
+            )
+            return {"status": "ok", "job_id": job_id, "outcome": "retry_submitted"}
+
         # Failure path
         if message_ts:
             await add_reaction(channel, message_ts, "x", role=role)
-        error_msg = _format_callback_error(payload, job_id)
         error_text = f"Sorry, I encountered an error: {error_msg}"
         await send_slack_message(channel, error_text, thread_ts, role=role)
         return {"status": "ok", "job_id": job_id, "outcome": "error_posted"}
@@ -2360,6 +2437,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                 _store_thread_kubeconfig_context(event_channel, event_thread_ts, kubeconfig_context)
                 cluster_names = kubeconfig_context.get("cluster_names", [])
                 cluster_summary = ", ".join(cluster_names) if cluster_names else "unknown"
+                ack_role = await _resolve_explicit_role_for_text(event_text)
                 await send_slack_message(
                     event_channel,
                     (
@@ -2369,8 +2447,10 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                         "I will use it for k3s/vibe cluster checks."
                     ),
                     event_thread_ts,
+                    role=ack_role,
                 )
             elif kubeconfig_error:
+                error_role = await _resolve_explicit_role_for_text(event_text)
                 await send_slack_message(
                     event_channel,
                     (
@@ -2378,6 +2458,7 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                         f"{kubeconfig_error}. Please upload a valid kubeconfig YAML."
                     ),
                     event_thread_ts,
+                    role=error_role,
                 )
 
         # Handle bot messages: process if they contain role mentions (handoffs/eval)
