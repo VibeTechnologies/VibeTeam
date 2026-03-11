@@ -218,6 +218,37 @@ def _extract_repo_reference(text: str) -> str | None:
     return None
 
 
+def _format_callback_error(payload: dict[str, Any], job_id: str) -> str:
+    """Extract a user-facing callback error message from callback payload fields."""
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    candidates: list[Any] = [
+        payload.get("error"),
+        payload.get("detail"),
+        metadata.get("error"),
+        metadata.get("detail"),
+    ]
+    ignored = {"", "none", "null", "unknown error", '""', "''"}
+    for value in candidates:
+        if value is None:
+            continue
+        if isinstance(value, (dict, list)):
+            text = json.dumps(value, ensure_ascii=False).strip()
+        else:
+            text = str(value).strip()
+        if text and text.lower() not in ignored:
+            return text
+
+    if job_id and job_id != "unknown":
+        return (
+            "No error details were returned by the agent service "
+            f"(job_id={job_id}). Please check service logs."
+        )
+    return "No error details were returned by the agent service. Please check service logs."
+
+
 def split_long_message(text: str, max_chunk_size: int = 2900) -> list[str]:
     """
     Split a long message into chunks, trying to break at newlines or spaces.
@@ -2055,7 +2086,7 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
         # Failure path
         if message_ts:
             await add_reaction(channel, message_ts, "x", role=role)
-        error_msg = error or "Unknown error"
+        error_msg = _format_callback_error(payload, job_id)
         error_text = f"Sorry, I encountered an error: {error_msg}"
         await send_slack_message(channel, error_text, thread_ts, role=role)
         return {"status": "ok", "job_id": job_id, "outcome": "error_posted"}

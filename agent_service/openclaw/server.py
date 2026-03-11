@@ -463,6 +463,31 @@ class HealthResponse(BaseModel):
 # ==============================================================================
 
 
+def _format_exception_message(exc: Exception) -> str:
+    """Build a user-safe, non-empty error string for callback payloads."""
+    if isinstance(exc, HTTPException):
+        detail = getattr(exc, "detail", None)
+        if isinstance(detail, (dict, list)):
+            try:
+                text = json.dumps(detail, ensure_ascii=False)
+                if text.strip():
+                    return text
+            except Exception:
+                pass
+        if detail is not None:
+            text = str(detail).strip()
+            if text:
+                return text
+        status_code = getattr(exc, "status_code", None)
+        if status_code:
+            return f"HTTP {status_code}"
+
+    text = str(exc).strip()
+    if text:
+        return text
+    return exc.__class__.__name__
+
+
 def _build_session_key(agent_id: str, context_type: str, context_id: str) -> str:
     ctx_type = (context_type or "api").strip().lower() or "api"
     ctx_id = (context_id or "unknown").strip() or "unknown"
@@ -801,8 +826,9 @@ async def run_task(request: RunRequest):
         )
 
     except Exception as e:
-        logger.exception(f"OpenClaw task failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        error_msg = _format_exception_message(e)
+        logger.exception("OpenClaw task failed: %s", error_msg)
+        raise HTTPException(status_code=500, detail=error_msg) from e
 
 
 async def _execute_and_callback(job_id: str, request: AsyncRunRequest) -> None:
@@ -831,7 +857,7 @@ async def _execute_and_callback(job_id: str, request: AsyncRunRequest) -> None:
         payload = CallbackPayload(
             job_id=job_id,
             status="failed",
-            error=str(e),
+            error=_format_exception_message(e),
             callback_metadata=request.callback_metadata,
         )
 

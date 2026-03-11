@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fastapi import HTTPException
+
 from agent_service.openclaw import server as openclaw_server
 
 
@@ -158,3 +160,16 @@ def test_try_direct_kb_fact_answer_disabled_for_other_roles() -> None:
     task = "Answer value for `KB_EVAL_FACT_20260305`."
     value = openclaw_server._try_direct_kb_fact_answer(task, "support_engineer")
     assert value is None
+
+
+def test_format_exception_message_prefers_http_exception_detail() -> None:
+    exc = HTTPException(status_code=500, detail="OpenClaw gateway unavailable")
+    assert openclaw_server._format_exception_message(exc) == "OpenClaw gateway unavailable"
+
+
+def test_format_exception_message_handles_blank_exception() -> None:
+    class BlankError(Exception):
+        def __str__(self) -> str:
+            return ""
+
+    assert openclaw_server._format_exception_message(BlankError()) == "BlankError"

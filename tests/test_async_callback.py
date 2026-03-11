@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from vibeteam.gateway.routes.slack import (
@@ -335,6 +336,92 @@ class TestCallbackEndpoint:
             sent_text = mock_send.call_args[0][1]
             assert "error" in sent_text.lower()
             assert "Agent crashed" in sent_text
+
+    def test_callback_failure_empty_error_uses_non_generic_fallback(self, test_client):
+        """Empty callback error should not surface as a generic Unknown error."""
+        payload = {
+            "job_id": "job-empty-error",
+            "status": "failed",
+            "error": "",
+            "response": "",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "release_engineer",
+                "display_name": "ReleaseEngineer",
+                "max_handoff_depth": 3,
+                "current_depth": 0,
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            response = test_client.post("/callback/agent", json=payload)
+
+            assert response.status_code == 200
+            sent_text = mock_send.call_args[0][1]
+            assert "Unknown error" not in sent_text
+            assert "No error details were returned by the agent service" in sent_text
+            assert "job_id=job-empty-error" in sent_text
+
+    def test_callback_failure_literal_unknown_error_uses_fallback(self, test_client):
+        """Literal 'Unknown error' should be replaced with actionable fallback text."""
+        payload = {
+            "job_id": "job-unknown-literal",
+            "status": "failed",
+            "error": "Unknown error",
+            "response": "",
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "message_ts": "ts_1234",
+                "user_id": "U_USER",
+                "role": "release_engineer",
+                "display_name": "ReleaseEngineer",
+                "max_handoff_depth": 3,
+                "current_depth": 0,
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.remove_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.send_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            response = test_client.post("/callback/agent", json=payload)
+
+            assert response.status_code == 200
+            sent_text = mock_send.call_args[0][1]
+            assert "Unknown error" not in sent_text
+            assert "No error details were returned by the agent service" in sent_text
+            assert "job_id=job-unknown-literal" in sent_text
 
     def test_callback_missing_channel_returns_error(self, test_client):
         """Callback without channel in metadata returns error."""
@@ -1877,3 +1964,20 @@ class TestExecuteAndCallbackTimeout:
             assert payload["job_id"] == "job-timeout-test"
             assert "timed out" in payload["error"]
             assert payload["callback_metadata"]["channel"] == "C123"
+
+
+def test_openhands_format_exception_message_prefers_http_detail() -> None:
+    from agent_service.openhands import server as oh_server
+
+    exc = HTTPException(status_code=503, detail="OpenHands downstream unavailable")
+    assert oh_server._format_exception_message(exc) == "OpenHands downstream unavailable"
+
+
+def test_openhands_format_exception_message_handles_blank_exception() -> None:
+    from agent_service.openhands import server as oh_server
+
+    class BlankError(Exception):
+        def __str__(self) -> str:
+            return ""
+
+    assert oh_server._format_exception_message(BlankError()) == "BlankError"
