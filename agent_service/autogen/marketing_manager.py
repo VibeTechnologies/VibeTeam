@@ -293,11 +293,15 @@ class AutoGenMarketingManager:
         if result.messages:
             import json
 
-            from autogen_agentchat.messages import TextMessage, ToolCallRequestEvent
+            from autogen_agentchat.messages import (
+                TextMessage,
+                ToolCallRequestEvent,
+                ToolCallSummaryMessage,
+            )
 
             # First, look for send_message tool calls - this is the actual response
             for msg in reversed(result.messages):
-                if isinstance(msg, ToolCallRequestEvent) and msg.source == "MarketingManager":
+                if isinstance(msg, ToolCallRequestEvent):
                     for call in msg.content:
                         if hasattr(call, "name") and call.name == "send_message":
                             try:
@@ -317,6 +321,23 @@ class AutoGenMarketingManager:
                         if msg.content and str(msg.content).strip():
                             response = str(msg.content)
                             break
+
+            # Tool-only flows often return ToolCallSummaryMessage without a TextMessage.
+            if not response:
+                for msg in reversed(result.messages):
+                    if isinstance(msg, ToolCallSummaryMessage) and msg.source == "MarketingManager":
+                        if msg.content and str(msg.content).strip():
+                            response = str(msg.content)
+                            break
+
+            # Compatibility fallback for newer AutoGen versions where source naming changed.
+            if not response:
+                for msg in reversed(result.messages):
+                    content = getattr(msg, "content", None)
+                    source = getattr(msg, "source", "")
+                    if source != "user" and content and str(content).strip():
+                        response = str(content)
+                        break
 
         # Update session
         session.add_message("user", task)

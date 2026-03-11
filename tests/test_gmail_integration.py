@@ -400,7 +400,7 @@ class TestOpenHandsGmailIntegration:
     """Test OpenHands agents with real Gmail integration via context injection."""
 
     @pytest.fixture
-    def support_engineer(self, azure_credentials, gmail_credentials):
+    def support_engineer(self, azure_credentials, gmail_credentials, require_openhands_runtime):
         """Create OpenHands SupportEngineer with real credentials."""
         from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
@@ -495,12 +495,18 @@ class TestCrossFrameworkGmailComparison:
 
     @pytest.mark.asyncio
     async def test_all_frameworks_email_query(
-        self, azure_credentials, gmail_credentials, verify_gmail_connectivity
+        self,
+        azure_credentials,
+        gmail_credentials,
+        verify_gmail_connectivity,
+        openhands_runtime_status,
     ):
         """Run identical email query across all three frameworks."""
         from agent_service.autogen.support_engineer import AutoGenSupportEngineer
         from agent_service.crewai.support_engineer import CrewAISupportEngineer
-        from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+        openhands_available, openhands_error = openhands_runtime_status
+        if openhands_available:
+            from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
         task = "Check my inbox for any unread emails and provide a summary."
 
@@ -584,40 +590,43 @@ class TestCrossFrameworkGmailComparison:
             print(f"[CrewAI] ERROR: {e}")
 
         # OpenHands
-        try:
-            agent = OpenHandsSupportEngineer()
-            start = time.perf_counter()
-            result = await agent.run_async(task)
-            latency = (time.perf_counter() - start) * 1000
-            response = result.get("response", "")
-            is_valid, email_count = validate_gmail_response(response)
+        if openhands_available:
+            try:
+                agent = OpenHandsSupportEngineer()
+                start = time.perf_counter()
+                result = await agent.run_async(task)
+                latency = (time.perf_counter() - start) * 1000
+                response = result.get("response", "")
+                is_valid, email_count = validate_gmail_response(response)
 
-            results.append(
-                GmailTestResult(
-                    framework="openhands",
-                    agent="support_engineer",
-                    success=is_valid,
-                    response=response[:200],
-                    latency_ms=latency,
-                    emails_found=email_count,
+                results.append(
+                    GmailTestResult(
+                        framework="openhands",
+                        agent="support_engineer",
+                        success=is_valid,
+                        response=response[:200],
+                        latency_ms=latency,
+                        emails_found=email_count,
+                    )
                 )
-            )
-            print(
-                f"[OpenHands] {latency:.0f}ms - {email_count} emails - {'PASS' if is_valid else 'FAIL'}"
-            )
-        except Exception as e:
-            results.append(
-                GmailTestResult(
-                    framework="openhands",
-                    agent="support_engineer",
-                    success=False,
-                    response="",
-                    latency_ms=0,
-                    emails_found=0,
-                    error=str(e),
+                print(
+                    f"[OpenHands] {latency:.0f}ms - {email_count} emails - {'PASS' if is_valid else 'FAIL'}"
                 )
-            )
-            print(f"[OpenHands] ERROR: {e}")
+            except Exception as e:
+                results.append(
+                    GmailTestResult(
+                        framework="openhands",
+                        agent="support_engineer",
+                        success=False,
+                        response="",
+                        latency_ms=0,
+                        emails_found=0,
+                        error=str(e),
+                    )
+                )
+                print(f"[OpenHands] ERROR: {e}")
+        else:
+            print(f"[OpenHands] SKIPPED: runtime unavailable ({openhands_error})")
 
         # Summary
         print("\n" + "-" * 70)

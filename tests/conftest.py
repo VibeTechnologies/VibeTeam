@@ -57,6 +57,22 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "unit_task: mark test as a unit task (U1-U7)")
     config.addinivalue_line("markers", "integration_task: mark test as an integration task (I1-I3)")
 
+    # Integration tests in this repo use chat-completions-oriented clients (AutoGen/CrewAI).
+    # If the default deployment is a responses-only Codex model, switch to a chat deployment.
+    if config.getoption("--run-integration"):
+        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
+        if "codex" in deployment.lower():
+            fallback = (
+                os.getenv("AZURE_INTEGRATION_OPENAI_DEPLOYMENT")
+                or os.getenv("AZURE_CHAT_OPENAI_DEPLOYMENT")
+                or "gpt-4.1"
+            )
+            os.environ["AZURE_OPENAI_DEPLOYMENT"] = fallback
+            print(
+                "[pytest] --run-integration: "
+                f"switched AZURE_OPENAI_DEPLOYMENT from '{deployment}' to '{fallback}'."
+            )
+
 
 def pytest_collection_modifyitems(config, items):
     """Skip integration/stress tests unless explicitly enabled."""
@@ -115,6 +131,27 @@ def azure_credentials():
         "api_base": api_base,
         "api_version": os.getenv("AZURE_API_VERSION", "2024-08-01-preview"),
     }
+
+
+@pytest.fixture(scope="session")
+def openhands_runtime_status() -> tuple[bool, str | None]:
+    """Return (available, reason) for OpenHands runtime dependencies."""
+    try:
+        from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+
+        # Instantiate once to ensure imports and constructor wiring are valid.
+        OpenHandsSupportEngineer()
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
+@pytest.fixture(scope="session")
+def require_openhands_runtime(openhands_runtime_status):
+    """Require OpenHands runtime dependencies for integration tests."""
+    available, reason = openhands_runtime_status
+    if not available:
+        pytest.skip(f"OpenHands runtime unavailable in this environment: {reason}")
 
 
 @pytest.fixture

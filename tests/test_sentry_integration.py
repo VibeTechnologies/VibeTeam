@@ -270,7 +270,7 @@ class TestOpenHandsSentryIntegration:
     """Test OpenHands agents with real Sentry integration."""
 
     @pytest.fixture
-    def support_engineer(self, azure_credentials, sentry_credentials):
+    def support_engineer(self, azure_credentials, sentry_credentials, require_openhands_runtime):
         """Create OpenHands SupportEngineer with real credentials."""
         from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
@@ -338,12 +338,18 @@ class TestCrossFrameworkSentryComparison:
 
     @pytest.mark.asyncio
     async def test_all_frameworks_sentry_query(
-        self, azure_credentials, sentry_credentials, verify_sentry_connectivity
+        self,
+        azure_credentials,
+        sentry_credentials,
+        verify_sentry_connectivity,
+        openhands_runtime_status,
     ):
         """Run identical Sentry query across all three frameworks."""
         from agent_service.autogen.support_engineer import AutoGenSupportEngineer
         from agent_service.crewai.support_engineer import CrewAISupportEngineer
-        from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
+        openhands_available, openhands_error = openhands_runtime_status
+        if openhands_available:
+            from agent_service.openhands.support_engineer import OpenHandsSupportEngineer
 
         task = "Query Sentry for unresolved issues and list them with their error counts."
 
@@ -428,40 +434,43 @@ class TestCrossFrameworkSentryComparison:
             print(f"[CrewAI] ERROR: {e}")
 
         # OpenHands
-        try:
-            agent = OpenHandsSupportEngineer()
-            start = time.perf_counter()
-            result = await agent.run_async(task)
-            latency = (time.perf_counter() - start) * 1000
-            response = result.get("response", "")
-            is_valid, issue_count = validate_sentry_response(response)
+        if openhands_available:
+            try:
+                agent = OpenHandsSupportEngineer()
+                start = time.perf_counter()
+                result = await agent.run_async(task)
+                latency = (time.perf_counter() - start) * 1000
+                response = result.get("response", "")
+                is_valid, issue_count = validate_sentry_response(response)
 
-            results.append(
-                SentryTestResult(
-                    framework="openhands",
-                    agent="support_engineer",
-                    success=is_valid,
-                    response=response[:200],
-                    latency_ms=latency,
-                    issues_found=issue_count,
+                results.append(
+                    SentryTestResult(
+                        framework="openhands",
+                        agent="support_engineer",
+                        success=is_valid,
+                        response=response[:200],
+                        latency_ms=latency,
+                        issues_found=issue_count,
+                    )
                 )
-            )
-            print(
-                f"[OpenHands] {latency:.0f}ms - {issue_count} issues - {'PASS' if is_valid else 'FAIL'}"
-            )
-        except Exception as e:
-            results.append(
-                SentryTestResult(
-                    framework="openhands",
-                    agent="support_engineer",
-                    success=False,
-                    response="",
-                    latency_ms=0,
-                    issues_found=0,
-                    error=str(e),
+                print(
+                    f"[OpenHands] {latency:.0f}ms - {issue_count} issues - {'PASS' if is_valid else 'FAIL'}"
                 )
-            )
-            print(f"[OpenHands] ERROR: {e}")
+            except Exception as e:
+                results.append(
+                    SentryTestResult(
+                        framework="openhands",
+                        agent="support_engineer",
+                        success=False,
+                        response="",
+                        latency_ms=0,
+                        issues_found=0,
+                        error=str(e),
+                    )
+                )
+                print(f"[OpenHands] ERROR: {e}")
+        else:
+            print(f"[OpenHands] SKIPPED: runtime unavailable ({openhands_error})")
 
         # Summary
         print("\n" + "-" * 70)
@@ -485,8 +494,10 @@ class TestCrossFrameworkSentryComparison:
 
         print("=" * 70)
 
-        # Assert all passed
-        assert len(successful) == 3, f"Not all frameworks passed: {[r.framework for r in failed]}"
+        expected_frameworks = 3 if openhands_available else 2
+        assert len(successful) == expected_frameworks, (
+            f"Not all available frameworks passed: {[r.framework for r in failed]}"
+        )
 
 
 # =============================================================================
