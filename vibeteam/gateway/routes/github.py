@@ -228,9 +228,7 @@ async def get_installation_token(role: str | None = None) -> str | None:
         from vibeteam.utils.github_app import get_installation_token_for_role
 
         if role:
-            token = get_installation_token_for_role(role)
-            if token:
-                return token
+            return get_installation_token_for_role(role)
 
         if (
             config.GITHUB_APP_ID

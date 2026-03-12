@@ -65,6 +65,18 @@ class TestRoleScopedTokenResolution:
             mock_config.SLACK_BOT_TOKEN = "xoxb-default"
             assert _resolve_slack_assistant_token("support_engineer") == "xoxb-support"
 
+    def test_resolve_slack_assistant_token_does_not_use_ingress_for_role(self):
+        from vibeteam.gateway.routes.slack import _resolve_slack_assistant_token
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+        ):
+            mock_config.SLACK_ASSISTANT_TOKEN = "xapp-ingress"
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+            assert _resolve_slack_assistant_token("support_engineer") == ""
+            assert _resolve_slack_assistant_token(None) == "xapp-ingress"
+
 
 class TestRoleScopedApiCalls:
     @pytest.mark.asyncio
@@ -99,7 +111,9 @@ class TestRoleScopedApiCalls:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("error_code", ["account_inactive", "not_in_channel"])
-    async def test_send_slack_message_falls_back_to_ingress_token(self, error_code: str):
+    async def test_send_slack_message_does_not_fallback_to_ingress_token(
+        self, error_code: str
+    ):
         from vibeteam.gateway.routes.slack import send_slack_message
 
         with (
@@ -113,13 +127,11 @@ class TestRoleScopedApiCalls:
         ):
             mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
 
-            first_response = MagicMock()
-            first_response.json.return_value = {"ok": False, "error": error_code}
-            second_response = MagicMock()
-            second_response.json.return_value = {"ok": True, "ts": "2222.3333"}
+            response = MagicMock()
+            response.json.return_value = {"ok": False, "error": error_code}
 
             mock_client = AsyncMock()
-            mock_client.post.side_effect = [first_response, second_response]
+            mock_client.post.return_value = response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
@@ -127,13 +139,11 @@ class TestRoleScopedApiCalls:
             ts = await send_slack_message(
                 "C_TEST", "hello", "1111.2222", role="software_engineer"
             )
-            assert ts == "2222.3333"
-            assert mock_client.post.call_count == 2
+            assert ts is None
+            assert mock_client.post.call_count == 1
 
-            first_headers = mock_client.post.call_args_list[0].kwargs["headers"]
-            second_headers = mock_client.post.call_args_list[1].kwargs["headers"]
-            assert first_headers["Authorization"] == "Bearer xoxb-software"
-            assert second_headers["Authorization"] == "Bearer xoxb-ingress"
+            headers = mock_client.post.call_args.kwargs["headers"]
+            assert headers["Authorization"] == "Bearer xoxb-software"
 
     @pytest.mark.asyncio
     async def test_send_slack_message_does_not_fallback_for_non_retryable_error(self):
@@ -164,6 +174,23 @@ class TestRoleScopedApiCalls:
             )
             assert ts is None
             assert mock_client.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_send_slack_message_requires_role_token_when_role_is_set(self):
+        from vibeteam.gateway.routes.slack import send_slack_message
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            ts = await send_slack_message(
+                "C_TEST", "hello", "1111.2222", role="software_engineer"
+            )
+            assert ts is None
+            mock_client_cls.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_set_thread_status_uses_role_assistant_token(self):
@@ -238,3 +265,211 @@ class TestThreadParticipationAcrossRoleBots:
             mock_client_cls.return_value = mock_client
 
             assert await bot_participated_in_thread("C_TEST", "1111.2222") is True
+
+
+class TestStrictRoleIdentityForAllSlackWrites:
+    """Gap 2 regression: update_slack_message, add_reaction, remove_reaction
+    must use strict role token resolution (no ingress fallback)."""
+
+    @pytest.mark.asyncio
+    async def test_update_slack_message_uses_role_token(self):
+        from vibeteam.gateway.routes.slack import update_slack_message
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"SLACK_BOT_TOKEN_SUPPORT_ENGINEER": "xoxb-support"},
+                clear=False,
+            ),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"ok": True}
+
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await update_slack_message("C_TEST", "1234.5678", "updated", role="support_engineer")
+            assert ok is True
+
+            headers = mock_client.post.call_args.kwargs["headers"]
+            assert headers["Authorization"] == "Bearer xoxb-support"
+
+    @pytest.mark.asyncio
+    async def test_update_slack_message_refuses_ingress_fallback_for_role(self):
+        from vibeteam.gateway.routes.slack import update_slack_message
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            ok = await update_slack_message("C_TEST", "1234.5678", "updated", role="support_engineer")
+            assert ok is False
+            mock_client_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_add_reaction_uses_role_token(self):
+        from vibeteam.gateway.routes.slack import add_reaction
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"SLACK_BOT_TOKEN_RELEASE_ENGINEER": "xoxb-release"},
+                clear=False,
+            ),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"ok": True}
+
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await add_reaction("C_TEST", "1234.5678", "eyes", role="release_engineer")
+            assert ok is True
+
+            headers = mock_client.post.call_args.kwargs["headers"]
+            assert headers["Authorization"] == "Bearer xoxb-release"
+
+    @pytest.mark.asyncio
+    async def test_add_reaction_refuses_ingress_fallback_for_role(self):
+        from vibeteam.gateway.routes.slack import add_reaction
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            ok = await add_reaction("C_TEST", "1234.5678", "eyes", role="release_engineer")
+            assert ok is False
+            mock_client_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_remove_reaction_uses_role_token(self):
+        from vibeteam.gateway.routes.slack import remove_reaction
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"SLACK_BOT_TOKEN_SOFTWARE_ENGINEER": "xoxb-swe"},
+                clear=False,
+            ),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"ok": True}
+
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ok = await remove_reaction("C_TEST", "1234.5678", "thinking_face", role="software_engineer")
+            assert ok is True
+
+            headers = mock_client.post.call_args.kwargs["headers"]
+            assert headers["Authorization"] == "Bearer xoxb-swe"
+
+    @pytest.mark.asyncio
+    async def test_remove_reaction_refuses_ingress_fallback_for_role(self):
+        from vibeteam.gateway.routes.slack import remove_reaction
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            ok = await remove_reaction("C_TEST", "1234.5678", "thinking_face", role="software_engineer")
+            assert ok is False
+            mock_client_cls.assert_not_called()
+
+
+class TestAppMentionRoleMentionPreservation:
+    """Gap 1 regression: app_mention handler must preserve role app mentions
+    and resolve roles from user mentions before stripping."""
+
+    @pytest.mark.asyncio
+    async def test_app_mention_preserves_role_mention_and_routes_correctly(self):
+        """When ingress + role bot are both mentioned, only ingress mention
+        is stripped and the role is injected as a text role mention."""
+        from vibeteam.gateway.routes.slack import (
+            _extract_roles_from_slack_user_mentions,
+        )
+        import re
+
+        ingress_uid = "UINGRESS01"
+        role_uid = "USUPPORT01"
+        text = f"<@{ingress_uid}> <@{role_uid}> investigate this issue"
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.get_bot_user_id",
+                new_callable=AsyncMock,
+                return_value=ingress_uid,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._role_bot_user_ids",
+                new_callable=AsyncMock,
+                return_value={role_uid: "support_engineer"},
+            ),
+        ):
+            # Verify role extraction works before stripping
+            roles = await _extract_roles_from_slack_user_mentions(text)
+            assert roles == ["support_engineer"]
+
+            # Simulate the app_mention handler logic:
+            # Strip only ingress mention
+            clean_text = re.sub(rf"<@{re.escape(ingress_uid)}>\s*", "", text).strip()
+            assert f"<@{role_uid}>" in clean_text
+            assert f"<@{ingress_uid}>" not in clean_text
+
+    @pytest.mark.asyncio
+    async def test_app_mention_with_only_ingress_mention_still_works(self):
+        """When only ingress bot is mentioned (no role), text is fully cleaned."""
+        import re
+
+        ingress_uid = "UINGRESS01"
+        text = f"<@{ingress_uid}> deploy the new version"
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack.get_bot_user_id",
+                new_callable=AsyncMock,
+                return_value=ingress_uid,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._role_bot_user_ids",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+        ):
+            from vibeteam.gateway.routes.slack import _extract_roles_from_slack_user_mentions
+
+            roles = await _extract_roles_from_slack_user_mentions(text)
+            assert roles == []
+
+            clean_text = re.sub(rf"<@{re.escape(ingress_uid)}>\s*", "", text).strip()
+            assert clean_text == "deploy the new version"

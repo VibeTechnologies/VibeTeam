@@ -26,8 +26,8 @@ Current deployment policy:
   `ProductManager`, and `MarketingManager`.
 - Configure role-scoped tokens in gateway env vars:
   `SLACK_BOT_TOKEN_<ROLE>` and `SLACK_ASSISTANT_TOKEN_<ROLE>`.
-- If a role-scoped token is missing, gateway falls back to global
-  `SLACK_BOT_TOKEN` / `SLACK_ASSISTANT_TOKEN`.
+- Agent replies for a routed role require that role-scoped bot token.
+  The gateway does not fall back to the ingress app token for role replies.
 - Response attribution is by Slack app identity, not text prefixing.
   Gateway responses should be plain text (no legacy `[Role]` message prefix).
 
@@ -38,13 +38,21 @@ Create **six** Slack apps total for one workspace:
 | App Type | Slack Display Name | Purpose | Inbound Events |
 |---------|---------------------|---------|----------------|
 | Ingress | `VibeTeam` | Receives Slack events and routes work | **Required** (`/slack/events`) |
-| Role responder | `SoftwareEngineer` | Posts as SWE role identity | Not required |
-| Role responder | `SupportEngineer` | Posts as Support role identity | Not required |
-| Role responder | `ReleaseEngineer` | Posts as Release role identity | Not required |
-| Role responder | `ProductManager` | Posts as PM role identity | Not required |
-| Role responder | `MarketingManager` | Posts as Marketing role identity | Not required |
+| Role responder | `SoftwareEngineer` | Posts as SWE role identity | Not required (see note) |
+| Role responder | `SupportEngineer` | Posts as Support role identity | Not required (see note) |
+| Role responder | `ReleaseEngineer` | Posts as Release role identity | Not required (see note) |
+| Role responder | `ProductManager` | Posts as PM role identity | Not required (see note) |
+| Role responder | `MarketingManager` | Posts as Marketing role identity | Not required (see note) |
 
 Use the same role handles as `agents/agents.yaml` (`slack_handle`) so mention parsing and identity mapping stay consistent.
+
+> **Direct role-handle invocation (preferred).** Users can mention a role app
+> directly — e.g. `@SupportEngineer investigate this` — even if `@VibeTeam` is
+> not mentioned. The ingress app still receives the message via
+> `message.channels` and the gateway resolves the `<@U...>` mention to the
+> corresponding role. This is the first-class invocation path. `@VibeTeam` is an
+> implementation detail that owns event subscriptions; users should address role
+> apps by name.
 
 ## 2. Create and Configure the Apps
 
@@ -145,16 +153,19 @@ Subscribe to these ingress bot events:
 
 | Event | Purpose |
 |-------|---------|
-| `app_mention` | Primary entry point (`@VibeTeam ...`) |
-| `message.channels` | Thread follow-ups in public channels |
+| `app_mention` | Entry point when `@VibeTeam` is explicitly mentioned |
+| `message.channels` | **Primary delivery path** — captures direct `@RoleName` mentions and thread follow-ups in public channels |
 | `message.groups` | Thread follow-ups in private channels |
 | `message.im` | Direct messages to ingress app |
 
 ### Why `message.channels` is required
 
-When a user starts a conversation with `@VibeTeam @SupportEngineer please investigate X`, Slack delivers this as an `app_mention` event. The agent responds in the thread.
+When a user starts a conversation with `@SupportEngineer please investigate X`, the gateway resolves the `<@U...>` user mention to the `support_engineer` role and routes accordingly. Users can also use `@VibeTeam @SupportEngineer please investigate X` — the gateway strips the ingress `@VibeTeam` mention and preserves the role mention.
 
-For follow-up messages like `@SupportEngineer what did you find?`, the user does **not** re-mention `@VibeTeam`. `@SupportEngineer` is just plain text to Slack (not a real Slack user). Without `message.channels` subscribed, Slack will **not deliver** these thread replies to the gateway at all.
+For follow-up messages like `@SupportEngineer what did you find?`, the user often does
+**not** re-mention `@VibeTeam`. Whether the role reference is a real Slack user mention
+(`\<@U...\>`) or plain text handle, the event still arrives via `message.channels`.
+Without `message.channels` subscribed, Slack will **not deliver** these thread replies to the gateway.
 
 With `message.channels` enabled, the gateway receives all channel messages and uses the thread participation handler to detect whether the bot previously replied in the thread. If it did, the message is routed to the appropriate agent.
 
@@ -188,8 +199,8 @@ The gateway requires these environment variables for Slack integration:
 
 | Variable | Description | Where to find |
 |----------|-------------|---------------|
-| `SLACK_BOT_TOKEN` | Fallback bot token (`xoxb-...`) when role-scoped token is not configured | **OAuth & Permissions** page |
-| `SLACK_ASSISTANT_TOKEN` | Fallback token with `assistant:write` for thread status | **OAuth & Permissions** page |
+| `SLACK_BOT_TOKEN` | Ingress app bot token (`xoxb-...`) used for inbound event context and non-role gateway actions | **OAuth & Permissions** page |
+| `SLACK_ASSISTANT_TOKEN` | Ingress app assistant token with `assistant:write` for non-role status operations | **OAuth & Permissions** page |
 | `SLACK_BOT_TOKEN_SOFTWARE_ENGINEER` | Bot token for SoftwareEngineer app identity | SoftwareEngineer app OAuth page |
 | `SLACK_BOT_TOKEN_SUPPORT_ENGINEER` | Bot token for SupportEngineer app identity | SupportEngineer app OAuth page |
 | `SLACK_BOT_TOKEN_RELEASE_ENGINEER` | Bot token for ReleaseEngineer app identity | ReleaseEngineer app OAuth page |
@@ -208,7 +219,7 @@ For Kubernetes deployments, these are stored in the `vibeteam-secrets` secret:
 
 ```bash
 kubectl create secret generic vibeteam-secrets -n vibeteam \
-  --from-literal=SLACK_BOT_TOKEN="xoxb-fallback-..." \
+  --from-literal=SLACK_BOT_TOKEN="xoxb-ingress-..." \
   --from-literal=SLACK_BOT_TOKEN_SOFTWARE_ENGINEER="xoxb-..." \
   --from-literal=SLACK_BOT_TOKEN_SUPPORT_ENGINEER="xoxb-..." \
   --from-literal=SLACK_BOT_TOKEN_RELEASE_ENGINEER="xoxb-..." \
@@ -266,7 +277,7 @@ When a message is routed to an agent, the gateway:
 
 - Adds a `:eyes:` reaction as a read marker (if it has not already been added).
 - Adds a `:thinking_face:` reaction immediately.
-- Uses role-scoped assistant token when configured; otherwise fallback token.
+- Uses role-scoped assistant token when configured; otherwise uses role bot token.
 - If a usable app token has `assistant:write`, sets an assistant thread status
   (e.g. "is thinking...") and clears it when the response is posted.
 
@@ -302,7 +313,8 @@ User posts in Slack channel
         |
         v
   +----- Is it an app_mention? (@VibeTeam mentioned)
-  |  YES: Strip bot mention, parse @RoleName, route to agent
+  |  YES: Strip ingress bot mention (preserve role mentions),
+  |       resolve @RoleName from <@U...> user IDs, route to agent
   |       Add :thinking_face: + assistant status, then submit to agent
   |
   +----- Is it a DM to the bot?
@@ -363,8 +375,8 @@ Common reasons:
 
 **Symptom:** No `:eyes:` reaction appears on the message.
 
-**Cause:** The role-scoped `SLACK_BOT_TOKEN_<ROLE>` (or fallback `SLACK_BOT_TOKEN`) is
-not set, or that role bot is not a member of the channel.
+**Cause:** The role-scoped `SLACK_BOT_TOKEN_<ROLE>` is not set, or that role bot is not a
+member of the channel. Role replies do not fall back to the ingress app token.
 
 ### "Invalid signature" errors
 

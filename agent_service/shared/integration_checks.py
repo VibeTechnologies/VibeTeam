@@ -10,14 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def _github_configured() -> bool:
-    if os.environ.get("GITHUB_TOKEN"):
-        return True
-    if all(
-        os.environ.get(k)
-        for k in ("GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID")
-    ):
-        return True
-    # Role-scoped GitHub App credentials
+    # Role-scoped GitHub App credentials take precedence.
     app_ids = {
         key.split("GITHUB_APP_ID_", 1)[1] for key in os.environ if key.startswith("GITHUB_APP_ID_")
     }
@@ -31,7 +24,39 @@ def _github_configured() -> bool:
             )
         ):
             return True
+    if all(
+        os.environ.get(k)
+        for k in ("GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID")
+    ):
+        return True
+    if os.environ.get("GITHUB_TOKEN"):
+        return True
     return False
+
+
+def _warn_incomplete_role_github_creds() -> None:
+    """Log warnings when role-scoped GitHub App credentials are partially configured."""
+    app_id_suffixes = {
+        key.split("GITHUB_APP_ID_", 1)[1]
+        for key in os.environ
+        if key.startswith("GITHUB_APP_ID_")
+    }
+    for suffix in sorted(app_id_suffixes):
+        missing = [
+            k
+            for k in (
+                f"GITHUB_APP_ID_{suffix}",
+                f"GITHUB_APP_PRIVATE_KEY_{suffix}",
+                f"GITHUB_APP_INSTALLATION_ID_{suffix}",
+            )
+            if not os.environ.get(k)
+        ]
+        if missing:
+            logger.warning(
+                "Incomplete role-scoped GitHub App credentials for %s: missing %s",
+                suffix,
+                ", ".join(missing),
+            )
 
 
 def _gmail_paths() -> tuple[Path, Path]:
@@ -55,6 +80,8 @@ def validate_required_integrations(service_name: str) -> None:
         missing.append(
             "GITHUB_TOKEN or (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY + GITHUB_APP_INSTALLATION_ID)"
         )
+    else:
+        _warn_incomplete_role_github_creds()
 
     creds_path, token_path = _gmail_paths()
     gmail_missing = []

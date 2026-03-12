@@ -99,7 +99,7 @@ LITELLM_MASTER_KEY=
 ### GitHub + Sentry
 
 ```bash
-GITHUB_TOKEN=  # fallback PAT
+GITHUB_TOKEN=  # optional local/CI API token for tooling; webhook agent writes use GitHub App tokens
 GITHUB_APP_ID_SOFTWARE_ENGINEER=
 GITHUB_APP_INSTALLATION_ID_SOFTWARE_ENGINEER=
 GITHUB_APP_PRIVATE_KEY_SOFTWARE_ENGINEER=
@@ -125,7 +125,7 @@ GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER=
 SENTRY_AUTH_TOKEN=
 ```
 
-Role-scoped GitHub App credentials are preferred and used to attribute PRs to the role bot.
+Role-scoped GitHub App credentials are required for role-attributed webhook actions.
 In Kubernetes, agent pods load these from the `github-app-role-secrets` secret via `envFrom`.
 **Required**: OpenHands/OpenClaw services fail fast if GitHub or Sentry credentials are missing.
 
@@ -181,13 +181,13 @@ with `export $( < .env )`, replace spaces with underscores:
 ### Slack
 
 ```bash
-SLACK_BOT_TOKEN=  # optional default/fallback
+SLACK_BOT_TOKEN=  # ingress app token (non-role inbound/system operations)
 SLACK_BOT_TOKEN_SOFTWARE_ENGINEER=
 SLACK_BOT_TOKEN_SUPPORT_ENGINEER=
 SLACK_BOT_TOKEN_RELEASE_ENGINEER=
 SLACK_BOT_TOKEN_PRODUCT_MANAGER=
 SLACK_BOT_TOKEN_MARKETING_MANAGER=
-SLACK_ASSISTANT_TOKEN=
+SLACK_ASSISTANT_TOKEN=  # ingress assistant token (non-role status operations)
 SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER=
 SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER=
 SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER=
@@ -204,8 +204,10 @@ SLACK_TRIGGER_SECRET=
 ```
 
 Gateway Slack API calls resolve bot tokens per role (`software_engineer`, `support_engineer`,
-`release_engineer`, `product_manager`, `marketing_manager`). If a role-specific token is not set,
-the gateway falls back to `SLACK_BOT_TOKEN`. Incoming Slack signatures are accepted when they match any configured signing secret (default or role-scoped).
+`release_engineer`, `product_manager`, `marketing_manager`).
+Role-routed replies require `SLACK_BOT_TOKEN_<ROLE>` and do not fall back to ingress token.
+Incoming Slack signatures are accepted when they match any configured signing secret
+(default or role-scoped).
 
 For deployment workflows, Slack credentials can also be provided as one JSON payload secret:
 

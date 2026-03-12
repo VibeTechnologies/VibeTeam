@@ -67,10 +67,19 @@ def get_role_app_credentials(role: str) -> tuple[str | None, str | None, str | N
 
 
 def get_installation_token_for_role(role: str) -> str | None:
-    """Return an installation token for a specific role, falling back to defaults."""
+    """Return an installation token for a specific role.
+
+    Role-scoped requests are strict: if role-specific credentials are missing,
+    return None instead of falling back to global app credentials.
+    """
+    normalized_role = _normalize_role(role)
     app_id, private_key, installation_id = get_role_app_credentials(role)
     if app_id and private_key and installation_id:
         return get_installation_token(app_id, private_key, installation_id)
+
+    # For explicit role requests, do not fall back to shared/global app creds.
+    if normalized_role and normalized_role != "DEFAULT":
+        return None
 
     default_app_id = os.environ.get("GITHUB_APP_ID")
     default_private_key = os.environ.get("GITHUB_APP_PRIVATE_KEY")

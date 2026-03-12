@@ -737,13 +737,29 @@ def _resolve_slack_bot_token(role: str | None = None) -> str:
     return _get_role_scoped_env("SLACK_BOT_TOKEN", role) or config.SLACK_BOT_TOKEN
 
 
+def _resolve_slack_reply_bot_token(role: str | None = None) -> str:
+    """Resolve bot token for reply posting.
+
+    Reply posting must use role-scoped app identity when a role is provided.
+    Ingress token is reserved for ingress-only/system paths where no role is set.
+    """
+    if role:
+        return _get_role_scoped_env("SLACK_BOT_TOKEN", role)
+    return config.SLACK_BOT_TOKEN
+
+
 def _resolve_slack_assistant_token(role: str | None = None) -> str:
-    """Resolve Assistant API token for a role with sensible fallback order."""
-    return (
-        _get_role_scoped_env("SLACK_ASSISTANT_TOKEN", role)
-        or config.SLACK_ASSISTANT_TOKEN
-        or _resolve_slack_bot_token(role)
-    )
+    """Resolve Assistant API token.
+
+    Role-scoped operations stay role-scoped:
+    role assistant token -> role bot token.
+    Ingress/global assistant token is used only when role is not provided.
+    """
+    if role:
+        return _get_role_scoped_env("SLACK_ASSISTANT_TOKEN", role) or _get_role_scoped_env(
+            "SLACK_BOT_TOKEN", role
+        )
+    return config.SLACK_ASSISTANT_TOKEN or config.SLACK_BOT_TOKEN
 
 
 def _collect_slack_bot_tokens() -> list[str]:
@@ -845,12 +861,16 @@ async def send_slack_message(
     Returns:
         The message timestamp (ts) on success, None on failure.
     """
-    bot_token = _resolve_slack_bot_token(role)
+    bot_token = _resolve_slack_reply_bot_token(role)
     if not bot_token:
-        logger.warning("SLACK_BOT_TOKEN not set, cannot send message")
+        if role:
+            logger.error(
+                "Missing role-scoped SLACK_BOT_TOKEN for role %s; refusing ingress fallback",
+                role,
+            )
+        else:
+            logger.warning("SLACK_BOT_TOKEN not set, cannot send message")
         return None
-
-    retryable_fallback_errors = {"account_inactive", "not_in_channel"}
 
     try:
         payload: dict[str, Any] = {
@@ -881,30 +901,6 @@ async def send_slack_message(
             return cast(str | None, result.get("ts"))
 
         error_code = cast(str, result.get("error") or "unknown_error")
-        # Role-scoped bot identities can be channel-scoped or temporarily inactive.
-        # In those cases, retry with the ingress bot token to avoid dropping replies.
-        if (
-            role
-            and error_code in retryable_fallback_errors
-            and config.SLACK_BOT_TOKEN
-            and config.SLACK_BOT_TOKEN != bot_token
-        ):
-            logger.warning(
-                "Slack send failed for role token (%s: %s); retrying with ingress token",
-                role,
-                error_code,
-            )
-            fallback_result = await _post_message_with_token(config.SLACK_BOT_TOKEN)
-            if fallback_result.get("ok"):
-                logger.info(
-                    "Sent message to %s via ingress token fallback for role %s", channel, role
-                )
-                return cast(str | None, fallback_result.get("ts"))
-            logger.error(
-                "Slack API error after ingress fallback: %s", fallback_result.get("error")
-            )
-            return None
-
         logger.error(f"Slack API error: {error_code}")
         return None
 
@@ -927,9 +923,12 @@ async def update_slack_message(
     Returns:
         True if the update succeeded.
     """
-    bot_token = _resolve_slack_bot_token(role)
+    bot_token = _resolve_slack_reply_bot_token(role)
     if not bot_token:
-        logger.warning("SLACK_BOT_TOKEN not set, cannot update message")
+        if role:
+            logger.error("Missing role-scoped SLACK_BOT_TOKEN for role %s; cannot update message", role)
+        else:
+            logger.warning("SLACK_BOT_TOKEN not set, cannot update message")
         return False
 
     try:
@@ -983,9 +982,12 @@ async def add_reaction(
     Returns:
         True if reaction was added successfully
     """
-    bot_token = _resolve_slack_bot_token(role)
+    bot_token = _resolve_slack_reply_bot_token(role)
     if not bot_token:
-        logger.warning("SLACK_BOT_TOKEN not set, cannot add reaction")
+        if role:
+            logger.error("Missing role-scoped SLACK_BOT_TOKEN for role %s; cannot add reaction", role)
+        else:
+            logger.warning("SLACK_BOT_TOKEN not set, cannot add reaction")
         return False
 
     try:
@@ -1094,9 +1096,12 @@ async def remove_reaction(
     Returns:
         True if reaction was removed successfully
     """
-    bot_token = _resolve_slack_bot_token(role)
+    bot_token = _resolve_slack_reply_bot_token(role)
     if not bot_token:
-        logger.warning("SLACK_BOT_TOKEN not set, cannot remove reaction")
+        if role:
+            logger.error("Missing role-scoped SLACK_BOT_TOKEN for role %s; cannot remove reaction", role)
+        else:
+            logger.warning("SLACK_BOT_TOKEN not set, cannot remove reaction")
         return False
 
     try:
@@ -2522,8 +2527,28 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             message_ts = event.get("ts", "")
             thread_ts = event.get("thread_ts") or message_ts
 
-            # Remove the bot mention from the text
-            clean_text = re.sub(r"<@[A-Z0-9]+>\\s*", "", text).strip()
+            # Resolve role from user mentions BEFORE stripping so role app
+            # mentions like <@U_SUPPORT_BOT> are not lost.
+            mention_roles = await _extract_roles_from_slack_user_mentions(text)
+
+            # Strip only the ingress bot mention; preserve role app mentions
+            # so downstream routing can still inspect them if needed.
+            ingress_uid = await get_bot_user_id()
+            if ingress_uid:
+                clean_text = re.sub(rf"<@{re.escape(ingress_uid)}>\s*", "", text).strip()
+            else:
+                clean_text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
+
+            # If a role was detected via user mention but not via text-based
+            # /Role syntax, inject it as a text role mention so the router
+            # picks it up downstream.
+            if mention_roles:
+                message_router = get_message_router()
+                text_roles = message_router.parse_role_mentions(clean_text)
+                if not text_roles:
+                    role_prefix = f"/{mention_roles[0]}"
+                    clean_text = f"{role_prefix} {clean_text}"
+
             routed_text = _inject_thread_kubeconfig_context(clean_text, channel, thread_ts)
 
             if not routed_text:

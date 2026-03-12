@@ -157,16 +157,18 @@ class GitHubConnector:
             except Exception:
                 role_app_id = role_private_key = role_installation_id = None
 
-        self.app_id = app_id or role_app_id or os.environ.get("GITHUB_APP_ID")
-        self.private_key = (
-            private_key or role_private_key or os.environ.get("GITHUB_APP_PRIVATE_KEY")
-        )
-        self.installation_id = (
-            installation_id or role_installation_id or os.environ.get("GITHUB_APP_INSTALLATION_ID")
-        )
+        if role:
+            # Role context: use only role-scoped credentials, no global fallback
+            self.app_id = app_id or role_app_id
+            self.private_key = private_key or role_private_key
+            self.installation_id = installation_id or role_installation_id
+        else:
+            self.app_id = app_id or os.environ.get("GITHUB_APP_ID")
+            self.private_key = private_key or os.environ.get("GITHUB_APP_PRIVATE_KEY")
+            self.installation_id = installation_id or os.environ.get("GITHUB_APP_INSTALLATION_ID")
 
         # Token management
-        self.token = token or os.environ.get("GITHUB_TOKEN")
+        self.token = token or (None if role else os.environ.get("GITHUB_TOKEN"))
         self._token_expiry: float = 0  # Unix timestamp when token expires
         self._use_app_auth = bool(self.app_id and self.private_key and self.installation_id)
 

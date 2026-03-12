@@ -8,7 +8,7 @@ This guide summarizes how external events reach agents. For the canonical routin
 |----------|--------|-------|
 | `/webhook` | GitHub | Issues and PR comments route to SoftwareEngineer by default; role mentions trigger handoffs. |
 | `/webhook/sentry` | Sentry | Routes to SupportEngineer (handoff as needed). |
-| `/slack/events` | Slack | `@VibeTeam` activates a thread; thread replies are auto-routed. See [slack.md](slack.md). |
+| `/slack/events` | Slack | `@RoleName` (direct role mention) or `@VibeTeam` activates a thread; thread replies are auto-routed. See [slack.md](slack.md). |
 | `/slack/trigger` | Slack (eval/tests) | Requires `Authorization: Bearer $SLACK_TRIGGER_SECRET`; supports optional `kubeconfig_yaml` + `kubeconfig_file_name` to seed thread-scoped cluster context for trigger-driven evals. |
 
 ## Routing Rules (Short)
@@ -35,13 +35,13 @@ GITHUB_WEBHOOK_SECRET_PRODUCT_MANAGER=
 GITHUB_WEBHOOK_SECRET_MARKETING_MANAGER=
 SENTRY_CLIENT_SECRET=
 SLACK_SIGNING_SECRET=
-SLACK_BOT_TOKEN=
+SLACK_BOT_TOKEN=  # ingress app token (non-role inbound/system operations)
 SLACK_BOT_TOKEN_SOFTWARE_ENGINEER=
 SLACK_BOT_TOKEN_SUPPORT_ENGINEER=
 SLACK_BOT_TOKEN_RELEASE_ENGINEER=
 SLACK_BOT_TOKEN_PRODUCT_MANAGER=
 SLACK_BOT_TOKEN_MARKETING_MANAGER=
-SLACK_ASSISTANT_TOKEN=
+SLACK_ASSISTANT_TOKEN=  # ingress assistant token (non-role status operations)
 SLACK_ASSISTANT_TOKEN_SOFTWARE_ENGINEER=
 SLACK_ASSISTANT_TOKEN_SUPPORT_ENGINEER=
 SLACK_ASSISTANT_TOKEN_RELEASE_ENGINEER=
@@ -61,6 +61,8 @@ When a message is routed to an agent:
 3. Gateway classifies the message into a **task template** (`investigation`, `feature_request`, or `conversational`) — see [design.md](design.md#task-template-classification).
 4. Agent processes the request.
 5. Gateway clears the assistant status, removes `:thinking_face:`, and posts the response as new message(s).
+
+Role-routed replies are posted only with `SLACK_BOT_TOKEN_<ROLE>` identities; ingress bot fallback for agent replies is disabled.
 
 Thread follow-ups without investigation keywords get the lightweight `conversational` template so agents respond naturally instead of generating rigid investigation reports.
 

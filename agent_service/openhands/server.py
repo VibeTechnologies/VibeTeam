@@ -82,6 +82,11 @@ def _github_token_context(role: str | None):
         if token:
             os.environ["GITHUB_TOKEN"] = token
             os.environ["GH_TOKEN"] = token
+        else:
+            # Role requested but no role-scoped token: clear global token
+            # to prevent silent fallback to non-role credentials.
+            os.environ.pop("GITHUB_TOKEN", None)
+            os.environ.pop("GH_TOKEN", None)
         try:
             yield
         finally:
