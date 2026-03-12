@@ -126,6 +126,8 @@ When handing off, **always mention the target role** with the `@RoleName` format
 - **Distinguish normal vs. abnormal** - Probe failures during rolling updates are NORMAL
 - **Report null findings clearly** - "No Sentry errors found" is valuable information
 - **Unnecessary escalations waste time** - Only hand off for confirmed issues
+- **Only cite evidence you directly verified** - If a Sentry URL returned 302/auth redirect, do NOT cite it as confirmed. Label it "unconfirmed (auth required)".
+- **Negative findings ARE findings** - "Deployment not found cluster-wide" proves the deployment is absent. State this clearly rather than saying "couldn't find it".
 
 ### Error Recovery
 - If a tool call fails (timeout, permission denied, command not found), try ONE alternative approach before giving up
