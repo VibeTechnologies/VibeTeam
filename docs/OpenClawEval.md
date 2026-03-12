@@ -10,7 +10,7 @@ export AZURE_API_KEY="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-sec
 export AZURE_API_BASE="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam -o jsonpath='{.data.AZURE_API_BASE}' | base64 -d)"
 export AZURE_API_VERSION="$(KUBECONFIG=~/.kube/aks-1 kubectl get secret vibeteam-secrets -n vibeteam -o jsonpath='{.data.AZURE_API_VERSION}' | base64 -d)"
 export AZURE_EVAL_API_VERSION="$AZURE_API_VERSION"
-export SLACK_DEFAULT_CHANNEL="C0AATPSADB8"
+export SLACK_DEFAULT_CHANNEL="C0ALG01DLJV"
 ```
 
 ## Port-forward gateway
@@ -23,7 +23,7 @@ KUBECONFIG=~/.kube/aks-1 kubectl port-forward -n vibeteam svc/vibeteam-gateway 1
 PYTHONUNBUFFERED=1 GATEWAY_URL=http://127.0.0.1:18080 \
   uv run python scripts/eval_slack_e2e.py \
   --scenario support_400_errors \
-  --channel C0AATPSADB8 \
+  --channel C0ALG01DLJV \
   --framework openclaw \
   --timeout 1200
 ```

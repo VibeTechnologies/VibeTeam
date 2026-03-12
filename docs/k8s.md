@@ -88,7 +88,7 @@ Run eval:
 ```bash
 export $( < ~/.env.d/codex.env )
 export $( < .env )
-.venv/bin/python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
+.venv/bin/python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0ALG01DLJV --timeout 600
 ```
 
 Resume rollouts after eval:
@@ -103,7 +103,7 @@ KUBECONFIG=~/.kube/aks-1 kubectl rollout resume deployment/openhands-svc -n vibe
 ```bash
 export $( < ~/.env.d/codex.env )
 export $( < .env )
-.venv/bin/python scripts/eval_slack_e2e.py --scenario openclaw_chrome_cdp_smoke --channel C0AATPSADB8 --timeout 600
+.venv/bin/python scripts/eval_slack_e2e.py --scenario openclaw_chrome_cdp_smoke --channel C0ALG01DLJV --timeout 600
 ```
 
 ## Operational Checks

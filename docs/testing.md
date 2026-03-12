@@ -59,8 +59,8 @@ uv run python -m pytest tests/test_openhands_service_integration.py -v --run-int
 uv run python scripts/eval_slack_e2e.py --list-scenarios
 
 # Slack eval examples
-uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
-uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0ALG01DLJV --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0ALG01DLJV --timeout 600
 
 # GitHub webhook eval examples
 uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --issue 3 --pr 1 --timeout 600

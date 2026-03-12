@@ -850,6 +850,8 @@ async def send_slack_message(
         logger.warning("SLACK_BOT_TOKEN not set, cannot send message")
         return None
 
+    retryable_fallback_errors = {"account_inactive", "not_in_channel"}
+
     try:
         payload: dict[str, Any] = {
             "channel": channel,
@@ -858,21 +860,53 @@ async def send_slack_message(
         if thread_ts:
             payload["thread_ts"] = thread_ts
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://slack.com/api/chat.postMessage",
-                headers={
-                    "Authorization": f"Bearer {bot_token}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            result = response.json()
-            if not result.get("ok"):
-                logger.error(f"Slack API error: {result.get('error')}")
-                return None
+        async def _post_message_with_token(token: str) -> dict[str, Any]:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://slack.com/api/chat.postMessage",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                data = response.json()
+                if isinstance(data, dict):
+                    return cast(dict[str, Any], data)
+                return {"ok": False, "error": "invalid_response"}
+
+        result = await _post_message_with_token(bot_token)
+        if result.get("ok"):
             logger.info(f"Sent message to {channel}")
-            return result.get("ts")
+            return cast(str | None, result.get("ts"))
+
+        error_code = cast(str, result.get("error") or "unknown_error")
+        # Role-scoped bot identities can be channel-scoped or temporarily inactive.
+        # In those cases, retry with the ingress bot token to avoid dropping replies.
+        if (
+            role
+            and error_code in retryable_fallback_errors
+            and config.SLACK_BOT_TOKEN
+            and config.SLACK_BOT_TOKEN != bot_token
+        ):
+            logger.warning(
+                "Slack send failed for role token (%s: %s); retrying with ingress token",
+                role,
+                error_code,
+            )
+            fallback_result = await _post_message_with_token(config.SLACK_BOT_TOKEN)
+            if fallback_result.get("ok"):
+                logger.info(
+                    "Sent message to %s via ingress token fallback for role %s", channel, role
+                )
+                return cast(str | None, fallback_result.get("ts"))
+            logger.error(
+                "Slack API error after ingress fallback: %s", fallback_result.get("error")
+            )
+            return None
+
+        logger.error(f"Slack API error: {error_code}")
+        return None
 
     except Exception as e:
         logger.exception(f"Failed to send Slack message: {e}")
