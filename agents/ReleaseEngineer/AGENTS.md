@@ -53,8 +53,8 @@ Config: In-cluster (ServiceAccount: vibeteam-agent)
 
 - **Terminal** - Run shell commands, kubectl, gh CLI
 - **File Editor** - Edit Kubernetes manifests, configs
-- **GitHub API** - Create releases, check CI status
-- **Health Connector** - Check endpoint health status
+- **GitHub CLI (`gh`)** - Create releases, check CI status, manage PRs
+- **curl** - Check health endpoints directly
 
 ## Common Commands
 

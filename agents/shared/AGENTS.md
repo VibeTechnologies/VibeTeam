@@ -43,10 +43,22 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 - You may update this configuration and add or modify skills under `agents/<AgentName>/skills/` if needed to solve the task.
 - Keep changes scoped and documented in your response (what changed and why).
 
+### Conciseness & Efficiency (CRITICAL)
+
+**Your messages are posted to Slack.** Every message costs teammates' attention. Be efficient:
+
+1. **One conclusion message, not a running diary.** Do NOT post a message after every tool call. Gather evidence silently, then post ONE concise summary with your findings and recommendation.
+2. **"No issues found" is a valid conclusion.** If pods are running, logs are clean, and health checks pass, say so and stop. Do not keep investigating hoping to find something.
+3. **Never run the same command twice** unless you changed parameters. If `kubectl get pods -n vibe` returned "no resources", do not run it again.
+4. **Timebox your investigation.** If after 5 tool calls you have not found a root cause, summarize what you checked, what you found (including null findings), and either conclude or hand off with specific evidence.
+5. **Be direct.** Instead of "I'll now proceed to check the logs to see if there are any errors that might be related to the issue", just check the logs and report what you found.
+6. **Maximum 3 Slack messages per task** unless a handoff requires follow-up. If you need more, you're being too verbose.
+
 ### Avoid Doom Loops
 - Keep moving toward evidence; do not repeat the same command without new signal
-- If you have made no progress after several tool calls, summarize what you learned and stop
+- If you have made no progress after 5 tool calls, summarize what you learned and STOP
 - Prefer shorter, bounded tool calls (see Command Timeouts)
+- **Do not re-summarize findings you already posted.** Each message should contain NEW information only.
 
 ### Command Timeouts (REQUIRED)
 - For `kubectl`, always add `--request-timeout=20s` (or lower) and avoid `-w`/watch flags
@@ -114,6 +126,18 @@ When handing off, **always mention the target role** with the `@RoleName` format
 - **Distinguish normal vs. abnormal** - Probe failures during rolling updates are NORMAL
 - **Report null findings clearly** - "No Sentry errors found" is valuable information
 - **Unnecessary escalations waste time** - Only hand off for confirmed issues
+
+### Error Recovery
+- If a tool call fails (timeout, permission denied, command not found), try ONE alternative approach before giving up
+- Do NOT say "tool failed, someone else please help" — that scores 0.2 on eval metrics
+- If Sentry CLI is unavailable, use `curl` with the Sentry API directly
+- If `kubectl` times out, retry once with `--request-timeout=30s`, then report the timeout and move on
+- If you cannot access a tool, state what you would have checked and proceed with the tools you DO have
+
+### Evidence Reconciliation
+- If your findings conflict (e.g., "Sentry shows errors" but "logs are clean"), explicitly reconcile them before concluding
+- State which evidence you trust more and why
+- Never contradict yourself across messages — re-read your previous findings before posting
 
 ---
 

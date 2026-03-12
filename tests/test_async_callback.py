@@ -1963,10 +1963,10 @@ class TestProgressEndpoint:
     """Test the POST /callback/agent/progress endpoint."""
 
     def test_progress_posts_to_slack(self, test_client):
-        """Progress update posts a formatted message to Slack thread."""
+        """Progress update posts a formatted message to Slack thread (step 1 always posted)."""
         payload = {
             "job_id": "job-prog-1",
-            "step_number": 3,
+            "step_number": 1,
             "step_summary": "Running kubectl get pods",
             "elapsed_seconds": 45,
             "callback_metadata": {
@@ -1989,12 +1989,39 @@ class TestProgressEndpoint:
             # Verify progress message sent
             mock_send.assert_called_once()
             sent_text = mock_send.call_args[0][1]
-            assert "Step 3" in sent_text
+            assert "Step 1" in sent_text
             assert "kubectl get pods" in sent_text
             assert "45s" in sent_text
             # Should be italic (wrapped in underscores)
             assert sent_text.startswith("_")
             assert sent_text.endswith("_")
+
+    def test_progress_throttles_intermediate_steps(self, test_client):
+        """Progress updates for non-milestone steps are throttled (not posted to Slack)."""
+        payload = {
+            "job_id": "job-prog-throttle",
+            "step_number": 3,
+            "step_summary": "Checking logs",
+            "elapsed_seconds": 20,
+            "callback_metadata": {
+                "channel": "C_TEST",
+                "thread_ts": "ts_1234",
+                "display_name": "SupportEngineer",
+            },
+        }
+
+        with patch(
+            "vibeteam.gateway.routes.slack.send_slack_message",
+            new_callable=AsyncMock,
+        ) as mock_send:
+            response = test_client.post("/callback/agent/progress", json=payload)
+
+            assert response.status_code == 200
+            result = response.json()
+            assert result["status"] == "ok"
+            assert result.get("throttled") is True
+            # Should NOT have posted to Slack
+            mock_send.assert_not_called()
 
     def test_progress_formats_minutes(self, test_client):
         """Progress with elapsed > 60s formats as Xm YYs."""

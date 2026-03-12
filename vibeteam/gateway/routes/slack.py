@@ -2462,6 +2462,16 @@ async def handle_agent_progress(request: Request) -> dict[str, Any]:
     mins, secs = divmod(elapsed_seconds, 60)
     time_str = f"{mins}m{secs:02d}s" if mins > 0 else f"{secs}s"
 
+    # Throttle progress messages to reduce Slack noise.
+    # Only post step 1 (confirms agent started), then every 5th step,
+    # to avoid flooding the thread with 30+ progress messages.
+    if step_number > 1 and step_number % 5 != 0:
+        logger.info(
+            f"[PROGRESS] job={job_id} step={step_number} elapsed={time_str}: "
+            f"{step_summary[:80]} (throttled, not posted to Slack)"
+        )
+        return {"status": "ok", "job_id": job_id, "throttled": True}
+
     # Post progress as a subtle update
     progress_text = f"_Step {step_number} ({time_str}): {step_summary}_"
     await send_slack_message(channel, progress_text, thread_ts, role=role)
