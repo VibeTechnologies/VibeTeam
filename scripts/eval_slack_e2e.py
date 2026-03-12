@@ -10,7 +10,7 @@ This script runs a true end-to-end evaluation:
    (bot-posted messages don't generate Slack webhook events, so direct trigger is required)
 3. Polls the thread for agent responses, including handoff chains
 4. Evaluates the conversation with DeepEval G-Eval metrics
-5. Saves detailed markdown report with full conversation history
+5. Saves detailed CSV report with full conversation history
 
 Usage:
     python scripts/eval_slack_e2e.py --scenario support_400_errors
@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
+import json
 import os
 import re
 import subprocess
@@ -1444,16 +1446,23 @@ SCENARIOS = {
         "threshold": 0.70,
     },
     "release_health_check": {
-        "name": "Release Engineer - Production Health Check",
+        "name": "Release Engineer - Vibeteam Cluster Health Check",
         "message": (
-            "@ReleaseEngineer check out health and production readiness of our production api"
+            "@ReleaseEngineer evaluate the current state of the k8s cluster in vibeteam namespace "
+            "and provide a concise readiness summary for gateway and agent services. "
+            "In your final answer include these exact evidence points: "
+            "(1) vibeteam-gateway ready/desired replicas, "
+            "(2) openhands-svc ready/desired replicas, "
+            "(3) whether recent Warning events exist in vibeteam namespace, "
+            "(4) one health endpoint/status check result, "
+            "and (5) the key kubectl commands you ran (with -n vibeteam)."
         ),
         "expected_agent": "release_engineer",
         "evaluation_criteria": {
             "ResponseEfficiency": (
                 "Was the health check focused and concise, avoiding unnecessary scope creep? "
                 "REQUIRED FOR HIGH SCORE: "
-                "(1) Agent checked only the correct namespace (vibe for production); "
+                "(1) Agent checked only the correct namespace (`vibeteam`); "
                 "(2) Agent completed the task and produced a final summary (not timed out); "
                 "(3) Agent did NOT check multiple unrelated namespaces, dig into Sentry/Langfuse, "
                 "or run an exhaustive investigation when a simple health check was requested. "
@@ -1469,56 +1478,55 @@ SCENARIOS = {
                 "REQUIRED FOR HIGH SCORE: "
                 "(1) Reported pod status (Running / not Running); "
                 "(2) Reported deployment replica status (ready/desired); "
-                "(3) Tested a health endpoint with curl and reported the HTTP status; "
-                "(4) Gave a clear overall verdict (healthy or unhealthy). "
+                "(3) Reported recent warning/error signals from events/logs when relevant; "
+                "(4) Gave a clear overall verdict (healthy, degraded, or unhealthy). "
                 "SCORING: "
                 "Score 0.0-0.3: No health information reported, or just generic text without evidence. "
                 "Score 0.3-0.5: Some kubectl output but no synthesis or verdict. "
-                "Score 0.5-0.7: Reported pod/deployment status but missed health endpoint test. "
-                "Score 0.7-0.9: Reported pods, deployments, and health endpoint with clear verdict. "
+                "Score 0.5-0.7: Reported pod/deployment status but weak evidence from events/logs. "
+                "Score 0.7-0.9: Reported pods, deployments, and events/log signals with clear verdict. "
                 "Score 0.9-1.0: Complete health report with evidence and concise verdict."
             ),
             "CorrectNamespace": (
-                "Did the agent check the CORRECT Kubernetes namespace for 'production api'? "
-                "CRITICAL: The production API lives in namespace `vibe`, NOT `vibeteam`. "
-                "`vibeteam` is the internal agent infrastructure namespace. "
+                "Did the agent check the CORRECT Kubernetes namespace for this request? "
+                "CRITICAL: this task is specifically about `vibeteam` namespace health. "
                 "REQUIRED FOR HIGH SCORE: "
-                "(1) Agent used `-n vibe` for kubectl commands (production API namespace); "
-                "(2) Agent curled the production endpoint (api.vibebrowser.app), not the internal gateway. "
+                "(1) Agent used `-n vibeteam` for kubectl commands; "
+                "(2) Agent focused on `vibeteam-gateway` and `openhands-svc` readiness/state. "
                 "SCORING: "
-                "Score 0.0-0.3: Only checked `vibeteam` namespace (wrong namespace entirely). "
-                "Score 0.3-0.5: Checked `vibeteam` AND `vibe` (unnecessary extra work). "
-                "Score 0.5-0.7: Checked `vibe` but also checked unrelated namespaces. "
-                "Score 0.7-0.9: Correctly focused on `vibe` namespace. "
-                "Score 0.9-1.0: Only checked `vibe` namespace and production endpoint — perfect targeting."
+                "Score 0.0-0.3: Missed `vibeteam` entirely. "
+                "Score 0.3-0.5: Checked `vibeteam` but mostly focused elsewhere. "
+                "Score 0.5-0.7: Checked `vibeteam` with partial relevance. "
+                "Score 0.7-0.9: Correctly focused on `vibeteam` namespace. "
+                "Score 0.9-1.0: Fully focused on `vibeteam` with service-specific readiness conclusions."
             ),
         },
         "evaluation_steps": {
             "ResponseEfficiency": [
                 "Check if the agent produced a final summary report (not timed out)",
                 "Count the number of tool calls / kubectl commands the agent ran",
-                "Check if the agent only checked the requested namespace (vibe for production)",
+                "Check if the agent only checked the requested namespace (`vibeteam`)",
                 "Check if the agent avoided deep-diving into Sentry, Langfuse, TLS, Traefik, or extensive log analysis",
                 "Score 0.0-0.3 if timed out or >15 calls; 0.3-0.5 if unfocused; 0.5-0.7 if completed with scope creep; 0.7-0.9 if focused ≤7 calls; 0.9-1.0 if ≤5 calls with clear summary",
             ],
             "TaskCompletion": [
                 "Check if the agent reported pod status from kubectl output",
                 "Check if the agent reported deployment replica counts",
-                "Check if the agent tested a health endpoint with curl and reported the HTTP status code",
+                "Check if the agent reported recent events/log error signals for the target services",
                 "Check if the agent gave a clear overall verdict (healthy/unhealthy)",
                 "Score 0.0-0.3 if no health data; 0.3-0.5 if raw output only; 0.5-0.7 if partial; 0.7-0.9 if complete; 0.9-1.0 if concise and complete",
             ],
             "CorrectNamespace": [
-                "Check if kubectl commands used -n vibe (production namespace)",
-                "Check if curl targeted api.vibebrowser.app (production endpoint)",
-                "Check if the agent did NOT only check vibeteam namespace (internal agents)",
-                "Score 0.0-0.3 if only vibeteam; 0.3-0.5 if mixed; 0.7-0.9 if correctly vibe; 0.9-1.0 if only vibe",
+                "Check if kubectl commands used -n vibeteam",
+                "Check if findings explicitly cover vibeteam-gateway and openhands-svc status",
+                "Check if the agent avoided drifting into unrelated namespaces",
+                "Score 0.0-0.3 if vibeteam missed; 0.3-0.5 if mixed focus; 0.7-0.9 if correctly vibeteam; 0.9-1.0 if only vibeteam with service-specific conclusions",
             ],
         },
         "threshold": 0.70,
     },
     "release_k3s_configure_then_health": {
-        "name": "Release Engineer - Configure k3s then Investigate vibe Health",
+        "name": "Release Engineer - Configure k3s then Investigate vibeteam Health",
         "message": (
             "@ReleaseEngineer configure k3s cluster access from the kubeconfig I attached and "
             "confirm you can use it for this thread. Do not run health checks yet."
@@ -1529,7 +1537,7 @@ SCENARIOS = {
         "trigger_kubeconfig_yaml": _EVAL_MINIMAL_KUBECONFIG,
         "trigger_kubeconfig_file_name": "eval-k3s-kubeconfig.yaml",
         "follow_up_messages": [
-            "@ReleaseEngineer now investigate vibe cluster health and provide a concise status summary."
+            "@ReleaseEngineer now investigate vibeteam namespace cluster health and provide a concise status summary."
         ],
         # Keep follow-up trigger-only to avoid eval bot chatter in-thread.
         "post_follow_up_messages": False,
@@ -1541,7 +1549,7 @@ SCENARIOS = {
             "TaskCompletion": (
                 "Did the ReleaseEngineer complete both intents in order: "
                 "(1) acknowledge/complete cluster configuration from provided kubeconfig context, "
-                "(2) investigate vibe cluster health and provide an evidence-based summary? "
+                "(2) investigate vibeteam namespace cluster health and provide an evidence-based summary? "
                 "REQUIRED FOR HIGH SCORE: "
                 "Agent acknowledges kubeconfig setup/onboarding intent, then reports concrete health "
                 "findings (pods/deployments/events and/or readiness endpoint) with a final verdict. "
@@ -2522,13 +2530,13 @@ def generate_eval_report(
     latency_ms: int,
     output_dir: str | Path = "results/eval_reports",
 ) -> Path:
-    """Generate a markdown evaluation report with full conversation history."""
+    """Generate a CSV evaluation report with summary and transcript fields."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc)
     timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
-    filename = f"eval_{scenario_name}_{timestamp_str}.md"
+    filename = f"eval_{scenario_name}_{timestamp_str}.csv"
     filepath = output_path / filename
 
     post_checks_results = post_checks_results or []
@@ -2554,149 +2562,33 @@ def generate_eval_report(
         status_text = "PASSED" if all_passed else "FAILED"
 
     # Extract agents from conversation
-    agents_ran = list({role for role, _ in conversation if role != "user"})
+    agents_ran = sorted({role for role, _ in conversation if role != "user"})
     slack_links = _build_slack_thread_links(slack_channel, thread_ts)
     github_links = _extract_github_conversation_links(conversation)
-
-    # Build the report
-    lines = [
-        f"# Evaluation Report: {scenario_config['name']}",
-        "",
-        f"**Status:** {status_emoji} {status_text}",
-        f"**Timestamp:** {timestamp.isoformat()}",
-        f"**Scenario:** `{scenario_name}`",
-        "",
-        "---",
-        "",
-        "## Test Configuration",
-        "",
-        "| Parameter | Value |",
-        "|-----------|-------|",
-        f"| Slack Channel | `{slack_channel}` |",
-        f"| Thread TS | `{thread_ts}` |",
-        f"| Slack Thread URL | {slack_links['app_redirect']} |",
-        f"| Expected Agent | {scenario_config['expected_agent']} |",
-        f"| Agents Responded | {', '.join(agents_ran) if agents_ran else 'None'} |",
-        f"| Response Latency | {latency_ms}ms |",
-        f"| Message Count | {len(conversation)} |",
-        "",
-    ]
-    if "workspace_permalink" in slack_links:
-        lines.append(
-            f"| Slack Workspace Permalink | {slack_links['workspace_permalink']} |"
-        )
-        lines.append("")
-
-    lines.extend(
-        [
-            "## Conversation Links",
-            "",
-            f"- Slack thread (app redirect): {slack_links['app_redirect']}",
-        ]
-    )
-    if "workspace_permalink" in slack_links:
-        lines.append(f"- Slack thread (workspace permalink): {slack_links['workspace_permalink']}")
-    if github_links:
-        for link in github_links:
-            lines.append(f"- GitHub: {link}")
-    else:
-        lines.append("- GitHub: none detected in conversation")
-    lines.append("")
-
-    if metrics_results:
-        lines.extend(
-            [
-                "---",
-                "",
-                "## Evaluation Metrics",
-                "",
-                "| Metric | Score | Threshold | Status |",
-                "|--------|-------|-----------|--------|",
-            ]
-        )
-
-        for m in metrics_results:
-            passed = m["score"] >= m["threshold"]
-            status = "✅ Pass" if passed else "❌ Fail"
-            lines.append(f"| {m['name']} | {m['score']:.2f} | {m['threshold']:.2f} | {status} |")
-
-        lines.extend(
-            [
-                "",
-                "### Metric Reasoning",
-                "",
-            ]
-        )
-
-        for m in metrics_results:
-            lines.extend(
-                [
-                    f"#### {m['name']}",
-                    "",
-                    f"> {m['reason']}",
-                    "",
-                ]
-            )
-
-    if post_checks_results:
-        lines.extend(
-            [
-                "---",
-                "",
-                "## Post Checks",
-                "",
-                "| Check | Required | Status | Details |",
-                "|-------|----------|--------|---------|",
-            ]
-        )
-        for check in post_checks_results:
-            required = "Yes" if check.get("required", True) else "No"
-            status = "✅ Pass" if check.get("passed") else "❌ Fail"
-            details = str(check.get("details", "")).replace("\n", " ")
-            lines.append(f"| {check.get('name','')} | {required} | {status} | {details} |")
-
-    lines.extend(
-        [
-            "---",
-            "",
-            "## Conversation History",
-            "",
-            "### Original User Request",
-            "",
-            "```",
-            scenario_config["message"],
-            "```",
-            "",
-            "### Full Conversation",
-            "",
-        ]
-    )
-
-    for i, (role, text) in enumerate(conversation, 1):
-        display_role = ROLE_DISPLAY.get(role, role.title())
-        role_emoji = "👤" if role == "user" else "🤖"
-        lines.extend(
-            [
-                f"#### {i}. {role_emoji} {display_role}",
-                "",
-                "```",
-                text,
-                "```",
-                "",
-            ]
-        )
-
-    lines.extend(
-        [
-            "---",
-            "",
-            "*Generated by VibeTeam E2E Evaluation Script*",
-        ]
-    )
-
-    # Write the report
-    report_content = "\n".join(lines)
-    filepath.write_text(report_content)
+    row = {
+        "timestamp_utc": timestamp.isoformat(),
+        "scenario_id": scenario_name,
+        "scenario_name": scenario_config["name"],
+        "status": status_text,
+        "status_emoji": status_emoji,
+        "slack_channel": slack_channel,
+        "thread_ts": thread_ts,
+        "slack_app_redirect_url": slack_links["app_redirect"],
+        "slack_workspace_permalink": slack_links.get("workspace_permalink", ""),
+        "expected_agent": scenario_config["expected_agent"],
+        "agents_responded": "|".join(agents_ran),
+        "response_latency_ms": latency_ms,
+        "message_count": len(conversation),
+        "github_links": "|".join(github_links),
+        "metrics_json": json.dumps(metrics_results, ensure_ascii=False),
+        "post_checks_json": json.dumps(post_checks_results, ensure_ascii=False),
+        "original_user_request": scenario_config["message"],
+        "conversation_transcript": build_transcript(conversation),
+    }
+    with filepath.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(row.keys()))
+        writer.writeheader()
+        writer.writerow(row)
 
     return filepath
 

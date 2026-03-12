@@ -6,6 +6,7 @@ These are pure logic tests with mocked Slack — NOT e2e tests.
 
 from __future__ import annotations
 
+import csv
 import os
 
 # We need to import from the eval script — it uses relative path manipulation
@@ -125,18 +126,21 @@ class TestEvalReportLinks:
             output_dir=tmp_path,
         )
 
-        report = report_path.read_text(encoding="utf-8")
-        assert "## Conversation Links" in report
+        assert report_path.suffix == ".csv"
+        with report_path.open(encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+        assert len(rows) == 1
+        row = rows[0]
         assert (
-            "https://slack.com/app_redirect?channel=C0AATPSADB8&thread_ts=1772530795.010779"
-            in report
+            row["slack_app_redirect_url"]
+            == "https://slack.com/app_redirect?channel=C0AATPSADB8&thread_ts=1772530795.010779"
         )
         assert (
-            "https://vibeteam.slack.com/archives/C0AATPSADB8/p1772530795010779?thread_ts=1772530795.010779&cid=C0AATPSADB8"
-            in report
+            row["slack_workspace_permalink"]
+            == "https://vibeteam.slack.com/archives/C0AATPSADB8/p1772530795010779?thread_ts=1772530795.010779&cid=C0AATPSADB8"
         )
-        assert "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/3" in report
-        assert "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/pull/1" in report
+        assert "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/3" in row["github_links"]
+        assert "https://github.com/VibeTechnologies/vibeteam-eval-hello-world/pull/1" in row["github_links"]
 
 
 # ==============================================================================
@@ -297,7 +301,7 @@ class TestRescoreMode:
             patch("scripts.eval_slack_e2e.SlackConnector", return_value=mock_slack),
             patch(
                 "scripts.eval_slack_e2e.generate_eval_report",
-                return_value=tmp_path / "test_report.md",
+                return_value=tmp_path / "test_report.csv",
             ) as mock_report,
         ):
             result = await run_evaluation(
@@ -309,6 +313,7 @@ class TestRescoreMode:
 
         # Report generation should still be called
         mock_report.assert_called_once()
+        assert result["report_path"].endswith(".csv")
         call_kwargs = mock_report.call_args
         # latency_ms should be 0 in rescore mode
         assert call_kwargs.kwargs.get(
@@ -644,7 +649,7 @@ class TestScenarios:
         # in the eval transcript for metric scoring.
         assert result["conversation"][1] == (
             "user",
-            "now investigate vibe cluster health and provide a concise status summary.",
+            "now investigate vibeteam namespace cluster health and provide a concise status summary.",
         )
 
 
