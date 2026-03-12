@@ -308,7 +308,7 @@ SCENARIOS = {
     },
     "support_sentry_triage": {
         "name": "Support Engineer - Sentry Triage Check",
-        "message": "@VibeTeam @SupportEngineer. Check Sentry issues. Anything to address?",
+        "message": "@SupportEngineer check Sentry issues. Anything to address?",
         "expected_agent": "support_engineer",
         "timeout": 600,
         "skip_handoff": True,
@@ -365,7 +365,7 @@ SCENARIOS = {
     "support_sentry_to_pr": {
         "name": "Support Engineer - Sentry Review to PR",
         "message": (
-            "@VibeTeam @SupportEngineer review Sentry issues and address anything urgent. "
+            "@SupportEngineer review Sentry issues and address anything urgent. "
             "If you see a bug, create a PR and close the Sentry issue."
         ),
         "expected_agent": "support_engineer",
@@ -467,7 +467,7 @@ SCENARIOS = {
     "software_engineer_pr_attribution": {
         "name": "Software Engineer - PR Attribution (GitHub App)",
         "message": (
-            "@VibeTeam @SoftwareEngineer please create a small PR in VibeWebAgent "
+            "@SoftwareEngineer please create a small PR in VibeWebAgent "
             "that fixes a trivial issue (docs or comment). Include the PR URL in your reply "
             "so we can verify GitHub App attribution."
         ),
@@ -512,7 +512,7 @@ SCENARIOS = {
     "software_engineer_github_app_hello_world": {
         "name": "Software Engineer - GitHub App Hello World Repo",
         "message": (
-            "@VibeTeam @SoftwareEngineer please create (or reuse if it already exists) "
+            "@SoftwareEngineer please create (or reuse if it already exists) "
             "the repo VibeTechnologies/vibeteam-eval-hello-world. Add a simple Python "
             "hello world app (e.g., main.py prints 'Hello, world!'), open a PR with the "
             "changes, and include the PR URL in your reply. Use the SoftwareEngineer "
@@ -562,7 +562,7 @@ SCENARIOS = {
     "github_issue_pr_handoff_slack": {
         "name": "GitHub Handoff - Issue + PR Comments (Slack Trigger)",
         "message": (
-            "@VibeTeam @SoftwareEngineer please do GitHub coordination ONLY in "
+            "@SoftwareEngineer please do GitHub coordination ONLY in "
             "VibeTechnologies/vibeteam-eval-hello-world (do NOT use VibeTeam or any other repo). "
             "Use these threads: "
             "Issue: https://github.com/VibeTechnologies/vibeteam-eval-hello-world/issues/3 "
@@ -602,7 +602,7 @@ SCENARIOS = {
     },
     "support_gmail_inbox": {
         "name": "Support Engineer - Gmail Inbox Triage",
-        "message": "@VibeTeam @SupportEngineer, check Gmail inbox, anything to address? If so, work on it.",
+        "message": "@SupportEngineer check Gmail inbox, anything to address? If so, work on it.",
         "expected_agent": "support_engineer",
         "timeout": 600,
         "skip_handoff": True,
