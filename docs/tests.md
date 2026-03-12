@@ -70,10 +70,10 @@ export $( < .env) && .venv/bin/python -m pytest tests/ -v
 .venv/bin/python -m pytest tests/test_openhands_service_integration.py -v --run-integration -s
 
 # E2E evaluation (posts to real Slack)
-uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
-uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0AATPSADB8 --timeout 600
-uv run python scripts/eval_slack_e2e.py --scenario software_engineer_github_app_hello_world --channel C0AATPSADB8 --timeout 600
-uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0ALG01DLJV --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0ALG01DLJV --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario software_engineer_github_app_hello_world --channel C0ALG01DLJV --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0ALG01DLJV --timeout 600
 
 `github_issue_pr_handoff_slack` validates cross-agent handoff comments across issue and PR threads in the eval repo.
 

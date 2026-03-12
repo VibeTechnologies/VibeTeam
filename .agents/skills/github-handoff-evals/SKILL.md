@@ -17,8 +17,8 @@ description: Run VibeTeam GitHub/Slack handoff validation with unit tests, Slack
 4. Run unit tests with rerunfailures disabled:
    - `.venv/bin/python -m pytest tests/ -v -p no:rerunfailures`
 5. Run at least one Slack eval:
-   - Preferred: `.venv/bin/python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600`
-   - Fallback: `.venv/bin/python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600`
+   - Preferred: `.venv/bin/python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0ALG01DLJV --timeout 600`
+   - Fallback: `.venv/bin/python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0ALG01DLJV --timeout 600`
 6. Run GitHub webhook evals (assignment-first, role-bot required):
    - Code-writing task (SoftwareEngineer bot assignee):
      - `.venv/bin/python scripts/eval_github_e2e.py --scenario github_issue_handoff --repo VibeTechnologies/vibeteam-eval-hello-world --actor-login OpenCodeEngineer --issue-role software_engineer --issue-assignee 'vibeteam-swe-bot-260301[bot]' --timeout 600`

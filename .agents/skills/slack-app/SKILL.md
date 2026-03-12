@@ -56,7 +56,7 @@ Use this skill when you need to create, update, or audit Slack apps for VibeTeam
 8. Validate behavior.
    - Confirm each role token resolves to a distinct bot user ID (Slack `auth.test`).
    - Run a smoke evaluation:
-     - `uv run python scripts/eval_slack_e2e.py --scenario support_notify_check --channel C0AATPSADB8 --timeout 300 --skip-eval`
+     - `uv run python scripts/eval_slack_e2e.py --scenario support_notify_check --channel C0ALG01DLJV --timeout 300 --skip-eval`
    - Verify response identity is by Slack app user and reply text has no legacy `[Role]` prefix.
 
 ## Output Checklist

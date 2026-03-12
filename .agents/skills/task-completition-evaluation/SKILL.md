@@ -70,7 +70,7 @@ export $( < .env )
 uv run python -m pytest tests/ -v
 
 # Example Slack eval
-uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0AATPSADB8 --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario github_issue_pr_handoff_slack --channel C0ALG01DLJV --timeout 600
 
 # Example GitHub eval
 uv run python scripts/eval_github_e2e.py --scenario github_issue_pr_handoff_github --repo VibeTechnologies/vibeteam-eval-hello-world --pr 1 --actor-login OpenCodeEngineer --issue-role software_engineer --issue-assignee 'vibeteam-swe-bot-260301[bot]' --timeout 600

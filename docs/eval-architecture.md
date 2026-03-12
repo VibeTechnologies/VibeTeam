@@ -22,7 +22,7 @@
     ┌─────────────────────────────────────────────────────────────────────┐
     │                         SLACK WORKSPACE                              │
     │  ┌─────────────────────────────────────────────────────────────┐    │
-    │  │  #all-vibetechnologies (C0AATPSADB8)                         │    │
+    │  │  #vibe-team (C0ALG01DLJV)                         │    │
     │  │                                                              │    │
     │  │  [User] @SupportEngineer there is a request from a user...  │    │
     │  │  ├── [SupportEngineer] I'll investigate the 400 errors...   │    │
@@ -217,7 +217,7 @@ kubectl port-forward svc/vibeteam-gateway 8000:8080 -n vibeteam &
 # 2. Run evaluation
 uv run python scripts/eval_slack_e2e.py \
     --scenario support_400_errors \
-    --channel C0AATPSADB8 \
+    --channel C0ALG01DLJV \
     --timeout 180
 
 # 3. Check results

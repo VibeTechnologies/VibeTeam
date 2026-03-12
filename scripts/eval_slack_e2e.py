@@ -19,7 +19,7 @@ Usage:
     python scripts/eval_slack_e2e.py --message "@SupportEngineer check Sentry for errors"
     python scripts/eval_slack_e2e.py --channel C0123456789 --skip-eval
     python scripts/eval_slack_e2e.py --list-scenarios
-    python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --thread-ts 1770710833.425539 --channel C0AATPSADB8
+    python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --thread-ts 1770710833.425539 --channel C0ALG01DLJV
 
 Environment Variables:
     SLACK_BOT_TOKEN: Slack bot OAuth token (required)
@@ -1592,6 +1592,100 @@ def _load_role_bot_user_ids() -> dict[str, str]:
     return mapping
 
 
+def _slack_error_code(exc: Exception) -> str:
+    """Best-effort extraction of Slack API error code from an exception."""
+    response = getattr(exc, "response", None)
+    if response is None:
+        return ""
+
+    try:
+        error = response.get("error")
+        if isinstance(error, str):
+            return error
+    except Exception:
+        pass
+
+    data = getattr(response, "data", None)
+    if isinstance(data, dict):
+        error = data.get("error")
+        if isinstance(error, str):
+            return error
+
+    return ""
+
+
+def _ensure_slack_role_apps_in_channel(
+    channel: str,
+    ingress_connector: SlackConnector,
+    role_bot_user_ids: dict[str, str] | None = None,
+) -> None:
+    """Ensure ingress + role app bots are present in the eval channel."""
+    channel_id = ingress_connector._resolve_channel(channel)
+    role_bot_user_ids = role_bot_user_ids or _load_role_bot_user_ids()
+
+    print(">>> Preflight: Ensuring Slack app membership in channel")
+    print(f"    Target channel: {channel_id}")
+
+    joined = ingress_connector.join_channel(channel_id)
+    if joined:
+        print("    Ingress app joined channel (or was joinable).")
+    else:
+        print("    Ingress app join returned false (likely already in channel or private channel).")
+
+    members: set[str] | None = None
+    try:
+        response = ingress_connector.client.conversations_members(channel=channel_id, limit=1000)
+        members = {str(member) for member in response.get("members", [])}
+    except Exception as exc:
+        print(
+            "    WARNING: Could not list channel members via ingress app "
+            f"({exc}). Will attempt explicit role joins/invites."
+        )
+
+    if not role_bot_user_ids:
+        print("    WARNING: No role-scoped Slack bot tokens resolved; skipping role app membership checks.")
+        return
+
+    role_entries = sorted(role_bot_user_ids.items(), key=lambda item: item[1])
+    for user_id, role in role_entries:
+        role_display = ROLE_DISPLAY.get(role, role)
+        token_key = f"SLACK_BOT_TOKEN_{role.upper()}"
+        role_token = os.environ.get(token_key, "").strip()
+        if not role_token:
+            print(f"    WARNING: Missing {token_key}; cannot ensure {role_display} app membership.")
+            continue
+
+        if members is not None and user_id in members:
+            print(f"    ✅ {role_display} already in channel.")
+            continue
+
+        role_joined = False
+        try:
+            role_connector = SlackConnector(token=role_token)
+            role_joined = role_connector.join_channel(channel_id)
+        except Exception as exc:
+            print(f"    WARNING: {role_display} self-join attempt failed: {exc}")
+
+        if role_joined:
+            print(f"    ✅ {role_display} joined channel via role token.")
+            if members is not None:
+                members.add(user_id)
+            continue
+
+        try:
+            ingress_connector.client.conversations_invite(channel=channel_id, users=user_id)
+            print(f"    ✅ Invited {role_display} via ingress app.")
+            if members is not None:
+                members.add(user_id)
+        except Exception as exc:
+            error = _slack_error_code(exc)
+            if error in {"already_in_channel", "already_invited", "cant_invite_self"}:
+                print(f"    ✅ {role_display} invite not needed ({error}).")
+            else:
+                detail = f" ({error})" if error else ""
+                print(f"    WARNING: Failed to invite {role_display}{detail}: {exc}")
+
+
 # ==============================================================================
 # Azure OpenAI Model for DeepEval
 # ==============================================================================
@@ -2714,6 +2808,9 @@ async def run_evaluation(
         print(f"Wait Timeout: {wait_timeout}s")
     print()
 
+    await asyncio.to_thread(_ensure_slack_role_apps_in_channel, channel, slack, role_bot_user_ids)
+    print()
+
     user_message = scenario["message"]
     follow_up_messages = scenario.get("follow_up_messages", [])
     post_follow_up_messages = bool(scenario.get("post_follow_up_messages", True))
@@ -3408,7 +3505,7 @@ Examples:
   python scripts/eval_slack_e2e.py --message "@SupportEngineer check Sentry for errors"
   python scripts/eval_slack_e2e.py --channel C0123456789 --skip-eval
   python scripts/eval_slack_e2e.py --list-scenarios
-  python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --thread-ts 1770710833.425539 --channel C0AATPSADB8
+  python scripts/eval_slack_e2e.py --scenario stripe_webhook_failure --thread-ts 1770710833.425539 --channel C0ALG01DLJV
   python scripts/eval_slack_e2e.py --scenario support_400_errors --use-async
         """,
     )

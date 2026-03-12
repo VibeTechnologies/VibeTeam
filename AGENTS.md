@@ -32,7 +32,7 @@ Recommended order:
 
 
 ```shell
-export $( < .env); uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
+export $( < .env); uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0ALG01DLJV --timeout 600
 ```
 
 to run an evaluation test.
@@ -95,8 +95,8 @@ Report action taken
 ### Running Evaluations
 
 ```bash
-uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0AATPSADB8 --timeout 600
-uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0AATPSADB8 --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario support_400_errors --channel C0ALG01DLJV --timeout 600
+uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0ALG01DLJV --timeout 600
 uv run python scripts/eval_slack_e2e.py --list-scenarios
 ```
 

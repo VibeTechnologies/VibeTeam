@@ -62,7 +62,7 @@ Use this skill when you need to create, rotate, or validate GitHub Apps used by 
      - `gh api repos/VibeTechnologies/vibeteam-eval-hello-world/assignees --jq '.[].login'`
 8. Validate runtime attribution.
    - Run at least one GitHub attribution eval scenario after deploy:
-     - `uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0AATPSADB8 --timeout 600`
+     - `uv run python scripts/eval_slack_e2e.py --scenario software_engineer_pr_attribution --channel C0ALG01DLJV --timeout 600`
    - Confirm PR author is the intended role app bot.
 
 ## Output Checklist

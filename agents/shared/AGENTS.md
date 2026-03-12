@@ -195,7 +195,7 @@ Does this need public communication?
 
 1. **Always run evaluation** to verify the fix works:
    ```bash
-   uv run python scripts/eval_slack_e2e.py --scenario <scenario> --channel C0AATPSADB8
+   uv run python scripts/eval_slack_e2e.py --scenario <scenario> --channel C0ALG01DLJV
    ```
 
 2. **Check the evaluation report** for:

@@ -98,6 +98,74 @@ class TestRoleScopedApiCalls:
             assert headers["Authorization"] == "Bearer xoxb-support"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("error_code", ["account_inactive", "not_in_channel"])
+    async def test_send_slack_message_falls_back_to_ingress_token(self, error_code: str):
+        from vibeteam.gateway.routes.slack import send_slack_message
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"SLACK_BOT_TOKEN_SOFTWARE_ENGINEER": "xoxb-software"},
+                clear=False,
+            ),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            first_response = MagicMock()
+            first_response.json.return_value = {"ok": False, "error": error_code}
+            second_response = MagicMock()
+            second_response.json.return_value = {"ok": True, "ts": "2222.3333"}
+
+            mock_client = AsyncMock()
+            mock_client.post.side_effect = [first_response, second_response]
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ts = await send_slack_message(
+                "C_TEST", "hello", "1111.2222", role="software_engineer"
+            )
+            assert ts == "2222.3333"
+            assert mock_client.post.call_count == 2
+
+            first_headers = mock_client.post.call_args_list[0].kwargs["headers"]
+            second_headers = mock_client.post.call_args_list[1].kwargs["headers"]
+            assert first_headers["Authorization"] == "Bearer xoxb-software"
+            assert second_headers["Authorization"] == "Bearer xoxb-ingress"
+
+    @pytest.mark.asyncio
+    async def test_send_slack_message_does_not_fallback_for_non_retryable_error(self):
+        from vibeteam.gateway.routes.slack import send_slack_message
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"SLACK_BOT_TOKEN_SOFTWARE_ENGINEER": "xoxb-software"},
+                clear=False,
+            ),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+
+            first_response = MagicMock()
+            first_response.json.return_value = {"ok": False, "error": "invalid_auth"}
+
+            mock_client = AsyncMock()
+            mock_client.post.return_value = first_response
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            ts = await send_slack_message(
+                "C_TEST", "hello", "1111.2222", role="software_engineer"
+            )
+            assert ts is None
+            assert mock_client.post.call_count == 1
+
+    @pytest.mark.asyncio
     async def test_set_thread_status_uses_role_assistant_token(self):
         from vibeteam.gateway.routes.slack import set_thread_status
 
