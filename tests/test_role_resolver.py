@@ -281,6 +281,7 @@ class TestRouteByKeywords:
             "please deploy this to production",
             "the k8s cluster is down",
             "kubernetes pod restarting",
+            "evaluate kubers cluster state in vibeteam namespace",
             "ci/cd pipeline failed",
             "we need a new release",
             "check sentry for errors",
