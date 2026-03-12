@@ -153,8 +153,8 @@ Subscribe to these ingress bot events:
 
 | Event | Purpose |
 |-------|---------|
-| `app_mention` | Entry point when `@VibeTeam` is explicitly mentioned |
-| `message.channels` | **Primary delivery path** — captures direct `@RoleName` mentions and thread follow-ups in public channels |
+| `app_mention` | Fires when `@VibeTeam` (ingress app) is explicitly mentioned; the gateway strips the ingress mention and routes by role if present |
+| `message.channels` | **Primary delivery path** — captures direct `@RoleName` mentions (preferred invocation) and thread follow-ups in public channels |
 | `message.groups` | Thread follow-ups in private channels |
 | `message.im` | Direct messages to ingress app |
 

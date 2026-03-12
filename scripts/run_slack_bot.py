@@ -5,8 +5,9 @@ Run the VibeTeam Slack bot with multi-session routing.
 NOTE: from __future__ import annotations enables Python 3.10+ type syntax on 3.9+
 
 This bot:
-1. Monitors a Slack channel for messages mentioning @VibeTeam
-2. Routes messages to appropriate agents based on /RoleName mentions
+1. Monitors a Slack channel for messages mentioning role apps directly
+   (e.g. @SupportEngineer, @ReleaseEngineer) or @VibeTeam for general routing
+2. Routes messages to appropriate agents based on role app @mentions
 3. Tracks thread subscriptions so agents see follow-up messages
 4. Handles handoffs when agents mention other roles in responses
 
@@ -15,14 +16,18 @@ Usage:
     python scripts/run_slack_bot.py --channel "#ai-team"
     python scripts/run_slack_bot.py --framework openhands --debug
 
-Message Format:
-    User: "@VibeTeam /SoftwareEngineer fix the login bug"
-    Bot:  "[SoftwareEngineer] I'll investigate the login issue..."
-    Bot:  "[SoftwareEngineer] Fixed in PR #457. /ReleaseEngineer ready for staging."
-    Bot:  "[ReleaseEngineer] Deploying to staging now..."
+Message Format (per-agent Slack app identity):
+    User: "@SupportEngineer investigate the login errors"
+    SupportEngineer (app): "I'll investigate the login issue..."
+    SupportEngineer (app): "Fixed in PR #457. @ReleaseEngineer ready for staging."
+    ReleaseEngineer (app): "Deploying to staging now..."
+
+Each agent responds via its own Slack app (not the ingress app).
+Responses are attributed by Slack app identity, not text prefixes.
 
 Environment Variables:
-    SLACK_BOT_TOKEN: Slack bot OAuth token (required)
+    SLACK_BOT_TOKEN: Ingress app token for receiving events (required)
+    SLACK_BOT_TOKEN_<ROLE>: Per-role bot tokens (e.g. SLACK_BOT_TOKEN_SUPPORT_ENGINEER)
     SLACK_CHANNEL: Default channel to monitor
     AZURE_API_KEY: Azure OpenAI API key
     AZURE_API_BASE: Azure OpenAI endpoint
