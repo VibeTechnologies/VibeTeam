@@ -1087,10 +1087,11 @@ class TestSlackEventsPassMessageTs:
             asyncio.run(_process_slack_event(payload))
 
             mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
-            mock_add.assert_any_call("C_TEST", "1234567890.123456", "thinking_face")
-
-            # Verify message_ts was passed
-            mock_run.assert_called_once()
+            # thinking_face now includes role= kwarg for cross-app identity fix
+            thinking_calls = [
+                c for c in mock_add.call_args_list if c.args[2] == "thinking_face"
+            ]
+            assert len(thinking_calls) == 1
             call_kwargs = mock_run.call_args
             # message_ts should be passed as keyword argument
             assert call_kwargs.kwargs.get("message_ts") == "1234567890.123456"
@@ -1112,7 +1113,11 @@ class TestSlackEventsPassMessageTs:
             asyncio.run(_process_slack_event(payload))
 
             mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
-            mock_add.assert_any_call("C_TEST", "1234567890.123456", "thinking_face")
+            # thinking_face now includes role= kwarg for cross-app identity fix
+            thinking_calls = [
+                c for c in mock_add.call_args_list if c.args[2] == "thinking_face"
+            ]
+            assert len(thinking_calls) == 1
 
             mock_run.assert_called_once()
             assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"
@@ -1136,8 +1141,10 @@ class TestSlackEventsPassMessageTs:
             asyncio.run(_process_slack_event(payload))
 
             mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
-            mock_add.assert_any_call("C_TEST", "1234567890.123456", "thinking_face")
-
+            thinking_calls = [
+                c for c in mock_add.call_args_list if c.args[2] == "thinking_face"
+            ]
+            assert len(thinking_calls) == 1
             mock_run.assert_called_once()
             assert mock_run.call_args.kwargs.get("message_ts") == "1234567890.123456"
 
@@ -1204,7 +1211,10 @@ class TestSlackEventsPassMessageTs:
             asyncio.run(_process_slack_event(payload))
 
             mock_add.assert_any_call("C_TEST", "1234567890.123456", "eyes")
-            mock_add.assert_any_call("C_TEST", "1234567890.123456", "thinking_face")
+            thinking_calls = [
+                c for c in mock_add.call_args_list if c.args[2] == "thinking_face"
+            ]
+            assert len(thinking_calls) == 1
             mock_run.assert_called_once()
             routed_text = mock_run.call_args.args[0]
             assert "@SupportEngineer" in routed_text

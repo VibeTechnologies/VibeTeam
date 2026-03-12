@@ -646,11 +646,12 @@ class TestScenarios:
         assert "kubeconfig_yaml" not in follow_up_trigger_payload
 
         # Trigger-only follow-up should still be represented as a user turn
-        # in the eval transcript for metric scoring.
-        assert result["conversation"][1] == (
-            "user",
-            "now investigate vibeteam namespace cluster health and provide a concise status summary.",
-        )
+        # in the eval transcript for metric scoring.  The @RoleName mention
+        # is preserved (replaced with <@U_BOT_ID> when bot IDs are available,
+        # or kept as-is when not).
+        follow_up_text = result["conversation"][1][1]
+        assert result["conversation"][1][0] == "user"
+        assert "now investigate vibeteam namespace cluster health" in follow_up_text
 
 
 class TestPerScenarioTimeout:

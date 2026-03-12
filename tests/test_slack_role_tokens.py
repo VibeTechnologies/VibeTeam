@@ -473,3 +473,181 @@ class TestAppMentionRoleMentionPreservation:
 
             clean_text = re.sub(rf"<@{re.escape(ingress_uid)}>\s*", "", text).strip()
             assert clean_text == "deploy the new version"
+
+
+class TestThinkingFaceRoleResolution:
+    """Verify that thinking_face reactions use the resolved role token.
+
+    This prevents the cross-app reaction bug where the ingress app adds
+    thinking_face but the role-scoped app later fails to remove it
+    (Slack only allows the app that added a reaction to remove it).
+    """
+
+    @pytest.mark.asyncio
+    async def test_app_mention_thinking_face_uses_role_from_mention(self):
+        """app_mention handler should add thinking_face with resolved role."""
+        from vibeteam.gateway.routes.slack import _process_slack_event
+
+        payload = {
+            "type": "event_callback",
+            "event_id": "Ev_test1",
+            "event": {
+                "type": "app_mention",
+                "user": "U_HUMAN",
+                "channel": "C_CHAN",
+                "text": "<@U_INGRESS> <@U_SUPPORT> check errors",
+                "ts": "123.456",
+                "thread_ts": None,
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack._extract_roles_from_slack_user_mentions",
+                new_callable=AsyncMock,
+                return_value=["support_engineer"],
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.get_bot_user_id",
+                new_callable=AsyncMock,
+                return_value="U_INGRESS",
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.get_message_router",
+            ) as mock_router_fn,
+            patch(
+                "vibeteam.gateway.routes.slack._extract_kubeconfig_context_from_event",
+                new_callable=AsyncMock,
+                return_value=(None, None),
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._inject_thread_kubeconfig_context",
+                side_effect=lambda t, *a, **k: t,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ) as mock_add_reaction,
+            patch(
+                "vibeteam.gateway.routes.slack.add_read_reaction",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+        ):
+            mock_config.SLACK_BOT_USER_ID = "U_INGRESS"
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+            mock_config.VIBETEAM_HOST_URL = "http://test"
+            mock_router = MagicMock()
+            mock_router.parse_role_mentions.return_value = []
+            mock_router_fn.return_value = mock_router
+
+            await _process_slack_event(payload)
+
+            # thinking_face must be added WITH the role so same bot removes it
+            thinking_calls = [
+                c for c in mock_add_reaction.call_args_list
+                if len(c.args) >= 3 and c.args[2] == "thinking_face"
+            ]
+            assert len(thinking_calls) == 1
+            assert thinking_calls[0].kwargs.get("role") == "support_engineer"
+
+    @pytest.mark.asyncio
+    async def test_dm_thinking_face_resolves_role_from_text(self):
+        """DM handler should add thinking_face with role resolved from text."""
+        from vibeteam.gateway.routes.slack import _process_slack_event
+
+        payload = {
+            "type": "event_callback",
+            "event_id": "Ev_test2",
+            "event": {
+                "type": "message",
+                "channel_type": "im",
+                "user": "U_HUMAN",
+                "channel": "C_DM",
+                "text": "@SupportEngineer check errors",
+                "ts": "456.789",
+            },
+        }
+
+        with (
+            patch(
+                "vibeteam.gateway.routes.slack._resolve_explicit_role_for_text",
+                new_callable=AsyncMock,
+                return_value="support_engineer",
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._extract_kubeconfig_context_from_event",
+                new_callable=AsyncMock,
+                return_value=(None, None),
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack._inject_thread_kubeconfig_context",
+                side_effect=lambda t, *a, **k: t,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.add_reaction",
+                new_callable=AsyncMock,
+            ) as mock_add_reaction,
+            patch(
+                "vibeteam.gateway.routes.slack.add_read_reaction",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "vibeteam.gateway.routes.slack.run_agent_for_slack",
+                new_callable=AsyncMock,
+            ),
+            patch("vibeteam.gateway.routes.slack.config") as mock_config,
+        ):
+            mock_config.SLACK_BOT_USER_ID = "U_INGRESS"
+            mock_config.SLACK_BOT_TOKEN = "xoxb-ingress"
+            mock_config.VIBETEAM_HOST_URL = "http://test"
+
+            await _process_slack_event(payload)
+
+            thinking_calls = [
+                c for c in mock_add_reaction.call_args_list
+                if len(c.args) >= 3 and c.args[2] == "thinking_face"
+            ]
+            assert len(thinking_calls) == 1
+            assert thinking_calls[0].kwargs.get("role") == "support_engineer"
+
+
+class TestEvalMentionReplacement:
+    """Verify that eval tests replace @RoleName with <@U_BOT_ID> mentions."""
+
+    def test_replace_role_mentions_with_slack_ids(self):
+        """@RoleName text should become <@U_BOT_ID> when bot IDs are available."""
+        with (
+            patch(
+                "scripts.eval_slack_e2e._load_role_to_bot_user_id",
+                return_value={
+                    "support_engineer": "U_SUPPORT_BOT",
+                    "release_engineer": "U_RELEASE_BOT",
+                },
+            ),
+        ):
+            from scripts.eval_slack_e2e import _replace_role_mentions_with_slack_ids
+
+            result = _replace_role_mentions_with_slack_ids(
+                "@SupportEngineer check errors"
+            )
+            assert result == "<@U_SUPPORT_BOT> check errors"
+
+    def test_replace_preserves_text_when_no_bot_ids(self):
+        """When no bot IDs available, @RoleName stays as-is."""
+        with (
+            patch(
+                "scripts.eval_slack_e2e._load_role_to_bot_user_id",
+                return_value={},
+            ),
+        ):
+            from scripts.eval_slack_e2e import _replace_role_mentions_with_slack_ids
+
+            result = _replace_role_mentions_with_slack_ids(
+                "@SupportEngineer check something"
+            )
+            assert result == "@SupportEngineer check something"

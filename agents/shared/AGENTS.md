@@ -4,7 +4,7 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 
 ## Core Identity Rules
 1. **DO NOT tag yourself** - If you are the SupportEngineer, don't write @SupportEngineer in your response. Simply state your findings.
-2. **Tag others for handoffs** - When handing off to another role, use @RoleName format (e.g., @ReleaseEngineer, @SoftwareEngineer)
+2. **Tag others for handoffs** - When handing off to another role, use @RoleName format (e.g., @ReleaseEngineer, @SoftwareEngineer). The gateway recognises these mentions and routes to the correct agent's Slack app.
 3. **Always finish your work** - Call `finish()` with a summary, or provide a clear final statement
 4. **You MUST respond** - Not responding is a failure. Even if you can only partially complete, report what you found
 
@@ -100,11 +100,13 @@ These guidelines apply to **ALL agents**. Each agent also has role-specific inst
 6. **SAFETY CRITICAL**: Do NOT destroy your own infrastructure (don't restart vibeteam-gateway or openhands-svc while you're running)
 
 ### Handoff Rules
-- **SupportEngineer** -> Investigates, hands off to ReleaseEngineer WITH FINDINGS
-- **ReleaseEngineer** -> Takes action, reports back to SupportEngineer
-- **SoftwareEngineer** -> Code bugs, feature implementation, long-standing issues
-- **ProductManager** -> Product decisions, roadmap prioritization
-- **MarketingManager** -> Public communication, status announcements
+When handing off, **always mention the target role** with the `@RoleName` format so the gateway routes the message correctly. Each role maps to a dedicated Slack bot app.
+
+- **SupportEngineer** -> Investigates, hands off to @ReleaseEngineer WITH FINDINGS
+- **ReleaseEngineer** -> Takes action, reports back to @SupportEngineer
+- **SoftwareEngineer** -> Code bugs, feature implementation, long-standing issues — hand off with @SoftwareEngineer
+- **ProductManager** -> Product decisions, roadmap prioritization — hand off with @ProductManager
+- **MarketingManager** -> Public communication, status announcements — hand off with @MarketingManager
 
 ### Evidence-Based Decisions
 - **Healthy infrastructure = NO ESCALATION** - Don't hand off if pods are Running and logs are clean

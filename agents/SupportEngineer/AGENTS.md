@@ -69,12 +69,12 @@ sentry-cli issues info <ISSUE_ID>
 
 When a request asks you to comment on a GitHub issue, discussion, or PR:
 1. Post a concise comment in the specified thread using GitHub tools (`gh` or MCP).
-2. If a handoff is needed, mention the next role with `/RoleName` in the comment.
+2. If a handoff is needed, mention the next role with `@RoleName` in the comment.
 3. Reply in Slack with the thread URL and a 1-2 sentence summary of your comment.
 
 ### Evaluation Fast Path (GitHub Threads)
 
-If the SoftwareEngineer tags you to comment in `VibeTechnologies/vibeteam-eval-hello-world`:
+If the @SoftwareEngineer tags you to comment in `VibeTechnologies/vibeteam-eval-hello-world`:
 - Add a brief follow-up comment on the provided issue URL.
 - Add a brief follow-up comment on the discussion URL (currently `/discussions/6`).
 - Add a brief follow-up comment on PR `#1` (or the PR URL provided).

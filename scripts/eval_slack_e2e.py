@@ -1600,6 +1600,33 @@ def _load_role_bot_user_ids() -> dict[str, str]:
     return mapping
 
 
+@lru_cache(maxsize=1)
+def _load_role_to_bot_user_id() -> dict[str, str]:
+    """Build role -> bot_user_id mapping (reverse of _load_role_bot_user_ids)."""
+    return {role: uid for uid, role in _load_role_bot_user_ids().items()}
+
+
+def _replace_role_mentions_with_slack_ids(text: str) -> str:
+    """Replace @RoleName text patterns with <@U_BOT_ID> Slack user mentions.
+
+    This makes posted eval messages look like real Slack interactions
+    where users mention bot apps by their Slack user ID.
+    """
+    role_uid = _load_role_to_bot_user_id()
+
+    def _sub(match: re.Match) -> str:
+        key = match.group(1).lower()
+        from agent_service.shared.role_resolver import ROLE_MENTION_MAP
+
+        role = ROLE_MENTION_MAP.get(key)
+        if role and role in role_uid:
+            return f"<@{role_uid[role]}>"
+        # If no bot user ID available, keep the original text
+        return match.group(0)
+
+    return ROLE_PATTERN.sub(_sub, text)
+
+
 def _slack_error_code(exc: Exception) -> str:
     """Best-effort extraction of Slack API error code from an exception."""
     response = getattr(exc, "response", None)
@@ -2797,10 +2824,13 @@ async def run_evaluation(
         print(">>> Step 1: Posting message to Slack")
         print(f"    Message: {user_message[:80]}...")
 
-        # Post without role mentions to avoid duplicate processing from Slack bot events.
-        posted_message = ROLE_PATTERN.sub("", user_message).strip()
+        # Replace @RoleName text with real <@U_BOT_ID> mentions so the
+        # posted Slack message looks like a real user mentioning a bot app.
+        # The gateway trigger still receives the original text with
+        # @RoleName for routing (sent separately via /slack/trigger).
+        posted_message = _replace_role_mentions_with_slack_ids(user_message).strip()
         if not posted_message:
-            posted_message = "Evaluation run (role mention omitted to avoid duplicate routing)."
+            posted_message = "Evaluation run (role mention resolved to empty)."
 
         initial_msg = await _slack_call(slack.post_message, channel=channel, text=posted_message)
         thread_ts = initial_msg.ts
@@ -2882,7 +2912,7 @@ async def run_evaluation(
             for idx, follow_up in enumerate(follow_up_messages, start=1):
                 if post_follow_up_messages:
                     print(f"\n>>> Step 1c.{idx}: Posting follow-up message")
-                    follow_up_posted = ROLE_PATTERN.sub("", follow_up).strip()
+                    follow_up_posted = _replace_role_mentions_with_slack_ids(follow_up).strip()
                     if not follow_up_posted:
                         follow_up_posted = f"Evaluation follow-up #{idx}"
                     await _slack_call(
@@ -3074,7 +3104,7 @@ async def run_evaluation(
     conversation: list[tuple[str, str]] = [("user", user_message)]
     if follow_up_messages and not post_follow_up_messages:
         for follow_up in follow_up_messages:
-            follow_up_text = ROLE_PATTERN.sub("", follow_up).strip()
+            follow_up_text = _replace_role_mentions_with_slack_ids(follow_up).strip()
             if follow_up_text:
                 conversation.append(("user", follow_up_text))
 

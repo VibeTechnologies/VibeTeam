@@ -56,9 +56,9 @@ When asked to create a hello-world PR in `VibeTechnologies/vibeteam-eval-hello-w
 
 When asked to coordinate GitHub issue/PR comments in `VibeTechnologies/vibeteam-eval-hello-world`:
 - Create a new issue in that repo (title like `Eval: GitHub issue handoff`).
-- Add a short issue comment with your plan and include `/SupportEngineer`.
-- Add a discussion comment in `https://github.com/VibeTechnologies/vibeteam-eval-hello-world/discussions/6` and include `/SupportEngineer`.
-- Add a comment to PR `#1` in the same repo and include `/SupportEngineer`.
+- Add a short issue comment with your plan and include `@SupportEngineer`.
+- Add a discussion comment in `https://github.com/VibeTechnologies/vibeteam-eval-hello-world/discussions/6` and include `@SupportEngineer`.
+- Add a comment to PR `#1` in the same repo and include `@SupportEngineer`.
 - Reply in Slack with the issue URL, discussion URL, and PR URL.
 - Tag `@SupportEngineer` in Slack to add follow-up comments on all three threads.
 
@@ -93,7 +93,7 @@ gh pr create --title "Fix login bug" --body "Fixes #345"
 | Customer needs update | @SupportEngineer | "Bug fixed in PR #457. @SupportEngineer please let the customer know." |
 | Documentation update needed | @MarketingManager | "New API endpoint added. @MarketingManager please update docs." |
 
-### Sentry Handoff Completion (When SupportEngineer Escalates a Sentry Bug)
+### Sentry Handoff Completion (When @SupportEngineer Escalates a Sentry Bug)
 - If the handoff includes a Sentry issue URL/ID, **echo it back** in your response.
 - **Always** query Sentry via MCP if available, otherwise use `sentry-cli`.
 - After creating the PR, **tag @SupportEngineer** with the PR link and the Sentry issue URL so they can close the issue.

@@ -2554,9 +2554,17 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             if not routed_text:
                 return {"status": "accepted", "event": "app_mention"}
 
-            # React with thinking face to show we're working on it
+            # Resolve role BEFORE reacting so the same bot adds and removes
+            # thinking_face (Slack only allows the app that added a reaction
+            # to remove it).
+            _initial_role: str | None = mention_roles[0] if mention_roles else None
+            if not _initial_role:
+                _initial_role = await _resolve_explicit_role_for_text(routed_text)
+            if not _initial_role:
+                _initial_role = route_by_keywords(routed_text)
+
             if message_ts:
-                await add_reaction(channel, message_ts, "thinking_face")
+                await add_reaction(channel, message_ts, "thinking_face", role=_initial_role)
 
             await run_agent_for_slack(
                 routed_text, channel, thread_ts, user_id, message_ts=message_ts
@@ -2576,9 +2584,13 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             if not routed_text:
                 return {"status": "accepted", "event": "message.im"}
 
-            # React with thinking face to show we're working on it
+            # Resolve role BEFORE reacting (see app_mention for rationale).
+            _dm_role = await _resolve_explicit_role_for_text(routed_text)
+            if not _dm_role:
+                _dm_role = route_by_keywords(routed_text)
+
             if message_ts:
-                await add_reaction(channel, message_ts, "thinking_face")
+                await add_reaction(channel, message_ts, "thinking_face", role=_dm_role)
 
             await run_agent_for_slack(
                 routed_text, channel, thread_ts, user_id, message_ts=message_ts
@@ -2608,8 +2620,10 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
             ingress_mentioned = await _mentions_ingress_bot(text)
 
             if explicit_roles and not ingress_mentioned:
+                # Use resolved role for reaction identity consistency.
+                _chan_role: str | None = explicit_roles[0] if explicit_roles else None
                 if message_ts:
-                    await add_reaction(channel, message_ts, "thinking_face")
+                    await add_reaction(channel, message_ts, "thinking_face", role=_chan_role)
 
                 routed_text = text
                 for role in explicit_roles:
@@ -2685,8 +2699,18 @@ async def _process_slack_event(payload: dict[str, Any]) -> dict[str, Any]:
                         f"{[s.agent_role for s in subscriptions]}. Processing message."
                     )
 
+                # Resolve role from subscriptions or text so the correct bot
+                # adds thinking_face (see app_mention handler for rationale).
+                _thread_role: str | None = None
+                if subscriptions:
+                    _thread_role = subscriptions[0].agent_role
+                if not _thread_role:
+                    _thread_role = await _resolve_explicit_role_for_text(text)
+                if not _thread_role:
+                    _thread_role = route_by_keywords(text)
+
                 if message_ts:
-                    await add_reaction(channel, message_ts, "thinking_face")
+                    await add_reaction(channel, message_ts, "thinking_face", role=_thread_role)
 
                 routed_text = _inject_thread_kubeconfig_context(text, channel, thread_ts)
                 await run_agent_for_slack(
