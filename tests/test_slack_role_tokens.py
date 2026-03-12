@@ -651,3 +651,106 @@ class TestEvalMentionReplacement:
                 "@SupportEngineer check something"
             )
             assert result == "@SupportEngineer check something"
+
+
+class TestGatewayMentionReplacement:
+    """Verify gateway replaces @RoleName with <@U_BOT_ID> in outgoing messages."""
+
+    @pytest.mark.asyncio
+    async def test_replace_role_mentions_in_outgoing(self):
+        """@RoleName in agent response becomes <@U_BOT_ID> before posting."""
+        from vibeteam.gateway.routes.slack import (
+            _replace_role_mentions_in_outgoing,
+            _role_to_uid_cache,
+        )
+        import vibeteam.gateway.routes.slack as slack_mod
+
+        original_cache = slack_mod._role_to_uid_cache
+        try:
+            slack_mod._role_to_uid_cache = {
+                "support_engineer": "U_SUPPORT_BOT",
+                "software_engineer": "U_SWE_BOT",
+                "release_engineer": "U_RELEASE_BOT",
+            }
+            result = await _replace_role_mentions_in_outgoing(
+                "I'm handing off to @SoftwareEngineer for the code fix."
+            )
+            assert "<@U_SWE_BOT>" in result
+            assert "@SoftwareEngineer" not in result
+        finally:
+            slack_mod._role_to_uid_cache = original_cache
+
+    @pytest.mark.asyncio
+    async def test_replace_multiple_mentions(self):
+        """Multiple @RoleName mentions all get replaced."""
+        import vibeteam.gateway.routes.slack as slack_mod
+        from vibeteam.gateway.routes.slack import _replace_role_mentions_in_outgoing
+
+        original_cache = slack_mod._role_to_uid_cache
+        try:
+            slack_mod._role_to_uid_cache = {
+                "support_engineer": "U_SUPPORT",
+                "release_engineer": "U_RELEASE",
+            }
+            result = await _replace_role_mentions_in_outgoing(
+                "@SupportEngineer please notify. @ReleaseEngineer please deploy."
+            )
+            assert "<@U_SUPPORT>" in result
+            assert "<@U_RELEASE>" in result
+            assert "@SupportEngineer" not in result
+            assert "@ReleaseEngineer" not in result
+        finally:
+            slack_mod._role_to_uid_cache = original_cache
+
+    @pytest.mark.asyncio
+    async def test_no_replacement_when_cache_empty(self):
+        """When no UIDs resolved, text stays unchanged."""
+        import vibeteam.gateway.routes.slack as slack_mod
+        from vibeteam.gateway.routes.slack import _replace_role_mentions_in_outgoing
+
+        original_cache = slack_mod._role_to_uid_cache
+        try:
+            slack_mod._role_to_uid_cache = {}
+            result = await _replace_role_mentions_in_outgoing(
+                "@SoftwareEngineer check this"
+            )
+            assert result == "@SoftwareEngineer check this"
+        finally:
+            slack_mod._role_to_uid_cache = original_cache
+
+    @pytest.mark.asyncio
+    async def test_send_slack_message_applies_mention_replacement(self):
+        """send_slack_message should call _replace_role_mentions_in_outgoing."""
+        import vibeteam.gateway.routes.slack as slack_mod
+        from vibeteam.gateway.routes.slack import send_slack_message
+
+        original_cache = slack_mod._role_to_uid_cache
+        try:
+            slack_mod._role_to_uid_cache = {
+                "software_engineer": "U_SWE_BOT",
+            }
+            with patch.object(
+                slack_mod, "_resolve_slack_reply_bot_token", return_value="xoxb-test"
+            ), patch("httpx.AsyncClient") as MockClient:
+                mock_resp = AsyncMock()
+                mock_resp.json.return_value = {"ok": True, "ts": "123.456"}
+                mock_client_instance = AsyncMock()
+                mock_client_instance.post.return_value = mock_resp
+                mock_client_instance.__aenter__ = AsyncMock(
+                    return_value=mock_client_instance
+                )
+                mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+                MockClient.return_value = mock_client_instance
+
+                await send_slack_message(
+                    "C123",
+                    "@SoftwareEngineer please investigate",
+                    "ts123",
+                    role="support_engineer",
+                )
+
+                posted_payload = mock_client_instance.post.call_args[1]["json"]
+                assert "<@U_SWE_BOT>" in posted_payload["text"]
+                assert "@SoftwareEngineer" not in posted_payload["text"]
+        finally:
+            slack_mod._role_to_uid_cache = original_cache

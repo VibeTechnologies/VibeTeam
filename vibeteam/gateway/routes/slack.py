@@ -23,8 +23,12 @@ import httpx
 import yaml
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from agent_service.shared.role_resolver import ROLE_MENTION_MAP, get_display_name
-from vibeteam.agents_config import get_slack_handle
+from agent_service.shared.role_resolver import (
+    ROLE_MENTION_MAP,
+    ROLE_PATTERN,
+    get_display_name,
+)
+from vibeteam.agents_config import get_slack_handle, list_agents
 from vibeteam.gateway.server import call_agent_service, call_agent_service_async, config
 from vibeteam.router import Router
 from vibeteam.router.models import AgentRole, route_by_keywords
@@ -824,6 +828,58 @@ async def _extract_roles_from_slack_user_mentions(text: str) -> list[str]:
     return roles
 
 
+# ---------------------------------------------------------------------------
+# Role mention → Slack <@U...> replacement for outgoing messages
+# ---------------------------------------------------------------------------
+
+_role_to_uid_cache: dict[str, str] | None = None
+_role_to_uid_lock = asyncio.Lock()
+
+
+async def _get_role_to_slack_uid() -> dict[str, str]:
+    """Lazily resolve role → Slack bot user_id mapping (cached)."""
+    global _role_to_uid_cache
+    if _role_to_uid_cache is not None:
+        return _role_to_uid_cache
+
+    async with _role_to_uid_lock:
+        if _role_to_uid_cache is not None:
+            return _role_to_uid_cache
+
+        uid_to_role = await _role_bot_user_ids()
+        _role_to_uid_cache = {role: uid for uid, role in uid_to_role.items()}
+        if _role_to_uid_cache:
+            logger.info(
+                "Resolved role→Slack UID mapping: %s",
+                {r: u for r, u in _role_to_uid_cache.items()},
+            )
+        return _role_to_uid_cache
+
+
+async def _replace_role_mentions_in_outgoing(text: str) -> str:
+    """Replace @RoleName patterns with <@U_BOT_ID> Slack mentions in outgoing text.
+
+    When an agent writes ``@SoftwareEngineer please investigate``, this function
+    converts it to ``<@U_SOFTWARE_ENGINEER_BOT_ID> please investigate`` so Slack
+    renders it as a real clickable mention — making agents communicate like a team.
+    """
+    if not text:
+        return text
+
+    uid_map = await _get_role_to_slack_uid()
+    if not uid_map:
+        return text
+
+    def _sub(match: re.Match) -> str:
+        key = match.group(1).lower()
+        role = ROLE_MENTION_MAP.get(key)
+        if role and role in uid_map:
+            return f"<@{uid_map[role]}>"
+        return match.group(0)
+
+    return ROLE_PATTERN.sub(_sub, text)
+
+
 async def _resolve_explicit_role_for_text(text: str) -> str | None:
     """Resolve first explicit role mentioned in plain or Slack user-mention form."""
     if not text:
@@ -873,6 +929,10 @@ async def send_slack_message(
         return None
 
     try:
+        # Replace @RoleName text with <@U_BOT_ID> Slack mentions so agents
+        # communicate with real clickable handles visible in the channel.
+        text = await _replace_role_mentions_in_outgoing(text)
+
         payload: dict[str, Any] = {
             "channel": channel,
             "text": text,
