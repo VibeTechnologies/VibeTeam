@@ -278,14 +278,31 @@ def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
     return None
 
 
-def _build_pr_handoff_response(task: str) -> str:
+def _build_pr_handoff_response(task: str, injected_context: list[str] | None = None) -> str:
+    # Try extracting a specific Sentry issue URL from the user message first.
     issue_ids = _extract_sentry_issue_ids(task)
     if issue_ids:
         issue_line = f"Sentry issue: {issue_ids[0]} (from task context)."
+    elif injected_context:
+        # No explicit ID — look for the top issue in pre-injected Sentry context.
+        context_str = "\n\n".join(injected_context)
+        top_issue = _extract_top_sentry_issue(context_str)
+        if top_issue:
+            short_id = top_issue.get("short_id", "")
+            title = top_issue.get("title", "unknown")
+            url = top_issue.get("url", "")
+            count = top_issue.get("count", "")
+            count_info = f" ({count} events)" if count else ""
+            issue_line = f"Top Sentry issue: {short_id} — {title}{count_info}."
+            if url:
+                issue_line += f" URL: {url}"
+        else:
+            sentry_summary = _summarize_sentry(context_str)
+            issue_line = f"Sentry context reviewed: {sentry_summary}"
     else:
-        issue_line = "No Sentry issue ID found in the task; please identify the top issue."
+        issue_line = "No Sentry issues found in available context."
 
-    return f"{issue_line}\nSoftwareEngineer please investigate and open a PR to fix the issue."
+    return f"{issue_line}\n@SoftwareEngineer please investigate and open a PR to fix the issue."
 
 
 def _extract_user_message(task: str) -> str:
@@ -1101,8 +1118,11 @@ class OpenHandsSupportEngineer:
                         namespace,
                     )
 
-            # Avoid role-mention handoffs for eval-style triage tasks.
-            if any(
+            pr_requested = _task_requests_pr_creation(user_message_lower)
+
+            # Avoid role-mention handoffs for eval-style triage tasks,
+            # but preserve @mentions when a PR handoff is explicitly requested.
+            if not pr_requested and any(
                 kw in user_message_lower
                 for kw in [
                     "gmail",
@@ -1131,7 +1151,6 @@ class OpenHandsSupportEngineer:
                     namespace,
                 )
 
-            pr_requested = _task_requests_pr_creation(user_message_lower)
             is_notification = any(
                 kw in user_message_lower
                 for kw in [
@@ -1144,7 +1163,7 @@ class OpenHandsSupportEngineer:
             )
             is_explicit_investigation = any(
                 kw in user_message_lower
-                for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail"]
+                for kw in ["investigate", "check", "debug", "analyze", "why", "error", "fail", "review"]
             )
             if is_notification and not is_explicit_investigation:
                 response = build_notification_message(user_message)
@@ -1155,7 +1174,7 @@ class OpenHandsSupportEngineer:
                 and not (is_notification and not is_explicit_investigation)
             ):
                 # Keep PR request responses short and focused on a single issue + handoff.
-                response = _build_pr_handoff_response(user_message)
+                response = _build_pr_handoff_response(user_message, injected_context)
 
             # Auto-close Sentry issue when a PR link is present in the task.
             if re.search(r"https?://github\.com/\S+/pull/\d+", user_message, re.IGNORECASE):
