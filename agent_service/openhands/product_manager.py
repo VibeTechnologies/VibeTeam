@@ -254,7 +254,19 @@ class OpenHandsProductManager:
             )
 
             full_task = f"{PRODUCT_MANAGER_CONTEXT_FALLBACK}\n\nTask: {task}"
-            response = conversation.ask_agent(full_task)
+            try:
+                response = conversation.ask_agent(full_task)
+            except Exception:
+                logger.exception("ProductManager ask_agent failed; building fallback response")
+                try:
+                    from .utils import extract_response_from_events
+
+                    response = extract_response_from_events(conversation.state.events)
+                except Exception:
+                    response = (
+                        "I encountered an error while processing this request. "
+                        "Please try again or provide more details."
+                    )
 
             session.add_message("user", task)
             session.add_message("assistant", response)

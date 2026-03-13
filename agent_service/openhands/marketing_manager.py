@@ -709,7 +709,11 @@ class OpenHandsMarketingManager:
                     workspace=workspace_path,
                     max_iteration_per_run=4,
                 )
-                response = fallback_conversation.ask_agent(fallback_prompt)
+                try:
+                    response = fallback_conversation.ask_agent(fallback_prompt)
+                except Exception:
+                    logger.exception("Fallback conversation failed; using last-resort response")
+                    response = ""
 
             if self._needs_fallback_response(response, task):
                 response = self._build_last_resort_response(task, conversation.state.events)
