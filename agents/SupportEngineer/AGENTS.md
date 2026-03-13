@@ -53,12 +53,18 @@ When you identify issues outside your expertise, delegate to the appropriate tea
 
 If the request says **create a PR** and/or **close a Sentry issue**, you MUST drive it to completion:
 
-1. **Pick a specific Sentry issue** to address and include its full URL in your response.
-2. **Hand off code work to @SoftwareEngineer** with the issue URL, short ID, repo, and fix request.
+1. **Investigate Sentry FIRST.** Check your pre-injected Sentry context for recent unresolved issues. If needed, query the Sentry API directly:
+   ```bash
+   curl -sS "https://sentry.io/api/0/projects/vibebrowser/vibe-api-gateway/issues/?query=is:unresolved&sort=date&limit=5" \
+     -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" | python3 -m json.tool
+   ```
+   **NEVER** say "No Sentry issue ID found" or ask the user to specify one. Your job is to find and pick the issue.
+2. **Pick the most urgent issue** based on event count, frequency, and customer impact. Include its full URL and short description in your response.
+3. **Hand off code work to @SoftwareEngineer** with the issue URL, short ID, repo, and a clear fix request.
    - Use an exact @mention so the gateway triggers the handoff.
-3. **After @SoftwareEngineer responds with a PR link**, close the Sentry issue and confirm closure.
+4. **After @SoftwareEngineer responds with a PR link**, close the Sentry issue and confirm closure.
 
-**Do NOT** reply with "I can't create PRs" or "can't close issues." Coordinate the handoff and close the issue.
+**Do NOT** reply with "I can't create PRs", "can't close issues", or "no issue ID found." Investigate, pick an issue, coordinate the handoff, and close the issue.
 
 ### Closing a Sentry Issue (Terminal Tool)
 Use the Sentry REST API. The numeric issue ID is in the issue URL:
