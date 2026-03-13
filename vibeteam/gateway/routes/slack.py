@@ -2356,7 +2356,12 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     if message_ts:
         await add_reaction(channel, message_ts, "white_check_mark", role=role)
 
-    response = response_text or "I completed the task but have no output to share."
+    # An empty response means the agent intentionally suppressed output
+    # (e.g., handoff chain re-entry guard). Skip posting and handoffs.
+    if not response_text:
+        return {"status": "ok", "job_id": job_id, "outcome": "suppressed"}
+
+    response = response_text
 
     # Split long responses into multiple messages
     chunks = split_long_message(response)

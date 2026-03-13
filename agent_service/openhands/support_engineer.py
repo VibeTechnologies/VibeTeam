@@ -1083,6 +1083,22 @@ class OpenHandsSupportEngineer:
             # Build full task (no pre-fetched context).
             user_message = _extract_user_message(task)
             user_message_lower = user_message.lower()
+
+            # Early exit: if this is a handoff chain re-entry (A→B→A loop),
+            # skip entirely to prevent duplicate messages.
+            if "[Handoff from" in task or re.search(
+                r"(Closed|closed|Resolved|resolved).{0,20}Sentry issue \d+", task
+            ):
+                response = ""
+                session.add_message("user", task)
+                session.add_message("assistant", response)
+                get_session_store().save(session)
+                return {
+                    "response": response,
+                    "session_key": session.session_key,
+                    "context_id": context_id,
+                }
+
             if _should_prefetch_investigation_context(user_message_lower):
                 try:
                     injected_context.append(
