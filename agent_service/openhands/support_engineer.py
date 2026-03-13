@@ -279,7 +279,11 @@ def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
 
 
 def _build_pr_handoff_response(task: str, injected_context: list[str] | None = None) -> str | None:
-    # Guard: if this is a re-entry (task already contains our prior output),
+    # Guard 1: if this is a re-entry from a handoff chain (A→B→A loop),
+    # skip to avoid duplicate messages.
+    if "[Handoff from" in task:
+        return None
+    # Guard 2: if this task already contains our prior output (e.g. "Closed Sentry issue"),
     # skip to avoid duplicate messages.
     if re.search(r"(Closed|closed) Sentry issue \d+", task):
         return None

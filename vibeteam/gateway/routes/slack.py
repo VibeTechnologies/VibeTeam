@@ -2361,8 +2361,22 @@ async def handle_agent_callback(request: Request) -> dict[str, Any]:
     # Split long responses into multiple messages
     chunks = split_long_message(response)
 
+    any_posted = False
     for chunk in chunks:
-        await send_slack_message(channel, chunk, thread_ts, role=role)
+        ts = await send_slack_message(channel, chunk, thread_ts, role=role)
+        if ts:
+            any_posted = True
+
+    # If the response couldn't be posted (e.g. account_inactive token),
+    # skip handoff processing — no point triggering a handoff chain
+    # when the originating response is invisible to users.
+    if not any_posted:
+        logger.warning(
+            "[CALLBACK] Response could not be posted for %s job %s; skipping handoffs",
+            role,
+            job_id,
+        )
+        return {"status": "ok", "job_id": job_id, "outcome": "response_not_posted"}
 
     # Check for handoffs in the response
     message_router = get_message_router()
