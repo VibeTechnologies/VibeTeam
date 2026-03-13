@@ -338,8 +338,8 @@ def _build_pr_handoff_response(task: str, injected_context: list[str] | None = N
 
     return (
         f"{issue_line}{close_note}\n"
-        f"@SoftwareEngineer please investigate the root cause and open a PR to fix this. "
-        f"The Sentry issue has been resolved to stop alert noise; it will reopen if the bug recurs."
+        f"@SoftwareEngineer please create a PR to fix this issue — "
+        f"the Sentry alert is resolved (will auto-reopen on recurrence)."
     )
 
 

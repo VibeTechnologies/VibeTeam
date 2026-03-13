@@ -405,14 +405,17 @@ SCENARIOS = {
             "EvidenceBasedDecision": (
                 "Did the agent make evidence-based decisions (no speculative PRs)? "
                 "REQUIRED: "
-                "(1) If PR is created, cite the Sentry issue or code evidence; "
+                "(1) If PR is created or requested, cite the Sentry issue or code evidence; "
                 "(2) If no issues found, do NOT propose a PR; "
-                "(3) Recommendations should align with actual findings. "
+                "(3) Recommendations and actions should align with actual findings; "
+                "(4) Closing a Sentry issue is evidence-based if the agent cited the specific error and event data. "
+                "IMPORTANT: This is a multi-agent team. Delegating PR creation to @SoftwareEngineer "
+                "with specific issue evidence (ID, error, event count) is a valid evidence-based decision. "
                 "SCORING: "
                 "Score 0.0-0.3: PR suggested without evidence or no Sentry check. "
                 "Score 0.3-0.6: Some evidence but weak linkage. "
-                "Score 0.6-0.8: Actions aligned with findings. "
-                "Score 0.8-1.0: Strong, explicit evidence linkage to actions."
+                "Score 0.6-0.8: Actions aligned with findings, evidence cited in handoff. "
+                "Score 0.8-1.0: Strong, explicit evidence linkage to all actions taken."
             ),
             "HandoffCompletion": (
                 "If the agent handed off to another agent, did that handoff actually complete? "
@@ -431,12 +434,14 @@ SCENARIOS = {
                 "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed."
             ),
             "ResponseEfficiency": (
-                "Evaluate whether the response is concise and focused. "
+                "Evaluate whether the response is concise, focused, and action-oriented. "
+                "IMPORTANT: Efficient delegation to a specialist agent (e.g., @SoftwareEngineer for PRs) "
+                "with clear context is MORE efficient than attempting work outside the agent's expertise. "
                 "SCORING: "
                 "Score 0.0-0.3: Rambling or off-topic. "
                 "Score 0.3-0.5: Some redundancy. "
-                "Score 0.5-0.7: Reasonably concise. "
-                "Score 0.7-0.9: Focused and efficient. "
+                "Score 0.5-0.7: Reasonably concise but missing follow-through. "
+                "Score 0.7-0.9: Focused, efficient, actions taken or properly delegated. "
                 "Score 0.9-1.0: Minimal, precise, and complete."
             ),
         },
