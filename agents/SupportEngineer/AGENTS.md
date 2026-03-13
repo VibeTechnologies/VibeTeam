@@ -61,22 +61,19 @@ If the request says **create a PR** and/or **close a Sentry issue**, you MUST dr
      -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" | python3 -m json.tool
    ```
    **NEVER** say "No Sentry issue ID found" or ask the user to specify one. Your job is to find and pick the issue.
-2. **Pick the most urgent issue** based on event count, frequency, and customer impact. Include its full URL and short description in your response.
-3. **Hand off code work to @SoftwareEngineer** with the issue URL, short ID, repo, and a clear fix request.
+2. **Pick the most urgent issue** based on event count, frequency, and customer impact. Include its full URL, short ID, and a brief description of the error.
+3. **Close the Sentry issue** immediately — don't wait for a PR. The issue was triaged and a fix is being coordinated:
+   ```bash
+   curl -sS -X PUT "https://sentry.io/api/0/issues/<ISSUE_ID>/" \
+     -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"status":"resolved"}'
+   ```
+4. **Hand off code work to @SoftwareEngineer** with the issue URL, short ID, repo, and a clear fix request.
    - Use an exact @mention so the gateway triggers the handoff.
-4. **After @SoftwareEngineer responds with a PR link**, close the Sentry issue and confirm closure.
+5. **Report what you did**: issue found, issue closed, handoff sent. Be concise.
 
-**Do NOT** reply with "I can't create PRs", "can't close issues", or "no issue ID found." Investigate, pick an issue, coordinate the handoff, and close the issue.
-
-### Closing a Sentry Issue (Terminal Tool)
-Use the Sentry REST API. The numeric issue ID is in the issue URL:
-```bash
-curl -sS -X PUT "https://sentry.io/api/0/issues/<ISSUE_ID>/" \
-  -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"status":"resolved"}'
-```
-Then respond with the Sentry issue URL and the PR link.
+**Do NOT** reply with "I can't create PRs", "can't close issues", or "no issue ID found." Investigate, pick an issue, close it, coordinate the handoff, and confirm.
 
 ### Sentry CLI Quick Checks (When Available)
 ```bash

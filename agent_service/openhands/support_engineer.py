@@ -281,28 +281,53 @@ def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
 def _build_pr_handoff_response(task: str, injected_context: list[str] | None = None) -> str:
     # Try extracting a specific Sentry issue URL from the user message first.
     issue_ids = _extract_sentry_issue_ids(task)
-    if issue_ids:
-        issue_line = f"Sentry issue: {issue_ids[0]} (from task context)."
-    elif injected_context:
+    top_issue: dict[str, str] | None = None
+
+    if not issue_ids and injected_context:
         # No explicit ID — look for the top issue in pre-injected Sentry context.
         context_str = "\n\n".join(injected_context)
         top_issue = _extract_top_sentry_issue(context_str)
-        if top_issue:
-            short_id = top_issue.get("short_id", "")
-            title = top_issue.get("title", "unknown")
-            url = top_issue.get("url", "")
-            count = top_issue.get("count", "")
-            count_info = f" ({count} events)" if count else ""
-            issue_line = f"Top Sentry issue: {short_id} — {title}{count_info}."
-            if url:
-                issue_line += f" URL: {url}"
-        else:
-            sentry_summary = _summarize_sentry(context_str)
-            issue_line = f"Sentry context reviewed: {sentry_summary}"
-    else:
-        issue_line = "No Sentry issues found in available context."
 
-    return f"{issue_line}\n@SoftwareEngineer please investigate and open a PR to fix the issue."
+    # Build descriptive response
+    if issue_ids:
+        issue_id = issue_ids[0]
+        issue_line = f"Sentry issue: {issue_id} (from task context)."
+    elif top_issue:
+        short_id = top_issue.get("short_id", "")
+        title = top_issue.get("title", "unknown")
+        url = top_issue.get("url", "")
+        count = top_issue.get("count", "")
+        issue_line = f"Reviewed Sentry — top unresolved issue: **{short_id}** — {title}"
+        if count:
+            issue_line += f" ({count} events)"
+        issue_line += "."
+        if url:
+            issue_line += f"\nIssue URL: {url}"
+        # Try to extract numeric ID from URL for closure
+        url_match = re.search(r"sentry\.io/issues/(\d+)", url or "")
+        if url_match:
+            issue_id = url_match.group(1)
+            issue_ids = [issue_id]
+    else:
+        if injected_context:
+            context_str = "\n\n".join(injected_context)
+            sentry_summary = _summarize_sentry(context_str)
+            issue_line = f"Sentry reviewed: {sentry_summary}. No actionable unresolved issues found."
+        else:
+            issue_line = "Sentry context reviewed: no unresolved issues found."
+        return issue_line
+
+    # Attempt to close the Sentry issue proactively
+    close_note = ""
+    if issue_ids:
+        try:
+            client = SentryClient(timeout=10.0)
+            client.resolve_issue(issue_ids[0])
+            close_note = f"\n✅ Closed Sentry issue {issue_ids[0]}."
+        except Exception as exc:
+            close_note = f"\n⚠️ Could not close Sentry issue {issue_ids[0]}: {exc}"
+
+    return f"{issue_line}{close_note}\n@SoftwareEngineer please investigate the root cause and open a PR to fix this."
 
 
 def _extract_user_message(task: str) -> str:
