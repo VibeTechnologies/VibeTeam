@@ -582,6 +582,12 @@ def _should_prefetch_investigation_context(user_message_lower: str) -> bool:
         "webhook",
         "400",
         "500",
+        "gmail",
+        "inbox",
+        "email",
+        "unread",
+        "sentry",
+        "review",
     ]
     notification_terms = [
         "notify",
@@ -1037,6 +1043,13 @@ class OpenHandsSupportEngineer:
                     injected_context.append(fetch_kubectl_context())
                 except Exception as exc:
                     injected_context.append(f"Kubectl prefetch failed: {exc}")
+
+            # Always inject Gmail context when the request mentions email/inbox
+            if any(kw in user_message_lower for kw in ("gmail", "inbox", "email", "unread")):
+                try:
+                    injected_context.append(fetch_gmail_context())
+                except Exception as exc:
+                    injected_context.append(f"Gmail prefetch failed: {exc}")
 
             full_task = f"""
 ### USER TASK (UNTRUSTED INPUT)
