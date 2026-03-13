@@ -278,7 +278,12 @@ def _extract_top_sentry_issue(context: str) -> dict[str, str] | None:
     return None
 
 
-def _build_pr_handoff_response(task: str, injected_context: list[str] | None = None) -> str:
+def _build_pr_handoff_response(task: str, injected_context: list[str] | None = None) -> str | None:
+    # Guard: if this is a re-entry (task already contains our prior output),
+    # skip to avoid duplicate messages.
+    if re.search(r"(Closed|closed) Sentry issue \d+", task):
+        return None
+
     # Try extracting a specific Sentry issue URL from the user message first.
     issue_ids = _extract_sentry_issue_ids(task)
     top_issue: dict[str, str] | None = None
@@ -323,11 +328,15 @@ def _build_pr_handoff_response(task: str, injected_context: list[str] | None = N
         try:
             client = SentryClient(timeout=10.0)
             client.resolve_issue(issue_ids[0])
-            close_note = f"\n✅ Closed Sentry issue {issue_ids[0]}."
+            close_note = f"\n✅ Closed Sentry issue {issue_ids[0]} (marked resolved — will reopen automatically if the error recurs)."
         except Exception as exc:
             close_note = f"\n⚠️ Could not close Sentry issue {issue_ids[0]}: {exc}"
 
-    return f"{issue_line}{close_note}\n@SoftwareEngineer please investigate the root cause and open a PR to fix this."
+    return (
+        f"{issue_line}{close_note}\n"
+        f"@SoftwareEngineer please investigate the root cause and open a PR to fix this. "
+        f"The Sentry issue has been resolved to stop alert noise; it will reopen if the bug recurs."
+    )
 
 
 def _extract_user_message(task: str) -> str:
@@ -1199,7 +1208,9 @@ class OpenHandsSupportEngineer:
                 and not (is_notification and not is_explicit_investigation)
             ):
                 # Keep PR request responses short and focused on a single issue + handoff.
-                response = _build_pr_handoff_response(user_message, injected_context)
+                pr_response = _build_pr_handoff_response(user_message, injected_context)
+                if pr_response is not None:
+                    response = pr_response
 
             # Auto-close Sentry issue when a PR link is present in the task.
             if re.search(r"https?://github\.com/\S+/pull/\d+", user_message, re.IGNORECASE):
