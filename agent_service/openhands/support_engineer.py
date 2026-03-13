@@ -283,9 +283,9 @@ def _build_pr_handoff_response(task: str, injected_context: list[str] | None = N
     # skip to avoid duplicate messages.
     if "[Handoff from" in task:
         return None
-    # Guard 2: if this task already contains our prior output (e.g. "Closed Sentry issue"),
+    # Guard 2: if this task already contains our prior output (e.g. "Sentry issue ...closed"),
     # skip to avoid duplicate messages.
-    if re.search(r"(Closed|closed) Sentry issue \d+", task):
+    if re.search(r"(Closed|closed|Resolved|resolved).{0,20}Sentry issue \d+", task):
         return None
 
     # Try extracting a specific Sentry issue URL from the user message first.
@@ -326,20 +326,16 @@ def _build_pr_handoff_response(task: str, injected_context: list[str] | None = N
             issue_line = "Sentry context reviewed: no unresolved issues found."
         return issue_line
 
-    # Attempt to close the Sentry issue proactively
-    close_note = ""
+    # Don't close Sentry proactively — wait until a PR is created to ensure
+    # the fix is evidence-linked.  The auto-close path (line ~1220) handles closure.
+    sentry_id_note = ""
     if issue_ids:
-        try:
-            client = SentryClient(timeout=10.0)
-            client.resolve_issue(issue_ids[0])
-            close_note = f"\n✅ Closed Sentry issue {issue_ids[0]} (marked resolved — will reopen automatically if the error recurs)."
-        except Exception as exc:
-            close_note = f"\n⚠️ Could not close Sentry issue {issue_ids[0]}: {exc}"
+        sentry_id_note = f"\nSentry issue ID: {issue_ids[0]}"
 
     return (
-        f"{issue_line}{close_note}\n"
-        f"@SoftwareEngineer please create a PR to fix this issue — "
-        f"the Sentry alert is resolved (will auto-reopen on recurrence)."
+        f"{issue_line}{sentry_id_note}\n"
+        f"@SoftwareEngineer please create a PR to fix this error and "
+        f"reference the Sentry issue in the PR description."
     )
 
 
@@ -1226,7 +1222,10 @@ class OpenHandsSupportEngineer:
                         client = SentryClient(timeout=10.0)
                         closed_id = issue_ids[0]
                         client.resolve_issue(closed_id)
-                        response = f"Closed Sentry issue {closed_id}. PR: {pr_url}."
+                        response = (
+                            f"✅ Resolved: Sentry issue {closed_id} closed — "
+                            f"fix PR: {pr_url}."
+                        )
                     except Exception as exc:
                         response = f"Sentry: failed to close issue ({exc}). PR: {pr_url}."
 
