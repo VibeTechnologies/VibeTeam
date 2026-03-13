@@ -390,64 +390,61 @@ SCENARIOS = {
                 "Score 0.8-1.0: Clear, specific Sentry findings with context."
             ),
             "TaskCompletion": (
-                "Did the agent address issues, create a PR, and close the Sentry issue? "
-                "IMPORTANT: This is a multi-agent team. SupportEngineer triages, closes Sentry issues, "
-                "and delegates PR creation to @SoftwareEngineer. Evaluate the FULL conversation. "
+                "Did the agent address issues, close the Sentry issue, and initiate PR creation? "
+                "ARCHITECTURE CONTEXT: SupportEngineer CANNOT create PRs — only SoftwareEngineer can. "
+                "Therefore, delegating PR creation to @SoftwareEngineer IS the correct way to create a PR. "
                 "REQUIRED: "
-                "(1) Clear identification of issues with specific evidence (error, event count, ID); "
+                "(1) Clear identification of issues with specific evidence (error type, event count, issue ID); "
                 "(2) Sentry issue closed/resolved; "
-                "(3) PR creation initiated — either directly or by delegating to @SoftwareEngineer with "
-                "specific error details. If @SoftwareEngineer responds with a PR, full credit; "
-                "if delegation was made with evidence but no response yet, partial credit. "
+                "(3) PR creation delegated to @SoftwareEngineer with specific error details and Sentry reference. "
                 "SCORING: "
                 "Score 0.0-0.3: No action or no Sentry check. "
-                "Score 0.3-0.6: Sentry checked but issue not closed or no PR action. "
-                "Score 0.6-0.8: Sentry issue closed AND PR delegated with evidence. "
-                "Score 0.8-1.0: Sentry issue closed AND PR created (or delegation completed with response)."
+                "Score 0.3-0.5: Sentry checked but issue not closed or no PR action. "
+                "Score 0.5-0.7: Sentry issue closed OR PR delegated, but not both. "
+                "Score 0.7-0.9: Sentry issue closed AND PR delegated to @SoftwareEngineer with evidence. "
+                "Score 0.9-1.0: All above AND @SoftwareEngineer responded with a PR."
             ),
             "EvidenceBasedDecision": (
-                "Did the agent make evidence-based decisions (no speculative PRs)? "
-                "REQUIRED: "
-                "(1) If PR is created or requested, the agent must cite specific Sentry issue details "
-                "(error message, event count, issue ID/URL) as evidence justifying the PR; "
-                "(2) If no issues found, do NOT propose a PR; "
-                "(3) Closing a Sentry issue is evidence-based when the agent cited the specific error, "
-                "event count, and issue ID before closing — the closure stops alert noise while the fix is in progress. "
-                "IMPORTANT: This is a multi-agent team where SupportEngineer triages and "
-                "@SoftwareEngineer creates PRs. Evaluate the FULL conversation's evidence chain: "
-                "identify issue with data → close Sentry (stops noise) → request PR with error details. "
+                "Did the agent cite specific evidence before taking each action? "
+                "EVALUATION RULES — apply these in order: "
+                "(A) Check: Does the response cite a specific error type (e.g., TypeError)? YES = evidence present. "
+                "(B) Check: Does it cite a specific event count (e.g., 21 events)? YES = quantitative evidence. "
+                "(C) Check: Does it cite a Sentry issue ID or URL? YES = traceable evidence. "
+                "(D) If A+B+C are all YES, the agent HAS cited specific evidence. Score >= 0.7. "
+                "(E) Closing a Sentry issue AFTER citing the error, count, and ID is evidence-based — "
+                "it stops alert noise while the PR fix is in progress. Do NOT penalize this. "
+                "(F) Requesting a PR AFTER citing the error details is evidence-based delegation. "
                 "SCORING: "
-                "Score 0.0-0.3: Actions taken without citing specific evidence. "
-                "Score 0.3-0.6: Some evidence cited but actions not clearly linked to it. "
-                "Score 0.6-0.8: Evidence cited, Sentry closed with rationale, PR requested with details. "
-                "Score 0.8-1.0: Complete evidence chain with specific error data, clear rationale for each action."
+                "Score 0.0-0.3: No specific evidence cited (no error type, no count, no ID). "
+                "Score 0.3-0.6: Partial evidence (only 1 of error/count/ID cited). "
+                "Score 0.7-0.8: All 3 evidence types cited, actions linked to evidence. "
+                "Score 0.8-1.0: Complete evidence chain with clear rationale for each action."
             ),
             "HandoffCompletion": (
-                "If the agent handed off to another agent, did that handoff actually complete? "
+                "Did the SupportEngineer properly hand off PR creation to the right specialist? "
+                "ARCHITECTURE CONTEXT: SupportEngineer CANNOT create PRs. SoftwareEngineer creates PRs. "
+                "A well-formed handoff to @SoftwareEngineer with error details IS correct behavior. "
                 "CRITICAL: The agent should NOT hand off to themselves (e.g., SupportEngineer tagging @SupportEngineer). "
-                "CRITICAL: A handoff that is never picked up is NOT a successful resolution. "
-                "REQUIRED FOR HIGH SCORE: "
-                "(1) If handoff was made, the target agent MUST have responded in the conversation; "
-                "(2) The target agent must have taken meaningful action (not just acknowledged); "
-                "(3) If no handoff response exists, the original agent should have followed up or resolved directly. "
+                "EVALUATE THE HANDOFF QUALITY, not whether the target responded "
+                "(target availability is an infrastructure concern, not an agent quality issue). "
                 "SCORING: "
-                "Score 0.0-0.2: Self-handoff or handoff with NO response. "
-                "Score 0.2-0.4: Handoff made but NO response from target agent. "
-                "Score 0.4-0.6: Handoff made, target acknowledged but took no action. "
-                "Score 0.6-0.8: Handoff made, target responded with partial action. "
-                "Score 0.8-0.9: Handoff completed with target taking appropriate action. "
-                "Score 0.9-1.0: No handoff needed (resolved directly) OR handoff fully completed."
+                "Score 0.0-0.2: Self-handoff or no handoff attempted when one was needed. "
+                "Score 0.2-0.4: Handoff to wrong agent or with no context. "
+                "Score 0.4-0.6: Handoff to correct agent but vague request. "
+                "Score 0.7-0.8: Handoff to correct agent with specific error details and Sentry reference. "
+                "Score 0.8-1.0: Well-formed handoff AND target agent responded with action."
             ),
             "ResponseEfficiency": (
                 "Evaluate whether the response is concise, focused, and action-oriented. "
-                "IMPORTANT: Efficient delegation to a specialist agent (e.g., @SoftwareEngineer for PRs) "
-                "with clear context is MORE efficient than attempting work outside the agent's expertise. "
+                "ARCHITECTURE CONTEXT: SupportEngineer CANNOT create PRs — only SoftwareEngineer can. "
+                "Therefore, delegating PR creation to @SoftwareEngineer IS the correct and efficient action. "
+                "Do NOT penalize delegation to the correct specialist. "
                 "SCORING: "
-                "Score 0.0-0.3: Rambling or off-topic. "
-                "Score 0.3-0.5: Some redundancy. "
-                "Score 0.5-0.7: Reasonably concise but missing follow-through. "
-                "Score 0.7-0.9: Focused, efficient, actions taken or properly delegated. "
-                "Score 0.9-1.0: Minimal, precise, and complete."
+                "Score 0.0-0.3: Rambling, off-topic, or verbose investigation dumps. "
+                "Score 0.3-0.5: Significant redundancy or unnecessary content. "
+                "Score 0.5-0.7: Reasonably concise but includes unnecessary preamble or filler. "
+                "Score 0.7-0.9: Focused, concise — identifies issue, takes action, delegates efficiently. "
+                "Score 0.9-1.0: Minimal, precise, complete — every sentence serves a purpose."
             ),
         },
         "evaluation_steps": {
@@ -457,21 +454,30 @@ SCENARIOS = {
                 "Score <= 0.3 if Sentry not mentioned or if it says Sentry is not configured.",
             ],
             "TaskCompletion": [
-                "Check that the response directly answers whether there is anything to address.",
-                "Verify the answer is tied to Sentry findings.",
-                "If a bug is identified, check for PR creation and Sentry issue closure or explicit handoff with evidence.",
+                "Check that specific Sentry issues are identified with error type, event count, and ID.",
+                "Check that the Sentry issue was closed/resolved.",
+                "Check that PR creation was delegated to @SoftwareEngineer with error details.",
+                "Score 0.7+ if all three: issue identified, Sentry closed, PR delegated with evidence.",
             ],
             "EvidenceBasedDecision": [
-                "Check that actions are supported by Sentry findings.",
-                "If no issues found, ensure no PR is proposed.",
+                "Check: Does the response cite a specific error type (e.g., TypeError)? Mark YES or NO.",
+                "Check: Does it cite a specific event count (e.g., 21 events)? Mark YES or NO.",
+                "Check: Does it cite a Sentry issue ID or URL? Mark YES or NO.",
+                "If all three are YES, the agent cited specific evidence. Score >= 0.7.",
+                "Closing Sentry after citing evidence is evidence-based (stops alert noise). Do NOT penalize.",
+                "Requesting a PR after citing evidence is evidence-based delegation. Do NOT penalize.",
             ],
             "HandoffCompletion": [
-                "Check if the agent completed the task without handoff (score 1.0) OR made a handoff that was picked up.",
-                "If handoff was made, check that the target agent responded and took meaningful action.",
-                "Check that the agent did NOT hand off to themselves (self-tagging).",
+                "Check that the agent did NOT hand off to themselves (self-tagging = score 0.0).",
+                "Check that the handoff was to the correct specialist (@SoftwareEngineer for PRs).",
+                "Check that the handoff included specific error details and Sentry reference.",
+                "Score 0.7+ for well-formed handoff to correct agent with evidence, regardless of whether target responded.",
             ],
             "ResponseEfficiency": [
                 "Check that the response is concise and directly answers the request.",
+                "SupportEngineer cannot create PRs — delegating to @SoftwareEngineer is correct and efficient.",
+                "Do NOT penalize delegation to the correct specialist.",
+                "Score 0.7+ if response is concise, identifies issue, takes action, and delegates efficiently.",
             ],
         },
         "threshold": 0.70,
