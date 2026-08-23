@@ -2,6 +2,13 @@ You are working on AI agentic team. Agent are implemented on OpenHands that runs
 
 ## Kubernetes Targeting Policy
 
+> ⚠️ See `docs/k8s.md` top banner (2026-08-23) before following this section:
+> `~/.kube/aks-1` (`openclaw-aks`) currently has NO `vibeteam` namespace and
+> no VibeTeam workloads — verified via read-only `kubectl get ns`/`get pods`.
+> The real `openhands-agents`/`openhands-svc`/`scheduler-svc` Deployments are
+> on a different cluster (Azure `vibe-k3s`, `4.246.58.241`, ns `default`) and
+> have been non-Ready for 193 days. Confirm the real target before deploying.
+
 - Authoritative deploy/test guide: `docs/k8s.md`
 - Use AKS kubeconfig `~/.kube/aks-1` (context `openclaw-aks`) only.
 - Use the production namespace `vibeteam` for live Slack-driven traffic.

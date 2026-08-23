@@ -1,5 +1,26 @@
 # Kubernetes Deploy And Test Guide
 
+> **⚠️ NEEDS VERIFICATION (2026-08-23) — this doc's "authoritative" claim does
+> not match live cluster state.** Checked read-only against the `openclaw-aks`
+> AKS cluster this doc names:
+> - `kubectl get ns` shows no `vibeteam` namespace at all (only `default`,
+>   `kube-node-lease`, `kube-public`, `kube-system`, and an orphaned `traefik`
+>   ns stuck `Terminating` for 191 days with a still-billing public
+>   LoadBalancer, `20.81.65.92`). `default` contains only two unrelated
+>   one-off `Completed` pods (`data-mover`, `pc-check3`) — no VibeTeam
+>   workload of any kind.
+> - The actual `openhands-agents` / `openhands-svc` / `scheduler-svc`
+>   Deployments that match this repo's `k8s/base/*.yaml` manifests are
+>   instead running on a **different** cluster — the Azure `vibe-k3s` cluster
+>   (`4.246.58.241`, namespace `default`, not `vibeteam`) — and have been
+>   non-Ready for 193 days (`ContainerStatusUnknown` / `ImagePullBackOff`).
+>
+> Net: as of this check, VibeTeam is not verifiably running anywhere healthy.
+> Do not treat the "Cluster And Namespace Policy" section below as current
+> without re-confirming the real intended deploy target first — the AKS
+> cluster it names has zero VibeTeam presence, and the cluster that does have
+> VibeTeam's workloads has had them broken for over six months.
+
 This document is the authoritative source for where VibeTeam is deployed and how to run deployment validation.
 
 ## Cluster And Namespace Policy
